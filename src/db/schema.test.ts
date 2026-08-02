@@ -1,0 +1,67 @@
+import { describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { createDb } from "./client";
+import { birds, gameState } from "./schema";
+import { seedGame } from "./seed-data";
+import { ECONOMY, STATS } from "@/engine/config";
+
+describe("seeded database", () => {
+  const db = createDb(":memory:");
+  seedGame(db);
+
+  test("game_state has starting GP and day 0", () => {
+    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+    expect(state?.gp).toBe(ECONOMY.STARTING_GP);
+    expect(state?.dayIndex).toBe(0);
+  });
+
+  test("starter flock includes retired birds of both sexes (breeding works turn one)", () => {
+    const flock = db.select().from(birds).all();
+    expect(flock.length).toBe(8);
+    const retired = flock.filter((b) => b.status === "retired");
+    expect(retired.some((b) => b.sex === "rooster")).toBe(true);
+    expect(retired.some((b) => b.sex === "hen")).toBe(true);
+  });
+
+  test("stats are in starter range and stars in half-star bounds", () => {
+    for (const b of db.select().from(birds).all()) {
+      for (const stat of [b.agility, b.heart, b.avoidance, b.stamina, b.ruthless, b.sight]) {
+        expect(stat).toBeGreaterThanOrEqual(STATS.STARTER_MIN);
+        expect(stat).toBeLessThanOrEqual(STATS.STARTER_MAX);
+      }
+      expect(b.halfStars).toBeGreaterThanOrEqual(0);
+      expect(b.halfStars).toBeLessThanOrEqual(10);
+      expect(b.element).toBeTruthy(); // 0★ would still resolve to a type
+    }
+  });
+
+  test("ages derive from birthWeek (active roster covers the gates)", () => {
+    const ages = db
+      .select()
+      .from(birds)
+      .all()
+      .filter((b) => b.status === "active")
+      .map((b) => 0 - b.birthWeek)
+      .sort((a, b) => a - b);
+    expect(ages).toEqual([1, 2, 3, 5]);
+  });
+
+  test("CHECK constraints reject bad rows", () => {
+    expect(() =>
+      db
+        .insert(birds)
+        .values({
+          id: "bad-1",
+          name: "Bad Bird",
+          sex: "rooster",
+          status: "active",
+          agility: 50, heart: 50, avoidance: 50, stamina: 50, ruthless: 50, sight: 50,
+          element: "Fire",
+          halfStars: 11, // > 10 violates CHECK
+          birthWeek: 0,
+          birthDay: 0,
+        })
+        .run()
+    ).toThrow();
+  });
+});
