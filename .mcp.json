@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pintakasi": {
+      "type": "http",
+      "url": "http://localhost:3434/api/mcp"
+    }
+  }
+}
