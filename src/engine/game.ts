@@ -3,6 +3,7 @@ import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
 import { Battle } from "./battle";
 import { Breeding } from "./breeding";
+import { Claimers, type ClaimerResolution } from "./claimers";
 import { BARN } from "./config";
 import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
@@ -19,6 +20,7 @@ export interface TickView {
   clock: ClockState;
   daysAdvanced: number;
   fridays: HatchFridayEvents[]; // hatches + force-retirements, per Friday crossed
+  claimerFights: ClaimerResolution[]; // the day's claiming card going off — public events
 }
 
 /**
@@ -31,6 +33,7 @@ export class Game {
   readonly flock: Flock;
   readonly breeding: Breeding;
   readonly battle: Battle;
+  readonly claimers: Claimers;
   readonly gacha: Gacha;
   readonly farms: Farms;
 
@@ -42,6 +45,7 @@ export class Game {
     this.flock = new Flock(database, farmId);
     this.breeding = new Breeding(database, farmId);
     this.battle = new Battle(database, farmId);
+    this.claimers = new Claimers(database, farmId);
     this.gacha = new Gacha(database, farmId);
     this.farms = new Farms(database);
   }
@@ -68,6 +72,8 @@ export class Game {
     const fridays: HatchFridayEvents[] = [];
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
-    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays };
+    // The day has turned — the claiming card goes off (fights, then claims).
+    const claimerFights = Claimers.resolve(this.database);
+    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, claimerFights };
   }
 }

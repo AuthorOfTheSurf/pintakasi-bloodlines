@@ -257,15 +257,23 @@ export const LOBBY_HOUSE_QUALITY: Record<Exclude<Lobby, "claimer">, number> = {
   nw3: 0.96,
 };
 
-// Claimers: pick a claim price when entering. LOSE and the house claims your
-// bird at that price (you get the GP, the bird moves to the house barn).
-// WIN and you may claim the HOUSE bird at that price (same game-day).
-// House-bird quality keys to the PRICE, not to your bird — that's the
-// self-balancing: soft field, cheap tag; strong field, dear tag.
+// Claimers (re-ruled 2026-08-03): FARM-TO-FARM, escrowed, pre-fight.
+// Enter a bird at a tag price; the entry sits on the public board for the
+// rest of the game-day while OTHER farms place sealed claims; the fight goes
+// off on the day tick. The bird fights for its ORIGINAL owner (who keeps the
+// pooled prize); a successful claimant receives the bird only AFTER the
+// fight. Multiple claims → RNG picks one, the rest refund. The house never
+// claims — bot farms with claim-heavy playstyles are the liquidity later.
+//
+// The tag ladder brackets the 160 GP breed floor on purpose: two rungs
+// below it (claim cheaper than breeding) and three above. It self-balances:
+// a dear tag = safer from claims but a stronger field and a real entry at
+// risk; a cheap tag = claimable, but win-and-get-claimed is an income spike.
 export const CLAIMER = {
-  PRICES: [80, 200, 400], // $1 · $2.50 · $5 claiming tags
-  // House stats center on QUALITY_FLAT + claimPrice (e.g. $1 tag → ~380
-  // average — starter-grade; $5 tag → ~620 — a real bird).
+  PRICES: [50, 100, 200, 400, 600], // $0.625 · $1.25 · $2.50 · $5 · $7.50
+  // House OPPONENT stats center on QUALITY_FLAT + tag (the field's strength
+  // keys to the PRICE, not to your bird): 50 tag → ~270 avg (green);
+  // 600 tag → ~820 (a real bird).
   QUALITY_FLAT: 220,
 } as const;
 

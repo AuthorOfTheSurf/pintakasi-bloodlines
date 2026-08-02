@@ -8,8 +8,7 @@ export async function POST(req: Request) {
       body.mode ?? "real",
       body.format ?? "shortKnife",
       body.seed,
-      body.lobby ?? "open",
-      body.claimPrice
+      body.lobby ?? "open"
     )
   );
 }

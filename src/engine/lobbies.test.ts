@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { birds, farms, gameState } from "@/db/schema";
+import { gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Battle } from "./battle";
-import { CLAIMER, ECONOMY } from "./config";
 import { Flock } from "./flock";
 
 function freshGame() {
@@ -43,13 +42,12 @@ describe("lobby eligibility (entry restrictions self-sort)", () => {
     expect(() => battle.fight(kidlat.id, "practice", "shortKnife", 2, "maiden")).not.toThrow();
   });
 
-  test("hardcore runs open only; claimers need a tag from the price list", () => {
+  test("hardcore runs open only; claimers don't run through fight at all", () => {
     const { battle, flock } = freshGame();
     const sinag = byName(flock, "Sinag"); // age 3 — hardcore eligible
     const alab = byName(flock, "Alab");
     expect(() => battle.fight(sinag.id, "hardcore", "shortKnife", 1, "maiden")).toThrow(/open only/);
-    expect(() => battle.fight(alab.id, "real", "shortKnife", 1, "claimer")).toThrow(/claiming tag/);
-    expect(() => battle.fight(alab.id, "real", "shortKnife", 1, "claimer", 123)).toThrow(/claiming tag/);
+    expect(() => battle.fight(alab.id, "real", "shortKnife", 1, "claimer")).toThrow(/enter_claimer/);
     expect(() => battle.fight(alab.id, "practice", "shortKnife", 1, "nw2")).toThrow(/open or maiden/);
   });
 
@@ -65,55 +63,4 @@ describe("lobby eligibility (entry restrictions self-sort)", () => {
   });
 });
 
-describe("claimers (marketplace v0)", () => {
-  function findResult(want: "win" | "loss", price: number) {
-    for (let seed = 1; seed < 300; seed++) {
-      const g = freshGame();
-      const alab = byName(g.flock, "Alab");
-      const r = g.battle.fight(alab.id, "real", "shortKnife", seed, "claimer", price);
-      if (r.result === want) return { ...g, r, alabId: alab.id };
-    }
-    throw new Error(`no ${want} seed found`);
-  }
-
-  test("LOSE a claimer: the house claims your bird at the tag — GP in, bird gone", () => {
-    const price = CLAIMER.PRICES[0];
-    const { db, farmId, r, alabId, flock } = findResult("loss", price);
-    expect(r.claimedAway).toBe(true);
-    expect(r.gpDelta).toBe(-ECONOMY.REAL_ENTRY_FEE + price); // entry lost, tag collected
-    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
-    expect(farm.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.REAL_ENTRY_FEE + price);
-    // The bird now belongs to the house.
-    expect(() => flock.byId(alabId)).toThrow(/in your barn/);
-    expect(db.select().from(birds).where(eq(birds.id, alabId)).get()!.farmId).toBe("house");
-  });
-
-  test("WIN a claimer: the house bird is claimable at the tag, same game-day, once", () => {
-    const price = CLAIMER.PRICES[1];
-    const { db, r, battle, flock } = findResult("win", price);
-    expect(r.claimOffer).not.toBeNull();
-    expect(r.claimOffer!.price).toBe(price);
-    const before = flock.barnCount();
-    const claimed = battle.claimHouseBird(r.claimOffer!.battleLogId);
-    expect(claimed.pricePaid).toBe(price);
-    expect(claimed.bird.name).toBe(r.opponent.name);
-    expect(claimed.bird.status).toBe("active");
-    expect(["male", "female"]).toContain(claimed.bird.sex);
-    expect(flock.barnCount()).toBe(before + 1);
-    // One claim only.
-    expect(() => battle.claimHouseBird(r.claimOffer!.battleLogId)).toThrow(/already claimed/);
-    // And the window is the game-day.
-    const again = findResult("win", price);
-    again.db.update(gameState).set({ dayIndex: 5 }).where(eq(gameState.id, 1)).run();
-    expect(() => again.battle.claimHouseBird(again.r.claimOffer!.battleLogId)).toThrow(/window closed/);
-  });
-
-  test("claimer house birds key to the tag price, not to your bird", () => {
-    const cheap = freshGame();
-    const dear = freshGame();
-    const r1 = cheap.battle.fight(byName(cheap.flock, "Alab").id, "real", "shortKnife", 77, "claimer", CLAIMER.PRICES[0]);
-    const r2 = dear.battle.fight(byName(dear.flock, "Alab").id, "real", "shortKnife", 77, "claimer", CLAIMER.PRICES[2]);
-    const avg = (s: Record<string, number>) => Object.values(s).reduce((x, y) => x + y, 0) / 6;
-    expect(avg(r2.opponent.stats)).toBeGreaterThan(avg(r1.opponent.stats));
-  });
-});
+// Claimers moved to their own two-phase flow — see claimers.test.ts.

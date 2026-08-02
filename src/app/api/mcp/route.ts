@@ -6,7 +6,10 @@ import {
 import { z } from "zod";
 import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
-import { CLAIMER, FARM_COLORS, FORMAT_NAMES, LOBBIES, STAT_NAMES } from "@/engine/config";
+import { CLAIMER, FARM_COLORS, FORMAT_NAMES, STAT_NAMES } from "@/engine/config";
+
+// Claimers run through their own two-phase flow, not the fight tool.
+const FIGHT_LOBBIES = ["open", "maiden", "nw2", "nw3"] as const;
 import { Farms } from "@/engine/farms";
 import { Game } from "@/engine/game";
 import { freshSeed } from "@/engine/rng";
@@ -53,7 +56,10 @@ function createServer(farmId: string | null): McpServer {
         "THE ECONOMY IS POOLED ($1 = 80 GP): both sides post the entry, winner takes the pot — win +entry, lose −entry. No fight prints GP. The consolation is the flat LAND TOKEN every fight pays, win or lose. Land is also buyable (buy_land, $0.01/LT, capped daily) and NEVER sellable.",
         "ONE FIGHT PER BIRD PER GAME-DAY — a hard count, not a cooldown. A full barn is how you fight more than once a day.",
         "WEAPON FORMATS ARE THE DISTANCE DIAL — the player's core skill is picking the right one: longKnife (the sprint — agility/sight decide it), shortKnife (the hybrid), longGaff (the route — stamina starts to rule), shortGaff (the marathon — gameness dictates the deep rounds). Any bird can enter any format; it's just disadvantaged outside its type.",
-        "LOBBIES ARE THE CLASS DIAL: open (field mirrors your bird) · maiden (never-winners only — soft field) · nw2/nw3 (fewer than 2/3 career wins) · claimer (any record, but a PRICE on both birds: LOSE and the house claims your bird at the tag — you keep the GP; WIN and you may claim_bird the house bird at the tag, same game-day). House-bird quality follows the lobby — maidens are green, claimers key to the tag price.",
+        "LOBBIES ARE THE CLASS DIAL: open (field mirrors your bird) · maiden (never-winners only — soft field) · nw2/nw3 (fewer than 2/3 career wins). House-bird quality follows the lobby — maidens are green.",
+        "CLAIMERS ARE THE MARKETPLACE — farm-to-farm, escrowed, PRE-FIGHT: enter_claimer puts a bird on today's card at a tag price (" +
+          CLAIMER.PRICES.join("/") +
+          " GP — the ladder brackets the 160 GP breed floor). Entries are BINDING and use the bird's fight for the day. Other farms read the board (claimer_board — stars and figures are public, stats are NOT) and place_claim with the tag escrowed; claims are SEALED. The fight goes off when the day ticks: the bird fights for its ORIGINAL owner (who keeps the pooled prize), then one claim wins (RNG if several — losers refund in full), the owner banks the tag, and the bird transfers. You cannot claim your own bird. The house never claims. Winning AND getting claimed is an income spike — a legitimate play. Claiming undervalued birds and racing them UP is a full playstyle; the tag ladder self-balances (dear tag = safer bird, stronger field; cheap tag = claimable, quick money).",
         "DISCOVERY: every fight returns a PIT FIGURE — banded, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
         "HARDCORE IS THE CHARGED DECISION: bigger pot, but the loser is FORCE-RETIRED on the spot. Open lobby only. Always confirm with the player first — never enter one on your own judgment.",
         "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way.",
@@ -167,7 +173,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "Advance One Day",
       description:
-        "Move the WORLD calendar one day (all farms share the clock — coordinate in beta; the scheduler owns this later). Landing on a Friday triggers Hatch Friday. Resets daily limits (fights, check-in, land cap).",
+        "Move the WORLD calendar one day (all farms share the clock — coordinate in beta; the scheduler owns this later). Landing on a Friday triggers Hatch Friday. THE CLAIMING CARD GOES OFF: every pending claimer fights and its claims settle — narrate the results. Resets daily limits (fights, check-in, land cap).",
     },
     async () => ruled(() => game().tickDay())
   );
@@ -177,7 +183,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "Advance to Next Hatch Friday",
       description:
-        "Jump the WORLD clock to the next Hatch Friday (the aging tick). Eggs hatch into age-1 chicks — prompt the player to name them.",
+        "Jump the WORLD clock to the next Hatch Friday (the aging tick). Eggs hatch into age-1 chicks — prompt the player to name them. Any pending claimer card goes off too.",
     },
     async () => ruled(() => game().tickWeek())
   );
@@ -201,9 +207,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "Fight",
       description:
-        "Enter a bird against a house bird. Pick the WEAPON FORMAT (distance dial) and LOBBY (class dial) deliberately — that's the game. Pooled pot: win +entry, lose −entry; every fight pays 1 Land Token. Modes: practice (age 1+, amateur record) · real (2+, career record) · hardcore (3+, LOSER FORCE-RETIRED — confirm first, open lobby only). Claimers need a claimPrice tag (" +
-        CLAIMER.PRICES.join("/") +
-        " GP): lose = your bird is claimed at the tag; win = you may claim_bird theirs. One fight per bird per game-day.",
+        "Enter a bird against a house bird — fights instantly. Pick the WEAPON FORMAT (distance dial) and LOBBY (class dial) deliberately — that's the game. Pooled pot: win +entry, lose −entry; every fight pays 1 Land Token. Modes: practice (age 1+, amateur record) · real (2+, career record) · hardcore (3+, LOSER FORCE-RETIRED — confirm first, open lobby only). One fight per bird per game-day. Claimers do NOT run here — use enter_claimer.",
       inputSchema: z.object({
         birdId: z.string(),
         mode: z.enum(["practice", "real", "hardcore"]).default("real"),
@@ -212,28 +216,57 @@ function createServer(farmId: string | null): McpServer {
           .default("shortKnife")
           .describe("longKnife = sprint · shortKnife = hybrid · longGaff = route · shortGaff = marathon"),
         lobby: z
-          .enum(LOBBIES as unknown as [string, ...string[]])
+          .enum(FIGHT_LOBBIES)
           .default("open")
-          .describe("open · maiden (never-winners) · nw2/nw3 (win caps) · claimer (priced)"),
-        claimPrice: z.number().int().optional().describe("Claimers only: the tag price"),
+          .describe("open · maiden (never-winners) · nw2/nw3 (win caps)"),
         seed: z.number().int().optional().describe("Replay seed — omit for a fresh fight"),
       }),
     },
-    async ({ birdId, mode, format, lobby, claimPrice, seed }) =>
-      ruled(() =>
-        game().battle.fight(birdId, mode, format as never, seed, lobby as never, claimPrice)
-      )
+    async ({ birdId, mode, format, lobby, seed }) =>
+      ruled(() => game().battle.fight(birdId, mode, format as never, seed, lobby as never))
   );
 
   server.registerTool(
-    "claim_bird",
+    "enter_claimer",
     {
-      title: "Claim the House Bird",
+      title: "Enter a Claimer",
       description:
-        "After WINNING a claimer: buy the house bird at the tag price, same game-day only. The battleLogId comes from the fight result's claimOffer.",
-      inputSchema: z.object({ battleLogId: z.number().int() }),
+        "Put a bird (age 2+) on TODAY'S claiming card at a tag price: " +
+        CLAIMER.PRICES.join(" / ") +
+        " GP. BINDING — the entry fee (40 GP) is escrowed, the bird's daily fight is used, and there is no cancelling. Other farms may claim it (sealed) until the day ticks; then the fight goes off vs a house bird whose strength keys to the TAG. You keep the pooled prize either way; if claimed, you also bank the tag and the bird transfers AFTER the fight. Cheap tag = claimable but quick money; dear tag = safer, stronger field.",
+      inputSchema: z.object({
+        birdId: z.string(),
+        format: z
+          .enum(FORMAT_NAMES as [string, ...string[]])
+          .default("shortKnife")
+          .describe("The weapon format the fight runs at"),
+        price: z.number().int().describe("The claiming tag: " + CLAIMER.PRICES.join(" / ") + " GP"),
+      }),
     },
-    async ({ battleLogId }) => ruled(() => game().battle.claimHouseBird(battleLogId))
+    async ({ birdId, format, price }) =>
+      ruled(() => game().claimers.enter(birdId, format as never, price))
+  );
+
+  server.registerTool(
+    "claimer_board",
+    {
+      title: "The Claiming Board",
+      description:
+        "Every pending claimer entry, world-wide — the day's card. Public info only: farm, bird name/sex/age/stars, career + amateur records, per-format Pit Figure lines, format, tag. The six stats are HIDDEN (reading figures is the skill) and claims are SEALED. Entries marked mine:true are yours — you cannot claim those.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => ruled(() => game().claimers.board())
+  );
+
+  server.registerTool(
+    "place_claim",
+    {
+      title: "Place a Claim",
+      description:
+        "Sealed claim on a board entry — the tag price is escrowed NOW and settles when the fight goes off at the day tick. If several farms claim, the RNG picks one; losers refund in full. The bird transfers AFTER it fights (the original owner keeps the prize). One claim per farm per entry; not your own bird.",
+      inputSchema: z.object({ entryId: z.number().int().describe("From claimer_board") }),
+    },
+    async ({ entryId }) => ruled(() => game().claimers.claim(entryId))
   );
 
   server.registerTool(

@@ -1,9 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
-import { battleLog, birds, farms, gameState } from "@/db/schema";
+import { battleLog, birds, claimerEntries, farms, gameState } from "@/db/schema";
 import {
-  BARN,
   BATTLE,
   BREEDING,
   CADENCE,
@@ -22,7 +20,6 @@ import {
   type Lobby,
 } from "./config";
 import { Flock, type BirdView } from "./flock";
-import { GameClock } from "./game-clock";
 import { canHardcore, canPractice, canRealFight } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, roll2d6, type Rng } from "./rng";
 
@@ -33,17 +30,12 @@ export interface FightResult {
   mode: FightMode;
   format: FightFormat; // the "distance" this fight was run at
   lobby: Lobby;
-  bird: BirdView; // post-fight (record updated; hardcore loss = retired; claimer loss = gone)
+  bird: BirdView; // post-fight (record updated; hardcore loss = retired)
   opponent: HouseBird;
   gpDelta: number;
   landTokens: number; // flat land award — every fight pays it, win or lose
   pitFigure: number; // banded, format-normalized — the discovery signal
   forcedRetirement: boolean;
-  // Claimers: lose and the house claims YOUR bird at the tag (claimedAway;
-  // gpDelta includes the claim price). Win and the HOUSE bird is claimable
-  // until the end of the game-day (claimOffer → claimHouseBird).
-  claimedAway: boolean;
-  claimOffer: { battleLogId: number; price: number } | null;
   playByPlay: string;
   seed: number; // replay the fight from this
 }
@@ -120,37 +112,26 @@ export class Battle {
     mode: FightMode,
     format: FightFormat = "shortKnife",
     seed: number = freshSeed(),
-    lobby: Lobby = "open",
-    claimPrice?: number
+    lobby: Lobby = "open"
   ): FightResult {
     const bird = this.flock.byId(birdId);
     if (bird.status !== "active") throw new Error(`${bird.name} is not an active fighter`);
     this.checkGate(bird, mode);
-    this.checkLobby(bird, mode, lobby, claimPrice);
+    this.checkLobby(bird, mode, lobby);
 
     const today = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
-
-    // One fight per bird per game-day — a hard count, not a cooldown.
-    const foughtToday = this.database
-      .select()
-      .from(battleLog)
-      .where(and(eq(battleLog.birdId, bird.id), eq(battleLog.dayIndex, today)))
-      .all().length;
-    if (foughtToday >= CADENCE.FIGHTS_PER_BIRD_PER_DAY)
-      throw new Error(`${bird.name} already fought today — one fight per bird per game-day (tick a day)`);
+    this.checkFightCap(bird.id, bird.name, today);
 
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     const fee = MODE_FEES[mode];
     if (farm.gp < fee) throw new Error(`${mode} entry costs ${fee} GP — you have ${farm.gp}`);
 
     const rng = mulberry32(seed);
-    const opponent = this.generateHouseBird(bird, rng, lobby, claimPrice);
+    const opponent = this.generateHouseBird(bird, rng, lobby);
     const { won, playByPlay, pitFigure } = this.simulate(bird, opponent, mode, format, lobby, rng);
 
     // Settle: pooled pot (win +fee, lose −fee) + the flat land award.
-    // A lost claimer adds the claim price — the house buys your bird.
-    const claimedAway = lobby === "claimer" && !won;
-    const gpDelta = (won ? fee : -fee) + (claimedAway ? claimPrice! : 0);
+    const gpDelta = won ? fee : -fee;
     this.database
       .update(farms)
       .set({ gp: farm.gp + gpDelta, landTokens: farm.landTokens + LAND.PER_FIGHT })
@@ -180,12 +161,7 @@ export class Battle {
       forcedRetirement = true;
     }
 
-    // A lost claimer: the bird moves to the house barn. The GP already landed.
-    if (claimedAway) {
-      this.database.update(birds).set({ farmId: "house" }).where(eq(birds.id, bird.id)).run();
-    }
-
-    const inserted = this.database
+    this.database
       .insert(battleLog)
       .values({
         dayIndex: today,
@@ -194,7 +170,7 @@ export class Battle {
         mode,
         format,
         lobby,
-        claimPrice: claimPrice ?? null,
+        claimPrice: null,
         opponentName: opponent.name,
         opponentJson: JSON.stringify(opponent),
         result: won ? "win" : "loss",
@@ -203,72 +179,106 @@ export class Battle {
         seed,
         playByPlay,
       })
-      .returning({ id: battleLog.id })
-      .get();
-
-    const claimOffer =
-      lobby === "claimer" && won ? { battleLogId: inserted.id, price: claimPrice! } : null;
-
-    // A claimed-away bird is no longer ours — return the last view we have.
-    const postBird = claimedAway
-      ? { ...bird, wins: bird.wins + (won ? 1 : 0), losses: bird.losses + (won ? 0 : 1) }
-      : this.flock.byId(bird.id);
+      .run();
 
     return {
       result: won ? "win" : "loss",
       mode,
       format,
       lobby,
-      bird: postBird,
+      bird: this.flock.byId(bird.id),
       opponent,
       gpDelta,
       landTokens: LAND.PER_FIGHT,
       pitFigure,
       forcedRetirement,
-      claimedAway,
-      claimOffer,
       playByPlay,
       seed,
     };
   }
 
   /**
-   * Claim the house bird from a WON claimer — same game-day only, one claim
-   * per fight. The tag price buys the full bird into your barn.
+   * The daily fight cap — a hard count, not a cooldown. A PENDING claimer
+   * entry counts: the bird is committed to tonight's card.
    */
-  claimHouseBird(battleLogId: number): { bird: BirdView; pricePaid: number } {
-    const row = this.database.select().from(battleLog).where(eq(battleLog.id, battleLogId)).get();
-    if (!row || row.farmId !== this.farmId) throw new Error(`No fight #${battleLogId} on your books`);
-    if (row.lobby !== "claimer") throw new Error("That fight was not a claimer");
-    if (row.result !== "win") throw new Error("You claim off a WIN — the house kept its bird");
-    if (row.claimedBirdId) throw new Error("That bird was already claimed");
-    const today = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
-    if (row.dayIndex !== today) throw new Error("Claim window closed — same game-day only");
+  checkFightCap(birdId: string, name: string, today: number): void {
+    const fought = this.database
+      .select()
+      .from(battleLog)
+      .where(and(eq(battleLog.birdId, birdId), eq(battleLog.dayIndex, today)))
+      .all().length;
+    const committed = this.database
+      .select()
+      .from(claimerEntries)
+      .where(and(eq(claimerEntries.birdId, birdId), eq(claimerEntries.status, "pending")))
+      .all().length;
+    if (fought + committed >= CADENCE.FIGHTS_PER_BIRD_PER_DAY)
+      throw new Error(
+        committed > 0
+          ? `${name} is on tonight's claiming card — the entry is binding until the day turns`
+          : `${name} already fought today — one fight per bird per game-day (tick a day)`
+      );
+  }
+
+  /**
+   * Resolve one claimer entry's FIGHT — called by Claimers on the day tick,
+   * scoped to the entry's original owner (the bird fights for THEM; the
+   * pooled prize is theirs even if a claim then takes the bird). The entry
+   * fee was escrowed at entry: a win credits it back plus the house's
+   * matching stake; a loss credits nothing.
+   */
+  runClaimerFight(entry: {
+    id: number;
+    birdId: string;
+    format: FightFormat;
+    price: number;
+    entryFee: number;
+    dayEntered: number;
+    seed: number;
+  }): { battleLogId: number; won: boolean; pitFigure: number; bird: BirdView; opponent: HouseBird; playByPlay: string; gpDelta: number } {
+    const bird = this.flock.byId(entry.birdId);
+    const rng = mulberry32(entry.seed);
+    const opponent = this.generateHouseBird(bird, rng, "claimer", entry.price);
+    const { won, playByPlay, pitFigure } = this.simulate(bird, opponent, "real", entry.format, "claimer", rng);
 
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-    const price = row.claimPrice!;
-    if (farm.gp < price) throw new Error(`The claim tag is ${price} GP — you have ${farm.gp}`);
-    if (this.flock.barnCount() >= BARN.CAPACITY) throw new Error(`The barn is full (${BARN.CAPACITY})`);
+    const gpDelta = won ? entry.entryFee : -entry.entryFee; // net vs. pre-entry wallet
+    this.database
+      .update(farms)
+      .set({
+        gp: farm.gp + (won ? entry.entryFee * 2 : 0),
+        landTokens: farm.landTokens + LAND.PER_FIGHT,
+      })
+      .where(eq(farms.id, this.farmId))
+      .run();
+    this.database
+      .update(birds)
+      .set(won ? { wins: bird.wins + 1 } : { losses: bird.losses + 1 })
+      .where(eq(birds.id, bird.id))
+      .run();
 
-    const opponent = JSON.parse(row.opponentJson) as HouseBird;
-    const newBird = {
-      id: randomUUID(),
-      farmId: this.farmId,
-      name: opponent.name,
-      sex: opponent.sex,
-      status: "active" as const,
-      ...opponent.stats,
-      element: opponent.element,
-      halfStars: opponent.halfStars,
-      birthWeek: GameClock.weekOf(today) - opponent.age,
-      birthDay: today - opponent.age * 7,
-      motherId: null,
-      fatherId: null,
-    };
-    this.database.insert(birds).values(newBird).run();
-    this.database.update(farms).set({ gp: farm.gp - price }).where(eq(farms.id, this.farmId)).run();
-    this.database.update(battleLog).set({ claimedBirdId: newBird.id }).where(eq(battleLog.id, battleLogId)).run();
-    return { bird: this.flock.byId(newBird.id), pricePaid: price };
+    const inserted = this.database
+      .insert(battleLog)
+      .values({
+        dayIndex: entry.dayEntered, // the fight belongs to the day it was carded
+        farmId: this.farmId,
+        birdId: bird.id,
+        mode: "real",
+        format: entry.format,
+        lobby: "claimer",
+        claimPrice: entry.price,
+        opponentName: opponent.name,
+        opponentJson: JSON.stringify(opponent),
+        result: won ? "win" : "loss",
+        pitFigure,
+        gpDelta,
+        seed: entry.seed,
+        playByPlay,
+      })
+      .returning({ id: battleLog.id })
+      .get();
+
+    return { battleLogId: inserted.id, won, pitFigure, bird: this.flock.byId(bird.id), opponent, playByPlay, gpDelta };
   }
 
   /**
@@ -301,7 +311,11 @@ export class Battle {
   }
 
   /** Lobby (class) eligibility — entry restrictions self-sort the fields. */
-  private checkLobby(bird: BirdView, mode: FightMode, lobby: Lobby, claimPrice?: number): void {
+  private checkLobby(bird: BirdView, mode: FightMode, lobby: Lobby): void {
+    if (lobby === "claimer")
+      throw new Error(
+        "Claimers run on the day's card — enter_claimer during the day; the fight goes off when the day turns"
+      );
     if (mode === "hardcore" && lobby !== "open")
       throw new Error("Hardcore runs in the open only — the key rule needs no ladder");
     if (mode === "practice" && lobby !== "open" && lobby !== "maiden")
@@ -316,13 +330,6 @@ export class Battle {
       throw new Error(`${bird.name} has ${bird.wins} career wins — nw2 takes fewer than 2`);
     if (lobby === "nw3" && bird.wins >= 3)
       throw new Error(`${bird.name} has ${bird.wins} career wins — nw3 takes fewer than 3`);
-    if (lobby === "claimer") {
-      if (mode !== "real") throw new Error("Claimers are real fights");
-      if (!claimPrice || !(CLAIMER.PRICES as readonly number[]).includes(claimPrice))
-        throw new Error(`Pick a claiming tag: ${CLAIMER.PRICES.join(" / ")} GP`);
-    } else if (claimPrice) {
-      throw new Error("A claim price only means something in a claimer");
-    }
   }
 
   /**

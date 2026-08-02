@@ -70,11 +70,33 @@ CREATE TABLE IF NOT EXISTS battle_log (
   opponent_name TEXT NOT NULL,
   opponent_json TEXT NOT NULL,
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
-  claimed_bird_id TEXT,
   pit_figure INTEGER NOT NULL,
   gp_delta INTEGER NOT NULL,
   seed INTEGER NOT NULL,
   play_by_play TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS claimer_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bird_id TEXT NOT NULL,
+  farm_id TEXT NOT NULL,
+  format TEXT NOT NULL CHECK (format IN ('longKnife','shortKnife','longGaff','shortGaff')),
+  price INTEGER NOT NULL,
+  entry_fee INTEGER NOT NULL,
+  day_entered INTEGER NOT NULL,
+  seed INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','resolved')),
+  battle_log_id INTEGER,
+  claimed_by_farm_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS claims (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entry_id INTEGER NOT NULL,
+  farm_id TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  day_placed INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','won','refunded'))
 );
 
 CREATE TABLE IF NOT EXISTS training_log (

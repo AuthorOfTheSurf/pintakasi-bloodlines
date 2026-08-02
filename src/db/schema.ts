@@ -93,14 +93,40 @@ export const battleLog = sqliteTable("battle_log", {
   // Full opponent snapshot (stats/element/stars/age) — what a claim buys.
   opponentJson: text("opponent_json").notNull(),
   result: text("result", { enum: ["win", "loss"] }).notNull(),
-  // Set when a won claimer's house bird has been claimed (one claim only).
-  claimedBirdId: text("claimed_bird_id"),
   // The Pit Figure — banded performance rating, format-normalized. The
   // discovery signal: compare figures ACROSS formats to type the bird.
   pitFigure: integer("pit_figure").notNull(),
   gpDelta: integer("gp_delta").notNull(),
   seed: integer("seed").notNull(), // replay the fight from this
   playByPlay: text("play_by_play").notNull(),
+});
+
+// A claimer ENTRY — one bird on the day's claiming card. Created during the
+// game-day, fights on the day tick ("the match goes off"). The owner's entry
+// fee is escrowed at entry time; claims arrive while status = pending.
+export const claimerEntries = sqliteTable("claimer_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  birdId: text("bird_id").notNull(),
+  farmId: text("farm_id").notNull(), // the ORIGINAL owner — the bird fights for them
+  format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  price: integer("price").notNull(), // the claiming tag (from CLAIMER.PRICES)
+  entryFee: integer("entry_fee").notNull(), // escrowed at entry
+  dayEntered: integer("day_entered").notNull(),
+  seed: integer("seed").notNull(), // fight seed, fixed at entry — pre-committed & replayable
+  status: text("status", { enum: ["pending", "resolved"] }).notNull().default("pending"),
+  battleLogId: integer("battle_log_id"), // set at resolution
+  claimedByFarmId: text("claimed_by_farm_id"), // set if a claim won
+});
+
+// A sealed CLAIM against a pending entry — tag price escrowed when placed.
+// At resolution one claim wins (RNG if several) and the rest refund.
+export const claims = sqliteTable("claims", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  entryId: integer("entry_id").notNull(),
+  farmId: text("farm_id").notNull(), // the claimant
+  price: integer("price").notNull(), // escrowed
+  dayPlaced: integer("day_placed").notNull(),
+  status: text("status", { enum: ["pending", "won", "refunded"] }).notNull().default("pending"),
 });
 
 export const trainingLog = sqliteTable("training_log", {
