@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { birds, type BirdRow } from "@/db/schema";
+import { birds, trainingLog, type BirdRow } from "@/db/schema";
+import { STATS, TRAINING, type StatName } from "./config";
 import { GameClock } from "./game-clock";
-import { ageOf, canManualRetire, isEggAge, mustRetire, studValue } from "./lifecycle";
+import { ageOf, canManualRetire, canTrain, isEggAge, mustRetire, studValue } from "./lifecycle";
 
 /** A bird as the player sees it: row + derived age and display fields. */
 export interface BirdView extends BirdRow {
@@ -100,6 +101,38 @@ export class Flock {
       .where(eq(birds.id, id))
       .run();
     return this.byId(id);
+  }
+
+  /** Training — the age-1 discovery year: small gains, capped per day. */
+  train(id: string, stat: StatName): { bird: BirdView; gained: number; sessionsLeftToday: number } {
+    const bird = this.byId(id);
+    if (bird.status !== "active") throw new Error(`${bird.name} is not active`);
+    if (!canTrain(bird.age))
+      throw new Error(`${bird.name} is ${bird.age} — training belongs to the discovery year (age 1)`);
+
+    const day = new GameClock(this.database).currentDay();
+    const today = this.database
+      .select()
+      .from(trainingLog)
+      .where(and(eq(trainingLog.birdId, id), eq(trainingLog.dayIndex, day)))
+      .all();
+    if (today.length >= TRAINING.SESSIONS_PER_DAY)
+      throw new Error(`${bird.name} is spent — ${TRAINING.SESSIONS_PER_DAY} sessions per day (tick a day)`);
+
+    const gained = Math.min(TRAINING.GAIN_PER_SESSION, STATS.MAX - bird[stat]);
+    if (gained > 0) {
+      this.database
+        .update(birds)
+        .set({ [stat]: bird[stat] + gained })
+        .where(eq(birds.id, id))
+        .run();
+    }
+    this.database.insert(trainingLog).values({ dayIndex: day, birdId: id, stat }).run();
+    return {
+      bird: this.byId(id),
+      gained,
+      sessionsLeftToday: TRAINING.SESSIONS_PER_DAY - today.length - 1,
+    };
   }
 
   /** Force-retire from a hardcore loss — the key rule's teeth. */
