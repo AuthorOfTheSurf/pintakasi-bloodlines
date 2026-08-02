@@ -36,7 +36,8 @@ function createServer(): McpServer {
         "THE LOOP: breed retired birds → egg hatches next Hatch Friday as an age-1 chick → practice/train through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
         "AGE GATES: 0 = egg · 1 = practice + training only · 2+ = real fights · 3+ = hardcore + manual retirement · 9 = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.",
         "HARDCORE IS THE CHARGED DECISION: bigger prize, but the loser is FORCE-RETIRED on the spot. Always confirm with the player before a hardcore fight — never enter one on your own judgment.",
-        "WHEN AN EGG HATCHES, prompt the player to name the chick (name_bird). Eggs are auto-named 'Egg of <mother>'.",
+        "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg — hatch day is the reveal) and prompt the player to name the chick (name_bird). Eggs are auto-named 'Egg of <mother>'.",
+        "TWO RECORDS: the career record (real + hardcore — drives stud value) and the amateur record (practice fights, small stakes). Report them separately.",
         "BREEDING: both parents must be retired, hen × rooster, and not close kin (no siblings, parents, grandparents, great-grandparents). The game enforces this — surface the reason if it refuses.",
         "Rule violations come back as ⛔ text — read them to the player as house rules, not errors.",
       ].join("\n"),
@@ -128,7 +129,7 @@ function createServer(): McpServer {
     {
       title: "Fight",
       description:
-        "Enter a bird against a house bird. Modes: 'practice' (age 1+, free, no record), 'real' (age 2+, entry fee, prize, counts on the record), 'hardcore' (age 3+, big prize, LOSER IS FORCE-RETIRED — confirm with the player first). Returns a play-by-play; narrate it.",
+        "Enter a bird against a house bird. Modes: 'practice' (age 1+, small entry/prize, builds the separate AMATEUR record), 'real' (age 2+, entry fee, prize, builds the CAREER record), 'hardcore' (age 3+, big prize, LOSER IS FORCE-RETIRED — confirm with the player first). Returns a play-by-play; narrate it.",
       inputSchema: z.object({
         birdId: z.string(),
         mode: z.enum(["practice", "real", "hardcore"]).default("real"),

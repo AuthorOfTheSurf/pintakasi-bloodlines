@@ -25,7 +25,7 @@ function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: numbe
     .values({
       id,
       name: "Egg of Dalisay",
-      sex: "hen",
+      sex: "female",
       status: "egg",
       agility: 40, heart: 40, avoidance: 40, stamina: 40, ruthless: 40, sight: 40,
       element: "Water",

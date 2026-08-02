@@ -7,7 +7,7 @@ export const DDL = `
 CREATE TABLE IF NOT EXISTS birds (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  sex TEXT NOT NULL CHECK (sex IN ('rooster','hen')),
+  sex TEXT NOT NULL CHECK (sex IN ('male','female')),
   status TEXT NOT NULL CHECK (status IN ('egg','active','retired')),
   agility INTEGER NOT NULL,
   heart INTEGER NOT NULL,
@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS birds (
   birth_day INTEGER NOT NULL,
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
+  practice_wins INTEGER NOT NULL DEFAULT 0,
+  practice_losses INTEGER NOT NULL DEFAULT 0,
   retired_by TEXT CHECK (retired_by IN ('manual','age','hardcore')),
   retired_week INTEGER,
   mother_id TEXT,

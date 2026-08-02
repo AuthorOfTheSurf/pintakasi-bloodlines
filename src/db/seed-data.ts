@@ -10,7 +10,7 @@ import { mulberry32, randInt, type Rng } from "@/engine/rng";
 
 interface StarterSpec {
   name: string;
-  sex: "rooster" | "hen";
+  sex: "male" | "female";
   status: "active" | "retired";
   age: number; // bird-years at week 0
   element: Element;
@@ -21,15 +21,15 @@ interface StarterSpec {
 
 const STARTERS: StarterSpec[] = [
   // The retired barn — breeding stock from day one (two unrelated pairs).
-  { name: "Tandang Pula", sex: "rooster", status: "retired", age: 10, element: "Fire", halfStars: 5, wins: 14, losses: 3 },
-  { name: "Dalisay", sex: "hen", status: "retired", age: 9, element: "Water", halfStars: 4, wins: 8, losses: 2 },
-  { name: "Bagwis", sex: "rooster", status: "retired", age: 11, element: "Metal", halfStars: 6, wins: 11, losses: 5 },
-  { name: "Perlas", sex: "hen", status: "retired", age: 10, element: "Earth", halfStars: 3, wins: 6, losses: 4 },
+  { name: "Tandang Pula", sex: "male", status: "retired", age: 10, element: "Fire", halfStars: 5, wins: 14, losses: 3 },
+  { name: "Dalisay", sex: "female", status: "retired", age: 9, element: "Water", halfStars: 4, wins: 8, losses: 2 },
+  { name: "Bagwis", sex: "male", status: "retired", age: 11, element: "Metal", halfStars: 6, wins: 11, losses: 5 },
+  { name: "Perlas", sex: "female", status: "retired", age: 10, element: "Earth", halfStars: 3, wins: 6, losses: 4 },
   // The active roster — one bird at each interesting gate.
-  { name: "Kidlat", sex: "rooster", status: "active", age: 1, element: "Wood", halfStars: 2 }, // discovery year
-  { name: "Alab", sex: "rooster", status: "active", age: 2, element: "Fire", halfStars: 3, wins: 1, losses: 1 }, // real stakes
-  { name: "Sinag", sex: "hen", status: "active", age: 3, element: "Metal", halfStars: 4, wins: 4, losses: 1 }, // the fork is open
-  { name: "Batong Buhay", sex: "rooster", status: "active", age: 5, element: "Earth", halfStars: 2, wins: 7, losses: 6 }, // veteran
+  { name: "Kidlat", sex: "male", status: "active", age: 1, element: "Wood", halfStars: 2 }, // discovery year
+  { name: "Alab", sex: "male", status: "active", age: 2, element: "Fire", halfStars: 3, wins: 1, losses: 1 }, // real stakes
+  { name: "Sinag", sex: "female", status: "active", age: 3, element: "Metal", halfStars: 4, wins: 4, losses: 1 }, // the fork is open
+  { name: "Batong Buhay", sex: "male", status: "active", age: 5, element: "Earth", halfStars: 2, wins: 7, losses: 6 }, // veteran
 ];
 
 function rollStats(rng: Rng) {

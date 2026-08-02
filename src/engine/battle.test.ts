@@ -57,15 +57,22 @@ describe("the fight", () => {
     expect(result.gpDelta).toBe(expected - ECONOMY.STARTING_GP);
   });
 
-  test("practice is free and does NOT touch the career record", () => {
+  test("practice has small stakes and builds the AMATEUR record, not the career", () => {
     const { db, battle, flock } = freshGame();
     const kidlat = byName(flock, "Kidlat");
     const result = battle.fight(kidlat.id, "practice", 5);
-    expect(result.gpDelta).toBe(0);
+    // Small but real stakes: win nets prize - entry, loss costs the entry.
+    expect(result.gpDelta).toBe(
+      result.result === "win"
+        ? ECONOMY.PRACTICE_PRIZE - ECONOMY.PRACTICE_ENTRY_FEE
+        : -ECONOMY.PRACTICE_ENTRY_FEE
+    );
+    // Career record untouched; amateur record moves.
     expect(result.bird.wins).toBe(0);
     expect(result.bird.losses).toBe(0);
+    expect(result.bird.practiceWins + result.bird.practiceLosses).toBe(1);
     const log = db.select().from(battleLog).all();
-    expect(log.length).toBe(1); // still logged
+    expect(log.length).toBe(1);
   });
 
   test("real fights update the record", () => {

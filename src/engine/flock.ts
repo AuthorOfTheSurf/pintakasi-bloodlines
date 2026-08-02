@@ -6,7 +6,9 @@ import { GameClock } from "./game-clock";
 import { ageOf, canManualRetire, canTrain, isEggAge, mustRetire, studValue } from "./lifecycle";
 
 /** A bird as the player sees it: row + derived age and display fields. */
-export interface BirdView extends BirdRow {
+export interface BirdView extends Omit<BirdRow, "sex"> {
+  sex: "male" | "female" | "hidden"; // hidden while an egg — revealed at hatch
+  sexLabel: "rooster" | "hen" | null; // the sabong layer over male/female
   age: number;
   stars: string; // e.g. "1.5★ Metal" — 0★ still resolves to a type
   studValue: number | null; // only meaningful once retired
@@ -26,8 +28,12 @@ export class Flock {
   }
 
   view(row: BirdRow, currentWeek = this.currentWeek()): BirdView {
+    const isEgg = row.status === "egg";
     return {
       ...row,
+      // The 50-50 is decided at breeding, but the surprise belongs to hatch day.
+      sex: isEgg ? "hidden" : row.sex,
+      sexLabel: isEgg ? null : row.sex === "male" ? "rooster" : "hen",
       age: ageOf(row, currentWeek),
       stars: `${row.halfStars / 2}★ ${row.element}`,
       studValue: row.status === "retired" ? studValue(row) : null,

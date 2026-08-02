@@ -19,8 +19,8 @@ describe("seeded database", () => {
     const flock = db.select().from(birds).all();
     expect(flock.length).toBe(8);
     const retired = flock.filter((b) => b.status === "retired");
-    expect(retired.some((b) => b.sex === "rooster")).toBe(true);
-    expect(retired.some((b) => b.sex === "hen")).toBe(true);
+    expect(retired.some((b) => b.sex === "male")).toBe(true);
+    expect(retired.some((b) => b.sex === "female")).toBe(true);
   });
 
   test("stats are in starter range and stars in half-star bounds", () => {
@@ -53,7 +53,7 @@ describe("seeded database", () => {
         .values({
           id: "bad-1",
           name: "Bad Bird",
-          sex: "rooster",
+          sex: "male",
           status: "active",
           agility: 50, heart: 50, avoidance: 50, stamina: 50, ruthless: 50, sight: 50,
           element: "Fire",

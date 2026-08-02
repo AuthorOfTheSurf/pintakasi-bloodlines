@@ -3,7 +3,9 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const birds = sqliteTable("birds", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  sex: text("sex", { enum: ["rooster", "hen"] }).notNull(),
+  // Stored as male/female; "rooster"/"hen" are display labels layered on top.
+  // Decided 50-50 at breeding and HIDDEN while the bird is an egg.
+  sex: text("sex", { enum: ["male", "female"] }).notNull(),
   status: text("status", { enum: ["egg", "active", "retired"] }).notNull(),
   // Six stats — all visible in the MVP (hidden stats deferred, ledger item 25).
   agility: integer("agility").notNull(),
@@ -20,8 +22,13 @@ export const birds = sqliteTable("birds", {
   // (birds age one year per game-week; the derivation is Zane's ruling).
   birthWeek: integer("birth_week").notNull(),
   birthDay: integer("birth_day").notNull(), // day index, for flavor/history
+  // The CAREER record — real + hardcore fights; drives prizes and stud value.
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
+  // The AMATEUR record — discovery-year practice fights; small stakes,
+  // never touches stud value.
+  practiceWins: integer("practice_wins").notNull().default(0),
+  practiceLosses: integer("practice_losses").notNull().default(0),
   // How the career ended (null while egg/active).
   retiredBy: text("retired_by", { enum: ["manual", "age", "hardcore"] }),
   retiredWeek: integer("retired_week"),

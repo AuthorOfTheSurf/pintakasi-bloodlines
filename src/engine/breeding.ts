@@ -34,8 +34,10 @@ export class Breeding {
     const mother = this.flock.byId(motherId);
     const father = this.flock.byId(fatherId);
 
-    if (mother.sex !== "hen") throw new Error(`${mother.name} is not a hen`);
-    if (father.sex !== "rooster") throw new Error(`${father.name} is not a rooster`);
+    if (mother.sex !== "female")
+      throw new Error(`${mother.name} is not female — the mother must be a hen`);
+    if (father.sex !== "male")
+      throw new Error(`${father.name} is not male — the father must be a rooster`);
     for (const parent of [mother, father]) {
       if (parent.status !== "retired")
         throw new Error(`${parent.name} is not retired — only retired birds breed`);
@@ -64,7 +66,8 @@ export class Breeding {
     const egg = {
       id: randomUUID(),
       name: `Egg of ${mother.name}`,
-      sex: this.rng() < 0.5 ? ("hen" as const) : ("rooster" as const),
+      // 50-50, decided now but hidden from every view until hatch day.
+      sex: this.rng() < BREEDING.FEMALE_CHANCE ? ("female" as const) : ("male" as const),
       status: "egg" as const,
       ...stats,
       element,
@@ -79,7 +82,10 @@ export class Breeding {
   }
 
   /** Child stat = parent average ± variance, with a rare mutation swing. */
-  private inheritStats(mother: BirdRow, father: BirdRow): Record<(typeof STAT_NAMES)[number], number> {
+  private inheritStats(
+    mother: Pick<BirdRow, (typeof STAT_NAMES)[number]>,
+    father: Pick<BirdRow, (typeof STAT_NAMES)[number]>
+  ): Record<(typeof STAT_NAMES)[number], number> {
     const out = {} as Record<(typeof STAT_NAMES)[number], number>;
     for (const stat of STAT_NAMES) {
       let value =
@@ -99,7 +105,10 @@ export class Breeding {
    * parents' average; the element leans toward the higher-starred parent.
    * 0★ still resolves to a type.
    */
-  private inheritStars(mother: BirdRow, father: BirdRow): { element: Element; halfStars: number } {
+  private inheritStars(
+    mother: Pick<BirdRow, "halfStars" | "element">,
+    father: Pick<BirdRow, "halfStars" | "element">
+  ): { element: Element; halfStars: number } {
     const avg = (mother.halfStars + father.halfStars) / 2;
     const halfStars = Math.min(
       10,
@@ -133,7 +142,10 @@ export class Breeding {
    * Bloodline restriction (Genetic Tools heritage): no breeding with
    * siblings, parents, grandparents, or great-grandparents.
    */
-  forbiddenReason(a: BirdRow, b: BirdRow): string | null {
+  forbiddenReason(
+    a: Pick<BirdRow, "id" | "name" | "motherId" | "fatherId">,
+    b: Pick<BirdRow, "id" | "name" | "motherId" | "fatherId">
+  ): string | null {
     const aAncestors = this.ancestorIds(a, BREEDING.ANCESTOR_DEPTH);
     const bAncestors = this.ancestorIds(b, BREEDING.ANCESTOR_DEPTH);
     if (aAncestors.has(b.id)) return `${b.name} is an ancestor of ${a.name}`;

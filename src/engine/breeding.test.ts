@@ -47,6 +47,8 @@ describe("breed", () => {
     expect(egg.halfStars).toBeGreaterThanOrEqual(0);
     expect(egg.halfStars).toBeLessThanOrEqual(10);
     expect(egg.element).toBeTruthy(); // 0★ would still resolve to a type
+    expect(egg.sex).toBe("hidden"); // the 50-50 surprise belongs to hatch day
+    expect(egg.sexLabel).toBeNull();
   });
 
   test("same seed → identical egg (deterministic)", () => {
@@ -61,7 +63,7 @@ describe("breed", () => {
     const { breeding, flock } = freshGame();
     const sinag = flock.all().find((b) => b.name === "Sinag")!; // active hen
     expect(() => breeding.breed(sinag.id, "starter-1")).toThrow(/not retired/);
-    expect(() => breeding.breed("starter-1", "starter-2")).toThrow(/not a hen/);
+    expect(() => breeding.breed("starter-1", "starter-2")).toThrow(/must be a hen/);
   });
 
   test("insufficient GP blocks breeding", () => {
@@ -76,7 +78,7 @@ describe("bloodline restriction", () => {
   function insertRetired(
     db: ReturnType<typeof createDb>,
     id: string,
-    sex: "hen" | "rooster",
+    sex: "female" | "male",
     motherId: string | null,
     fatherId: string | null
   ) {
@@ -101,15 +103,15 @@ describe("bloodline restriction", () => {
 
   test("parent × child is forbidden", () => {
     const { db, breeding } = freshGame();
-    insertRetired(db, "daughter", "hen", "starter-2", "starter-1");
+    insertRetired(db, "daughter", "female", "starter-2", "starter-1");
     expect(() => breeding.breed("daughter", "starter-1")).toThrow(/ancestor/);
   });
 
   test("grandparent and great-grandparent are forbidden", () => {
     const { db, breeding } = freshGame();
-    insertRetired(db, "gen1-hen", "hen", "starter-2", "starter-1");
-    insertRetired(db, "gen2-hen", "hen", "gen1-hen", "starter-3");
-    insertRetired(db, "gen3-hen", "hen", "gen2-hen", "bagwis-line"); // father id not in ancestor path
+    insertRetired(db, "gen1-hen", "female", "starter-2", "starter-1");
+    insertRetired(db, "gen2-hen", "female", "gen1-hen", "starter-3");
+    insertRetired(db, "gen3-hen", "female", "gen2-hen", "bagwis-line"); // father id not in ancestor path
     // starter-1 is grandfather of gen2-hen and great-grandfather of gen3-hen
     expect(() => breeding.breed("gen2-hen", "starter-1")).toThrow(/ancestor/);
     expect(() => breeding.breed("gen3-hen", "starter-1")).toThrow(/ancestor/);
@@ -117,15 +119,15 @@ describe("bloodline restriction", () => {
 
   test("siblings are forbidden (shared either parent)", () => {
     const { db, breeding } = freshGame();
-    insertRetired(db, "sib-hen", "hen", "starter-2", "starter-1");
-    insertRetired(db, "sib-rooster", "rooster", "starter-2", "starter-3"); // half-siblings via mother
+    insertRetired(db, "sib-hen", "female", "starter-2", "starter-1");
+    insertRetired(db, "sib-rooster", "male", "starter-2", "starter-3"); // half-siblings via mother
     expect(() => breeding.breed("sib-hen", "sib-rooster")).toThrow(/siblings/);
   });
 
   test("unrelated retired pairs may breed", () => {
     const { db, breeding } = freshGame();
-    insertRetired(db, "line-a-hen", "hen", "starter-2", "starter-1");
-    insertRetired(db, "line-b-rooster", "rooster", "starter-4", "starter-3");
+    insertRetired(db, "line-a-hen", "female", "starter-2", "starter-1");
+    insertRetired(db, "line-b-rooster", "male", "starter-4", "starter-3");
     expect(() => breeding.breed("line-a-hen", "line-b-rooster")).not.toThrow();
   });
 });
@@ -137,7 +139,7 @@ describe("lineage", () => {
       .values({
         id: "kid",
         name: "Kid",
-        sex: "hen",
+        sex: "female",
         status: "egg",
         agility: 50, heart: 50, avoidance: 50, stamina: 50, ruthless: 50, sight: 50,
         element: "Water",

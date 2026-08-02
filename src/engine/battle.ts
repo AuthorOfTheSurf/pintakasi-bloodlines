@@ -78,15 +78,21 @@ export class Battle {
     const gpDelta = won ? prize - fee : -fee;
     this.database.update(gameState).set({ gp: state.gp + gpDelta }).where(eq(gameState.id, 1)).run();
 
-    // The record: career fights only — practice is the discovery year's
-    // sandbox and doesn't touch W/L (or stud value).
-    if (mode !== "practice") {
-      this.database
-        .update(birds)
-        .set(won ? { wins: bird.wins + 1 } : { losses: bird.losses + 1 })
-        .where(eq(birds.id, bird.id))
-        .run();
-    }
+    // Two ledgers: real + hardcore build the CAREER record (drives stud
+    // value); practice builds the separate AMATEUR record.
+    this.database
+      .update(birds)
+      .set(
+        mode === "practice"
+          ? won
+            ? { practiceWins: bird.practiceWins + 1 }
+            : { practiceLosses: bird.practiceLosses + 1 }
+          : won
+            ? { wins: bird.wins + 1 }
+            : { losses: bird.losses + 1 }
+      )
+      .where(eq(birds.id, bird.id))
+      .run();
 
     // The key rule's teeth.
     let forcedRetirement = false;

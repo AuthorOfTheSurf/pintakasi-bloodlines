@@ -23,21 +23,26 @@ test("the full breeding-lifecycle loop closes", () => {
   const battle = new Battle(db);
   const flock = new Flock(db);
 
-  // 1. Breed two retired starters — an egg, auto-named, age 0.
+  // 1. Breed two retired starters — an egg, auto-named, age 0, sex hidden.
   const { egg } = breeding.breed("starter-2", "starter-1");
   expect(egg.name).toBe("Egg of Dalisay");
   expect(egg.age).toBe(0);
+  expect(egg.sex).toBe("hidden");
 
-  // 2. Next Hatch Friday it hatches into an age-1 chick; the player names it.
+  // 2. Next Hatch Friday it hatches into an age-1 chick; the 50-50 sex is
+  //    revealed and the player names it.
   let tick = game.tickWeek();
   expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(egg.id);
   const chick = flock.rename(egg.id, "Alon");
   expect(chick.age).toBe(1);
+  expect(["male", "female"]).toContain(chick.sex);
+  expect(["rooster", "hen"]).toContain(chick.sexLabel!);
 
-  // 3. The discovery year: practice (free, no record) and training.
+  // 3. The discovery year: amateur fights (small stakes, own record) and training.
   const practice = battle.fight(chick.id, "practice", 21);
-  expect(practice.gpDelta).toBe(0);
-  expect(practice.bird.wins + practice.bird.losses).toBe(0);
+  expect(practice.gpDelta).toBe(practice.result === "win" ? 15 : -10);
+  expect(practice.bird.wins + practice.bird.losses).toBe(0); // career untouched
+  expect(practice.bird.practiceWins + practice.bird.practiceLosses).toBe(1);
   const heartBefore = chick.heart;
   game.tickDay(); // fresh training day
   flock.train(chick.id, "heart");
@@ -63,19 +68,19 @@ test("the full breeding-lifecycle loop closes", () => {
   expect(retiree.studValue).toBeGreaterThan(0);
 
   // 6. The career→barn pipe: breed the retiree with an UNRELATED retiree.
-  const partner = retiree.sex === "hen" ? "starter-3" : "starter-4";
+  const partner = retiree.sex === "female" ? "starter-3" : "starter-4";
   const gen2 = breeding.breed(
-    retiree.sex === "hen" ? retiree.id : partner,
-    retiree.sex === "hen" ? partner : retiree.id
+    retiree.sex === "female" ? retiree.id : partner,
+    retiree.sex === "female" ? partner : retiree.id
   ).egg;
   expect(gen2.status).toBe("egg");
 
   // ...but NOT with its own parent (the bloodline restriction holds).
-  const parent = retiree.sex === "hen" ? "starter-1" : "starter-2";
+  const parent = retiree.sex === "female" ? "starter-1" : "starter-2";
   expect(() =>
     breeding.breed(
-      retiree.sex === "hen" ? retiree.id : parent,
-      retiree.sex === "hen" ? parent : retiree.id
+      retiree.sex === "female" ? retiree.id : parent,
+      retiree.sex === "female" ? parent : retiree.id
     )
   ).toThrow(/Bloodline restriction/);
 
