@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { battleLog, birds, claimerEntries, claims, farms } from "@/db/schema";
+import { birds, claims, farms } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { Battle } from "./battle";
-import { Claimers } from "./claimers";
-import { CLAIMER, ECONOMY, LAND } from "./config";
+import { CLAIMER, ECONOMY } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
+import { Lobbies, type LobbySpec } from "./lobbies";
 
 const FEE = ECONOMY.REAL_ENTRY_FEE;
 const TAG = CLAIMER.PRICES[2]; // 200 GP — $2.50, first rung above the breed floor
+const SPEC: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: TAG };
 
 function world() {
   const db = createDb(":memory:");
@@ -27,123 +27,79 @@ function world() {
     devId: dev.farmId,
     rivalId: rivalFarm.id,
     game,
-    devClaimers: game.claimers,
+    dev: game.lobbies,
     devFlock: game.flock,
-    devBattle: game.battle,
-    rivalClaimers: new Claimers(db, rivalFarm.id),
+    rival: new Lobbies(db, rivalFarm.id),
     rivalFlock: new Flock(db, rivalFarm.id),
   };
 }
 
 const gp = (db: DB, id: string) => db.select().from(farms).where(eq(farms.id, id)).get()!.gp;
 const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
+const owner = (db: DB, birdId: string) =>
+  db.select().from(birds).where(eq(birds.id, birdId)).get()!.farmId;
 
-/** Hunt seeds until the carded fight lands the wanted result. */
-function resolved(want: "win" | "loss", withClaim: boolean) {
-  for (let seed = 1; seed < 400; seed++) {
+describe("carding a claimer", () => {
+  test("tags come off the ladder; claims only land on claimer entries", () => {
     const w = world();
     const alab = byName(w.devFlock, "Alab");
-    w.devClaimers.enter(alab.id, "shortKnife", TAG, seed);
-    if (withClaim) w.rivalClaimers.claim(1);
-    const tick = w.game.tickDay();
-    expect(tick.claimerFights.length).toBe(1);
-    if (tick.claimerFights[0].result === want)
-      return { ...w, ev: tick.claimerFights[0], alabId: alab.id };
-  }
-  throw new Error(`no ${want} seed found`);
-}
-
-describe("entering the card", () => {
-  test("escrows the fee, uses the day's fight, binding — and the board is fogged", () => {
-    const w = world();
-    const alab = byName(w.devFlock, "Alab");
-    const card = w.devClaimers.enter(alab.id, "longGaff", TAG);
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - FEE);
-    expect(card.price).toBe(TAG);
-    expect(card.mine).toBe(true);
-
-    // The rival sees the same card, not marked mine, with NO stats leaked
-    // and NO claim count (claims are sealed).
-    const seen = w.rivalClaimers.board();
-    expect(seen.length).toBe(1);
-    expect(seen[0].mine).toBe(false);
-    expect(seen[0].bird.stars).toContain("★");
-    expect("agility" in seen[0].bird).toBe(false);
-    expect("claims" in seen[0]).toBe(false);
-
-    // Binding: the bird is committed — no second entry, no other fight today.
-    expect(() => w.devClaimers.enter(alab.id, "shortKnife", TAG)).toThrow(/claiming card/);
-    expect(() => w.devBattle.fight(alab.id, "real", "shortKnife", 7)).toThrow(/claiming card/);
-    // And a bird that already fought today can't be carded.
-    const sinag = byName(w.devFlock, "Sinag");
-    w.devBattle.fight(sinag.id, "real", "shortKnife", 7);
-    expect(() => w.devClaimers.enter(sinag.id, "shortKnife", TAG)).toThrow(/already fought/);
-    // Tags come off the ladder only.
-    expect(() => w.devClaimers.enter(byName(w.devFlock, "Batong Buhay").id, "shortKnife", 123)).toThrow(
-      /claiming tag/
-    );
+    expect(() => w.dev.enter(alab.id, { ...SPEC, price: 123 })).toThrow(/claiming tag/);
+    expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "practice" as never })).toThrow(/open or maiden/);
+    // An open entry takes no claims.
+    const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "shortKnife" });
+    const openEntry = open.lobby.entries[0].entryId;
+    expect(() => w.rival.claim(openEntry)).toThrow(/Only claimer entries/);
   });
-});
 
-describe("placing claims", () => {
   test("not your own bird, one claim per farm, tag escrowed now", () => {
     const w = world();
-    w.devClaimers.enter(byName(w.devFlock, "Alab").id, "shortKnife", TAG);
-    expect(() => w.devClaimers.claim(1)).toThrow(/your own bird/);
-    const placed = w.rivalClaimers.claim(1);
+    const { lobby } = w.dev.enter(byName(w.devFlock, "Alab").id, SPEC);
+    const entryId = lobby.entries[0].entryId;
+    expect(() => w.dev.claim(entryId)).toThrow(/your own bird/);
+    const placed = w.rival.claim(entryId);
     expect(placed.escrowed).toBe(TAG);
     expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
-    expect(() => w.rivalClaimers.claim(1)).toThrow(/already have a claim/);
-    expect(() => w.rivalClaimers.claim(99)).toThrow(/No open entry/);
+    expect(() => w.rival.claim(entryId)).toThrow(/already have a claim/);
+    expect(() => w.rival.claim(999)).toThrow(/No open entry/);
   });
 });
 
-describe("the card goes off (day tick)", () => {
-  test("no claims: pooled settle to the owner, bird stays, log carries the carded day", () => {
-    const w = resolved("win", false);
-    expect(w.ev.claimedBy).toBeNull();
-    expect(w.ev.gpDeltaOwner).toBe(FEE);
-    // Escrow math: entered at −FEE, win credits 2×FEE → net +FEE.
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP + FEE);
-    // The bird never left, the record moved, land was paid.
-    expect(w.devFlock.byId(w.alabId).wins).toBe(2); // Alab seeds at 1W
-    const farm = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
-    expect(farm.landTokens).toBe(LAND.PER_FIGHT);
-    // The fight belongs to the day it was carded (day 0), logged as a claimer.
-    const log = w.db
-      .select()
-      .from(battleLog)
-      .where(and(eq(battleLog.birdId, w.alabId), eq(battleLog.lobby, "claimer")))
-      .get()!;
-    expect(log.dayIndex).toBe(0);
-    expect(log.claimPrice).toBe(TAG);
-    // Entry resolved; the board is clear.
-    expect(w.devClaimers.board().length).toBe(0);
-    expect(
-      w.db.select().from(claimerEntries).where(eq(claimerEntries.id, w.ev.entryId)).get()!.status
-    ).toBe("resolved");
+describe("post time (claims settle after the fights)", () => {
+  test("a claimed bird fights for its owner, then transfers — prize AND tag to the owner", () => {
+    const w = world();
+    const devAlab = byName(w.devFlock, "Alab");
+    const { lobby } = w.dev.enter(devAlab.id, SPEC, 606);
+    w.rival.enter(byName(w.rivalFlock, "Alab").id, SPEC); // the opponent, same tag
+    w.rival.claim(lobby.entries[0].entryId);
+
+    const tick = w.game.tickDay();
+    const card = tick.card[0];
+    expect(card.fights.length).toBe(1);
+    expect(card.claims).toEqual([
+      { bird: "Alab", from: "Bukidnon Farms", to: "Rival Gamefarm", price: TAG, losingClaimsRefunded: 0 },
+    ]);
+    // The bird now lives in the rival barn — with the record it just earned.
+    expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
+    // Owner economics: entry ± pot, plus the tag — regardless of result.
+    const devWon = card.fights[0].winnerFarm === "Bukidnon Farms";
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP + (devWon ? FEE : -FEE) + TAG);
+    // Claimant economics: own entry ± pot, minus the tag (the bird is the value).
+    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP + (devWon ? -FEE : FEE) - TAG);
   });
 
-  test("claimed on a WIN: owner keeps the prize AND banks the tag; the bird transfers after the fight", () => {
-    const w = resolved("win", true);
-    expect(w.ev.claimedBy).toBe("Rival Gamefarm");
-    expect(w.ev.gpDeltaOwner).toBe(FEE + TAG);
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP + FEE + TAG);
-    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG); // escrow spent, bird received
-    // The bird now fights out of the rival barn — WITH the win it just earned.
-    expect(w.db.select().from(birds).where(eq(birds.id, w.alabId)).get()!.farmId).toBe(w.rivalId);
-    expect(w.rivalFlock.byId(w.alabId).wins).toBe(2);
-    expect(() => w.devFlock.byId(w.alabId)).toThrow(/in your barn/);
-    expect(w.db.select().from(claims).where(eq(claims.entryId, 1)).get()!.status).toBe("won");
-  });
-
-  test("claimed on a LOSS: the claim doesn't care about the result", () => {
-    const w = resolved("loss", true);
-    expect(w.ev.claimedBy).toBe("Rival Gamefarm");
-    expect(w.ev.gpDeltaOwner).toBe(-FEE + TAG);
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - FEE + TAG);
-    expect(w.db.select().from(birds).where(eq(birds.id, w.alabId)).get()!.farmId).toBe(w.rivalId);
-    expect(w.rivalFlock.byId(w.alabId).losses).toBe(2); // Alab seeds at 1L
+  test("an unmatched claimer still transfers — the sale doesn't need the fight", () => {
+    const w = world();
+    const devAlab = byName(w.devFlock, "Alab");
+    const { lobby } = w.dev.enter(devAlab.id, SPEC, 33); // alone on the card — odd bird out
+    w.rival.claim(lobby.entries[0].entryId);
+    const tick = w.game.tickDay();
+    expect(tick.card[0].fights.length).toBe(0);
+    expect(tick.card[0].unmatched.length).toBe(1);
+    expect(tick.card[0].claims.length).toBe(1);
+    expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
+    // Fee refunded (no fight), tag banked.
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP + TAG);
+    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
   });
 
   test("several claims: the RNG picks one winner, every loser refunds in full", () => {
@@ -153,48 +109,28 @@ describe("the card goes off (day tick)", () => {
       primaryColor: "blue",
       secondaryColor: "white",
     });
-    const thirdClaimers = new Claimers(w.db, third.id);
-    w.devClaimers.enter(byName(w.devFlock, "Alab").id, "shortKnife", TAG, 7);
-    w.rivalClaimers.claim(1);
-    thirdClaimers.claim(1);
+    const thirdLobbies = new Lobbies(w.db, third.id);
+    const devAlab = byName(w.devFlock, "Alab");
+    const { lobby } = w.dev.enter(devAlab.id, SPEC, 77);
+    const entryId = lobby.entries[0].entryId;
+    w.rival.claim(entryId);
+    thirdLobbies.claim(entryId);
+
     const tick = w.game.tickDay();
-    const ev = tick.claimerFights[0];
-    expect(ev.claimedBy).not.toBeNull();
-    expect(ev.claimsRefunded).toBe(1);
-    const owner = w.db.select().from(birds).where(eq(birds.id, byNameId(w))).get()!.farmId;
-    const winnerId = owner === w.rivalId ? w.rivalId : third.id;
+    const settled = tick.card[0].claims[0];
+    expect(settled.losingClaimsRefunded).toBe(1);
+    expect([w.rivalId, third.id]).toContain(owner(w.db, devAlab.id));
+    const winnerId = owner(w.db, devAlab.id);
     const loserId = winnerId === w.rivalId ? third.id : w.rivalId;
-    expect([w.rivalId, third.id]).toContain(owner);
     expect(gp(w.db, winnerId)).toBe(ECONOMY.STARTING_GP - TAG); // paid
     expect(gp(w.db, loserId)).toBe(ECONOMY.STARTING_GP); // refunded in full
     const statuses = w.db
       .select()
       .from(claims)
-      .where(eq(claims.entryId, 1))
+      .where(eq(claims.entryId, entryId))
       .all()
       .map((c) => c.status)
       .sort();
     expect(statuses).toEqual(["refunded", "won"]);
-  });
-});
-
-// The entered bird's id, without re-reading the flock (it may have moved barns).
-function byNameId(w: { db: DB }): string {
-  return w.db.select().from(birds).all().find((b) => b.name === "Alab" && !b.id.startsWith("rival"))!.id;
-}
-
-describe("claimer opponent quality", () => {
-  test("the house field keys to the TAG, not to your bird", () => {
-    const cheap = world();
-    const dear = world();
-    cheap.devClaimers.enter(byName(cheap.devFlock, "Alab").id, "shortKnife", CLAIMER.PRICES[0], 77);
-    dear.devClaimers.enter(byName(dear.devFlock, "Alab").id, "shortKnife", CLAIMER.PRICES[4], 77);
-    const opp = (w: ReturnType<typeof world>) => {
-      const battle = new Battle(w.db, w.devId);
-      const entry = w.db.select().from(claimerEntries).all()[0];
-      return battle.runClaimerFight(entry).opponent.stats;
-    };
-    const avg = (s: Record<string, number>) => Object.values(s).reduce((x, y) => x + y, 0) / 6;
-    expect(avg(opp(dear))).toBeGreaterThan(avg(opp(cheap)));
   });
 });

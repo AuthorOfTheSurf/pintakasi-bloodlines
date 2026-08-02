@@ -1,19 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { battleLog, gameState } from "@/db/schema";
-import { seedGame } from "@/db/seed-data";
-import { Battle } from "./battle";
-import { FIGURE, FORMATS, type FightFormat } from "./config";
+import { seedGame, seedStarterFlock } from "@/db/seed-data";
+import { FIGURE, FORMATS, type Element, type FightFormat } from "./config";
+import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
+import { Game } from "./game";
+import { Lobbies } from "./lobbies";
+import { mulberry32 } from "./rng";
 
-function freshGame() {
-  const db = createDb(":memory:");
-  const { farmId } = seedGame(db);
-  return { db, farmId, battle: new Battle(db, farmId), flock: new Flock(db, farmId) };
+function bird(name: string, level: number, element: Element = "Fire", halfStars = 3): Combatant {
+  return {
+    name,
+    stats: { agility: level, sight: level, stamina: level, gameness: level, station: level, condition: level },
+    element,
+    halfStars,
+  };
 }
-
-const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
 
 /** Count fought turns from the play-by-play's T<n> markers. */
 const turnsIn = (playByPlay: string) =>
@@ -21,16 +23,13 @@ const turnsIn = (playByPlay: string) =>
 
 describe("the weapon dial (blade = distance)", () => {
   test("every format respects its turn cap; the sprint is shorter than the marathon on average", () => {
-    const maxSeen: Record<FightFormat, number> = { longKnife: 0, shortKnife: 0, longGaff: 0, shortGaff: 0 };
     const totals: Record<FightFormat, number> = { longKnife: 0, shortKnife: 0, longGaff: 0, shortGaff: 0 };
-    const RUNS = 25;
+    const RUNS = 40;
     for (const format of Object.keys(FORMATS) as FightFormat[]) {
       for (let seed = 1; seed <= RUNS; seed++) {
-        const { battle, flock } = freshGame();
-        const r = battle.fight(byName(flock, "Alab").id, "real", format, seed);
-        const turns = turnsIn(r.playByPlay);
+        const sim = simulatePair(bird("A", 350), bird("B", 350, "Water"), format, mulberry32(seed), "TEST");
+        const turns = turnsIn(sim.playByPlay);
         expect(turns).toBeLessThanOrEqual(FORMATS[format].maxTurns);
-        maxSeen[format] = Math.max(maxSeen[format], turns);
         totals[format] += turns;
       }
     }
@@ -39,59 +38,69 @@ describe("the weapon dial (blade = distance)", () => {
   });
 
   test("same seed + same format → identical fight (replayable)", () => {
-    const a = freshGame();
-    const b = freshGame();
-    const r1 = a.battle.fight(byName(a.flock, "Alab").id, "real", "longGaff", 777);
-    const r2 = b.battle.fight(byName(b.flock, "Alab").id, "real", "longGaff", 777);
+    const r1 = simulatePair(bird("A", 350), bird("B", 400, "Water"), "longGaff", mulberry32(777), "TEST");
+    const r2 = simulatePair(bird("A", 350), bird("B", 400, "Water"), "longGaff", mulberry32(777), "TEST");
     expect(r1.playByPlay).toBe(r2.playByPlay);
-    expect(r1.pitFigure).toBe(r2.pitFigure);
+    expect(r1.winner).toBe(r2.winner);
+    expect(r1.figures).toEqual(r2.figures);
   });
 });
 
-describe("the Pit Figure (discovery signal)", () => {
-  test("banded to 5s, clamped to [0, MAX], stored on the battle log", () => {
-    const { db, battle, flock } = freshGame();
-    const alab = byName(flock, "Alab");
-    for (let seed = 1; seed <= 10; seed++) {
-      // One fight per bird per game-day — advance the day between fights.
-      db.update(gameState).set({ dayIndex: seed - 1 }).where(eq(gameState.id, 1)).run();
-      const r = battle.fight(alab.id, "real", "shortKnife", seed);
-      expect(r.pitFigure % FIGURE.BAND).toBe(0);
-      expect(r.pitFigure).toBeGreaterThanOrEqual(0);
-      expect(r.pitFigure).toBeLessThanOrEqual(FIGURE.MAX);
-      expect(r.playByPlay).toContain(`Pit Figure: ${r.pitFigure}`);
+describe("the Pit Figures (discovery signal)", () => {
+  test("banded to 5s, clamped, per side — and losses still carry one", () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      const sim = simulatePair(bird("A", 300), bird("B", 450, "Water"), "shortKnife", mulberry32(seed), "TEST");
+      for (const f of sim.figures) {
+        expect(f % FIGURE.BAND).toBe(0);
+        expect(f).toBeGreaterThanOrEqual(0);
+        expect(f).toBeLessThanOrEqual(FIGURE.MAX);
+      }
+      // Both sides get a rating — the loser's figure is signal, not a zero.
+      expect(sim.playByPlay).toContain("Pit Figures:");
     }
-    const logged = db.select().from(battleLog).where(eq(battleLog.birdId, alab.id)).all();
-    expect(logged.length).toBe(10);
-    for (const row of logged) expect(row.pitFigure % FIGURE.BAND).toBe(0);
   });
 
-  test("losses still carry a figure — signal, not just a zero", () => {
-    const { battle, flock } = freshGame();
-    const alab = byName(flock, "Alab");
-    let loss = null;
-    for (let seed = 1; seed <= 100 && !loss; seed++) {
-      const { battle: b2, flock: f2 } = freshGame();
-      const r = b2.fight(byName(f2, "Alab").id, "real", "shortKnife", seed);
-      if (r.result === "loss") loss = r;
+  test("the opponent adjustment leans the underdog's figure up", () => {
+    // Same fight sampled many times: the weaker bird's figure gets the
+    // (stronger opponent) bonus, so ON AVERAGE it shouldn't trail by much
+    // more than the outcome margin alone would suggest.
+    let weakSum = 0;
+    let strongSum = 0;
+    const RUNS = 60;
+    for (let seed = 1; seed <= RUNS; seed++) {
+      const sim = simulatePair(bird("Weak", 280), bird("Strong", 420, "Water"), "shortKnife", mulberry32(seed), "T");
+      weakSum += sim.figures[0];
+      strongSum += sim.figures[1];
     }
-    expect(loss).not.toBeNull();
-    expect(loss!.pitFigure).toBeGreaterThanOrEqual(0); // a rating, not a verdict
-    void battle;
-    void alab;
+    // The adjustment exists: the gap in average figures is far smaller than
+    // the 140-point book gap would produce raw (a sanity band, not a law).
+    expect(strongSum / RUNS - weakSum / RUNS).toBeLessThan(40);
   });
 });
 
 describe("format records (the past-performance lines)", () => {
-  test("aggregates record + figures per format", () => {
-    const { db, battle, flock } = freshGame();
-    const alab = byName(flock, "Alab");
-    battle.fight(alab.id, "real", "longKnife", 11);
-    db.update(gameState).set({ dayIndex: 1 }).where(eq(gameState.id, 1)).run();
-    battle.fight(alab.id, "real", "longKnife", 12);
-    db.update(gameState).set({ dayIndex: 2 }).where(eq(gameState.id, 1)).run();
-    battle.fight(alab.id, "real", "shortGaff", 13);
-    const records = battle.formatRecords(alab.id);
+  test("aggregates record + figures per format across carded fights", () => {
+    const db = createDb(":memory:");
+    const dev = seedGame(db);
+    const game = new Game(db, dev.farmId);
+    const { farm: rivalFarm } = game.farms.register({
+      name: "Rival Gamefarm",
+      primaryColor: "black",
+      secondaryColor: "red",
+    });
+    seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival" });
+    const rival = new Lobbies(db, rivalFarm.id);
+    const rivalFlock = new Flock(db, rivalFarm.id);
+    const alab = game.flock.all().find((b) => b.name === "Alab")!;
+    const rivalAlab = rivalFlock.all().find((b) => b.name === "Alab")!;
+
+    const nights: FightFormat[] = ["longKnife", "longKnife", "shortGaff"];
+    for (const [i, format] of nights.entries()) {
+      game.lobbies.enter(alab.id, { mode: "real", classType: "open", format }, 100 + i);
+      rival.enter(rivalAlab.id, { mode: "real", classType: "open", format });
+      game.tickDay();
+    }
+    const records = game.lobbies.formatRecords(alab.id);
     expect(records.longKnife?.fights).toBe(2);
     expect(records.shortGaff?.fights).toBe(1);
     expect(records.longGaff).toBeUndefined();

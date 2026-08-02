@@ -1,9 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
-import { Battle } from "./battle";
 import { Breeding } from "./breeding";
-import { Claimers, type ClaimerResolution } from "./claimers";
+import { Lobbies, type LobbyResolution } from "./lobbies";
 import { BARN } from "./config";
 import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
@@ -20,7 +19,7 @@ export interface TickView {
   clock: ClockState;
   daysAdvanced: number;
   fridays: HatchFridayEvents[]; // hatches + force-retirements, per Friday crossed
-  claimerFights: ClaimerResolution[]; // the day's claiming card going off — public events
+  card: LobbyResolution[]; // the day's lobbies going off — public events
 }
 
 /**
@@ -32,8 +31,7 @@ export class Game {
   readonly clock: GameClock;
   readonly flock: Flock;
   readonly breeding: Breeding;
-  readonly battle: Battle;
-  readonly claimers: Claimers;
+  readonly lobbies: Lobbies;
   readonly gacha: Gacha;
   readonly farms: Farms;
 
@@ -44,8 +42,7 @@ export class Game {
     this.clock = new GameClock(database);
     this.flock = new Flock(database, farmId);
     this.breeding = new Breeding(database, farmId);
-    this.battle = new Battle(database, farmId);
-    this.claimers = new Claimers(database, farmId);
+    this.lobbies = new Lobbies(database, farmId);
     this.gacha = new Gacha(database, farmId);
     this.farms = new Farms(database);
   }
@@ -72,8 +69,8 @@ export class Game {
     const fridays: HatchFridayEvents[] = [];
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
-    // The day has turned — the claiming card goes off (fights, then claims).
-    const claimerFights = Claimers.resolve(this.database);
-    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, claimerFights };
+    // The day has turned — the card goes off (fights first, then claims).
+    const card = Lobbies.resolve(this.database);
+    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card };
   }
 }

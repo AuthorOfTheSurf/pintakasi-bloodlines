@@ -2,27 +2,54 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
 import { farms } from "@/db/schema";
-import { seedGame } from "@/db/seed-data";
-import { Battle } from "./battle";
+import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
 import { Flock } from "./flock";
 import { Game } from "./game";
-import { ECONOMY } from "./config";
+import { Lobbies, type LobbySpec } from "./lobbies";
 import { mulberry32 } from "./rng";
 
 /**
- * The acceptance test: the spec's "what playable and testable means" loop,
- * played end to end in one sitting. Breed → next-Friday hatch → discovery
- * year → real stakes → the age-3 fork → career → retirement → breed the
- * retiree → next generation on the ground.
+ * The acceptance test — now in the PURE PvP world: two farms, and every
+ * fight is a carded duel that goes off on the tick. Breed → next-Friday
+ * hatch → discovery year → real stakes → the age-3 fork → retirement →
+ * breed the retiree → next generation on the ground.
  */
-test("the full breeding-lifecycle loop closes", () => {
+function world() {
   const db = createDb(":memory:");
-  const { farmId } = seedGame(db);
-  const game = new Game(db, farmId);
-  const breeding = new Breeding(db, farmId, mulberry32(11));
-  const battle = new Battle(db, farmId);
-  const flock = new Flock(db, farmId);
+  const dev = seedGame(db);
+  const game = new Game(db, dev.farmId);
+  const { farm: rivalFarm } = game.farms.register({
+    name: "Rival Gamefarm",
+    primaryColor: "black",
+    secondaryColor: "red",
+  });
+  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival" });
+  return {
+    db,
+    farmId: dev.farmId,
+    game,
+    flock: game.flock,
+    breeding: new Breeding(db, dev.farmId, mulberry32(11)),
+    rival: new Lobbies(db, rivalFarm.id),
+    rivalFlock: new Flock(db, rivalFarm.id),
+  };
+}
+
+const rivalByName = (w: ReturnType<typeof world>, name: string) =>
+  w.rivalFlock.all().find((b) => b.name === name)!;
+
+/** Card my bird against a rival bird and let the night go off. */
+function duel(w: ReturnType<typeof world>, myBirdId: string, rivalName: string, spec: LobbySpec, seed: number) {
+  w.game.lobbies.enter(myBirdId, spec, seed);
+  w.rival.enter(rivalByName(w, rivalName).id, spec);
+  const tick = w.game.tickDay();
+  return tick.card.find((l) => l.fights.length > 0)!.fights[0];
+}
+
+test("the full breeding-lifecycle loop closes — PvP edition", () => {
+  const w = world();
+  const { game, flock, breeding } = w;
 
   // 1. Breed two retired starters — an egg, auto-named, age 0, sex hidden.
   const { egg } = breeding.breed("starter-2", "starter-1");
@@ -39,15 +66,14 @@ test("the full breeding-lifecycle loop closes", () => {
   expect(["male", "female"]).toContain(chick.sex);
   expect(["rooster", "hen"]).toContain(chick.sexLabel!);
 
-  // 3. The discovery year: amateur fights (small stakes, own record) and training.
-  const practice = battle.fight(chick.id, "practice", "shortKnife", 21);
-  expect(practice.gpDelta).toBe(
-    practice.result === "win" ? ECONOMY.PRACTICE_ENTRY_FEE : -ECONOMY.PRACTICE_ENTRY_FEE
-  );
-  expect(practice.bird.wins + practice.bird.losses).toBe(0); // career untouched
-  expect(practice.bird.practiceWins + practice.bird.practiceLosses).toBe(1);
-  const gamenessBefore = chick.gameness;
-  game.tickDay(); // fresh training day
+  // 3. The discovery year: an amateur card against the rival's chick.
+  const practice = duel(w, chick.id, "Kidlat", { mode: "practice", classType: "open", format: "shortKnife" }, 21);
+  expect(practice.birds).toContain("Alon");
+  const afterPractice = flock.byId(chick.id);
+  expect(afterPractice.wins + afterPractice.losses).toBe(0); // career untouched
+  expect(afterPractice.practiceWins + afterPractice.practiceLosses).toBe(1);
+  // ...and training (the duel's tick opened a fresh day).
+  const gamenessBefore = afterPractice.gameness;
   flock.train(chick.id, "gameness");
   flock.train(chick.id, "gameness");
   expect(flock.byId(chick.id).gameness).toBe(gamenessBefore + 40);
@@ -55,16 +81,18 @@ test("the full breeding-lifecycle loop closes", () => {
   // 4. Age 2 — real stakes open, the record starts.
   tick = game.tickWeek();
   expect(flock.byId(chick.id).age).toBe(2);
-  expect(() => battle.fight(chick.id, "hardcore", "shortKnife", 1)).toThrow(/age 3/);
-  const real = battle.fight(chick.id, "real", "shortKnife", 33);
-  expect(real.bird.wins + real.bird.losses).toBe(1);
+  expect(() =>
+    game.lobbies.enter(chick.id, { mode: "hardcore", classType: "open", format: "shortKnife" })
+  ).toThrow(/age 3/);
+  duel(w, chick.id, "Alab", { mode: "real", classType: "open", format: "shortKnife" }, 33);
+  const afterReal = flock.byId(chick.id);
+  expect(afterReal.wins + afterReal.losses).toBe(1);
 
   // 5. Age 3 — the fork opens as a package: hardcore AND retirement.
   tick = game.tickWeek();
-  const atFork = flock.byId(chick.id);
-  expect(atFork.age).toBe(3);
-  // Ride the career one more real fight, then take the safe arm.
-  battle.fight(chick.id, "real", "shortKnife", 44);
+  expect(flock.byId(chick.id).age).toBe(3);
+  // Ride the career one more carded fight, then take the safe arm.
+  duel(w, chick.id, "Sinag", { mode: "real", classType: "open", format: "shortKnife" }, 44);
   const retiree = flock.retire(chick.id);
   expect(retiree.status).toBe("retired");
   expect(retiree.retiredBy).toBe("manual");
@@ -102,36 +130,25 @@ test("the full breeding-lifecycle loop closes", () => {
   expect(grandparents).toContain("Dalisay"); // Alon's mother, gen2's grandmother
 
   // The wallet stayed a single closed number all game.
-  const gp = db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp;
+  const gp = w.db.select().from(farms).where(eq(farms.id, w.farmId)).get()!.gp;
   expect(Number.isInteger(gp)).toBe(true);
 });
 
 describe("hardcore arm of the loop", () => {
   test("a hardcore loss ends the career straight into the barn — still breedable", () => {
-    const db = createDb(":memory:");
-    const { farmId } = seedGame(db);
-    const battle = new Battle(db, farmId);
-    const flock = new Flock(db, farmId);
-    const breeding = new Breeding(db, farmId, mulberry32(5));
-
-    const sinag = flock.all().find((b) => b.name === "Sinag")!; // age 3, at the fork
-    // Find a losing seed deterministically.
-    let lossSeed = -1;
+    // Hunt a lobby seed where OUR Sinag loses the hardcore duel.
     for (let seed = 1; seed < 200; seed++) {
-      const probe = createDb(":memory:");
-      const probeFarm = seedGame(probe).farmId;
-      const pSinag = new Flock(probe, probeFarm).all().find((b) => b.name === "Sinag")!;
-      if (new Battle(probe, probeFarm).fight(pSinag.id, "hardcore", "shortKnife", seed).result === "loss") {
-        lossSeed = seed;
-        break;
-      }
+      const w = world();
+      const sinag = w.flock.all().find((b) => b.name === "Sinag")!; // age 3, at the fork
+      const fight = duel(w, sinag.id, "Sinag", { mode: "hardcore", classType: "open", format: "shortKnife" }, seed);
+      if (fight.winnerFarm === "Bukidnon Farms") continue; // we won — wrong arm, next seed
+      const after = w.flock.byId(sinag.id);
+      expect(after.status).toBe("retired");
+      expect(after.retiredBy).toBe("hardcore");
+      // The loss is a conversion, not a destruction: she can breed immediately.
+      expect(() => new Breeding(w.db, w.farmId, mulberry32(5)).breed(sinag.id, "starter-1")).not.toThrow();
+      return;
     }
-    expect(lossSeed).toBeGreaterThan(0);
-
-    const r = battle.fight(sinag.id, "hardcore", "shortKnife", lossSeed);
-    expect(r.forcedRetirement).toBe(true);
-    expect(r.bird.retiredBy).toBe("hardcore");
-    // The loss is a conversion, not a destruction: she can breed immediately.
-    expect(() => breeding.breed(sinag.id, "starter-1")).not.toThrow();
+    throw new Error("no losing seed found");
   });
 });

@@ -76,22 +76,27 @@ export const gachaTokens = sqliteTable("gacha_tokens", {
   rolledDay: integer("rolled_day").notNull(),
 });
 
+// One SIDE of a PvP fight — every fight writes two mirrored rows (same seed
+// and play-by-play, per-side figure and gpDelta), so per-farm and per-bird
+// history reads stay simple.
 export const battleLog = sqliteTable("battle_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  dayIndex: integer("day_index").notNull(),
+  dayIndex: integer("day_index").notNull(), // the day the card was posted
+  lobbyId: integer("lobby_id").notNull(),
   farmId: text("farm_id").notNull(),
   birdId: text("bird_id").notNull(),
   mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
   // The weapon format — the "distance" this fight was run at.
   format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
-  // The lobby (class) — open / maiden / nw2 / nw3 / claimer.
+  // The lobby class — open / maiden / nw2 / nw3 / claimer.
   lobby: text("lobby", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] })
     .notNull()
     .default("open"),
   claimPrice: integer("claim_price"), // claimers only
+  // The other barn's bird — a real bird, not a snapshot (pure PvP).
+  opponentBirdId: text("opponent_bird_id").notNull(),
+  opponentFarmId: text("opponent_farm_id").notNull(),
   opponentName: text("opponent_name").notNull(),
-  // Full opponent snapshot (stats/element/stars/age) — what a claim buys.
-  opponentJson: text("opponent_json").notNull(),
   result: text("result", { enum: ["win", "loss"] }).notNull(),
   // The Pit Figure — banded performance rating, format-normalized. The
   // discovery signal: compare figures ACROSS formats to type the bird.
@@ -101,28 +106,45 @@ export const battleLog = sqliteTable("battle_log", {
   playByPlay: text("play_by_play").notNull(),
 });
 
-// A claimer ENTRY — one bird on the day's claiming card. Created during the
-// game-day, fights on the day tick ("the match goes off"). The owner's entry
-// fee is escrowed at entry time; claims arrive while status = pending.
-export const claimerEntries = sqliteTable("claimer_entries", {
+// A LOBBY — one slot on tonight's card, keyed by (mode, class, format[,
+// tag]). Fills to capacity (8 — even, so a full lobby guarantees every bird
+// a fight), then a fresh one opens. At the day tick every lobby goes off:
+// entries are randomly paired and fight each other. Pure PvP — no house.
+export const lobbies = sqliteTable("lobbies", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  birdId: text("bird_id").notNull(),
-  farmId: text("farm_id").notNull(), // the ORIGINAL owner — the bird fights for them
+  mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
+  classType: text("class_type", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] }).notNull(),
   format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
-  price: integer("price").notNull(), // the claiming tag (from CLAIMER.PRICES)
-  entryFee: integer("entry_fee").notNull(), // escrowed at entry
-  dayEntered: integer("day_entered").notNull(),
-  seed: integer("seed").notNull(), // fight seed, fixed at entry — pre-committed & replayable
-  status: text("status", { enum: ["pending", "resolved"] }).notNull().default("pending"),
-  battleLogId: integer("battle_log_id"), // set at resolution
-  claimedByFarmId: text("claimed_by_farm_id"), // set if a claim won
+  price: integer("price"), // claimer tag — null for every other class
+  capacity: integer("capacity").notNull().default(8), // 16/32/64 = future tournament brackets
+  seed: integer("seed").notNull(), // drives the pairing shuffle + fight seeds
+  status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
+  dayOpened: integer("day_opened").notNull(),
 });
 
-// A sealed CLAIM against a pending entry — tag price escrowed when placed.
-// At resolution one claim wins (RNG if several) and the rest refund.
+// One bird on the card. The entry fee escrows at entry time; the entry is
+// BINDING and uses the bird's fight for the day. `unmatched` = odd bird out
+// (fee refunded, no land — land is for fighting).
+export const lobbyEntries = sqliteTable("lobby_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  lobbyId: integer("lobby_id").notNull(),
+  birdId: text("bird_id").notNull(),
+  farmId: text("farm_id").notNull(), // the ORIGINAL owner — the bird fights for them
+  fee: integer("fee").notNull(), // escrowed at entry
+  dayEntered: integer("day_entered").notNull(),
+  status: text("status", { enum: ["pending", "fought", "unmatched"] })
+    .notNull()
+    .default("pending"),
+  battleLogId: integer("battle_log_id"), // this side's row, set at resolution
+  claimedByFarmId: text("claimed_by_farm_id"), // claimer entries: set if a claim won
+});
+
+// A sealed CLAIM against a pending claimer entry — tag escrowed when placed.
+// At resolution one claim wins (RNG if several) and the rest refund. Claims
+// settle even if the bird went unmatched — the sale doesn't need the fight.
 export const claims = sqliteTable("claims", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  entryId: integer("entry_id").notNull(),
+  entryId: integer("entry_id").notNull(), // → lobbyEntries.id
   farmId: text("farm_id").notNull(), // the claimant
   price: integer("price").notNull(), // escrowed
   dayPlaced: integer("day_placed").notNull(),

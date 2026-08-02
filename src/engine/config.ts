@@ -123,9 +123,6 @@ export const BATTLE = {
   // The element edge: flat bonus on a turn's roll when your element overcomes
   // the opponent's (2d6 scale, so +1 ≈ half a die).
   ELEMENT_EDGE: 1,
-  // House-bird generation: each opponent stat rolls within ± this of the
-  // player bird's stat average. Bigger spread = swingier matchups.
-  HOUSE_SPREAD: 160,
   // Stat decay (stamina's second job): agility and sight fade each turn by
   // PER_TURN × (1 − stamina/2000). A 300-stamina bird loses ~2.6%/turn — by
   // turn 20 it's fighting at ~half book. FLOOR stops decay short of zero.
@@ -197,17 +194,26 @@ export const ECONOMY = {
 } as const;
 
 // ── Land Tokens (the second currency — the subsidy, and one-way) ────────────
-// Flat and unconditional: SHOWING UP earns land — every fight pays every
-// participant the same amount win or lose, and every gacha roll pays too.
-// Priced (2026-08-03): $0.01 = 1 LT, i.e. 80 GP buys 100 LT. Buyable with
-// GP up to a daily cap; NEVER sellable back — land only accumulates.
-// (Implied fully-diluted headroom: 100B LT = $1B.) Staking comes later.
+// Unconditional on the RESULT (win or lose pays the same) but scaled to the
+// STAKES (re-ruled 2026-08-03): the award grows with the entry fee, and
+// slightly MORE than linearly — fighting "up" into dearer, harder company
+// pays disproportionately. landForFight() below is the curve. An unmatched
+// entry (odd bird out) earns nothing — land is for FIGHTING, not queueing.
+// Priced: $0.01 = 1 LT, i.e. 80 GP buys 100 LT. Buyable with GP up to a
+// daily cap; NEVER sellable back — land only accumulates. Staking later.
 export const LAND = {
-  PER_FIGHT: 1,
+  FEE_PER_TOKEN: 8, //        the linear base: 1 LT per 8 GP of entry fee…
+  FIGHT_EXPONENT: 1.15, //    …raised past linear — the "fight up" incentive
   PER_GACHA_ROLL: 1,
   GP_PER_100_TOKENS: 80, // $1 buys 100 LT
   DAILY_BUY_CAP: 1000, //  max LT purchasable per farm per game-day ($10 worth)
 } as const;
+
+// The land curve: practice (8 GP) → 1 LT · real/claimer (40 GP) → 7 LT ·
+// hardcore (120 GP) → 23 LT. Superlinear on purpose (7 > 5×1, 23 > 3×7·⅓).
+export function landForFight(fee: number): number {
+  return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT)));
+}
 
 // ── Breeding ────────────────────────────────────────────────────────────────
 export const BREEDING = {
@@ -240,41 +246,42 @@ export const STUD = {
   MIN: 40, //      …but no career craters below this floor
 } as const;
 
-// ── Lobbies (fight selection v0 — maiden / win-caps / claimers) ─────────────
-// The class ladder's first rungs. Entry restrictions self-sort (no
-// matchmaker): maidens take never-winners, win-caps take light records,
-// claimers take anyone but put a price on both birds. House-bird quality
-// scales with the lobby, so picking the soft spot is the player's edge.
+// ── Lobbies (re-ruled 2026-08-03: PURE PvP — the house supplies NOBODY) ─────
+// Every fight is between barns. A lobby is one slot on tonight's card,
+// keyed by (mode, class, format[, tag]): entering joins the open lobby for
+// that key, or opens a fresh one when it's full. At the day tick every
+// lobby goes off — its birds are RANDOMLY PAIRED and fight each other.
+//
+// Size is LOCKED at 8 (an even number): if a lobby fills, every bird in it
+// is guaranteed a fight. A lobby that closes odd strands one bird — the
+// odd bird out refunds its entry and earns nothing. That risk is accepted:
+// it's up to the players to judge their birds' strength and pick where
+// they should be fighting. Tournaments later = capacities of 16/32/64 run
+// as back-to-back elimination brackets with separately engineered prizes.
+export const LOBBY = {
+  CAPACITY: 8,
+} as const;
+
+// The class dial. Entry restrictions self-sort the fields (no matchmaker):
+// maidens take never-winners, win-caps take light records, claimers put a
+// price on every bird entered.
 export const LOBBIES = ["open", "maiden", "nw2", "nw3", "claimer"] as const;
 export type Lobby = (typeof LOBBIES)[number];
 
-// House-bird strength per lobby, as a multiplier on the mirror-of-your-bird
-// center (open = 1.0). Maidens are green; win-cap fields sharpen toward open.
-export const LOBBY_HOUSE_QUALITY: Record<Exclude<Lobby, "claimer">, number> = {
-  open: 1.0,
-  maiden: 0.85,
-  nw2: 0.92,
-  nw3: 0.96,
-};
-
 // Claimers (re-ruled 2026-08-03): FARM-TO-FARM, escrowed, pre-fight.
 // Enter a bird at a tag price; the entry sits on the public board for the
-// rest of the game-day while OTHER farms place sealed claims; the fight goes
-// off on the day tick. The bird fights for its ORIGINAL owner (who keeps the
-// pooled prize); a successful claimant receives the bird only AFTER the
-// fight. Multiple claims → RNG picks one, the rest refund. The house never
-// claims — bot farms with claim-heavy playstyles are the liquidity later.
+// rest of the game-day while OTHER farms place sealed claims; the card goes
+// off on the day tick. The bird fights for its ORIGINAL owner (who keeps
+// the pooled prize); a successful claimant receives the bird only AFTER
+// the fight. Multiple claims → RNG picks one, the rest refund. The house
+// never claims — bot farms with claim-heavy playstyles are the liquidity.
 //
 // The tag ladder brackets the 160 GP breed floor on purpose: two rungs
 // below it (claim cheaper than breeding) and three above. It self-balances:
-// a dear tag = safer from claims but a stronger field and a real entry at
+// a dear tag = safer from claims but dearer company and a real entry at
 // risk; a cheap tag = claimable, but win-and-get-claimed is an income spike.
 export const CLAIMER = {
   PRICES: [50, 100, 200, 400, 600], // $0.625 · $1.25 · $2.50 · $5 · $7.50
-  // House OPPONENT stats center on QUALITY_FLAT + tag (the field's strength
-  // keys to the PRICE, not to your bird): 50 tag → ~270 avg (green);
-  // 600 tag → ~820 (a real bird).
-  QUALITY_FLAT: 220,
 } as const;
 
 // ── Fight cadence ───────────────────────────────────────────────────────────
