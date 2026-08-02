@@ -27,7 +27,7 @@ function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: numbe
       name: "Egg of Dalisay",
       sex: "female",
       status: "egg",
-      agility: 40, heart: 40, avoidance: 40, stamina: 40, ruthless: 40, sight: 40,
+      agility: 400, sight: 400, stamina: 400, gameness: 400, station: 400, condition: 400,
       element: "Water",
       halfStars: 4,
       birthWeek,

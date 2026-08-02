@@ -37,12 +37,12 @@ describe("breed", () => {
     const mother = flock.byId("starter-2");
     const father = flock.byId("starter-1");
     const { egg } = breeding.breed("starter-2", "starter-1");
-    for (const stat of ["agility", "heart", "avoidance", "stamina", "ruthless", "sight"] as const) {
+    for (const stat of ["agility", "sight", "stamina", "gameness", "station", "condition"] as const) {
       expect(egg[stat]).toBeGreaterThanOrEqual(STATS.MIN);
       expect(egg[stat]).toBeLessThanOrEqual(STATS.MAX);
       // within variance + max mutation swing of the parent average
       const avg = (mother[stat] + father[stat]) / 2;
-      expect(Math.abs(egg[stat] - avg)).toBeLessThanOrEqual(6 + 15 + 1);
+      expect(Math.abs(egg[stat] - avg)).toBeLessThanOrEqual(120 + 300 + 1);
     }
     expect(egg.halfStars).toBeGreaterThanOrEqual(0);
     expect(egg.halfStars).toBeLessThanOrEqual(10);
@@ -88,7 +88,7 @@ describe("bloodline restriction", () => {
         name: id,
         sex,
         status: "retired",
-        agility: 50, heart: 50, avoidance: 50, stamina: 50, ruthless: 50, sight: 50,
+        agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
         element: "Fire",
         halfStars: 4,
         birthWeek: -5,
@@ -141,7 +141,7 @@ describe("lineage", () => {
         name: "Kid",
         sex: "female",
         status: "egg",
-        agility: 50, heart: 50, avoidance: 50, stamina: 50, ruthless: 50, sight: 50,
+        agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
         element: "Water",
         halfStars: 4,
         birthWeek: 0,

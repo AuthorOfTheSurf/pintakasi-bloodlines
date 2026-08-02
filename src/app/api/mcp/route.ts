@@ -5,7 +5,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { STAT_NAMES } from "@/engine/config";
+import { FORMAT_NAMES, STAT_NAMES } from "@/engine/config";
 import { Game } from "@/engine/game";
 
 function text(value: string) {
@@ -35,6 +35,8 @@ function createServer(): McpServer {
         "Pintakasi: Bloodlines — a digital sabong game. YOU are the game client: narrate fights and hatch days with color, present choices clearly, and let the player decide.",
         "THE LOOP: breed retired birds → egg hatches next Hatch Friday as an age-1 chick → practice/train through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
         "AGE GATES: 0 = egg · 1 = practice + training only · 2+ = real fights · 3+ = hardcore + manual retirement · 9 = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.",
+        "WEAPON FORMATS ARE THE DISTANCE DIAL — the player's core skill is picking the right one: longKnife (the sprint — decided by agility/sight in the opening frames), shortKnife (the hybrid), longGaff (the route — stamina starts to rule), shortGaff (the marathon — gameness dictates the deep rounds). Any bird can enter any format; it's just disadvantaged outside its type.",
+        "DISCOVERY: every fight returns a PIT FIGURE — a banded performance rating, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the per-format lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
         "HARDCORE IS THE CHARGED DECISION: bigger prize, but the loser is FORCE-RETIRED on the spot. Always confirm with the player before a hardcore fight — never enter one on your own judgment.",
         "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg — hatch day is the reveal) and prompt the player to name the chick (name_bird). Eggs are auto-named 'Egg of <mother>'.",
         "TWO RECORDS: the career record (real + hardcore — drives stud value) and the amateur record (practice fights, small stakes). Report them separately.",
@@ -70,11 +72,17 @@ function createServer(): McpServer {
     "get_bird",
     {
       title: "Bird Detail",
-      description: "One bird in full, plus its lineage tree (parents through great-grandparents).",
+      description:
+        "One bird in full: stats, lineage tree, and the per-format past-performance lines (record + Pit Figures per weapon format) — the discovery readout.",
       inputSchema: z.object({ id: z.string().describe("Bird id from list_flock") }),
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => ruled(() => ({ bird: game.flock.byId(id), lineage: game.breeding.lineage(id) }))
+    async ({ id }) =>
+      ruled(() => ({
+        bird: game.flock.byId(id),
+        lineage: game.breeding.lineage(id),
+        formatRecords: game.battle.formatRecords(id),
+      }))
   );
 
   server.registerTool(
@@ -129,14 +137,21 @@ function createServer(): McpServer {
     {
       title: "Fight",
       description:
-        "Enter a bird against a house bird. Modes: 'practice' (age 1+, small entry/prize, builds the separate AMATEUR record), 'real' (age 2+, entry fee, prize, builds the CAREER record), 'hardcore' (age 3+, big prize, LOSER IS FORCE-RETIRED — confirm with the player first). Returns a play-by-play; narrate it.",
+        "Enter a bird against a house bird at a chosen WEAPON FORMAT (the distance dial — pick it deliberately, that's the game). Modes: 'practice' (age 1+, small entry/prize, builds the separate AMATEUR record), 'real' (age 2+, entry fee, prize, builds the CAREER record), 'hardcore' (age 3+, big prize, LOSER IS FORCE-RETIRED — confirm with the player first). Returns a play-by-play and a Pit Figure; narrate the fight and read the figure.",
       inputSchema: z.object({
         birdId: z.string(),
         mode: z.enum(["practice", "real", "hardcore"]).default("real"),
+        format: z
+          .enum(FORMAT_NAMES as [string, ...string[]])
+          .default("shortKnife")
+          .describe(
+            "Weapon format: longKnife = sprint · shortKnife = hybrid · longGaff = route · shortGaff = marathon"
+          ),
         seed: z.number().int().optional().describe("Replay seed — omit for a fresh fight"),
       }),
     },
-    async ({ birdId, mode, seed }) => ruled(() => game.battle.fight(birdId, mode, seed))
+    async ({ birdId, mode, format, seed }) =>
+      ruled(() => game.battle.fight(birdId, mode, format as never, seed))
   );
 
   server.registerTool(
@@ -144,7 +159,7 @@ function createServer(): McpServer {
     {
       title: "Train (Discovery Year)",
       description:
-        "Train an age-1 chick: +1 to a chosen stat, limited sessions per day. This is what the discovery year is for.",
+        "Train an age-1 chick: a small gain to a chosen stat, limited sessions per day. This is what the discovery year is for — alongside amateur fights across the formats to type the bird.",
       inputSchema: z.object({
         birdId: z.string(),
         stat: z.enum(STAT_NAMES),

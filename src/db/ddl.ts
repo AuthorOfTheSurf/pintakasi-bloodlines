@@ -10,11 +10,11 @@ CREATE TABLE IF NOT EXISTS birds (
   sex TEXT NOT NULL CHECK (sex IN ('male','female')),
   status TEXT NOT NULL CHECK (status IN ('egg','active','retired')),
   agility INTEGER NOT NULL,
-  heart INTEGER NOT NULL,
-  avoidance INTEGER NOT NULL,
-  stamina INTEGER NOT NULL,
-  ruthless INTEGER NOT NULL,
   sight INTEGER NOT NULL,
+  stamina INTEGER NOT NULL,
+  gameness INTEGER NOT NULL,
+  station INTEGER NOT NULL,
+  condition INTEGER NOT NULL,
   element TEXT NOT NULL CHECK (element IN ('Fire','Metal','Wood','Earth','Water')),
   half_stars INTEGER NOT NULL CHECK (half_stars BETWEEN 0 AND 10),
   birth_week INTEGER NOT NULL,
@@ -46,8 +46,10 @@ CREATE TABLE IF NOT EXISTS battle_log (
   day_index INTEGER NOT NULL,
   bird_id TEXT NOT NULL,
   mode TEXT NOT NULL CHECK (mode IN ('practice','real','hardcore')),
+  format TEXT NOT NULL CHECK (format IN ('longKnife','shortKnife','longGaff','shortGaff')),
   opponent_name TEXT NOT NULL,
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
+  pit_figure INTEGER NOT NULL,
   gp_delta INTEGER NOT NULL,
   seed INTEGER NOT NULL,
   play_by_play TEXT NOT NULL
@@ -57,6 +59,6 @@ CREATE TABLE IF NOT EXISTS training_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   day_index INTEGER NOT NULL,
   bird_id TEXT NOT NULL,
-  stat TEXT NOT NULL CHECK (stat IN ('agility','heart','avoidance','stamina','ruthless','sight'))
+  stat TEXT NOT NULL CHECK (stat IN ('agility','sight','stamina','gameness','station','condition'))
 );
 `;

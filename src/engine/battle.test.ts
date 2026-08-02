@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { battleLog, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Battle } from "./battle";
-import { ECONOMY } from "./config";
+import { ECONOMY, TRAINING } from "./config";
 import { Flock } from "./flock";
 
 function freshGame() {
@@ -37,8 +37,8 @@ describe("the fight", () => {
   test("same seed → identical play-by-play (replayable)", () => {
     const g1 = freshGame();
     const g2 = freshGame();
-    const a = g1.battle.fight(byName(g1.flock, "Alab").id, "real", 1234);
-    const b = g2.battle.fight(byName(g2.flock, "Alab").id, "real", 1234);
+    const a = g1.battle.fight(byName(g1.flock, "Alab").id, "real", "shortKnife", 1234);
+    const b = g2.battle.fight(byName(g2.flock, "Alab").id, "real", "shortKnife", 1234);
     expect(a.playByPlay).toBe(b.playByPlay);
     expect(a.result).toBe(b.result);
     expect(a.opponent).toEqual(b.opponent);
@@ -47,7 +47,7 @@ describe("the fight", () => {
   test("GP settles by mode: entry fee always, prize on a win", () => {
     const { db, battle, flock } = freshGame();
     const alab = byName(flock, "Alab");
-    const result = battle.fight(alab.id, "real", 99);
+    const result = battle.fight(alab.id, "real", "shortKnife", 99);
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     const expected =
       result.result === "win"
@@ -60,7 +60,7 @@ describe("the fight", () => {
   test("practice has small stakes and builds the AMATEUR record, not the career", () => {
     const { db, battle, flock } = freshGame();
     const kidlat = byName(flock, "Kidlat");
-    const result = battle.fight(kidlat.id, "practice", 5);
+    const result = battle.fight(kidlat.id, "practice", "shortKnife", 5);
     // Small but real stakes: win nets prize - entry, loss costs the entry.
     expect(result.gpDelta).toBe(
       result.result === "win"
@@ -78,7 +78,7 @@ describe("the fight", () => {
   test("real fights update the record", () => {
     const { battle, flock } = freshGame();
     const alab = byName(flock, "Alab"); // 1W-1L
-    const result = battle.fight(alab.id, "real", 42);
+    const result = battle.fight(alab.id, "real", "shortKnife", 42);
     expect(result.bird.wins + result.bird.losses).toBe(3);
   });
 
@@ -97,7 +97,7 @@ describe("hardcore — the key rule", () => {
     for (let seed = 1; seed < 200 && (winSeed < 0 || lossSeed < 0); seed++) {
       const { battle, flock } = freshGame();
       const sinag = byName(flock, "Sinag");
-      const r = battle.fight(sinag.id, "hardcore", seed);
+      const r = battle.fight(sinag.id, "hardcore", "shortKnife", seed);
       if (r.result === "win" && winSeed < 0) winSeed = seed;
       if (r.result === "loss" && lossSeed < 0) lossSeed = seed;
     }
@@ -114,7 +114,7 @@ describe("hardcore — the key rule", () => {
   test("a hardcore WIN pays big and the career continues", () => {
     const { battle, flock } = freshGame();
     const sinag = byName(flock, "Sinag");
-    const r = battle.fight(sinag.id, "hardcore", winSeed);
+    const r = battle.fight(sinag.id, "hardcore", "shortKnife", winSeed);
     expect(r.gpDelta).toBe(ECONOMY.HARDCORE_PRIZE - ECONOMY.HARDCORE_ENTRY_FEE);
     expect(r.forcedRetirement).toBe(false);
     expect(r.bird.status).toBe("active");
@@ -123,7 +123,7 @@ describe("hardcore — the key rule", () => {
   test("a hardcore LOSS force-retires the bird — career over, barn open", () => {
     const { battle, flock } = freshGame();
     const sinag = byName(flock, "Sinag");
-    const r = battle.fight(sinag.id, "hardcore", lossSeed);
+    const r = battle.fight(sinag.id, "hardcore", "shortKnife", lossSeed);
     expect(r.forcedRetirement).toBe(true);
     expect(r.bird.status).toBe("retired");
     expect(r.bird.retiredBy).toBe("hardcore");
@@ -136,14 +136,14 @@ describe("training (discovery year)", () => {
     const { db, flock } = freshGame();
     const kidlat = byName(flock, "Kidlat"); // age 1
     const alab = byName(flock, "Alab"); // age 2
-    expect(() => flock.train(alab.id, "heart")).toThrow(/discovery year/);
+    expect(() => flock.train(alab.id, "gameness")).toThrow(/discovery year/);
 
-    const before = kidlat.heart;
-    const t1 = flock.train(kidlat.id, "heart");
-    expect(t1.bird.heart).toBe(before + 1);
+    const before = kidlat.gameness;
+    const t1 = flock.train(kidlat.id, "gameness");
+    expect(t1.bird.gameness).toBe(before + TRAINING.GAIN_PER_SESSION);
     expect(t1.sessionsLeftToday).toBe(2);
     flock.train(kidlat.id, "agility");
-    flock.train(kidlat.id, "heart");
+    flock.train(kidlat.id, "gameness");
     expect(() => flock.train(kidlat.id, "sight")).toThrow(/spent/);
 
     // Next day the cap resets.

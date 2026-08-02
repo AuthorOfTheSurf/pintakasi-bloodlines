@@ -39,21 +39,21 @@ test("the full breeding-lifecycle loop closes", () => {
   expect(["rooster", "hen"]).toContain(chick.sexLabel!);
 
   // 3. The discovery year: amateur fights (small stakes, own record) and training.
-  const practice = battle.fight(chick.id, "practice", 21);
+  const practice = battle.fight(chick.id, "practice", "shortKnife", 21);
   expect(practice.gpDelta).toBe(practice.result === "win" ? 15 : -10);
   expect(practice.bird.wins + practice.bird.losses).toBe(0); // career untouched
   expect(practice.bird.practiceWins + practice.bird.practiceLosses).toBe(1);
-  const heartBefore = chick.heart;
+  const gamenessBefore = chick.gameness;
   game.tickDay(); // fresh training day
-  flock.train(chick.id, "heart");
-  flock.train(chick.id, "heart");
-  expect(flock.byId(chick.id).heart).toBe(heartBefore + 2);
+  flock.train(chick.id, "gameness");
+  flock.train(chick.id, "gameness");
+  expect(flock.byId(chick.id).gameness).toBe(gamenessBefore + 40);
 
   // 4. Age 2 — real stakes open, the record starts.
   tick = game.tickWeek();
   expect(flock.byId(chick.id).age).toBe(2);
-  expect(() => battle.fight(chick.id, "hardcore", 1)).toThrow(/age 3/);
-  const real = battle.fight(chick.id, "real", 33);
+  expect(() => battle.fight(chick.id, "hardcore", "shortKnife", 1)).toThrow(/age 3/);
+  const real = battle.fight(chick.id, "real", "shortKnife", 33);
   expect(real.bird.wins + real.bird.losses).toBe(1);
 
   // 5. Age 3 — the fork opens as a package: hardcore AND retirement.
@@ -61,7 +61,7 @@ test("the full breeding-lifecycle loop closes", () => {
   const atFork = flock.byId(chick.id);
   expect(atFork.age).toBe(3);
   // Ride the career one more real fight, then take the safe arm.
-  battle.fight(chick.id, "real", 44);
+  battle.fight(chick.id, "real", "shortKnife", 44);
   const retiree = flock.retire(chick.id);
   expect(retiree.status).toBe("retired");
   expect(retiree.retiredBy).toBe("manual");
@@ -118,14 +118,14 @@ describe("hardcore arm of the loop", () => {
       const probe = createDb(":memory:");
       seedGame(probe);
       const pSinag = new Flock(probe).all().find((b) => b.name === "Sinag")!;
-      if (new Battle(probe).fight(pSinag.id, "hardcore", seed).result === "loss") {
+      if (new Battle(probe).fight(pSinag.id, "hardcore", "shortKnife", seed).result === "loss") {
         lossSeed = seed;
         break;
       }
     }
     expect(lossSeed).toBeGreaterThan(0);
 
-    const r = battle.fight(sinag.id, "hardcore", lossSeed);
+    const r = battle.fight(sinag.id, "hardcore", "shortKnife", lossSeed);
     expect(r.forcedRetirement).toBe(true);
     expect(r.bird.retiredBy).toBe("hardcore");
     // The loss is a conversion, not a destruction: she can breed immediately.

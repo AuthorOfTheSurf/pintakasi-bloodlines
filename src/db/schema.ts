@@ -7,13 +7,17 @@ export const birds = sqliteTable("birds", {
   // Decided 50-50 at breeding and HIDDEN while the bird is an egg.
   sex: text("sex", { enum: ["male", "female"] }).notNull(),
   status: text("status", { enum: ["egg", "active", "retired"] }).notNull(),
-  // Six stats — all visible in the MVP (hidden stats deferred, ledger item 25).
+  // Six stats on the 0–2000 PFL scale — all visible in the MVP (letter-grade
+  // display and hiding come later; the raw number is stored forever).
+  // Phase quartet: agility (the break) · sight (open exchange) · stamina
+  // (wind + decay resistance) · gameness (the deep fight). Behavioral
+  // anchors: station (clutch vs. superior builds) · condition (consistency).
   agility: integer("agility").notNull(),
-  heart: integer("heart").notNull(),
-  avoidance: integer("avoidance").notNull(),
-  stamina: integer("stamina").notNull(),
-  ruthless: integer("ruthless").notNull(),
   sight: integer("sight").notNull(),
+  stamina: integer("stamina").notNull(),
+  gameness: integer("gameness").notNull(),
+  station: integer("station").notNull(),
+  condition: integer("condition").notNull(),
   // Element stars: typed 0–5 in half-steps, stored as half-stars 0–10.
   // 0★ still resolves to a type.
   element: text("element", { enum: ["Fire", "Metal", "Wood", "Earth", "Water"] }).notNull(),
@@ -53,8 +57,13 @@ export const battleLog = sqliteTable("battle_log", {
   dayIndex: integer("day_index").notNull(),
   birdId: text("bird_id").notNull(),
   mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
+  // The weapon format — the "distance" this fight was run at.
+  format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
   opponentName: text("opponent_name").notNull(),
   result: text("result", { enum: ["win", "loss"] }).notNull(),
+  // The Pit Figure — banded performance rating, format-normalized. The
+  // discovery signal: compare figures ACROSS formats to type the bird.
+  pitFigure: integer("pit_figure").notNull(),
   gpDelta: integer("gp_delta").notNull(),
   seed: integer("seed").notNull(), // replay the fight from this
   playByPlay: text("play_by_play").notNull(),
@@ -65,7 +74,7 @@ export const trainingLog = sqliteTable("training_log", {
   dayIndex: integer("day_index").notNull(),
   birdId: text("bird_id").notNull(),
   stat: text("stat", {
-    enum: ["agility", "heart", "avoidance", "stamina", "ruthless", "sight"],
+    enum: ["agility", "sight", "stamina", "gameness", "station", "condition"],
   }).notNull(),
 });
 

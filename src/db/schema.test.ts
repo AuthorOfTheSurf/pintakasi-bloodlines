@@ -25,7 +25,7 @@ describe("seeded database", () => {
 
   test("stats are in starter range and stars in half-star bounds", () => {
     for (const b of db.select().from(birds).all()) {
-      for (const stat of [b.agility, b.heart, b.avoidance, b.stamina, b.ruthless, b.sight]) {
+      for (const stat of [b.agility, b.sight, b.stamina, b.gameness, b.station, b.condition]) {
         expect(stat).toBeGreaterThanOrEqual(STATS.STARTER_MIN);
         expect(stat).toBeLessThanOrEqual(STATS.STARTER_MAX);
       }
@@ -55,7 +55,7 @@ describe("seeded database", () => {
           name: "Bad Bird",
           sex: "male",
           status: "active",
-          agility: 50, heart: 50, avoidance: 50, stamina: 50, ruthless: 50, sight: 50,
+          agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
           element: "Fire",
           halfStars: 11, // > 10 violates CHECK
           birthWeek: 0,

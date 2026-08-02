@@ -33,14 +33,16 @@ const STARTERS: StarterSpec[] = [
 ];
 
 function rollStats(rng: Rng) {
+  // ~300 on the 0–2000 scale (Zane's ruling) — headroom is the point:
+  // the best birds in the game don't exist yet.
   const stat = () => randInt(rng, STATS.STARTER_MIN, STATS.STARTER_MAX);
   return {
     agility: stat(),
-    heart: stat(),
-    avoidance: stat(),
-    stamina: stat(),
-    ruthless: stat(),
     sight: stat(),
+    stamina: stat(),
+    gameness: stat(),
+    station: stat(),
+    condition: stat(),
   };
 }
 
