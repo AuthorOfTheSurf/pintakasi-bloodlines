@@ -101,6 +101,14 @@ export const BREEDING = {
   ANCESTOR_DEPTH: 3,
 } as const;
 
+// ── Stud value (what a record is worth in the barn) ─────────────────────────
+export const STUD = {
+  BASE: 100,
+  PER_WIN: 30,
+  PER_LOSS: -10,
+  MIN: 50,
+} as const;
+
 // ── Training (age-1 discovery year) ─────────────────────────────────────────
 export const TRAINING = {
   GAIN_PER_SESSION: 1, // +1 to a chosen stat
