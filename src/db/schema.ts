@@ -44,6 +44,9 @@ export const gameState = sqliteTable("game_state", {
   id: integer("id").primaryKey(), // single row, id = 1
   dayIndex: integer("day_index").notNull().default(0),
   gp: integer("gp").notNull(),
+  // Land Tokens — the scarce second currency, earned flat by playing
+  // (every fight, every gacha roll). Staking comes later.
+  landTokens: integer("land_tokens").notNull().default(0),
 });
 
 export const gachaTokens = sqliteTable("gacha_tokens", {

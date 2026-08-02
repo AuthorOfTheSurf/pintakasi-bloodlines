@@ -1,32 +1,106 @@
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
-import { gachaTokens, gameState } from "@/db/schema";
-import { ECONOMY, GACHA_TOKENS, GACHA_WEIGHTS, type GachaToken } from "./config";
-import { freshSeed, mulberry32, weightedPick, type Rng } from "./rng";
+import { birds, gachaTokens, gameState } from "@/db/schema";
+import {
+  BARN,
+  BREEDING,
+  ECONOMY,
+  ELEMENTS,
+  GACHA_BIRDS,
+  GACHA_TOKENS,
+  GACHA_WEIGHTS,
+  LAND,
+  type Element,
+  type GachaToken,
+} from "./config";
+import { Flock, type BirdView } from "./flock";
+import { GameClock } from "./game-clock";
+import { freshSeed, mulberry32, randInt, weightedPick, type Rng } from "./rng";
+
+export interface GachaResult {
+  token: GachaToken;
+  pricePaid: number;
+  landTokens: number; // every roll pays land, alongside whatever drops
+  // Blue/Purple/Gold rolls drop a MYSTERY EGG (random element, hidden sex,
+  // no parents) that hatches next Hatch Friday. Null on White/Green — or
+  // when the barn is full (barnFull says which).
+  egg: BirdView | null;
+  barnFull: boolean;
+  collection: Record<GachaToken, number>;
+}
 
 /**
- * The gacha stub (ledger item 12): pure rarity tokens that correspond to
- * nothing yet. What the MVP tests is pricing and economic flow, not prizes.
+ * The gacha (ledger item 12, upgraded 2026-08-02): rarity tokens (prizes
+ * TBD), a flat land award on every roll, and mystery eggs on Blue+ — the
+ * non-breeding bird faucet, balanced against breeding purely by price.
  */
 export class Gacha {
+  private flock: Flock;
+
   constructor(
     private database: DB,
     private rng: Rng = mulberry32(freshSeed())
-  ) {}
+  ) {
+    this.flock = new Flock(database);
+  }
 
-  roll(): { token: GachaToken; pricePaid: number; collection: Record<GachaToken, number> } {
+  roll(): GachaResult {
     const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     if (state.gp < ECONOMY.GACHA_ROLL_PRICE)
       throw new Error(`A roll costs ${ECONOMY.GACHA_ROLL_PRICE} GP — you have ${state.gp}`);
     this.database
       .update(gameState)
-      .set({ gp: state.gp - ECONOMY.GACHA_ROLL_PRICE })
+      .set({
+        gp: state.gp - ECONOMY.GACHA_ROLL_PRICE,
+        landTokens: state.landTokens + LAND.PER_GACHA_ROLL,
+      })
       .where(eq(gameState.id, 1))
       .run();
 
     const token = weightedPick(this.rng, GACHA_WEIGHTS);
     this.database.insert(gachaTokens).values({ token, rolledDay: state.dayIndex }).run();
-    return { token, pricePaid: ECONOMY.GACHA_ROLL_PRICE, collection: this.collection() };
+
+    // The mystery egg, on qualifying tiers.
+    let egg: BirdView | null = null;
+    let barnFull = false;
+    const tier = GACHA_BIRDS[token];
+    if (tier) {
+      if (this.flock.barnCount() >= BARN.CAPACITY) {
+        barnFull = true; // the token still counts; the egg is forfeit
+      } else {
+        const stat = () => randInt(this.rng, tier.statMin, tier.statMax);
+        const row = {
+          id: randomUUID(),
+          name: `Mystery Egg (${token})`,
+          sex: this.rng() < BREEDING.FEMALE_CHANCE ? ("female" as const) : ("male" as const),
+          status: "egg" as const,
+          agility: stat(),
+          sight: stat(),
+          stamina: stat(),
+          gameness: stat(),
+          station: stat(),
+          condition: stat(),
+          element: ELEMENTS[randInt(this.rng, 0, ELEMENTS.length - 1)] as Element,
+          halfStars: randInt(this.rng, tier.halfStars[0], tier.halfStars[1]),
+          birthWeek: GameClock.weekOf(state.dayIndex),
+          birthDay: state.dayIndex,
+          motherId: null,
+          fatherId: null,
+        };
+        this.database.insert(birds).values(row).run();
+        egg = this.flock.byId(row.id);
+      }
+    }
+
+    return {
+      token,
+      pricePaid: ECONOMY.GACHA_ROLL_PRICE,
+      landTokens: LAND.PER_GACHA_ROLL,
+      egg,
+      barnFull,
+      collection: this.collection(),
+    };
   }
 
   collection(): Record<GachaToken, number> {

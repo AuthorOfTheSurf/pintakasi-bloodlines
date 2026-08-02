@@ -51,7 +51,7 @@ function createServer(): McpServer {
     {
       title: "Game State",
       description:
-        "The calendar (in-game date, whether today is Hatch Friday), GP wallet, and barn occupancy. Start here.",
+        "The calendar (in-game date, whether today is Hatch Friday), GP wallet ($1 = 8,000 GP), Land Tokens, and barn occupancy. Start here.",
       annotations: { readOnlyHint: true },
     },
     async () => ruled(() => game.state())
@@ -184,7 +184,7 @@ function createServer(): McpServer {
     {
       title: "Roll the Gacha",
       description:
-        "Spend GP on a rarity-token roll (White/Green/Blue/Purple/Gold). Tokens are pure collection for now — prizes come later.",
+        "Spend GP on a roll. Always pays a rarity token (White/Green/Blue/Purple/Gold — prizes TBD) plus a Land Token. Blue, Purple, and Gold rolls ALSO drop a MYSTERY EGG (random element, hidden sex, hatches next Hatch Friday) — announce it with fanfare.",
     },
     async () => ruled(() => game.gacha.roll())
   );

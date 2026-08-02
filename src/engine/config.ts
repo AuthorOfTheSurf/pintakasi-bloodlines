@@ -168,24 +168,41 @@ export const FIGURE = {
   MAX: 120, //         clamp range [0, MAX]
 } as const;
 
-// ── Economy (GP — one closed number) ────────────────────────────────────────
+// ── Economy (GP — pegged at $1 = 8,000 GP, Zane's ruling 2026-08-02) ────────
+// The 8,000 peg (over $1 = 80) buys integer math everywhere and deep
+// divisibility for later rakes/splits. No real money moves yet — the peg
+// just keeps every price meaning something in dollars.
 export const ECONOMY = {
-  STARTING_GP: 1000, // the bankroll a new game opens with
-  BREED_FEE: 200, //   cost to lay one egg — the main GP sink
-  // Real fights (age 2+): pay the entry, win the prize. A win nets +70,
-  // a loss costs the 50 entry. These build the CAREER record.
-  REAL_ENTRY_FEE: 50,
-  REAL_PRIZE: 120,
-  // Hardcore (age 3+): the charged decision. A win nets +350 — but a loss
-  // costs the entry AND the career (loser is force-retired).
-  HARDCORE_ENTRY_FEE: 150,
-  HARDCORE_PRIZE: 500,
+  GP_PER_DOLLAR: 8000,
+  STARTING_GP: 80_000, // a $10 stake to open the stable
+  // The MINIMUM breed price ($2). There is deliberately NO maximum — when
+  // the marketplace/stud-cover market arrives, owners set their own fees
+  // above this floor. For now the floor is the only price.
+  BREED_FEE: 16_000,
+  // Real fights (age 2+): pay the entry ($0.50), win the prize ($1.20).
+  // A win nets +5,600; a loss costs the 4,000 entry. CAREER record.
+  REAL_ENTRY_FEE: 4_000,
+  REAL_PRIZE: 9_600,
+  // Hardcore (age 3+): the charged decision. A win nets +28,000 ($3.50) —
+  // but a loss costs the entry AND the career (loser is force-retired).
+  HARDCORE_ENTRY_FEE: 12_000,
+  HARDCORE_PRIZE: 40_000,
   // Amateur fights (age 1+, the discovery year's arena): real but small
-  // stakes — a win nets +15, a loss costs the 10 entry. These build the
-  // separate AMATEUR record and never touch career record or stud value.
-  PRACTICE_ENTRY_FEE: 10,
-  PRACTICE_PRIZE: 25,
-  GACHA_ROLL_PRICE: 100, // one rarity-token roll
+  // stakes — a win nets +1,200 ($0.15), a loss costs the 800 entry. These
+  // build the separate AMATEUR record and never touch stud value.
+  PRACTICE_ENTRY_FEE: 800,
+  PRACTICE_PRIZE: 2_000,
+  GACHA_ROLL_PRICE: 8_000, // one roll = $1
+} as const;
+
+// ── Land Tokens (the second currency — scarce, earned by playing) ───────────
+// Flat and unconditional: SHOWING UP earns land. Every fight pays every
+// participant the same amount win or lose, and every gacha roll pays too.
+// What land DOES (staking tracks, the landlord game) comes later — for now
+// it only accumulates, PFL-Crown-style.
+export const LAND = {
+  PER_FIGHT: 1,
+  PER_GACHA_ROLL: 1,
 } as const;
 
 // ── Breeding ────────────────────────────────────────────────────────────────
@@ -211,11 +228,12 @@ export const BREEDING = {
 // ── Stud value (what a CAREER record converts to at retirement) ─────────────
 // studValue = BASE + wins×PER_WIN + losses×PER_LOSS, never below MIN.
 // Only real + hardcore fights count — the amateur record doesn't move this.
+// (On the $1 = 8,000 peg: base $1, each win +$0.30, floor $0.50.)
 export const STUD = {
-  BASE: 100, //    every retiree is worth at least a foundation price…
-  PER_WIN: 30, //  …each career win adds this…
-  PER_LOSS: -10, // …each career loss shaves this…
-  MIN: 50, //      …but no career craters below this floor
+  BASE: 8_000, //     every retiree is worth at least a foundation price…
+  PER_WIN: 2_400, //  …each career win adds this…
+  PER_LOSS: -800, //  …each career loss shaves this…
+  MIN: 4_000, //      …but no career craters below this floor
 } as const;
 
 // ── Training (age-1 discovery year) ─────────────────────────────────────────
@@ -234,11 +252,26 @@ export const GACHA_TOKENS = ["White", "Green", "Blue", "Purple", "Gold"] as cons
 export type GachaToken = (typeof GACHA_TOKENS)[number];
 
 // Drop weights out of 100 rolls: ~50 White, ~27 Green, ~15 Blue, ~6 Purple,
-// ~2 Gold. What the tokens DO comes later — the MVP tests the price flow.
+// ~2 Gold. What the item tokens DO comes later — the MVP tests the price flow.
 export const GACHA_WEIGHTS: Record<GachaToken, number> = {
   White: 50,
   Green: 27,
   Blue: 15,
   Purple: 6,
   Gold: 2,
+};
+
+// ── Gacha birds (Zane leaning yes, 2026-08-02 — built config-gated) ─────────
+// Blue/Purple/Gold rolls ALSO drop a MYSTERY EGG: random element, hidden
+// 50-50 sex, no parents, hatches next Hatch Friday like any egg. This is the
+// non-breeding bird faucet — the way a stable fills fast and finds elements
+// its barn doesn't carry — balanced against breeding purely by price
+// (~23% of $1 rolls drop an egg ≈ $4.35/bird vs the $2 breed floor, but no
+// retired pair needed). Delete a tier here to turn its eggs off.
+export const GACHA_BIRDS: Partial<
+  Record<GachaToken, { halfStars: [min: number, max: number]; statMin: number; statMax: number }>
+> = {
+  Blue: { halfStars: [1, 4], statMin: 250, statMax: 450 }, //   starter-grade, maybe lucky stars
+  Purple: { halfStars: [3, 7], statMin: 300, statMax: 550 }, // above the starter band
+  Gold: { halfStars: [5, 10], statMin: 350, statMax: 700 }, //  the jackpot hen/rooster
 };

@@ -11,6 +11,7 @@ import { Gacha } from "./gacha";
 export interface GameStateView {
   clock: ClockState;
   gp: number;
+  landTokens: number;
   barn: { count: number; capacity: number };
 }
 
@@ -45,6 +46,7 @@ export class Game {
     return {
       clock: GameClock.stateOf(row.dayIndex),
       gp: row.gp,
+      landTokens: row.landTokens,
       barn: { count: this.flock.barnCount(), capacity: BARN.CAPACITY },
     };
   }

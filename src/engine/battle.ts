@@ -7,6 +7,7 @@ import {
   ELEMENT_BEATS,
   FIGURE,
   FORMATS,
+  LAND,
   PHASES,
   STARS,
   STATS,
@@ -26,6 +27,7 @@ export interface FightResult {
   bird: BirdView; // post-fight (record updated; hardcore loss = retired)
   opponent: HouseBird;
   gpDelta: number;
+  landTokens: number; // flat land award — every fight pays it, win or lose
   pitFigure: number; // banded, format-normalized — the discovery signal
   forcedRetirement: boolean;
   playByPlay: string;
@@ -112,9 +114,13 @@ export class Battle {
     const opponent = this.generateHouseBird(bird, rng);
     const { won, playByPlay, pitFigure } = this.simulate(bird, opponent, mode, format, rng);
 
-    // Settle GP.
+    // Settle GP — and the flat land award: showing up earns land.
     const gpDelta = won ? prize - fee : -fee;
-    this.database.update(gameState).set({ gp: state.gp + gpDelta }).where(eq(gameState.id, 1)).run();
+    this.database
+      .update(gameState)
+      .set({ gp: state.gp + gpDelta, landTokens: state.landTokens + LAND.PER_FIGHT })
+      .where(eq(gameState.id, 1))
+      .run();
 
     // Two ledgers: real + hardcore build the CAREER record (drives stud
     // value); practice builds the separate AMATEUR record.
@@ -162,6 +168,7 @@ export class Battle {
       bird: this.flock.byId(bird.id),
       opponent,
       gpDelta,
+      landTokens: LAND.PER_FIGHT,
       pitFigure,
       forcedRetirement,
       playByPlay,

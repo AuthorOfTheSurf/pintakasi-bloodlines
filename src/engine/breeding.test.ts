@@ -68,8 +68,8 @@ describe("breed", () => {
 
   test("insufficient GP blocks breeding", () => {
     const { db, breeding } = freshGame();
-    db.update(gameState).set({ gp: 50 }).where(eq(gameState.id, 1)).run();
-    expect(() => breeding.breed("starter-2", "starter-1")).toThrow(/costs 200 GP/);
+    db.update(gameState).set({ gp: 5000 }).where(eq(gameState.id, 1)).run();
+    expect(() => breeding.breed("starter-2", "starter-1")).toThrow(/Breeding costs/);
   });
 });
 

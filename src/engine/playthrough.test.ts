@@ -7,6 +7,7 @@ import { Battle } from "./battle";
 import { Breeding } from "./breeding";
 import { Flock } from "./flock";
 import { Game } from "./game";
+import { ECONOMY } from "./config";
 import { mulberry32 } from "./rng";
 
 /**
@@ -40,7 +41,11 @@ test("the full breeding-lifecycle loop closes", () => {
 
   // 3. The discovery year: amateur fights (small stakes, own record) and training.
   const practice = battle.fight(chick.id, "practice", "shortKnife", 21);
-  expect(practice.gpDelta).toBe(practice.result === "win" ? 15 : -10);
+  expect(practice.gpDelta).toBe(
+    practice.result === "win"
+      ? ECONOMY.PRACTICE_PRIZE - ECONOMY.PRACTICE_ENTRY_FEE
+      : -ECONOMY.PRACTICE_ENTRY_FEE
+  );
   expect(practice.bird.wins + practice.bird.losses).toBe(0); // career untouched
   expect(practice.bird.practiceWins + practice.bird.practiceLosses).toBe(1);
   const gamenessBefore = chick.gameness;
