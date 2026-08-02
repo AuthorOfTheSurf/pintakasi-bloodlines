@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { battleLog, gameState } from "@/db/schema";
+import { battleLog, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Battle } from "./battle";
 import { ECONOMY, TRAINING } from "./config";
@@ -9,8 +9,8 @@ import { Flock } from "./flock";
 
 function freshGame() {
   const db = createDb(":memory:");
-  seedGame(db);
-  return { db, battle: new Battle(db), flock: new Flock(db) };
+  const { farmId } = seedGame(db);
+  return { db, farmId, battle: new Battle(db, farmId), flock: new Flock(db, farmId) };
 }
 
 // Seed active roster: Kidlat (1), Alab (2), Sinag (3), Batong Buhay (5).
@@ -44,28 +44,29 @@ describe("the fight", () => {
     expect(a.opponent).toEqual(b.opponent);
   });
 
-  test("GP settles by mode: entry fee always, prize on a win", () => {
-    const { db, battle, flock } = freshGame();
+  test("GP settles pooled: win +entry, lose −entry — no GP printed", () => {
+    const { db, battle, flock, farmId } = freshGame();
     const alab = byName(flock, "Alab");
     const result = battle.fight(alab.id, "real", "shortKnife", 99);
-    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
     const expected =
       result.result === "win"
-        ? ECONOMY.STARTING_GP + ECONOMY.REAL_PRIZE - ECONOMY.REAL_ENTRY_FEE
+        ? ECONOMY.STARTING_GP + ECONOMY.REAL_ENTRY_FEE
         : ECONOMY.STARTING_GP - ECONOMY.REAL_ENTRY_FEE;
-    expect(state.gp).toBe(expected);
+    expect(farm.gp).toBe(expected);
     expect(result.gpDelta).toBe(expected - ECONOMY.STARTING_GP);
+    // The subsidy is land, not GP: showing up earned exactly one token.
+    expect(farm.landTokens).toBe(1);
+    expect(result.landTokens).toBe(1);
   });
 
-  test("practice has small stakes and builds the AMATEUR record, not the career", () => {
+  test("practice has small pooled stakes and builds the AMATEUR record, not the career", () => {
     const { db, battle, flock } = freshGame();
     const kidlat = byName(flock, "Kidlat");
     const result = battle.fight(kidlat.id, "practice", "shortKnife", 5);
-    // Small but real stakes: win nets prize - entry, loss costs the entry.
+    // Pooled: a win takes the house's entry, a loss forfeits yours.
     expect(result.gpDelta).toBe(
-      result.result === "win"
-        ? ECONOMY.PRACTICE_PRIZE - ECONOMY.PRACTICE_ENTRY_FEE
-        : -ECONOMY.PRACTICE_ENTRY_FEE
+      result.result === "win" ? ECONOMY.PRACTICE_ENTRY_FEE : -ECONOMY.PRACTICE_ENTRY_FEE
     );
     // Career record untouched; amateur record moves.
     expect(result.bird.wins).toBe(0);
@@ -83,8 +84,8 @@ describe("the fight", () => {
   });
 
   test("insufficient GP blocks entry", () => {
-    const { db, battle, flock } = freshGame();
-    db.update(gameState).set({ gp: 10 }).where(eq(gameState.id, 1)).run();
+    const { db, battle, flock, farmId } = freshGame();
+    db.update(farms).set({ gp: 10 }).where(eq(farms.id, farmId)).run();
     expect(() => battle.fight(byName(flock, "Alab").id, "real")).toThrow(/entry costs/);
   });
 });
@@ -111,11 +112,11 @@ describe("hardcore — the key rule", () => {
     expect(lossSeed).toBeGreaterThan(0);
   });
 
-  test("a hardcore WIN pays big and the career continues", () => {
+  test("a hardcore WIN takes the big pot and the career continues", () => {
     const { battle, flock } = freshGame();
     const sinag = byName(flock, "Sinag");
     const r = battle.fight(sinag.id, "hardcore", "shortKnife", winSeed);
-    expect(r.gpDelta).toBe(ECONOMY.HARDCORE_PRIZE - ECONOMY.HARDCORE_ENTRY_FEE);
+    expect(r.gpDelta).toBe(ECONOMY.HARDCORE_ENTRY_FEE);
     expect(r.forcedRetirement).toBe(false);
     expect(r.bird.status).toBe("active");
   });

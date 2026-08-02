@@ -168,41 +168,45 @@ export const FIGURE = {
   MAX: 120, //         clamp range [0, MAX]
 } as const;
 
-// ── Economy (GP — pegged at $1 = 8,000 GP, Zane's ruling 2026-08-02) ────────
-// The 8,000 peg (over $1 = 80) buys integer math everywhere and deep
-// divisibility for later rakes/splits. No real money moves yet — the peg
-// just keeps every price meaning something in dollars.
+// ── Economy (GP — pegged at $1 = 80 GP, re-ruled 2026-08-03) ────────────────
+// Zane walked the peg back from 8,000: $1 = 80 is divisible enough and the
+// numbers stay humane ($2 breed = 160, not 16,000). No real money moves yet.
+//
+// THE FIGHT ECONOMY PRINCIPLE (ruled 2026-08-03): standard fights PRINT no
+// GP — the pot is pooled between the participants and the winner takes it
+// (win +entry, lose −entry; the house bird posts the same entry you do).
+// The subsidy is Land Tokens, not GP. If GP ever gets printed, it happens
+// at tournaments/championships only. Rakes/drains are deferred on purpose —
+// a scalar that adds nothing to the beta.
 export const ECONOMY = {
-  GP_PER_DOLLAR: 8000,
-  STARTING_GP: 80_000, // a $10 stake to open the stable
-  // The MINIMUM breed price ($2). There is deliberately NO maximum — when
-  // the marketplace/stud-cover market arrives, owners set their own fees
+  GP_PER_DOLLAR: 80,
+  STARTING_GP: 8_000, // every new farm opens with $100 — plenty to play with
+  // The daily drip ($10/day, claimed via check-in) — accounts can't be
+  // funded yet, so the faucet keeps testers liquid.
+  DAILY_DRIP: 800,
+  // The MINIMUM breed price ($2). Deliberately NO maximum — when the
+  // marketplace/stud-cover market arrives, owners price their own retirees
   // above this floor. For now the floor is the only price.
-  BREED_FEE: 16_000,
-  // Real fights (age 2+): pay the entry ($0.50), win the prize ($1.20).
-  // A win nets +5,600; a loss costs the 4,000 entry. CAREER record.
-  REAL_ENTRY_FEE: 4_000,
-  REAL_PRIZE: 9_600,
-  // Hardcore (age 3+): the charged decision. A win nets +28,000 ($3.50) —
-  // but a loss costs the entry AND the career (loser is force-retired).
-  HARDCORE_ENTRY_FEE: 12_000,
-  HARDCORE_PRIZE: 40_000,
-  // Amateur fights (age 1+, the discovery year's arena): real but small
-  // stakes — a win nets +1,200 ($0.15), a loss costs the 800 entry. These
-  // build the separate AMATEUR record and never touch stud value.
-  PRACTICE_ENTRY_FEE: 800,
-  PRACTICE_PRIZE: 2_000,
-  GACHA_ROLL_PRICE: 8_000, // one roll = $1
+  BREED_FEE: 160,
+  // Entries (winner takes the pooled pot = 2× entry):
+  REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
+  HARDCORE_ENTRY_FEE: 120, // $1.50 a side — and the loser's career (the key rule)
+  PRACTICE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
+  GACHA_ROLL_PRICE: 80, //    one roll = $1
+  FREE_PULLS_PER_CHECK_IN: 2, // daily login bonus: two free gacha pulls
 } as const;
 
-// ── Land Tokens (the second currency — scarce, earned by playing) ───────────
-// Flat and unconditional: SHOWING UP earns land. Every fight pays every
+// ── Land Tokens (the second currency — the subsidy, and one-way) ────────────
+// Flat and unconditional: SHOWING UP earns land — every fight pays every
 // participant the same amount win or lose, and every gacha roll pays too.
-// What land DOES (staking tracks, the landlord game) comes later — for now
-// it only accumulates, PFL-Crown-style.
+// Priced (2026-08-03): $0.01 = 1 LT, i.e. 80 GP buys 100 LT. Buyable with
+// GP up to a daily cap; NEVER sellable back — land only accumulates.
+// (Implied fully-diluted headroom: 100B LT = $1B.) Staking comes later.
 export const LAND = {
   PER_FIGHT: 1,
   PER_GACHA_ROLL: 1,
+  GP_PER_100_TOKENS: 80, // $1 buys 100 LT
+  DAILY_BUY_CAP: 1000, //  max LT purchasable per farm per game-day ($10 worth)
 } as const;
 
 // ── Breeding ────────────────────────────────────────────────────────────────
@@ -228,13 +232,59 @@ export const BREEDING = {
 // ── Stud value (what a CAREER record converts to at retirement) ─────────────
 // studValue = BASE + wins×PER_WIN + losses×PER_LOSS, never below MIN.
 // Only real + hardcore fights count — the amateur record doesn't move this.
-// (On the $1 = 8,000 peg: base $1, each win +$0.30, floor $0.50.)
+// (On the $1 = 80 peg: base $1, each win +$0.30, floor $0.50.)
 export const STUD = {
-  BASE: 8_000, //     every retiree is worth at least a foundation price…
-  PER_WIN: 2_400, //  …each career win adds this…
-  PER_LOSS: -800, //  …each career loss shaves this…
-  MIN: 4_000, //      …but no career craters below this floor
+  BASE: 80, //     every retiree is worth at least a foundation price…
+  PER_WIN: 24, //  …each career win adds this…
+  PER_LOSS: -8, // …each career loss shaves this…
+  MIN: 40, //      …but no career craters below this floor
 } as const;
+
+// ── Lobbies (fight selection v0 — maiden / win-caps / claimers) ─────────────
+// The class ladder's first rungs. Entry restrictions self-sort (no
+// matchmaker): maidens take never-winners, win-caps take light records,
+// claimers take anyone but put a price on both birds. House-bird quality
+// scales with the lobby, so picking the soft spot is the player's edge.
+export const LOBBIES = ["open", "maiden", "nw2", "nw3", "claimer"] as const;
+export type Lobby = (typeof LOBBIES)[number];
+
+// House-bird strength per lobby, as a multiplier on the mirror-of-your-bird
+// center (open = 1.0). Maidens are green; win-cap fields sharpen toward open.
+export const LOBBY_HOUSE_QUALITY: Record<Exclude<Lobby, "claimer">, number> = {
+  open: 1.0,
+  maiden: 0.85,
+  nw2: 0.92,
+  nw3: 0.96,
+};
+
+// Claimers: pick a claim price when entering. LOSE and the house claims your
+// bird at that price (you get the GP, the bird moves to the house barn).
+// WIN and you may claim the HOUSE bird at that price (same game-day).
+// House-bird quality keys to the PRICE, not to your bird — that's the
+// self-balancing: soft field, cheap tag; strong field, dear tag.
+export const CLAIMER = {
+  PRICES: [80, 200, 400], // $1 · $2.50 · $5 claiming tags
+  // House stats center on QUALITY_FLAT + claimPrice (e.g. $1 tag → ~380
+  // average — starter-grade; $5 tag → ~620 — a real bird).
+  QUALITY_FLAT: 220,
+} as const;
+
+// ── Fight cadence ───────────────────────────────────────────────────────────
+// One fight per bird per GAME-DAY — a hard count, deliberately NOT a 24-hour
+// cooldown (fight at 11 PM, fight again at 12:01 AM; fine). Real-time
+// complexity stays out until the scheduler arrives.
+export const CADENCE = {
+  FIGHTS_PER_BIRD_PER_DAY: 1,
+} as const;
+
+// ── Farms (stables — every player + agent runs one) ────────────────────────
+// Identity: a name, a country flag (encouraged), and two colors from this
+// fixed palette (no hexes yet — iterate later).
+export const FARM_COLORS = [
+  "red", "orange", "yellow", "green", "teal", "blue",
+  "purple", "pink", "brown", "black", "white", "gold",
+] as const;
+export type FarmColor = (typeof FARM_COLORS)[number];
 
 // ── Training (age-1 discovery year) ─────────────────────────────────────────
 export const TRAINING = {

@@ -4,14 +4,14 @@ import { gameState } from "@/db/schema";
 import { Battle } from "./battle";
 import { Breeding } from "./breeding";
 import { BARN } from "./config";
+import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
 import { Gacha } from "./gacha";
 
 export interface GameStateView {
-  clock: ClockState;
-  gp: number;
-  landTokens: number;
+  clock: ClockState; // the WORLD clock — shared by every farm
+  farm: FarmView; // identity, GP, land, free pulls, check-in status
   barn: { count: number; capacity: number };
 }
 
@@ -22,8 +22,9 @@ export interface TickView {
 }
 
 /**
- * The facade routes and MCP talk to. Composes the five ruled modules and
- * wires the Hatch Friday hook (clock tick → flock processing) in one place.
+ * The facade routes and MCP talk to — scoped to ONE FARM. Composes the
+ * ruled modules and wires the Hatch Friday hook (clock tick → flock
+ * processing) in one place. The clock is the world's; the rest is yours.
  */
 export class Game {
   readonly clock: GameClock;
@@ -31,13 +32,18 @@ export class Game {
   readonly breeding: Breeding;
   readonly battle: Battle;
   readonly gacha: Gacha;
+  readonly farms: Farms;
 
-  constructor(private database: DB) {
+  constructor(
+    private database: DB,
+    readonly farmId: string
+  ) {
     this.clock = new GameClock(database);
-    this.flock = new Flock(database);
-    this.breeding = new Breeding(database);
-    this.battle = new Battle(database);
-    this.gacha = new Gacha(database);
+    this.flock = new Flock(database, farmId);
+    this.breeding = new Breeding(database, farmId);
+    this.battle = new Battle(database, farmId);
+    this.gacha = new Gacha(database, farmId);
+    this.farms = new Farms(database);
   }
 
   state(): GameStateView {
@@ -45,8 +51,7 @@ export class Game {
     if (!row) throw new Error("game_state not seeded — run db:seed");
     return {
       clock: GameClock.stateOf(row.dayIndex),
-      gp: row.gp,
-      landTokens: row.landTokens,
+      farm: this.farms.view(this.farms.rowById(this.farmId)),
       barn: { count: this.flock.barnCount(), capacity: BARN.CAPACITY },
     };
   }

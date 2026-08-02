@@ -1,18 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "./client";
-import { birds, gameState } from "./schema";
+import { birds, farms, gameState } from "./schema";
 import { seedGame } from "./seed-data";
 import { ECONOMY, STATS } from "@/engine/config";
 
 describe("seeded database", () => {
   const db = createDb(":memory:");
-  seedGame(db);
+  const { farmId } = seedGame(db);
 
-  test("game_state has starting GP and day 0", () => {
+  test("world clock at day 0; the dev farm has the starting stake", () => {
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
-    expect(state?.gp).toBe(ECONOMY.STARTING_GP);
     expect(state?.dayIndex).toBe(0);
+    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get();
+    expect(farm?.gp).toBe(ECONOMY.STARTING_GP);
+    expect(farm?.name).toBe("Bukidnon Farms");
   });
 
   test("starter flock includes retired birds of both sexes (breeding works turn one)", () => {
@@ -52,6 +54,7 @@ describe("seeded database", () => {
         .insert(birds)
         .values({
           id: "bad-1",
+          farmId: "farm-1",
           name: "Bad Bird",
           sex: "male",
           status: "active",

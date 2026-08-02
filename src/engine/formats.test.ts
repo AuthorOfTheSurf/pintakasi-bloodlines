@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { battleLog } from "@/db/schema";
+import { battleLog, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Battle } from "./battle";
 import { FIGURE, FORMATS, type FightFormat } from "./config";
@@ -9,8 +9,8 @@ import { Flock } from "./flock";
 
 function freshGame() {
   const db = createDb(":memory:");
-  seedGame(db);
-  return { db, battle: new Battle(db), flock: new Flock(db) };
+  const { farmId } = seedGame(db);
+  return { db, farmId, battle: new Battle(db, farmId), flock: new Flock(db, farmId) };
 }
 
 const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
@@ -53,6 +53,8 @@ describe("the Pit Figure (discovery signal)", () => {
     const { db, battle, flock } = freshGame();
     const alab = byName(flock, "Alab");
     for (let seed = 1; seed <= 10; seed++) {
+      // One fight per bird per game-day — advance the day between fights.
+      db.update(gameState).set({ dayIndex: seed - 1 }).where(eq(gameState.id, 1)).run();
       const r = battle.fight(alab.id, "real", "shortKnife", seed);
       expect(r.pitFigure % FIGURE.BAND).toBe(0);
       expect(r.pitFigure).toBeGreaterThanOrEqual(0);
@@ -82,10 +84,12 @@ describe("the Pit Figure (discovery signal)", () => {
 
 describe("format records (the past-performance lines)", () => {
   test("aggregates record + figures per format", () => {
-    const { battle, flock } = freshGame();
+    const { db, battle, flock } = freshGame();
     const alab = byName(flock, "Alab");
     battle.fight(alab.id, "real", "longKnife", 11);
+    db.update(gameState).set({ dayIndex: 1 }).where(eq(gameState.id, 1)).run();
     battle.fight(alab.id, "real", "longKnife", 12);
+    db.update(gameState).set({ dayIndex: 2 }).where(eq(gameState.id, 1)).run();
     battle.fight(alab.id, "real", "shortGaff", 13);
     const records = battle.formatRecords(alab.id);
     expect(records.longKnife?.fights).toBe(2);

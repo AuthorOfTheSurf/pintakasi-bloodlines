@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { gameState } from "@/db/schema";
+import { farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { ECONOMY, GACHA_BIRDS, GACHA_TOKENS, LAND } from "./config";
 import { Flock } from "./flock";
@@ -9,42 +9,62 @@ import { Gacha } from "./gacha";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
 
+function fresh(opts: { startingGp?: number } = {}) {
+  const db = createDb(":memory:");
+  const { farmId } = seedGame(db, opts);
+  return { db, farmId };
+}
+
 describe("gacha", () => {
   test("a roll costs GP and yields a rarity token plus a Land Token", () => {
-    const db = createDb(":memory:");
-    seedGame(db);
-    const gacha = new Gacha(db, mulberry32(1));
-    const { token, pricePaid, landTokens, collection } = gacha.roll();
+    const { db, farmId } = fresh();
+    const gacha = new Gacha(db, farmId, mulberry32(1));
+    const { token, pricePaid, landTokens, freePullUsed, collection } = gacha.roll();
     expect(GACHA_TOKENS).toContain(token);
     expect(pricePaid).toBe(ECONOMY.GACHA_ROLL_PRICE);
+    expect(freePullUsed).toBe(false); // no check-in yet, no free pulls
     expect(landTokens).toBe(LAND.PER_GACHA_ROLL);
     expect(collection[token]).toBe(1);
-    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.GACHA_ROLL_PRICE);
-    expect(state.landTokens).toBe(LAND.PER_GACHA_ROLL);
+    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+    expect(farm.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.GACHA_ROLL_PRICE);
+    expect(farm.landTokens).toBe(LAND.PER_GACHA_ROLL);
+  });
+
+  test("free pulls spend before GP", () => {
+    const { db, farmId } = fresh();
+    db.update(farms).set({ freePulls: 2 }).where(eq(farms.id, farmId)).run();
+    const gacha = new Gacha(db, farmId, mulberry32(9));
+    const first = gacha.roll();
+    expect(first.freePullUsed).toBe(true);
+    expect(first.pricePaid).toBe(0);
+    expect(first.freePullsLeft).toBe(1);
+    gacha.roll(); // second free pull
+    const paid = gacha.roll(); // now GP
+    expect(paid.freePullUsed).toBe(false);
+    expect(paid.pricePaid).toBe(ECONOMY.GACHA_ROLL_PRICE);
+    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+    expect(farm.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.GACHA_ROLL_PRICE); // only one cost GP
   });
 
   test("rarity distribution roughly follows the weights (Gold is rare)", () => {
-    const db = createDb(":memory:");
-    seedGame(db);
-    db.update(gameState).set({ gp: 10_000_000 }).where(eq(gameState.id, 1)).run();
-    const gacha = new Gacha(db, mulberry32(2));
+    const { db, farmId } = fresh();
+    db.update(farms).set({ gp: 10_000_000 }).where(eq(farms.id, farmId)).run();
+    const gacha = new Gacha(db, farmId, mulberry32(2));
     for (let i = 0; i < 500; i++) gacha.roll();
     const c = gacha.collection();
     expect(c.White).toBeGreaterThan(c.Gold);
     expect(c.Green).toBeGreaterThan(c.Purple);
     expect(c.White + c.Green + c.Blue + c.Purple + c.Gold).toBe(500);
     // 500 rolls = 500 land tokens, flat and unconditional.
-    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.landTokens).toBe(500);
+    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+    expect(farm.landTokens).toBe(500);
   });
 
   test("Blue+ rolls drop a mystery egg — random element, hidden sex, hatches next Friday", () => {
-    const db = createDb(":memory:");
-    seedGame(db);
-    db.update(gameState).set({ gp: 10_000_000 }).where(eq(gameState.id, 1)).run();
-    const gacha = new Gacha(db, mulberry32(7));
-    const flock = new Flock(db);
+    const { db, farmId } = fresh();
+    db.update(farms).set({ gp: 10_000_000 }).where(eq(farms.id, farmId)).run();
+    const gacha = new Gacha(db, farmId, mulberry32(7));
+    const flock = new Flock(db, farmId);
     const barnBefore = flock.barnCount();
 
     let dropped = null;
@@ -69,15 +89,14 @@ describe("gacha", () => {
     expect(flock.barnCount()).toBeGreaterThan(barnBefore);
 
     // It hatches like any egg — next Hatch Friday, sex revealed.
-    const game = new Game(db);
+    const game = new Game(db, farmId);
     const tick = game.tickWeek();
     expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(egg.id);
     expect(["male", "female"]).toContain(flock.byId(egg.id).sex);
   });
 
   test("an empty wallet cannot roll", () => {
-    const db = createDb(":memory:");
-    seedGame(db, { startingGp: 500 });
-    expect(() => new Gacha(db, mulberry32(3)).roll()).toThrow(/A roll costs/);
+    const { db, farmId } = fresh({ startingGp: 50 });
+    expect(() => new Gacha(db, farmId, mulberry32(3)).roll()).toThrow(/A roll costs/);
   });
 });

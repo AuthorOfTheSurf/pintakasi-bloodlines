@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { gameState } from "@/db/schema";
+import { farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Battle } from "./battle";
 import { Breeding } from "./breeding";
@@ -18,11 +18,11 @@ import { mulberry32 } from "./rng";
  */
 test("the full breeding-lifecycle loop closes", () => {
   const db = createDb(":memory:");
-  seedGame(db);
-  const game = new Game(db);
-  const breeding = new Breeding(db, mulberry32(11));
-  const battle = new Battle(db);
-  const flock = new Flock(db);
+  const { farmId } = seedGame(db);
+  const game = new Game(db, farmId);
+  const breeding = new Breeding(db, farmId, mulberry32(11));
+  const battle = new Battle(db, farmId);
+  const flock = new Flock(db, farmId);
 
   // 1. Breed two retired starters — an egg, auto-named, age 0, sex hidden.
   const { egg } = breeding.breed("starter-2", "starter-1");
@@ -42,9 +42,7 @@ test("the full breeding-lifecycle loop closes", () => {
   // 3. The discovery year: amateur fights (small stakes, own record) and training.
   const practice = battle.fight(chick.id, "practice", "shortKnife", 21);
   expect(practice.gpDelta).toBe(
-    practice.result === "win"
-      ? ECONOMY.PRACTICE_PRIZE - ECONOMY.PRACTICE_ENTRY_FEE
-      : -ECONOMY.PRACTICE_ENTRY_FEE
+    practice.result === "win" ? ECONOMY.PRACTICE_ENTRY_FEE : -ECONOMY.PRACTICE_ENTRY_FEE
   );
   expect(practice.bird.wins + practice.bird.losses).toBe(0); // career untouched
   expect(practice.bird.practiceWins + practice.bird.practiceLosses).toBe(1);
@@ -104,26 +102,26 @@ test("the full breeding-lifecycle loop closes", () => {
   expect(grandparents).toContain("Dalisay"); // Alon's mother, gen2's grandmother
 
   // The wallet stayed a single closed number all game.
-  const gp = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.gp;
+  const gp = db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp;
   expect(Number.isInteger(gp)).toBe(true);
 });
 
 describe("hardcore arm of the loop", () => {
   test("a hardcore loss ends the career straight into the barn — still breedable", () => {
     const db = createDb(":memory:");
-    seedGame(db);
-    const battle = new Battle(db);
-    const flock = new Flock(db);
-    const breeding = new Breeding(db, mulberry32(5));
+    const { farmId } = seedGame(db);
+    const battle = new Battle(db, farmId);
+    const flock = new Flock(db, farmId);
+    const breeding = new Breeding(db, farmId, mulberry32(5));
 
     const sinag = flock.all().find((b) => b.name === "Sinag")!; // age 3, at the fork
     // Find a losing seed deterministically.
     let lossSeed = -1;
     for (let seed = 1; seed < 200; seed++) {
       const probe = createDb(":memory:");
-      seedGame(probe);
-      const pSinag = new Flock(probe).all().find((b) => b.name === "Sinag")!;
-      if (new Battle(probe).fight(pSinag.id, "hardcore", "shortKnife", seed).result === "loss") {
+      const probeFarm = seedGame(probe).farmId;
+      const pSinag = new Flock(probe, probeFarm).all().find((b) => b.name === "Sinag")!;
+      if (new Battle(probe, probeFarm).fight(pSinag.id, "hardcore", "shortKnife", seed).result === "loss") {
         lossSeed = seed;
         break;
       }

@@ -1,5 +1,5 @@
 import { game, handle } from "../shared";
 
-export async function GET() {
-  return handle(() => game().flock.all());
+export async function GET(req: Request) {
+  return handle(() => game(req).flock.all());
 }

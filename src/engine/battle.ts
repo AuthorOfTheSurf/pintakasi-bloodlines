@@ -1,20 +1,28 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
-import { battleLog, birds, gameState } from "@/db/schema";
+import { battleLog, birds, farms, gameState } from "@/db/schema";
 import {
+  BARN,
   BATTLE,
+  BREEDING,
+  CADENCE,
+  CLAIMER,
   ECONOMY,
   ELEMENT_BEATS,
   FIGURE,
   FORMATS,
   LAND,
+  LOBBY_HOUSE_QUALITY,
   PHASES,
   STARS,
   STATS,
   type Element,
   type FightFormat,
+  type Lobby,
 } from "./config";
 import { Flock, type BirdView } from "./flock";
+import { GameClock } from "./game-clock";
 import { canHardcore, canPractice, canRealFight } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, roll2d6, type Rng } from "./rng";
 
@@ -24,18 +32,26 @@ export interface FightResult {
   result: "win" | "loss";
   mode: FightMode;
   format: FightFormat; // the "distance" this fight was run at
-  bird: BirdView; // post-fight (record updated; hardcore loss = retired)
+  lobby: Lobby;
+  bird: BirdView; // post-fight (record updated; hardcore loss = retired; claimer loss = gone)
   opponent: HouseBird;
   gpDelta: number;
   landTokens: number; // flat land award — every fight pays it, win or lose
   pitFigure: number; // banded, format-normalized — the discovery signal
   forcedRetirement: boolean;
+  // Claimers: lose and the house claims YOUR bird at the tag (claimedAway;
+  // gpDelta includes the claim price). Win and the HOUSE bird is claimable
+  // until the end of the game-day (claimOffer → claimHouseBird).
+  claimedAway: boolean;
+  claimOffer: { battleLogId: number; price: number } | null;
   playByPlay: string;
   seed: number; // replay the fight from this
 }
 
 export interface HouseBird {
   name: string;
+  sex: "male" | "female";
+  age: number;
   stats: BirdStats;
   element: Element;
   halfStars: number;
@@ -64,10 +80,10 @@ const HOUSE_NAMES = [
   "Bantay Dagat", "Puting Bagyo", "Sagupaan", "Lintik", "Maharlika",
 ];
 
-const MODE_ECON: Record<FightMode, { fee: number; prize: number }> = {
-  practice: { fee: ECONOMY.PRACTICE_ENTRY_FEE, prize: ECONOMY.PRACTICE_PRIZE },
-  real: { fee: ECONOMY.REAL_ENTRY_FEE, prize: ECONOMY.REAL_PRIZE },
-  hardcore: { fee: ECONOMY.HARDCORE_ENTRY_FEE, prize: ECONOMY.HARDCORE_PRIZE },
+const MODE_FEES: Record<FightMode, number> = {
+  practice: ECONOMY.PRACTICE_ENTRY_FEE,
+  real: ECONOMY.REAL_ENTRY_FEE,
+  hardcore: ECONOMY.HARDCORE_ENTRY_FEE,
 };
 
 interface Fighter {
@@ -86,40 +102,59 @@ interface Fighter {
 export class Battle {
   private flock: Flock;
 
-  constructor(private database: DB) {
-    this.flock = new Flock(database);
+  constructor(
+    private database: DB,
+    private farmId: string
+  ) {
+    this.flock = new Flock(database, farmId);
   }
 
   /**
-   * One fight vs a server-generated house bird, at a chosen weapon format —
-   * the "distance" dial. Auto-resolved turn by turn on 2d6; returns a text
-   * play-by-play and a Pit Figure. Hardcore = the key rule: bigger prize,
-   * loser force-retired.
+   * One fight vs a house bird, at a chosen weapon format (the "distance"
+   * dial) and lobby (the class dial). POOLED ECONOMY: both sides post the
+   * entry, winner takes the pot — win +entry, lose −entry; no GP printed.
+   * The subsidy is the flat Land Token. Hardcore = the key rule.
    */
   fight(
     birdId: string,
     mode: FightMode,
     format: FightFormat = "shortKnife",
-    seed: number = freshSeed()
+    seed: number = freshSeed(),
+    lobby: Lobby = "open",
+    claimPrice?: number
   ): FightResult {
     const bird = this.flock.byId(birdId);
     if (bird.status !== "active") throw new Error(`${bird.name} is not an active fighter`);
     this.checkGate(bird, mode);
+    this.checkLobby(bird, mode, lobby, claimPrice);
 
-    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    const { fee, prize } = MODE_ECON[mode];
-    if (state.gp < fee) throw new Error(`${mode} entry costs ${fee} GP — you have ${state.gp}`);
+    const today = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+
+    // One fight per bird per game-day — a hard count, not a cooldown.
+    const foughtToday = this.database
+      .select()
+      .from(battleLog)
+      .where(and(eq(battleLog.birdId, bird.id), eq(battleLog.dayIndex, today)))
+      .all().length;
+    if (foughtToday >= CADENCE.FIGHTS_PER_BIRD_PER_DAY)
+      throw new Error(`${bird.name} already fought today — one fight per bird per game-day (tick a day)`);
+
+    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const fee = MODE_FEES[mode];
+    if (farm.gp < fee) throw new Error(`${mode} entry costs ${fee} GP — you have ${farm.gp}`);
 
     const rng = mulberry32(seed);
-    const opponent = this.generateHouseBird(bird, rng);
-    const { won, playByPlay, pitFigure } = this.simulate(bird, opponent, mode, format, rng);
+    const opponent = this.generateHouseBird(bird, rng, lobby, claimPrice);
+    const { won, playByPlay, pitFigure } = this.simulate(bird, opponent, mode, format, lobby, rng);
 
-    // Settle GP — and the flat land award: showing up earns land.
-    const gpDelta = won ? prize - fee : -fee;
+    // Settle: pooled pot (win +fee, lose −fee) + the flat land award.
+    // A lost claimer adds the claim price — the house buys your bird.
+    const claimedAway = lobby === "claimer" && !won;
+    const gpDelta = (won ? fee : -fee) + (claimedAway ? claimPrice! : 0);
     this.database
-      .update(gameState)
-      .set({ gp: state.gp + gpDelta, landTokens: state.landTokens + LAND.PER_FIGHT })
-      .where(eq(gameState.id, 1))
+      .update(farms)
+      .set({ gp: farm.gp + gpDelta, landTokens: farm.landTokens + LAND.PER_FIGHT })
+      .where(eq(farms.id, this.farmId))
       .run();
 
     // Two ledgers: real + hardcore build the CAREER record (drives stud
@@ -145,35 +180,95 @@ export class Battle {
       forcedRetirement = true;
     }
 
-    this.database
+    // A lost claimer: the bird moves to the house barn. The GP already landed.
+    if (claimedAway) {
+      this.database.update(birds).set({ farmId: "house" }).where(eq(birds.id, bird.id)).run();
+    }
+
+    const inserted = this.database
       .insert(battleLog)
       .values({
-        dayIndex: state.dayIndex,
+        dayIndex: today,
+        farmId: this.farmId,
         birdId: bird.id,
         mode,
         format,
+        lobby,
+        claimPrice: claimPrice ?? null,
         opponentName: opponent.name,
+        opponentJson: JSON.stringify(opponent),
         result: won ? "win" : "loss",
         pitFigure,
         gpDelta,
         seed,
         playByPlay,
       })
-      .run();
+      .returning({ id: battleLog.id })
+      .get();
+
+    const claimOffer =
+      lobby === "claimer" && won ? { battleLogId: inserted.id, price: claimPrice! } : null;
+
+    // A claimed-away bird is no longer ours — return the last view we have.
+    const postBird = claimedAway
+      ? { ...bird, wins: bird.wins + (won ? 1 : 0), losses: bird.losses + (won ? 0 : 1) }
+      : this.flock.byId(bird.id);
 
     return {
       result: won ? "win" : "loss",
       mode,
       format,
-      bird: this.flock.byId(bird.id),
+      lobby,
+      bird: postBird,
       opponent,
       gpDelta,
       landTokens: LAND.PER_FIGHT,
       pitFigure,
       forcedRetirement,
+      claimedAway,
+      claimOffer,
       playByPlay,
       seed,
     };
+  }
+
+  /**
+   * Claim the house bird from a WON claimer — same game-day only, one claim
+   * per fight. The tag price buys the full bird into your barn.
+   */
+  claimHouseBird(battleLogId: number): { bird: BirdView; pricePaid: number } {
+    const row = this.database.select().from(battleLog).where(eq(battleLog.id, battleLogId)).get();
+    if (!row || row.farmId !== this.farmId) throw new Error(`No fight #${battleLogId} on your books`);
+    if (row.lobby !== "claimer") throw new Error("That fight was not a claimer");
+    if (row.result !== "win") throw new Error("You claim off a WIN — the house kept its bird");
+    if (row.claimedBirdId) throw new Error("That bird was already claimed");
+    const today = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    if (row.dayIndex !== today) throw new Error("Claim window closed — same game-day only");
+
+    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const price = row.claimPrice!;
+    if (farm.gp < price) throw new Error(`The claim tag is ${price} GP — you have ${farm.gp}`);
+    if (this.flock.barnCount() >= BARN.CAPACITY) throw new Error(`The barn is full (${BARN.CAPACITY})`);
+
+    const opponent = JSON.parse(row.opponentJson) as HouseBird;
+    const newBird = {
+      id: randomUUID(),
+      farmId: this.farmId,
+      name: opponent.name,
+      sex: opponent.sex,
+      status: "active" as const,
+      ...opponent.stats,
+      element: opponent.element,
+      halfStars: opponent.halfStars,
+      birthWeek: GameClock.weekOf(today) - opponent.age,
+      birthDay: today - opponent.age * 7,
+      motherId: null,
+      fatherId: null,
+    };
+    this.database.insert(birds).values(newBird).run();
+    this.database.update(farms).set({ gp: farm.gp - price }).where(eq(farms.id, this.farmId)).run();
+    this.database.update(battleLog).set({ claimedBirdId: newBird.id }).where(eq(battleLog.id, battleLogId)).run();
+    return { bird: this.flock.byId(newBird.id), pricePaid: price };
   }
 
   /**
@@ -205,16 +300,51 @@ export class Battle {
     if (!ok) throw new Error(`${bird.name} is ${bird.age} — ${rule}`);
   }
 
-  /** Opponent scaled to the bird: each stat near the bird's average. */
-  private generateHouseBird(bird: BirdView, rng: Rng): HouseBird {
-    const avg = Math.round(
+  /** Lobby (class) eligibility — entry restrictions self-sort the fields. */
+  private checkLobby(bird: BirdView, mode: FightMode, lobby: Lobby, claimPrice?: number): void {
+    if (mode === "hardcore" && lobby !== "open")
+      throw new Error("Hardcore runs in the open only — the key rule needs no ladder");
+    if (mode === "practice" && lobby !== "open" && lobby !== "maiden")
+      throw new Error("Amateur lobbies are open or maiden only");
+
+    if (lobby === "maiden") {
+      const winsInClass = mode === "practice" ? bird.practiceWins : bird.wins;
+      if (winsInClass > 0)
+        throw new Error(`${bird.name} has won before — maidens take never-winners only`);
+    }
+    if (lobby === "nw2" && bird.wins >= 2)
+      throw new Error(`${bird.name} has ${bird.wins} career wins — nw2 takes fewer than 2`);
+    if (lobby === "nw3" && bird.wins >= 3)
+      throw new Error(`${bird.name} has ${bird.wins} career wins — nw3 takes fewer than 3`);
+    if (lobby === "claimer") {
+      if (mode !== "real") throw new Error("Claimers are real fights");
+      if (!claimPrice || !(CLAIMER.PRICES as readonly number[]).includes(claimPrice))
+        throw new Error(`Pick a claiming tag: ${CLAIMER.PRICES.join(" / ")} GP`);
+    } else if (claimPrice) {
+      throw new Error("A claim price only means something in a claimer");
+    }
+  }
+
+  /**
+   * Opponent generation — the lobby sets the field's quality. Open and the
+   * ladder lobbies mirror YOUR bird (scaled soft for maidens); claimers key
+   * to the TAG PRICE instead — that's the economic self-balancing.
+   */
+  private generateHouseBird(bird: BirdView, rng: Rng, lobby: Lobby, claimPrice?: number): HouseBird {
+    const mirror = Math.round(
       (bird.agility + bird.sight + bird.stamina + bird.gameness + bird.station + bird.condition) / 6
     );
+    const center =
+      lobby === "claimer"
+        ? CLAIMER.QUALITY_FLAT + claimPrice!
+        : Math.round(mirror * LOBBY_HOUSE_QUALITY[lobby]);
     const stat = () =>
-      Math.min(STATS.MAX, Math.max(STATS.MIN, avg + randInt(rng, -BATTLE.HOUSE_SPREAD, BATTLE.HOUSE_SPREAD)));
+      Math.min(STATS.MAX, Math.max(STATS.MIN, center + randInt(rng, -BATTLE.HOUSE_SPREAD, BATTLE.HOUSE_SPREAD)));
     const elements: Element[] = ["Fire", "Metal", "Wood", "Earth", "Water"];
     return {
       name: HOUSE_NAMES[randInt(rng, 0, HOUSE_NAMES.length - 1)],
+      sex: rng() < BREEDING.FEMALE_CHANCE ? "female" : "male",
+      age: randInt(rng, 2, 6),
       stats: { agility: stat(), sight: stat(), stamina: stat(), gameness: stat(), station: stat(), condition: stat() },
       element: elements[randInt(rng, 0, elements.length - 1)],
       halfStars: Math.min(STARS.MAX_HALF_STARS, Math.max(0, bird.halfStars + randInt(rng, -2, 2))),
@@ -248,6 +378,7 @@ export class Battle {
     opponent: HouseBird,
     mode: FightMode,
     format: FightFormat,
+    lobby: Lobby,
     rng: Rng
   ): { won: boolean; playByPlay: string; pitFigure: number } {
     const fmt = FORMATS[format];
@@ -259,8 +390,9 @@ export class Battle {
     you.underdog = total(foe) >= total(you) * BATTLE.UNDERDOG_RATIO;
     foe.underdog = total(you) >= total(foe) * BATTLE.UNDERDOG_RATIO;
 
+    const lobbyTag = lobby === "open" ? "" : ` [${lobby.toUpperCase()}]`;
     const lines: string[] = [
-      `⚔ ${mode.toUpperCase()} · ${fmt.label} — ${you.name} (${bird.stars}) vs ${foe.name} (${foe.halfStars / 2}★ ${foe.element})`,
+      `⚔ ${mode.toUpperCase()}${lobbyTag} · ${fmt.label} — ${you.name} (${bird.stars}) vs ${foe.name} (${foe.halfStars / 2}★ ${foe.element})`,
       `Wind: ${you.name} ${you.wind} · ${foe.name} ${foe.wind}`,
     ];
     if (ELEMENT_BEATS[you.element] === foe.element)

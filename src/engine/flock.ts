@@ -21,7 +21,10 @@ export interface HatchFridayEvents {
 }
 
 export class Flock {
-  constructor(private database: DB) {}
+  constructor(
+    private database: DB,
+    private farmId: string
+  ) {}
 
   private currentWeek(): number {
     return GameClock.weekOf(new GameClock(this.database).currentDay());
@@ -45,13 +48,14 @@ export class Flock {
     return this.database
       .select()
       .from(birds)
+      .where(eq(birds.farmId, this.farmId))
       .all()
       .map((row) => this.view(row, week));
   }
 
   byId(id: string): BirdView {
     const row = this.database.select().from(birds).where(eq(birds.id, id)).get();
-    if (!row) throw new Error(`No bird with id ${id}`);
+    if (!row || row.farmId !== this.farmId) throw new Error(`No bird with id ${id} in your barn`);
     return this.view(row);
   }
 
@@ -65,30 +69,33 @@ export class Flock {
 
   /** Eggs count toward the barn — capacity is checked at breeding time. */
   barnCount(): number {
-    return this.database.select().from(birds).all().length;
+    return this.database.select().from(birds).where(eq(birds.farmId, this.farmId)).all().length;
   }
 
   /**
    * Hatch Friday. Ages advance implicitly (derived from birthWeek), so this
    * only processes the state changes: eggs reaching age 1 hatch into chicks,
-   * active birds reaching the cap force-retire.
+   * active birds reaching the cap force-retire. The WORLD hatches together —
+   * every farm's birds are processed; the returned events are OWN-farm only.
    */
   processHatchFriday(weekIndex: number): HatchFridayEvents {
     const events: HatchFridayEvents = { weekIndex, hatched: [], forceRetired: [] };
     for (const row of this.database.select().from(birds).all()) {
+      const mine = row.farmId === this.farmId;
       const age = ageOf(row, weekIndex);
       if (row.status === "egg" && !isEggAge(age)) {
         this.database.update(birds).set({ status: "active" }).where(eq(birds.id, row.id)).run();
-        events.hatched.push(this.view({ ...row, status: "active" }, weekIndex));
+        if (mine) events.hatched.push(this.view({ ...row, status: "active" }, weekIndex));
       } else if (row.status === "active" && mustRetire(age)) {
         this.database
           .update(birds)
           .set({ status: "retired", retiredBy: "age", retiredWeek: weekIndex })
           .where(eq(birds.id, row.id))
           .run();
-        events.forceRetired.push(
-          this.view({ ...row, status: "retired", retiredBy: "age", retiredWeek: weekIndex }, weekIndex)
-        );
+        if (mine)
+          events.forceRetired.push(
+            this.view({ ...row, status: "retired", retiredBy: "age", retiredWeek: weekIndex }, weekIndex)
+          );
       }
     }
     return events;

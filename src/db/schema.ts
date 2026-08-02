@@ -1,7 +1,30 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+// A farm = one player's (or agent's) whole operation: identity, wallet,
+// land, and barn. Auth is a bearer key — low security by design for the
+// beta (invite-key, no OAuth ceremony).
+export const farms = sqliteTable("farms", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  country: text("country"), // flag emoji or country name — encouraged, optional
+  primaryColor: text("primary_color").notNull(), // from FARM_COLORS
+  secondaryColor: text("secondary_color").notNull(),
+  apiKey: text("api_key").notNull().unique(),
+  gp: integer("gp").notNull(),
+  landTokens: integer("land_tokens").notNull().default(0),
+  // Daily check-in: grants the GP drip + free gacha pulls, once per game-day.
+  lastCheckInDay: integer("last_check_in_day"),
+  freePulls: integer("free_pulls").notNull().default(0),
+  // Daily land-purchase cap bookkeeping.
+  landBoughtDay: integer("land_bought_day"),
+  landBoughtToday: integer("land_bought_today").notNull().default(0),
+  createdDay: integer("created_day").notNull().default(0),
+});
+
 export const birds = sqliteTable("birds", {
   id: text("id").primaryKey(),
+  // The owning farm — "house" for birds claimed away by the house.
+  farmId: text("farm_id").notNull(),
   name: text("name").notNull(),
   // Stored as male/female; "rooster"/"hen" are display labels layered on top.
   // Decided 50-50 at breeding and HIDDEN while the bird is an egg.
@@ -40,17 +63,15 @@ export const birds = sqliteTable("birds", {
   fatherId: text("father_id"),
 });
 
+// The WORLD clock — one row, shared by every farm. Wallets live on farms.
 export const gameState = sqliteTable("game_state", {
   id: integer("id").primaryKey(), // single row, id = 1
   dayIndex: integer("day_index").notNull().default(0),
-  gp: integer("gp").notNull(),
-  // Land Tokens — the scarce second currency, earned flat by playing
-  // (every fight, every gacha roll). Staking comes later.
-  landTokens: integer("land_tokens").notNull().default(0),
 });
 
 export const gachaTokens = sqliteTable("gacha_tokens", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  farmId: text("farm_id").notNull(),
   token: text("token", { enum: ["White", "Green", "Blue", "Purple", "Gold"] }).notNull(),
   rolledDay: integer("rolled_day").notNull(),
 });
@@ -58,12 +79,22 @@ export const gachaTokens = sqliteTable("gacha_tokens", {
 export const battleLog = sqliteTable("battle_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dayIndex: integer("day_index").notNull(),
+  farmId: text("farm_id").notNull(),
   birdId: text("bird_id").notNull(),
   mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
   // The weapon format — the "distance" this fight was run at.
   format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  // The lobby (class) — open / maiden / nw2 / nw3 / claimer.
+  lobby: text("lobby", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] })
+    .notNull()
+    .default("open"),
+  claimPrice: integer("claim_price"), // claimers only
   opponentName: text("opponent_name").notNull(),
+  // Full opponent snapshot (stats/element/stars/age) — what a claim buys.
+  opponentJson: text("opponent_json").notNull(),
   result: text("result", { enum: ["win", "loss"] }).notNull(),
+  // Set when a won claimer's house bird has been claimed (one claim only).
+  claimedBirdId: text("claimed_bird_id"),
   // The Pit Figure — banded performance rating, format-normalized. The
   // discovery signal: compare figures ACROSS formats to type the bird.
   pitFigure: integer("pit_figure").notNull(),
@@ -84,3 +115,4 @@ export const trainingLog = sqliteTable("training_log", {
 export type BirdRow = typeof birds.$inferSelect;
 export type NewBird = typeof birds.$inferInsert;
 export type GameStateRow = typeof gameState.$inferSelect;
+export type FarmRow = typeof farms.$inferSelect;

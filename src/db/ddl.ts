@@ -4,8 +4,25 @@
  * no drizzle-kit migration machinery for a single-player MVP.
  */
 export const DDL = `
+CREATE TABLE IF NOT EXISTS farms (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  country TEXT,
+  primary_color TEXT NOT NULL,
+  secondary_color TEXT NOT NULL,
+  api_key TEXT NOT NULL UNIQUE,
+  gp INTEGER NOT NULL,
+  land_tokens INTEGER NOT NULL DEFAULT 0,
+  last_check_in_day INTEGER,
+  free_pulls INTEGER NOT NULL DEFAULT 0,
+  land_bought_day INTEGER,
+  land_bought_today INTEGER NOT NULL DEFAULT 0,
+  created_day INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS birds (
   id TEXT PRIMARY KEY,
+  farm_id TEXT NOT NULL,
   name TEXT NOT NULL,
   sex TEXT NOT NULL CHECK (sex IN ('male','female')),
   status TEXT NOT NULL CHECK (status IN ('egg','active','retired')),
@@ -31,13 +48,12 @@ CREATE TABLE IF NOT EXISTS birds (
 
 CREATE TABLE IF NOT EXISTS game_state (
   id INTEGER PRIMARY KEY,
-  day_index INTEGER NOT NULL DEFAULT 0,
-  gp INTEGER NOT NULL,
-  land_tokens INTEGER NOT NULL DEFAULT 0
+  day_index INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS gacha_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  farm_id TEXT NOT NULL,
   token TEXT NOT NULL CHECK (token IN ('White','Green','Blue','Purple','Gold')),
   rolled_day INTEGER NOT NULL
 );
@@ -45,11 +61,16 @@ CREATE TABLE IF NOT EXISTS gacha_tokens (
 CREATE TABLE IF NOT EXISTS battle_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   day_index INTEGER NOT NULL,
+  farm_id TEXT NOT NULL,
   bird_id TEXT NOT NULL,
   mode TEXT NOT NULL CHECK (mode IN ('practice','real','hardcore')),
   format TEXT NOT NULL CHECK (format IN ('longKnife','shortKnife','longGaff','shortGaff')),
+  lobby TEXT NOT NULL DEFAULT 'open' CHECK (lobby IN ('open','maiden','nw2','nw3','claimer')),
+  claim_price INTEGER,
   opponent_name TEXT NOT NULL,
+  opponent_json TEXT NOT NULL,
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
+  claimed_bird_id TEXT,
   pit_figure INTEGER NOT NULL,
   gp_delta INTEGER NOT NULL,
   seed INTEGER NOT NULL,

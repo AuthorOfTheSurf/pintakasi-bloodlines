@@ -5,8 +5,11 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { FORMAT_NAMES, STAT_NAMES } from "@/engine/config";
+import { seedStarterFlock } from "@/db/seed-data";
+import { CLAIMER, FARM_COLORS, FORMAT_NAMES, LOBBIES, STAT_NAMES } from "@/engine/config";
+import { Farms } from "@/engine/farms";
 import { Game } from "@/engine/game";
+import { freshSeed } from "@/engine/rng";
 
 function text(value: string) {
   return { content: [{ type: "text" as const, text: value }] };
@@ -25,25 +28,83 @@ function ruled<T>(fn: () => T) {
   }
 }
 
-function createServer(): McpServer {
-  const game = new Game(db());
+function createServer(farmId: string | null): McpServer {
+  const database = db();
+  const farmsApi = new Farms(database);
+
+  /** Scoped game — every farm-tool goes through this. */
+  const game = (): Game => {
+    if (!farmId)
+      throw new Error(
+        "No farm on this connection — register_farm first, then add ?key=fk_… to the MCP URL"
+      );
+    return new Game(database, farmId);
+  };
 
   const server = new McpServer(
-    { name: "pintakasi-bloodlines", version: "0.1.0" },
+    { name: "pintakasi-bloodlines", version: "0.3.0" },
     {
       instructions: [
         "Pintakasi: Bloodlines — a digital sabong game. YOU are the game client: narrate fights and hatch days with color, present choices clearly, and let the player decide.",
+        "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. No farm on this connection? register_farm, save the key, and reconnect with ?key=… on the MCP URL. (When only one farm exists, the key is optional.)",
+        "THE DAILY RITUAL: check_in once per game-day — it pays the GP drip ($10 = 800 GP) and 2 free gacha pulls. Do it first thing.",
         "THE LOOP: breed retired birds → egg hatches next Hatch Friday as an age-1 chick → practice/train through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
         "AGE GATES: 0 = egg · 1 = practice + training only · 2+ = real fights · 3+ = hardcore + manual retirement · 9 = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.",
-        "WEAPON FORMATS ARE THE DISTANCE DIAL — the player's core skill is picking the right one: longKnife (the sprint — decided by agility/sight in the opening frames), shortKnife (the hybrid), longGaff (the route — stamina starts to rule), shortGaff (the marathon — gameness dictates the deep rounds). Any bird can enter any format; it's just disadvantaged outside its type.",
-        "DISCOVERY: every fight returns a PIT FIGURE — a banded performance rating, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the per-format lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
-        "HARDCORE IS THE CHARGED DECISION: bigger prize, but the loser is FORCE-RETIRED on the spot. Always confirm with the player before a hardcore fight — never enter one on your own judgment.",
-        "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg — hatch day is the reveal) and prompt the player to name the chick (name_bird). Eggs are auto-named 'Egg of <mother>'.",
-        "TWO RECORDS: the career record (real + hardcore — drives stud value) and the amateur record (practice fights, small stakes). Report them separately.",
-        "BREEDING: both parents must be retired, hen × rooster, and not close kin (no siblings, parents, grandparents, great-grandparents). The game enforces this — surface the reason if it refuses.",
+        "THE ECONOMY IS POOLED ($1 = 80 GP): both sides post the entry, winner takes the pot — win +entry, lose −entry. No fight prints GP. The consolation is the flat LAND TOKEN every fight pays, win or lose. Land is also buyable (buy_land, $0.01/LT, capped daily) and NEVER sellable.",
+        "ONE FIGHT PER BIRD PER GAME-DAY — a hard count, not a cooldown. A full barn is how you fight more than once a day.",
+        "WEAPON FORMATS ARE THE DISTANCE DIAL — the player's core skill is picking the right one: longKnife (the sprint — agility/sight decide it), shortKnife (the hybrid), longGaff (the route — stamina starts to rule), shortGaff (the marathon — gameness dictates the deep rounds). Any bird can enter any format; it's just disadvantaged outside its type.",
+        "LOBBIES ARE THE CLASS DIAL: open (field mirrors your bird) · maiden (never-winners only — soft field) · nw2/nw3 (fewer than 2/3 career wins) · claimer (any record, but a PRICE on both birds: LOSE and the house claims your bird at the tag — you keep the GP; WIN and you may claim_bird the house bird at the tag, same game-day). House-bird quality follows the lobby — maidens are green, claimers key to the tag price.",
+        "DISCOVERY: every fight returns a PIT FIGURE — banded, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
+        "HARDCORE IS THE CHARGED DECISION: bigger pot, but the loser is FORCE-RETIRED on the spot. Open lobby only. Always confirm with the player first — never enter one on your own judgment.",
+        "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way.",
+        "TWO RECORDS: career (real + hardcore — drives stud value) and amateur (practice). Report them separately.",
+        "BREEDING: both parents must be retired, hen × rooster, not close kin. The $2 (160 GP) fee is the FLOOR price — markets come later.",
         "Rule violations come back as ⛔ text — read them to the player as house rules, not errors.",
       ].join("\n"),
     }
+  );
+
+  server.registerTool(
+    "register_farm",
+    {
+      title: "Register a Farm",
+      description:
+        "Create your farm: name (required), country flag (encouraged — pick one!), and two colors from the palette: " +
+        FARM_COLORS.join(", ") +
+        ". Returns your farm key (fk_…) — SAVE IT and reconnect with ?key=… on the MCP URL. Seeds the 8-bird starter flock and a $100 (8,000 GP) stake.",
+      inputSchema: z.object({
+        name: z.string().describe("The farm's name"),
+        country: z.string().optional().describe("Flag emoji or country name, e.g. 🇵🇭"),
+        primaryColor: z.enum(FARM_COLORS),
+        secondaryColor: z.enum(FARM_COLORS),
+      }),
+    },
+    async (input) =>
+      ruled(() => {
+        const { farm, apiKey } = farmsApi.register(input);
+        seedStarterFlock(database, farm.id, { seed: freshSeed() });
+        return { farm, apiKey, note: "Save the apiKey — it is your login (?key=… on the MCP URL)." };
+      })
+  );
+
+  server.registerTool(
+    "list_farms",
+    {
+      title: "The Scoreboard",
+      description: "Every farm's public identity — name, flag, colors, GP, land. No keys.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => ruled(() => farmsApi.all())
+  );
+
+  server.registerTool(
+    "check_in",
+    {
+      title: "Daily Check-In",
+      description:
+        "The daily ritual, once per game-day: pays the GP drip (800 GP = $10) and grants 2 free gacha pulls. Do this first thing each day.",
+    },
+    async () => ruled(() => game().farms.checkIn(game().farmId))
   );
 
   server.registerTool(
@@ -51,10 +112,10 @@ function createServer(): McpServer {
     {
       title: "Game State",
       description:
-        "The calendar (in-game date, whether today is Hatch Friday), GP wallet ($1 = 8,000 GP), Land Tokens, and barn occupancy. Start here.",
+        "The world calendar (in-game date, whether today is Hatch Friday) plus YOUR farm: GP wallet ($1 = 80 GP), Land Tokens, free pulls, check-in status, barn occupancy. Start here.",
       annotations: { readOnlyHint: true },
     },
-    async () => ruled(() => game.state())
+    async () => ruled(() => game().state())
   );
 
   server.registerTool(
@@ -62,10 +123,10 @@ function createServer(): McpServer {
     {
       title: "List the Flock",
       description:
-        "Every bird with derived age, six stats, element stars (e.g. '2.5★ Fire'), record, and status (egg/active/retired). Retired birds show stud value.",
+        "Every bird in YOUR barn with derived age, six stats, element stars (e.g. '2.5★ Fire'), record, and status (egg/active/retired). Retired birds show stud value.",
       annotations: { readOnlyHint: true },
     },
-    async () => ruled(() => game.flock.all())
+    async () => ruled(() => game().flock.all())
   );
 
   server.registerTool(
@@ -78,11 +139,14 @@ function createServer(): McpServer {
       annotations: { readOnlyHint: true },
     },
     async ({ id }) =>
-      ruled(() => ({
-        bird: game.flock.byId(id),
-        lineage: game.breeding.lineage(id),
-        formatRecords: game.battle.formatRecords(id),
-      }))
+      ruled(() => {
+        const g = game();
+        return {
+          bird: g.flock.byId(id),
+          lineage: g.breeding.lineage(id),
+          formatRecords: g.battle.formatRecords(id),
+        };
+      })
   );
 
   server.registerTool(
@@ -95,7 +159,7 @@ function createServer(): McpServer {
         name: z.string().describe("The new name"),
       }),
     },
-    async ({ id, name }) => ruled(() => game.flock.rename(id, name))
+    async ({ id, name }) => ruled(() => game().flock.rename(id, name))
   );
 
   server.registerTool(
@@ -103,9 +167,9 @@ function createServer(): McpServer {
     {
       title: "Advance One Day",
       description:
-        "Move the calendar one day. Landing on a Friday triggers Hatch Friday: eggs hatch, everyone ages a year, cap-age birds force-retire. Returns any events.",
+        "Move the WORLD calendar one day (all farms share the clock — coordinate in beta; the scheduler owns this later). Landing on a Friday triggers Hatch Friday. Resets daily limits (fights, check-in, land cap).",
     },
-    async () => ruled(() => game.tickDay())
+    async () => ruled(() => game().tickDay())
   );
 
   server.registerTool(
@@ -113,9 +177,9 @@ function createServer(): McpServer {
     {
       title: "Advance to Next Hatch Friday",
       description:
-        "Jump to the next Hatch Friday (the aging tick). Eggs hatch into age-1 chicks — prompt the player to name them.",
+        "Jump the WORLD clock to the next Hatch Friday (the aging tick). Eggs hatch into age-1 chicks — prompt the player to name them.",
     },
-    async () => ruled(() => game.tickWeek())
+    async () => ruled(() => game().tickWeek())
   );
 
   server.registerTool(
@@ -123,13 +187,13 @@ function createServer(): McpServer {
     {
       title: "Breed",
       description:
-        "Breed two RETIRED birds (hen × rooster, not close kin). Costs GP and lays 'Egg of <mother>' — it hatches next Hatch Friday, so breeding late in the week still pays off fast.",
+        "Breed two RETIRED birds (hen × rooster, not close kin). Costs the 160 GP ($2) floor fee and lays 'Egg of <mother>' — hatches next Hatch Friday.",
       inputSchema: z.object({
         motherId: z.string().describe("A retired hen"),
         fatherId: z.string().describe("A retired rooster"),
       }),
     },
-    async ({ motherId, fatherId }) => ruled(() => game.breeding.breed(motherId, fatherId))
+    async ({ motherId, fatherId }) => ruled(() => game().breeding.breed(motherId, fatherId))
   );
 
   server.registerTool(
@@ -137,21 +201,39 @@ function createServer(): McpServer {
     {
       title: "Fight",
       description:
-        "Enter a bird against a house bird at a chosen WEAPON FORMAT (the distance dial — pick it deliberately, that's the game). Modes: 'practice' (age 1+, small entry/prize, builds the separate AMATEUR record), 'real' (age 2+, entry fee, prize, builds the CAREER record), 'hardcore' (age 3+, big prize, LOSER IS FORCE-RETIRED — confirm with the player first). Returns a play-by-play and a Pit Figure; narrate the fight and read the figure.",
+        "Enter a bird against a house bird. Pick the WEAPON FORMAT (distance dial) and LOBBY (class dial) deliberately — that's the game. Pooled pot: win +entry, lose −entry; every fight pays 1 Land Token. Modes: practice (age 1+, amateur record) · real (2+, career record) · hardcore (3+, LOSER FORCE-RETIRED — confirm first, open lobby only). Claimers need a claimPrice tag (" +
+        CLAIMER.PRICES.join("/") +
+        " GP): lose = your bird is claimed at the tag; win = you may claim_bird theirs. One fight per bird per game-day.",
       inputSchema: z.object({
         birdId: z.string(),
         mode: z.enum(["practice", "real", "hardcore"]).default("real"),
         format: z
           .enum(FORMAT_NAMES as [string, ...string[]])
           .default("shortKnife")
-          .describe(
-            "Weapon format: longKnife = sprint · shortKnife = hybrid · longGaff = route · shortGaff = marathon"
-          ),
+          .describe("longKnife = sprint · shortKnife = hybrid · longGaff = route · shortGaff = marathon"),
+        lobby: z
+          .enum(LOBBIES as unknown as [string, ...string[]])
+          .default("open")
+          .describe("open · maiden (never-winners) · nw2/nw3 (win caps) · claimer (priced)"),
+        claimPrice: z.number().int().optional().describe("Claimers only: the tag price"),
         seed: z.number().int().optional().describe("Replay seed — omit for a fresh fight"),
       }),
     },
-    async ({ birdId, mode, format, seed }) =>
-      ruled(() => game.battle.fight(birdId, mode, format as never, seed))
+    async ({ birdId, mode, format, lobby, claimPrice, seed }) =>
+      ruled(() =>
+        game().battle.fight(birdId, mode, format as never, seed, lobby as never, claimPrice)
+      )
+  );
+
+  server.registerTool(
+    "claim_bird",
+    {
+      title: "Claim the House Bird",
+      description:
+        "After WINNING a claimer: buy the house bird at the tag price, same game-day only. The battleLogId comes from the fight result's claimOffer.",
+      inputSchema: z.object({ battleLogId: z.number().int() }),
+    },
+    async ({ battleLogId }) => ruled(() => game().battle.claimHouseBird(battleLogId))
   );
 
   server.registerTool(
@@ -165,7 +247,7 @@ function createServer(): McpServer {
         stat: z.enum(STAT_NAMES),
       }),
     },
-    async ({ birdId, stat }) => ruled(() => game.flock.train(birdId, stat))
+    async ({ birdId, stat }) => ruled(() => game().flock.train(birdId, stat))
   );
 
   server.registerTool(
@@ -176,7 +258,18 @@ function createServer(): McpServer {
         "The safe arm of the age-3 fork: end the career at peak stud value and convert the bird to breeding stock. Irreversible — confirm with the player.",
       inputSchema: z.object({ birdId: z.string() }),
     },
-    async ({ birdId }) => ruled(() => game.flock.retire(birdId))
+    async ({ birdId }) => ruled(() => game().flock.retire(birdId))
+  );
+
+  server.registerTool(
+    "buy_land",
+    {
+      title: "Buy Land Tokens",
+      description:
+        "Buy Land Tokens with GP: 80 GP per 100 LT ($0.01/LT), capped at 1,000 LT per game-day. One-way — land never sells back.",
+      inputSchema: z.object({ amount: z.number().int().describe("Whole LT to buy") }),
+    },
+    async ({ amount }) => ruled(() => game().farms.buyLand(game().farmId, amount))
   );
 
   server.registerTool(
@@ -184,17 +277,33 @@ function createServer(): McpServer {
     {
       title: "Roll the Gacha",
       description:
-        "Spend GP on a roll. Always pays a rarity token (White/Green/Blue/Purple/Gold — prizes TBD) plus a Land Token. Blue, Purple, and Gold rolls ALSO drop a MYSTERY EGG (random element, hidden sex, hatches next Hatch Friday) — announce it with fanfare.",
+        "One roll = 80 GP ($1) — free pulls from check_in spend first. Always pays a rarity token (White/Green/Blue/Purple/Gold — prizes TBD) plus a Land Token. Blue, Purple, and Gold ALSO drop a MYSTERY EGG (random element, hidden sex, hatches next Hatch Friday) — announce it with fanfare.",
     },
-    async () => ruled(() => game.gacha.roll())
+    async () => ruled(() => game().gacha.roll())
   );
 
   return server;
 }
 
 async function handleMcp(request: NextRequest): Promise<Response> {
-  // Single-player local MVP: no auth (API-key gate arrives with multi-user, ledger item 24).
-  const server = createServer();
+  // Low-security beta auth by design: farm key via ?key= or x-farm-key.
+  // Single-farm fallback keeps local dev zero-friction.
+  const database = db();
+  const farmsApi = new Farms(database);
+  const key =
+    request.headers.get("x-farm-key") || new URL(request.url).searchParams.get("key") || null;
+  let farmId: string | null = null;
+  if (key) {
+    try {
+      farmId = farmsApi.byKey(key).id;
+    } catch {
+      farmId = null; // bad key → tools will say so via ruled()
+    }
+  } else {
+    farmId = farmsApi.soleFarm()?.id ?? null;
+  }
+
+  const server = createServer(farmId);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });

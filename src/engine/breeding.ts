@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
-import { birds, gameState, type BirdRow } from "@/db/schema";
+import { birds, farms, gameState, type BirdRow } from "@/db/schema";
 import { BARN, BREEDING, ECONOMY, ELEMENTS, STATS, STAT_NAMES, type Element } from "./config";
 import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
@@ -20,9 +20,10 @@ export class Breeding {
 
   constructor(
     private database: DB,
+    private farmId: string,
     private rng: Rng = mulberry32(freshSeed())
   ) {
-    this.flock = new Flock(database);
+    this.flock = new Flock(database, farmId);
   }
 
   /**
@@ -49,22 +50,23 @@ export class Breeding {
     if (this.flock.barnCount() >= BARN.CAPACITY)
       throw new Error(`The barn is full (${BARN.CAPACITY})`);
 
-    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    if (state.gp < ECONOMY.BREED_FEE)
-      throw new Error(`Breeding costs ${ECONOMY.BREED_FEE} GP — you have ${state.gp}`);
+    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    if (farm.gp < ECONOMY.BREED_FEE)
+      throw new Error(`Breeding costs ${ECONOMY.BREED_FEE} GP — you have ${farm.gp}`);
     this.database
-      .update(gameState)
-      .set({ gp: state.gp - ECONOMY.BREED_FEE })
-      .where(eq(gameState.id, 1))
+      .update(farms)
+      .set({ gp: farm.gp - ECONOMY.BREED_FEE })
+      .where(eq(farms.id, this.farmId))
       .run();
 
-    const day = state.dayIndex;
+    const day = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
     const week = GameClock.weekOf(day);
     const stats = this.inheritStats(mother, father);
     const { element, halfStars } = this.inheritStars(mother, father);
 
     const egg = {
       id: randomUUID(),
+      farmId: this.farmId,
       name: `Egg of ${mother.name}`,
       // 50-50, decided now but hidden from every view until hatch day.
       sex: this.rng() < BREEDING.FEMALE_CHANCE ? ("female" as const) : ("male" as const),

@@ -1,12 +1,17 @@
 import type { DB } from "./client";
-import { birds, gameState, type NewBird } from "./schema";
+import { birds, farms, gameState, type NewBird } from "./schema";
 import { ECONOMY, ELEMENTS, STATS, type Element } from "@/engine/config";
 import { mulberry32, randInt, type Rng } from "@/engine/rng";
 
 /**
- * Starter flock — includes retired birds so the breeding loop works on turn
- * one (spec item 2). Ages are set via negative birthWeek (born before day 0).
+ * Seeds the WORLD (day 0) plus a default dev farm with the starter flock —
+ * retired birds included so the breeding loop works on turn one (spec item
+ * 2). Ages are set via negative birthWeek (born before day 0). Additional
+ * farms register through the Farms module and get seeded via seedStarterFlock.
  */
+
+export const DEV_FARM_ID = "farm-1";
+export const DEV_FARM_KEY = "fk_dev"; // fixed for local play + tests
 
 interface StarterSpec {
   name: string;
@@ -46,15 +51,42 @@ function rollStats(rng: Rng) {
   };
 }
 
-export function seedGame(db: DB, opts: { seed?: number; startingGp?: number } = {}): void {
-  const rng = mulberry32(opts.seed ?? 3000);
+export function seedGame(
+  db: DB,
+  opts: { seed?: number; startingGp?: number } = {}
+): { farmId: string; apiKey: string } {
+  db.insert(gameState).values({ id: 1, dayIndex: 0 }).run();
 
-  db.insert(gameState)
-    .values({ id: 1, dayIndex: 0, gp: opts.startingGp ?? ECONOMY.STARTING_GP })
+  db.insert(farms)
+    .values({
+      id: DEV_FARM_ID,
+      name: "Bukidnon Farms",
+      country: "🇵🇭",
+      primaryColor: "red",
+      secondaryColor: "gold",
+      apiKey: DEV_FARM_KEY,
+      gp: opts.startingGp ?? ECONOMY.STARTING_GP,
+      landTokens: 0,
+      createdDay: 0,
+    })
     .run();
 
+  seedStarterFlock(db, DEV_FARM_ID, { seed: opts.seed, idPrefix: "starter" });
+  return { farmId: DEV_FARM_ID, apiKey: DEV_FARM_KEY };
+}
+
+/** The 8-bird starter shape every new farm opens with. */
+export function seedStarterFlock(
+  db: DB,
+  farmId: string,
+  opts: { seed?: number; idPrefix?: string } = {}
+): void {
+  const rng = mulberry32(opts.seed ?? 3000);
+  const prefix = opts.idPrefix ?? `${farmId}-starter`;
+
   const rows: NewBird[] = STARTERS.map((s, i) => ({
-    id: `starter-${i + 1}`,
+    id: `${prefix}-${i + 1}`,
+    farmId,
     name: s.name,
     sex: s.sex,
     status: s.status,

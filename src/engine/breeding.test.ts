@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { birds, gameState } from "@/db/schema";
+import { birds, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Breeding } from "./breeding";
 import { ECONOMY, STATS } from "./config";
@@ -10,8 +10,8 @@ import { mulberry32 } from "./rng";
 
 function freshGame(seed = 42) {
   const db = createDb(":memory:");
-  seedGame(db);
-  return { db, breeding: new Breeding(db, mulberry32(seed)), flock: new Flock(db) };
+  const fid = seedGame(db).farmId;
+  return { db, farmId: fid, breeding: new Breeding(db, fid, mulberry32(seed)), flock: new Flock(db, fid) };
 }
 
 // Seed ids: starter-1 Tandang Pula (retired rooster), starter-2 Dalisay
@@ -28,8 +28,8 @@ describe("breed", () => {
     expect(egg.motherId).toBe("starter-2");
     expect(egg.fatherId).toBe("starter-1");
     expect(feePaid).toBe(ECONOMY.BREED_FEE);
-    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.BREED_FEE);
+    const farm = db.select().from(farms).where(eq(farms.id, "farm-1")).get()!;
+    expect(farm.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.BREED_FEE);
   });
 
   test("child stats stay in bounds and near the parent average", () => {
@@ -68,7 +68,7 @@ describe("breed", () => {
 
   test("insufficient GP blocks breeding", () => {
     const { db, breeding } = freshGame();
-    db.update(gameState).set({ gp: 5000 }).where(eq(gameState.id, 1)).run();
+    db.update(farms).set({ gp: 100 }).where(eq(farms.id, "farm-1")).run();
     expect(() => breeding.breed("starter-2", "starter-1")).toThrow(/Breeding costs/);
   });
 });
@@ -85,6 +85,7 @@ describe("bloodline restriction", () => {
     db.insert(birds)
       .values({
         id,
+        farmId: "farm-1",
         name: id,
         sex,
         status: "retired",
@@ -138,6 +139,7 @@ describe("lineage", () => {
     db.insert(birds)
       .values({
         id: "kid",
+        farmId: "farm-1",
         name: "Kid",
         sex: "female",
         status: "egg",

@@ -16,14 +16,15 @@ import {
 
 function freshGame() {
   const db = createDb(":memory:");
-  seedGame(db);
-  return { db, clock: new GameClock(db), flock: new Flock(db) };
+  const { farmId } = seedGame(db);
+  return { db, farmId, clock: new GameClock(db), flock: new Flock(db, farmId) };
 }
 
 function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: number, birthDay: number) {
   db.insert(birds)
     .values({
       id,
+      farmId: "farm-1",
       name: "Egg of Dalisay",
       sex: "female",
       status: "egg",
