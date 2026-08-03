@@ -61,6 +61,9 @@ const TYPE_LABELS: Record<string, string> = {
 export default function Admin() {
   const d = db();
   const dbPath = defaultDbPath();
+  // The two offices render identically — this badge is the only loud
+  // difference between inspecting a sim and staring at the live world.
+  const isSimWorld = path.basename(dbPath).startsWith("sim-");
 
   const state = d.select().from(gameState).all()[0];
   if (!state)
@@ -253,7 +256,12 @@ export default function Admin() {
     <main className="office">
       <style>{CSS}</style>
       <header>
-        <h1>🐓 Pintakasi — Stewards&apos; Office</h1>
+        <h1>
+          🐓 Pintakasi — Stewards&apos; Office{" "}
+          <span className={`world-badge ${isSimWorld ? "sim" : "live"}`}>
+            {isSimWorld ? "SIM WORLD" : "LIVE WORLD"}
+          </span>
+        </h1>
         <p className="clock">
           Day {state.dayIndex} · Week {week} · {clock.date}
           {clock.isHatchFriday ? " · HATCH FRIDAY" : ""}
@@ -323,6 +331,10 @@ const CSS = `
   .office { font-family: ui-monospace, Menlo, monospace; background: #12100d; color: #e8e0d0;
     min-height: 100vh; padding: 1.5rem 2rem 4rem; font-size: 13px; }
   .office h1 { color: #e8b64c; font-size: 1.3rem; margin: 0 0 .25rem; }
+  .world-badge { font-size: .55em; vertical-align: middle; padding: .2em .6em; border-radius: 4px;
+    letter-spacing: .08em; border: 1px solid; }
+  .world-badge.sim { color: #9fd3f0; background: #1e3542; border-color: #3d6a85; }
+  .world-badge.live { color: #f0a49f; background: #42211e; border-color: #8a4a42; }
   .office .clock { color: #9a8f78; margin: 0; }
   .office .dbpath { color: #9a8f78; margin: .2rem 0 0; }
   .office .dbpath b { color: #e8b64c; }
