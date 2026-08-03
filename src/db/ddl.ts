@@ -133,4 +133,9 @@ CREATE TABLE IF NOT EXISTS events (
   data TEXT
 );
 
+CREATE TABLE IF NOT EXISTS snapshots (
+  day_index INTEGER PRIMARY KEY,
+  data TEXT NOT NULL
+);
+
 `;

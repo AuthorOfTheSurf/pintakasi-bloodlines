@@ -9,6 +9,7 @@ import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
 import { Gacha } from "./gacha";
+import { baselineBefore, recordSnapshot } from "./snapshots";
 
 export interface GameStateView {
   clock: ClockState; // the WORLD clock — shared by every farm
@@ -69,6 +70,10 @@ export class Game {
   }
 
   private tick(kind: "day" | "week"): TickView {
+    // Baseline snapshot for the pre-tick day, if this world has none yet —
+    // the first diff needs something to diff against.
+    const preDay = this.clock.currentDay();
+    if (baselineBefore(this.database, preDay + 1) === null) recordSnapshot(this.database);
     // The bot stables play the closing day first — filling lobbies, placing
     // claims — so the card that goes off has their money on it. No-op on
     // worlds without bots seeded.
@@ -80,6 +85,8 @@ export class Game {
     // then the staking pool pays the day's breed-fee cut to staked land.
     const card = Lobbies.resolve(this.database);
     const staking = Farms.distributeStaking(this.database);
+    // The office's memory: today's top-line metrics, for tomorrow's diffs.
+    recordSnapshot(this.database);
     return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, bots, staking };
   }
 }

@@ -6,6 +6,8 @@ import { ECONOMY } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { ageOf } from "@/engine/lifecycle";
+import { baselineBefore, computeTopline, type Topline } from "@/engine/snapshots";
+import { GpIcon, LtIcon } from "./sprites";
 import {
   AdminTabs,
   type BirdRowUI,
@@ -92,18 +94,22 @@ export default function Admin() {
     return f ? { P: f.primaryColor, S: f.secondaryColor } : { P: undefined, S: undefined };
   };
 
-  // ── Top-line figures ──────────────────────────────────────────────────────
-  const walletCents = allFarms.reduce((s, f) => s + f.gp * 100 + f.gpCents, 0);
-  const escrowCents =
-    pendingEntries.reduce((s, e) => s + e.fee * 100, 0) +
-    pendingClaims.reduce((s, c) => s + c.price * 100, 0);
-  const totalCents = walletCents + escrowCents + state.stakerPoolCents + state.juicePoolCents;
-  const liquidLt = allFarms.reduce((s, f) => s + f.landTokens, 0);
-  const stakedLt = allFarms.reduce((s, f) => s + f.stakedLand, 0);
-  const byStatus = { egg: 0, active: 0, retired: 0 };
-  for (const b of allBirds) byStatus[b.status]++;
+  // ── Top-line figures (round 16: shared with tick snapshots, diffed) ──────
+  const now = computeTopline(d);
+  // The last snapshot BEFORE today — the deltas span whatever the last tick
+  // covered: one day, or one +1-Week jump.
+  const base = baselineBefore(d, state.dayIndex);
   const winRows = log.filter((r) => r.result === "win"); // one per fight
   const bred = allBirds.filter((b) => b.motherId !== null);
+
+  /** Signed, colored delta badge — GP values in cents, counts as-is. */
+  const delta = (key: keyof Topline, opts: { cents?: boolean } = {}) => {
+    if (!base) return null;
+    const diff = (now[key] as number) - (base[key] as number);
+    if (diff === 0) return null;
+    const shown = opts.cents ? gpFmt(Math.abs(diff)) : Math.abs(diff).toLocaleString();
+    return <span className={`diff ${diff > 0 ? "up" : "down"}`}>{diff > 0 ? "+" : "−"}{shown}</span>;
+  };
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {
@@ -283,41 +289,72 @@ export default function Admin() {
 
       <section className="cards">
         <div className="card">
-          <div className="big">{gpFmt(totalCents)} GP</div>
-          <div className="label">in circulation</div>
+          <div className="big">
+            <GpIcon /> {gpFmt(now.gpCents)} GP {delta("gpCents", { cents: true })}
+          </div>
+          <div className="label">Golden Pesos in circulation</div>
           <div className="sub">
-            wallets {gpFmt(walletCents)} · escrow {gpFmt(escrowCents)}
+            wallets {gpFmt(now.walletCents)} · escrow {gpFmt(now.escrowCents)}
           </div>
         </div>
         <div className="card">
-          <div className="big">{gpFmt(state.juicePoolCents)} GP</div>
+          <div className="big">
+            <GpIcon /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
+          </div>
           <div className="label">juice pool (fight schedule)</div>
-          <div className="sub">accruing — Wednesday finals will spend it</div>
+          <div className="sub">breed cuts + paid gacha — Wednesday finals will spend it</div>
         </div>
         <div className="card">
-          <div className="big">{gpFmt(state.stakerPoolCents)} GP</div>
+          <div className="big">
+            <GpIcon /> {gpFmt(now.stakerCents)} GP {delta("stakerCents", { cents: true })}
+          </div>
           <div className="label">staker pool (undistributed)</div>
           <div className="sub">pays pro-rata at every day tick</div>
         </div>
         <div className="card">
-          <div className="big">{(liquidLt + stakedLt).toLocaleString()} LT</div>
-          <div className="label">land minted</div>
+          <div className="big">
+            <LtIcon /> {now.landMinted.toLocaleString()} LT {delta("landMinted")}
+          </div>
+          <div className="label">Land Tokens minted</div>
           <div className="sub">
-            {stakedLt.toLocaleString()} staked · {liquidLt.toLocaleString()} liquid
+            {now.landStaked.toLocaleString()} staked · {now.landLiquid.toLocaleString()} liquid
           </div>
         </div>
         <div className="card">
-          <div className="big">{winRows.length}</div>
+          <div className="big">
+            {now.fights.toLocaleString()} {delta("fights")}
+          </div>
           <div className="label">fights fought</div>
-          <div className="sub">
-            {bred.length} covers bought · {rolls} gacha rolls
-          </div>
+          <div className="sub">across every card since day 0</div>
         </div>
         <div className="card">
-          <div className="big">{allBirds.length}</div>
+          <div className="big">
+            {now.cancelled.toLocaleString()} {delta("cancelled")}
+          </div>
+          <div className="label">cancelled fights</div>
+          <div className="sub">birds without a matchup — fee refunded, no land</div>
+        </div>
+        <div className="card">
+          <div className="big">
+            {now.covers.toLocaleString()} {delta("covers")}
+          </div>
+          <div className="label">covers bought</div>
+          <div className="sub">the breeding barn&apos;s lifetime volume</div>
+        </div>
+        <div className="card">
+          <div className="big">
+            {now.rolls.toLocaleString()} {delta("rolls")}
+          </div>
+          <div className="label">gacha rolls</div>
+          <div className="sub">every token pulled since day 0</div>
+        </div>
+        <div className="card">
+          <div className="big">
+            {now.birds.toLocaleString()} {delta("birds")}
+          </div>
           <div className="label">birds</div>
           <div className="sub">
-            {byStatus.egg} eggs · {byStatus.active} active · {byStatus.retired} retired
+            {now.eggs} eggs · {now.active} active · {now.retired} retired · {now.farms} farms
           </div>
         </div>
       </section>
@@ -365,6 +402,7 @@ const CSS = `
   .tick-last { color: #9a8f78; font-size: .9em; }
   .grade { color: #f4e9d0; }
   .statnum { color: #9a8f78; font-size: .88em; }
+  .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }
   .dot { display: inline-block; width: .65em; height: .65em; border-radius: 50%; border: 2px solid; margin-right: .4em; }

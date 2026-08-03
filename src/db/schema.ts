@@ -208,6 +208,16 @@ export const events = sqliteTable("events", {
 
 // (training_log is GONE — stats are fixed at birth, ruled 2026-08-03 rd 13.)
 
+// Topline SNAPSHOTS (round 16) — the office's memory. One row per game-day,
+// written at the end of every tick (plus a baseline before the first one),
+// holding the top-line metrics as JSON. The admin diffs live values against
+// the last snapshot BEFORE today — one tick = one day or one week jump, so
+// the deltas naturally span whatever the last tick covered.
+export const snapshots = sqliteTable("snapshots", {
+  dayIndex: integer("day_index").primaryKey(),
+  data: text("data").notNull(), // JSON Topline (engine/snapshots.ts)
+});
+
 export type BirdRow = typeof birds.$inferSelect;
 export type NewBird = typeof birds.$inferInsert;
 export type GameStateRow = typeof gameState.$inferSelect;

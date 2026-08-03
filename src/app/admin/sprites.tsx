@@ -150,6 +150,61 @@ export function BirdSprite({
   );
 }
 
+// ── Currency icons (round 16) — the Golden Peso coin & the Land Token ──────
+// r rim · g gold face · p the P stamp / l grass · s soil · d soil speck
+const GP_COIN = [
+  "...rrrr...",
+  "..rggggr..",
+  ".rgpppggr.",
+  ".rgpgpggr.",
+  ".rgpppggr.",
+  ".rgpggggr.",
+  ".rgpggggr.",
+  "..rggggr..",
+  "...rrrr...",
+];
+
+const LAND_TILE = [
+  "rrrrrrrrrr",
+  "rglggglggr",
+  "rggggggggr",
+  "rlggglgggr",
+  "rssssssssr",
+  "rsdssssdsr",
+  "rssssdsssr",
+  "rsdsssssdr",
+  "rssssssssr",
+  "rrrrrrrrrr",
+];
+
+export function GpIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size * 0.9}
+      viewBox="0 0 10 9"
+      style={{ imageRendering: "pixelated", shapeRendering: "crispEdges", verticalAlign: "middle" }}
+      aria-hidden
+    >
+      {pixels(GP_COIN, { r: "#a8791c", g: "#e8b64c", p: "#6b4a10" })}
+    </svg>
+  );
+}
+
+export function LtIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 10 10"
+      style={{ imageRendering: "pixelated", shapeRendering: "crispEdges", verticalAlign: "middle" }}
+      aria-hidden
+    >
+      {pixels(LAND_TILE, { r: "#3a342a", l: "#7fc97f", g: "#3f9e4d", s: "#6b4423", d: "#4a2c17" })}
+    </svg>
+  );
+}
+
 // ── Element icons (round 15) — 12×12, two tones each ───────────────────────
 // a = main tone · b = accent
 const ELEMENT_MAPS: Record<string, { map: string[]; a: string; b: string }> = {
