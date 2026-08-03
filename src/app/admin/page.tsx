@@ -23,6 +23,7 @@ import {
   type GachaRowUI,
   type GpRowUI,
   type LedgerRowUI,
+  type StakingRowUI,
 } from "./grids";
 
 export const dynamic = "force-dynamic";
@@ -419,6 +420,48 @@ export default function Admin() {
     }
   }
 
+  // ── The staking book (round 21) ───────────────────────────────────────────
+  // Two numbers per barn: what it has STAKED, and what staking has PAID it.
+  // The stake is live state on the farm row; the earnings are the sum of
+  // every staking_payout it ever received, so the column is a lifetime total
+  // and never rewrites itself when a farm stakes more.
+  const stakingPaid = new Map<string, { cents: number; days: number; lastDay: number }>();
+  for (const e of allEvents) {
+    if (e.type !== "staking_payout" || !e.farmId) continue;
+    const acc = stakingPaid.get(e.farmId) ?? { cents: 0, days: 0, lastDay: e.dayIndex };
+    stakingPaid.set(e.farmId, {
+      cents: acc.cents + (e.gpCents ?? 0),
+      days: acc.days + 1,
+      lastDay: Math.max(acc.lastDay, e.dayIndex),
+    });
+  }
+  const totalStaked = allFarms.reduce((s, f) => s + f.stakedLand, 0);
+  const totalStakingPaidCents = [...stakingPaid.values()].reduce((s, p) => s + p.cents, 0);
+  const stakingDays = new Set(
+    allEvents.filter((e) => e.type === "staking_payout").map((e) => e.dayIndex)
+  ).size;
+
+  const stakingRows: StakingRowUI[] = allFarms.map((f) => {
+    const paid = stakingPaid.get(f.id);
+    const earnedGp = (paid?.cents ?? 0) / 100;
+    return {
+      farm: f.name,
+      farmP: f.primaryColor,
+      farmS: f.secondaryColor,
+      bot: f.isBot === 1,
+      stakedLt: f.stakedLand,
+      liquidLt: f.landTokens,
+      share: totalStaked > 0 ? f.stakedLand / totalStaked : 0,
+      earnedGp,
+      payouts: paid?.days ?? 0,
+      perDay: paid?.days ? earnedGp / paid.days : 0,
+      // Lifetime yield against TODAY's stake — the stake grew the whole way,
+      // so read it as "what this pile has returned so far", not as a rate.
+      perLt: f.stakedLand > 0 ? earnedGp / f.stakedLand : 0,
+      lastPaidDay: paid?.lastDay ?? null,
+    };
+  });
+
   const ledgerRows: LedgerRowUI[] = allEvents.slice(-LEDGER_LIMIT).map((e) => ({
     id: e.id,
     day: e.dayIndex,
@@ -473,7 +516,9 @@ export default function Admin() {
             <GpIcon size={22} /> {gpFmt(now.stakerCents)} GP {delta("stakerCents", { cents: true })}
           </div>
           <div className="label">staker pool (undistributed)</div>
-          <div className="sub">pays pro-rata at every day tick</div>
+          <div className="sub">
+            pays pro-rata at every day tick · {gpFmt(totalStakingPaidCents)} GP paid to date
+          </div>
         </div>
         <div className="card">
           <div className="big">
@@ -530,6 +575,50 @@ export default function Admin() {
         breeding={breedingRows}
         gacha={gachaRows}
         gp={gpRows}
+        staking={stakingRows}
+        stakingSummary={
+          <section className="cardday">
+            <h2>
+              Staking{" "}
+              <span className="cardsum">
+                land staked into the pool earns 2.5% of every breed fee, paid pro-rata at
+                each day tick
+              </span>
+            </h2>
+            <div className="cards stakecards">
+              <div className="card">
+                <div className="big">
+                  <LtIcon size={22} /> {totalStaked.toLocaleString()} LT
+                </div>
+                <div className="label">total Land Tokens staked</div>
+                <div className="sub">
+                  {now.landLiquid.toLocaleString()} LT still idle ·{" "}
+                  {stakingRows.filter((s) => s.stakedLt > 0).length} of {allFarms.length} barns
+                  staking
+                </div>
+              </div>
+              <div className="card">
+                <div className="big">
+                  <GpIcon size={22} /> {gpFmt(totalStakingPaidCents)} GP
+                </div>
+                <div className="label">total GP earned via staking</div>
+                <div className="sub">
+                  paid out over {stakingDays} day{stakingDays === 1 ? "" : "s"} ·{" "}
+                  {totalStaked > 0
+                    ? `${(totalStakingPaidCents / 100 / totalStaked).toFixed(3)} GP per staked LT`
+                    : "no stake yet"}
+                </div>
+              </div>
+              <div className="card">
+                <div className="big">
+                  <GpIcon size={22} /> {gpFmt(now.stakerCents)} GP
+                </div>
+                <div className="label">waiting in the pool</div>
+                <div className="sub">splits across staked land at the next tick</div>
+              </div>
+            </div>
+          </section>
+        }
         ledger={ledgerRows}
         cardCount={cardLobbies.length}
         card={
@@ -679,6 +768,8 @@ const CSS = `
   .grade { color: #f4e9d0; }
   .statnum { color: #9a8f78; font-size: .88em; }
   .cardday { margin-top: 1.5rem; }
+  /* The staking totals sit above their book — tighter than the page header set. */
+  .cards.stakecards { margin-top: 0; margin-bottom: 1rem; }
   .cardday h2 { color: #e8b64c; font-size: 1rem; margin: 0 0 .6rem; }
   .cardday .cardsum { color: #9a8f78; font-weight: 400; font-size: .85em; margin-left: .5em; }
   .lobbies { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: .6rem; }

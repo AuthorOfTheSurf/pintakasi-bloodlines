@@ -129,6 +129,28 @@ export interface GpRowUI {
   amount: number; // GP, signed
 }
 
+/**
+ * One row per farm in the staking book (round 21). The two headline numbers
+ * are `stakedLt` — what the barn has committed to the pool — and `earnedGp`,
+ * every centavo of staking yield it has ever been paid. The rest is context
+ * for reading those two: how big a slice of the pool the stake buys, and
+ * what it has returned.
+ */
+export interface StakingRowUI {
+  farm: string;
+  farmP: string;
+  farmS: string;
+  bot: boolean;
+  stakedLt: number;
+  liquidLt: number; // land sitting idle — staked land is the working kind
+  share: number; // fraction of the pool this stake commands TODAY
+  earnedGp: number; // lifetime staking yield, all payouts summed
+  payouts: number; // days this farm was paid
+  perDay: number; // average yield on a paid day
+  perLt: number; // lifetime yield ÷ TODAY's stake — a rough return, not a rate
+  lastPaidDay: number | null;
+}
+
 export interface LedgerRowUI {
   id: number;
   day: number;
@@ -383,6 +405,63 @@ const GP_COLS: ColDef<GpRowUI>[] = [
   },
 ];
 
+const STAKING_COLS: ColDef<StakingRowUI>[] = [
+  {
+    field: "farm",
+    headerName: "farm",
+    cellRenderer: FarmCell,
+    cellRendererParams: { p: "farmP", s: "farmS", bot: "bot" },
+    flex: 1,
+    minWidth: 220,
+  },
+  {
+    field: "stakedLt",
+    headerName: "LT staked",
+    type: "rightAligned",
+    width: 130,
+    sort: "desc",
+    valueFormatter: (p) => num(p.value, 0),
+  },
+  {
+    field: "share",
+    headerName: "pool share",
+    type: "rightAligned",
+    width: 120,
+    valueFormatter: (p) => (p.value ? `${(p.value * 100).toFixed(1)}%` : ""),
+  },
+  {
+    field: "earnedGp",
+    headerName: "GP earned staking",
+    type: "rightAligned",
+    width: 170,
+    valueFormatter: (p) => (p.value ? `+${num(p.value)}` : ""),
+    cellClass: "up",
+  },
+  { field: "payouts", headerName: "days paid", type: "rightAligned", width: 115 },
+  {
+    field: "perDay",
+    headerName: "avg / paid day",
+    type: "rightAligned",
+    width: 140,
+    valueFormatter: (p) => num(p.value),
+  },
+  {
+    field: "perLt",
+    headerName: "GP per staked LT",
+    type: "rightAligned",
+    width: 160,
+    valueFormatter: (p) => num(p.value, 3),
+  },
+  {
+    field: "lastPaidDay",
+    headerName: "last paid (day)",
+    type: "rightAligned",
+    width: 140,
+    valueFormatter: (p) => (p.value == null ? "never" : String(p.value)),
+  },
+  { field: "liquidLt", headerName: "LT idle", type: "rightAligned", width: 110 },
+];
+
 const LEDGER_COLS: ColDef<LedgerRowUI>[] = [
   { field: "id", hide: true, sort: "desc" },
   { field: "day", type: "rightAligned", width: 80 },
@@ -417,6 +496,7 @@ for (const cols of [
   BREEDING_COLS,
   GACHA_COLS,
   GP_COLS,
+  STAKING_COLS,
   LEDGER_COLS,
 ] as ColDef[][]) {
   for (const c of cols) {
@@ -427,7 +507,7 @@ for (const cols of [
 // "The Card" and "The Pintakasi" ride in the tab bar too (rounds 19–20) —
 // worth a look each, not two thirds of the page above every table.
 const TABS = [
-  "Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "The Ledger",
+  "Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "Staking", "The Ledger",
   "The Card", "🏆 The Pintakasi",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -439,6 +519,8 @@ export function AdminTabs({
   breeding,
   gacha,
   gp,
+  staking,
+  stakingSummary,
   ledger,
   card,
   cardCount,
@@ -451,6 +533,8 @@ export function AdminTabs({
   breeding: BreedingRowUI[];
   gacha: GachaRowUI[];
   gp: GpRowUI[];
+  staking: StakingRowUI[];
+  stakingSummary: React.ReactNode; // the world's two totals, above the book
   ledger: LedgerRowUI[];
   card: React.ReactNode; // rendered server-side — the lobby boxes
   cardCount: number;
@@ -465,6 +549,7 @@ export function AdminTabs({
     Breeding: breeding.length,
     Gacha: gacha.length,
     GP: gp.length,
+    Staking: staking.filter((s) => s.stakedLt > 0).length, // barns actually staking
     "The Ledger": ledger.length,
     "The Card": cardCount,
     "🏆 The Pintakasi": pintakasiCount,
@@ -490,6 +575,13 @@ export function AdminTabs({
       {pane("Breeding", 640, <AgGridReact<BreedingRowUI> theme={officeTheme} rowData={breeding} columnDefs={BREEDING_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("Gacha", 640, <AgGridReact<GachaRowUI> theme={officeTheme} rowData={gacha} columnDefs={GACHA_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
+      {/* Staking leads with the world's two totals, then the farm-by-farm book. */}
+      <div style={{ display: tab === "Staking" ? "block" : "none" }}>
+        {stakingSummary}
+        <div style={{ height: 420 }}>
+          <AgGridReact<StakingRowUI> theme={officeTheme} rowData={staking} columnDefs={STAKING_COLS} defaultColDef={base} />
+        </div>
+      </div>
       {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
       <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>
