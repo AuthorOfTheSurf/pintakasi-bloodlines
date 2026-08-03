@@ -13,6 +13,7 @@ import {
   type FightFormat,
   type Lobby,
 } from "./config";
+import { emit } from "./events";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canPractice, canRealFight } from "./lifecycle";
@@ -25,6 +26,20 @@ const MODE_FEES: Record<FightMode, number> = {
   real: ECONOMY.REAL_ENTRY_FEE,
   hardcore: ECONOMY.HARDCORE_ENTRY_FEE,
 };
+
+/** The card line for a lobby — shared by resolutions and the ledger. */
+function labelOf(lobby: {
+  mode: FightMode;
+  classType: Lobby;
+  format: FightFormat;
+  price: number | null;
+}): string {
+  return (
+    `${lobby.mode.toUpperCase()}${lobby.classType === "open" ? "" : "·" + lobby.classType.toUpperCase()}` +
+    (lobby.price ? ` @ ${lobby.price} GP tag` : "") +
+    ` · ${FORMATS[lobby.format].label}`
+  );
+}
 
 export interface LobbySpec {
   mode: FightMode;
@@ -175,6 +190,13 @@ export class Lobbies {
       .values({ lobbyId: lobby.id, birdId: bird.id, farmId: this.farmId, fee, dayEntered: today })
       .returning({ id: lobbyEntries.id })
       .get();
+    emit(this.database, {
+      type: "entry",
+      farmId: this.farmId,
+      birdId: bird.id,
+      gpCents: -fee * 100,
+      message: `entered ${bird.name} — ${labelOf(lobby)} (lobby #${lobby.id}, ${fee} GP escrowed)`,
+    });
     return { entryId: inserted.id, lobby: this.viewLobby(lobby.id) };
   }
 
@@ -217,6 +239,14 @@ export class Lobbies {
       .insert(claims)
       .values({ entryId, farmId: this.farmId, price, dayPlaced: this.today() })
       .run();
+    const target = this.database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+    emit(this.database, {
+      type: "claim",
+      farmId: this.farmId,
+      birdId: entry.birdId,
+      gpCents: -price * 100,
+      message: `sealed a ${price} GP claim on ${target.name} (entry #${entryId})`,
+    });
     return {
       entryId,
       escrowed: price,
@@ -312,10 +342,7 @@ export class Lobbies {
         .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
         .all();
 
-      const label =
-        `${lobby.mode.toUpperCase()}${lobby.classType === "open" ? "" : "·" + lobby.classType.toUpperCase()}` +
-        (lobby.price ? ` @ ${lobby.price} GP tag` : "") +
-        ` · ${FORMATS[lobby.format].label}`;
+      const label = labelOf(lobby);
       const event: LobbyResolution = { lobbyId: lobby.id, label, fights: [], unmatched: [], claims: [] };
 
       // The drawn pairs fight, in draw order.
@@ -332,6 +359,13 @@ export class Lobbies {
         database.update(farms).set({ gp: farm.gp + odd.fee }).where(eq(farms.id, odd.farmId)).run();
         database.update(lobbyEntries).set({ status: "unmatched" }).where(eq(lobbyEntries.id, odd.id)).run();
         const bird = database.select().from(birds).where(eq(birds.id, odd.birdId)).get()!;
+        emit(database, {
+          type: "refund",
+          farmId: odd.farmId,
+          birdId: odd.birdId,
+          gpCents: odd.fee * 100,
+          message: `${bird.name} drew nobody in ${label} — ${odd.fee} GP refunded`,
+        });
         event.unmatched.push({ farm: farm.name, bird: bird.name, refunded: odd.fee });
       }
 
@@ -462,6 +496,13 @@ export class Lobbies {
           .where(eq(birds.id, side.row.id))
           .run();
         forcedRetirements.push(side.row.name);
+        emit(database, {
+          type: "retire",
+          farmId: side.entry.farmId,
+          birdId: side.row.id,
+          message: `${side.row.name} lost a hardcore — force-retired (${side.row.wins}–${side.row.losses + 1})`,
+          data: { by: "hardcore" },
+        });
       }
       const inserted = database
         .insert(battleLog)
@@ -494,6 +535,16 @@ export class Lobbies {
     }
 
     const winnerSide = sides[sim.winner];
+    const loserSide = sides[1 - sim.winner];
+    emit(database, {
+      type: "fight",
+      birdId: winnerSide.row.id,
+      message:
+        `${winnerSide.row.name} (${farmNames[sim.winner]}) def. ${loserSide.row.name} (${farmNames[1 - sim.winner]}) — ` +
+        `${label} · figures ${winnerSide.figure}/${loserSide.figure} · pot ${ea.fee * 2} GP · +${landEach} LT each` +
+        (forcedRetirements.length ? ` · ${forcedRetirements.join(", ")} force-retired` : ""),
+      data: { lobbyId: lobby.id, battleLogIds: logIds, figures: sim.figures, pot: ea.fee * 2, landEach },
+    });
     return {
       battleLogIds: [logIds[0], logIds[1]],
       farms: [farmNames[0], farmNames[1]],
@@ -521,6 +572,7 @@ export class Lobbies {
     if (entryClaims.length === 0) return null;
     const entry = database.select().from(lobbyEntries).where(eq(lobbyEntries.id, entryId)).get()!;
 
+    const preBird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
     const winner = entryClaims[randInt(rng, 0, entryClaims.length - 1)];
     for (const c of entryClaims) {
       if (c.id === winner.id) {
@@ -529,6 +581,13 @@ export class Lobbies {
         const claimant = database.select().from(farms).where(eq(farms.id, c.farmId)).get()!;
         database.update(farms).set({ gp: claimant.gp + c.price }).where(eq(farms.id, c.farmId)).run();
         database.update(claims).set({ status: "refunded" }).where(eq(claims.id, c.id)).run();
+        emit(database, {
+          type: "claim_refund",
+          farmId: c.farmId,
+          birdId: entry.birdId,
+          gpCents: c.price * 100,
+          message: `lost the claim draw on ${preBird.name} — ${c.price} GP refunded`,
+        });
       }
     }
     const owner = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
@@ -542,6 +601,21 @@ export class Lobbies {
 
     const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
     const to = database.select().from(farms).where(eq(farms.id, winner.farmId)).get()!;
+    emit(database, {
+      type: "claim_won",
+      farmId: winner.farmId,
+      birdId: bird.id,
+      message:
+        `claimed ${bird.name} from ${owner.name} for the ${price} GP tag` +
+        (entryClaims.length > 1 ? ` (won the draw over ${entryClaims.length - 1})` : ""),
+    });
+    emit(database, {
+      type: "tag_income",
+      farmId: entry.farmId,
+      birdId: bird.id,
+      gpCents: price * 100,
+      message: `${bird.name} claimed away by ${to.name} — banked the ${price} GP tag`,
+    });
     return {
       bird: bird.name,
       from: owner.name,

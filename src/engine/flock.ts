@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, trainingLog, type BirdRow } from "@/db/schema";
 import { STATS, TRAINING, type StatName } from "./config";
+import { emit } from "./events";
 import { GameClock } from "./game-clock";
 import { ageOf, canManualRetire, canTrain, isEggAge, mustRetire } from "./lifecycle";
 
@@ -83,6 +84,12 @@ export class Flock {
       const age = ageOf(row, weekIndex);
       if (row.status === "egg" && !isEggAge(age)) {
         this.database.update(birds).set({ status: "active" }).where(eq(birds.id, row.id)).run();
+        emit(this.database, {
+          type: "hatch",
+          farmId: row.farmId,
+          birdId: row.id,
+          message: `${row.name} hatched — a ${row.sex === "male" ? "rooster" : "hen"}, ${row.halfStars / 2}★ ${row.element}`,
+        });
         if (mine) events.hatched.push(this.view({ ...row, status: "active" }, weekIndex));
       } else if (row.status === "active" && mustRetire(age)) {
         this.database
@@ -90,6 +97,13 @@ export class Flock {
           .set({ status: "retired", retiredBy: "age", retiredWeek: weekIndex })
           .where(eq(birds.id, row.id))
           .run();
+        emit(this.database, {
+          type: "retire",
+          farmId: row.farmId,
+          birdId: row.id,
+          message: `${row.name} reached the age cap — retired to the barn (${row.wins}–${row.losses})`,
+          data: { by: "age" },
+        });
         if (mine)
           events.forceRetired.push(
             this.view({ ...row, status: "retired", retiredBy: "age", retiredWeek: weekIndex }, weekIndex)
@@ -111,6 +125,13 @@ export class Flock {
       .set({ status: "retired", retiredBy: "manual", retiredWeek: week })
       .where(eq(birds.id, id))
       .run();
+    emit(this.database, {
+      type: "retire",
+      farmId: this.farmId,
+      birdId: id,
+      message: `${bird.name} retired to the barn at ${bird.age} (${bird.wins}–${bird.losses})`,
+      data: { by: "manual" },
+    });
     return this.byId(id);
   }
 
@@ -139,6 +160,12 @@ export class Flock {
         .run();
     }
     this.database.insert(trainingLog).values({ dayIndex: day, birdId: id, stat }).run();
+    emit(this.database, {
+      type: "train",
+      farmId: this.farmId,
+      birdId: id,
+      message: `${bird.name} trained ${stat} +${gained}`,
+    });
     return {
       bird: this.byId(id),
       gained,

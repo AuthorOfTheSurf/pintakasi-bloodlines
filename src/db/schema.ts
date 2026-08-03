@@ -179,6 +179,22 @@ export const claims = sqliteTable("claims", {
   status: text("status", { enum: ["pending", "won", "refunded"] }).notNull().default("pending"),
 });
 
+// The UNIFIED LEDGER (round 11) — every meaningful happening, one
+// self-contained row, append-only. farm_id null = a world event (a fight,
+// a pool accrual). gp_cents / lt are the farm's signed deltas where they
+// apply. See engine/events.ts for the type list and conventions.
+export const events = sqliteTable("events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dayIndex: integer("day_index").notNull(),
+  type: text("type").notNull(),
+  farmId: text("farm_id"),
+  birdId: text("bird_id"),
+  gpCents: integer("gp_cents"),
+  lt: integer("lt"),
+  message: text("message").notNull(),
+  data: text("data"), // JSON — splits, figures, whatever the type carries
+});
+
 export const trainingLog = sqliteTable("training_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dayIndex: integer("day_index").notNull(),

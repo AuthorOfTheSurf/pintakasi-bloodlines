@@ -14,6 +14,7 @@ import {
   type Element,
   type GachaToken,
 } from "./config";
+import { emit } from "./events";
 import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
 import { freshSeed, mulberry32, randInt, weightedPick, type Rng } from "./rng";
@@ -101,6 +102,17 @@ export class Gacha {
         egg = this.flock.byId(row.id);
       }
     }
+
+    emit(this.database, {
+      type: "gacha",
+      farmId: this.farmId,
+      birdId: egg?.id ?? null,
+      gpCents: -price * 100,
+      lt: LAND.PER_GACHA_ROLL,
+      message:
+        `rolled the gacha${freePullUsed ? " (free pull)" : ` (${price} GP)`} — ${token} token, +${LAND.PER_GACHA_ROLL} LT` +
+        (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
+    });
 
     const after = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     return {

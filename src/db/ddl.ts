@@ -118,6 +118,18 @@ CREATE TABLE IF NOT EXISTS claims (
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','won','refunded'))
 );
 
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_index INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  farm_id TEXT,
+  bird_id TEXT,
+  gp_cents INTEGER,
+  lt INTEGER,
+  message TEXT NOT NULL,
+  data TEXT
+);
+
 CREATE TABLE IF NOT EXISTS training_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   day_index INTEGER NOT NULL,

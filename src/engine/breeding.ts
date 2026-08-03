@@ -13,6 +13,7 @@ import {
   STAT_NAMES,
   type Element,
 } from "./config";
+import { emit, fmtGp } from "./events";
 import { creditCents } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
@@ -152,6 +153,29 @@ export class Breeding {
       fatherId: fatherRow.id,
     };
     this.database.insert(birds).values(egg).run();
+
+    const studFarm = this.database.select().from(farms).where(eq(farms.id, fatherRow.farmId)).get()!;
+    emit(this.database, {
+      type: "breed",
+      farmId: this.farmId,
+      birdId: egg.id,
+      gpCents: -ECONOMY.BREED_FEE * 100,
+      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? " (own stud)" : ` (${studFarm.name}'s stud)`} → ${egg.name}`,
+      data: split,
+    });
+    emit(this.database, {
+      type: "stud_income",
+      farmId: fatherRow.farmId,
+      birdId: fatherRow.id,
+      gpCents: split.studOwnerCents,
+      message: `${fatherRow.name} covered ${mother.name} — stud share +${fmtGp(split.studOwnerCents)} GP`,
+    });
+    emit(this.database, {
+      type: "pool_accrual",
+      message: `breed-fee cuts: +${fmtGp(split.stakerPoolCents)} GP staker pool · +${fmtGp(split.juicePoolCents)} GP juice pool`,
+      data: { stakerPoolCents: split.stakerPoolCents, juicePoolCents: split.juicePoolCents },
+    });
+
     return { egg: this.flock.byId(egg.id), feePaid: ECONOMY.BREED_FEE, split };
   }
 
@@ -162,6 +186,13 @@ export class Breeding {
     const bird = this.flock.byId(birdId); // own birds only
     if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — the barn lists roosters`);
     if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
+    if (!bird.listedStud)
+      emit(this.database, {
+        type: "stud_listed",
+        farmId: this.farmId,
+        birdId,
+        message: `${bird.name} stands at stud — ${ECONOMY.BREED_FEE} GP a cover`,
+      });
     this.database.update(birds).set({ listedStud: 1 }).where(eq(birds.id, birdId)).run();
     return { stud: bird.name, listed: true, price: ECONOMY.BREED_FEE };
   }
@@ -169,6 +200,13 @@ export class Breeding {
   /** Pull a rooster from the barn. Covers already sold this week stand. */
   unlistStud(birdId: string): { stud: string; listed: false } {
     const bird = this.flock.byId(birdId);
+    if (bird.listedStud)
+      emit(this.database, {
+        type: "stud_unlisted",
+        farmId: this.farmId,
+        birdId,
+        message: `${bird.name} pulled from the breeding barn`,
+      });
     this.database.update(birds).set({ listedStud: 0 }).where(eq(birds.id, birdId)).run();
     return { stud: bird.name, listed: false };
   }

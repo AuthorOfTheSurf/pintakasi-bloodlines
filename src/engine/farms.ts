@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { farms, gameState, type FarmRow } from "@/db/schema";
 import { ECONOMY, FARM_COLORS, LAND, type FarmColor } from "./config";
+import { emit, fmtGp } from "./events";
 
 export interface FarmView {
   id: string;
@@ -84,6 +85,11 @@ export class Farms {
         createdDay: this.today(),
       })
       .run();
+    emit(this.database, {
+      type: "farm_registered",
+      farmId: id,
+      message: `${name} registered — starting purse ${ECONOMY.STARTING_GP} GP`,
+    });
     return { farm: this.view(this.rowById(id)), apiKey };
   }
 
@@ -105,6 +111,12 @@ export class Farms {
       })
       .where(eq(farms.id, farmId))
       .run();
+    emit(this.database, {
+      type: "check_in",
+      farmId,
+      gpCents: ECONOMY.DAILY_DRIP * 100,
+      message: `checked in — +${ECONOMY.DAILY_DRIP} GP drip, +${ECONOMY.FREE_PULLS_PER_CHECK_IN} free pulls`,
+    });
     return {
       farm: this.view(this.rowById(farmId)),
       gpDripped: ECONOMY.DAILY_DRIP,
@@ -137,6 +149,13 @@ export class Farms {
       })
       .where(eq(farms.id, farmId))
       .run();
+    emit(this.database, {
+      type: "buy_land",
+      farmId,
+      gpCents: -gpPaid * 100,
+      lt: amount,
+      message: `bought ${amount} LT for ${gpPaid} GP`,
+    });
     return {
       farm: this.view(this.rowById(farmId)),
       bought: amount,
@@ -161,6 +180,11 @@ export class Farms {
       .set({ landTokens: farm.landTokens - amount, stakedLand: farm.stakedLand + amount })
       .where(eq(farms.id, farmId))
       .run();
+    emit(this.database, {
+      type: "stake",
+      farmId,
+      message: `staked ${amount} LT (now ${farm.stakedLand + amount} staked / ${farm.landTokens - amount} liquid)`,
+    });
     return { farm: this.view(this.rowById(farmId)), staked: amount };
   }
 
@@ -175,6 +199,11 @@ export class Farms {
       .set({ landTokens: farm.landTokens + amount, stakedLand: farm.stakedLand - amount })
       .where(eq(farms.id, farmId))
       .run();
+    emit(this.database, {
+      type: "unstake",
+      farmId,
+      message: `unstaked ${amount} LT (now ${farm.stakedLand - amount} staked / ${farm.landTokens + amount} liquid)`,
+    });
     return { farm: this.view(this.rowById(farmId)), unstaked: amount };
   }
 
@@ -194,7 +223,15 @@ export class Farms {
     let paid = 0;
     for (const farm of stakers) {
       const share = Math.floor((pool * farm.stakedLand) / totalStaked);
-      if (share > 0) creditCents(database, farm.id, share);
+      if (share > 0) {
+        creditCents(database, farm.id, share);
+        emit(database, {
+          type: "staking_payout",
+          farmId: farm.id,
+          gpCents: share,
+          message: `staking yield +${fmtGp(share)} GP on ${farm.stakedLand} staked LT`,
+        });
+      }
       paid += share;
     }
     database
