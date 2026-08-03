@@ -81,14 +81,14 @@ describe("the Pit Figures (discovery signal)", () => {
 describe("format records (the past-performance lines)", () => {
   test("aggregates record + figures per format across carded fights", () => {
     const db = createDb(":memory:");
-    const dev = seedGame(db);
+    const dev = seedGame(db, { flock: "legacy" });
     const game = new Game(db, dev.farmId);
     const { farm: rivalFarm } = game.farms.register({
       name: "Rival Gamefarm",
       primaryColor: "black",
       secondaryColor: "red",
     });
-    seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival" });
+    seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
     const rival = new Lobbies(db, rivalFarm.id);
     const rivalFlock = new Flock(db, rivalFarm.id);
     const alab = game.flock.all().find((b) => b.name === "Alab")!;

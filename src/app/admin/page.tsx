@@ -167,11 +167,11 @@ export default function Admin() {
         ? b.birthWeek > week
           ? "pregnant"
           : "in the nest"
-        : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}${b.listedStud ? " · at stud" : ""}`,
+        : b.listedStud
+          ? "Studding" // a rooster registered in the breed barn (ruled round 15)
+          : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}`,
     wins: b.wins,
     losses: b.losses,
-    practiceWins: b.practiceWins,
-    practiceLosses: b.practiceLosses,
   }));
 
   const split = splitBreedFee(ECONOMY.BREED_FEE);

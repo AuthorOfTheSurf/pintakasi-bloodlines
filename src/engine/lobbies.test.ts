@@ -12,14 +12,14 @@ const REAL: LobbySpec = { mode: "real", classType: "open", format: "shortKnife" 
 
 function world() {
   const db = createDb(":memory:");
-  const dev = seedGame(db); // "Bukidnon Farms"
+  const dev = seedGame(db, { flock: "legacy" }); // "Bukidnon Farms"
   const game = new Game(db, dev.farmId);
   const { farm: rivalFarm } = game.farms.register({
     name: "Rival Gamefarm",
     primaryColor: "black",
     secondaryColor: "red",
   });
-  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival" });
+  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
   return {
     db,
     devId: dev.farmId,
@@ -76,10 +76,10 @@ describe("entry rules (the door)", () => {
     expect(() => w.dev.enter(sinag.id, { mode: "hardcore", classType: "maiden", format: "shortKnife" })).toThrow(
       /open only/
     );
-    expect(() => w.dev.enter(kidlat.id, { mode: "practice", classType: "nw2", format: "shortKnife" })).toThrow(
+    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "nw2", format: "shortKnife" })).toThrow(
       /open or maiden/
     );
-    expect(() => w.dev.enter(kidlat.id, { mode: "practice", classType: "open", format: "shortKnife", price: 200 })).toThrow(
+    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "shortKnife", price: 200 })).toThrow(
       /only means something in a claimer/
     );
   });
@@ -108,12 +108,12 @@ describe("the 8-cap (lock the lobby even)", () => {
       primaryColor: "blue",
       secondaryColor: "white",
     });
-    seedStarterFlock(w.db, third.id, { seed: 9, idPrefix: "third" });
+    seedStarterFlock(w.db, third.id, { seed: 9, idPrefix: "third", shape: "legacy" });
     const thirdLobbies = new Lobbies(w.db, third.id);
     const thirdFlock = new Flock(w.db, third.id);
-    const spec: LobbySpec = { mode: "practice", classType: "open", format: "shortKnife" };
+    const spec: LobbySpec = { mode: "juvenile", classType: "open", format: "shortKnife" };
 
-    // Every active bird can practice — 4 per farm, 12 total.
+    // Every active bird can juvenile — 4 per farm, 12 total.
     for (const [api, flock] of [
       [w.dev, w.devFlock],
       [w.rival, w.rivalFlock],
@@ -166,7 +166,7 @@ describe("the card goes off (pure PvP)", () => {
     expect(w.dev.board().length).toBe(0);
   });
 
-  test("the FARM's record moves at fight time — practice never touches it", () => {
+  test("the FARM's record moves at fight time — juvenile counts too (one record)", () => {
     const w = world();
     duel(w, "Alab", REAL, 7001);
     const dev = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
@@ -174,9 +174,9 @@ describe("the card goes off (pure PvP)", () => {
     // Stamped on both farms at fight time — one won, one lost.
     expect([dev.wins + dev.losses, rival.wins + rival.losses]).toEqual([1, 1]);
     expect([dev.wins + rival.wins, dev.losses + rival.losses]).toEqual([1, 1]);
-    duel(w, "Kidlat", { mode: "practice", classType: "open", format: "shortKnife" }, 31);
+    duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 31);
     const after = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
-    expect(after.wins + after.losses).toBe(1); // the amateur card left it alone
+    expect(after.wins + after.losses).toBe(2); // juvenile counts — ONE record (round 15)
   });
 
   test("an odd lobby strands one bird: fee back, no land, no fight", () => {
@@ -195,13 +195,12 @@ describe("the card goes off (pure PvP)", () => {
     expect(statuses).toEqual(["fought", "fought", "unmatched"]);
   });
 
-  test("practice cards build the amateur record at amateur stakes", () => {
+  test("juvenile cards count toward the ONE lifetime record, at juvenile stakes", () => {
     const w = world();
-    const { fight } = duel(w, "Kidlat", { mode: "practice", classType: "open", format: "shortKnife" }, 31);
-    expect(fight.landEach).toBe(landForFight(ECONOMY.PRACTICE_ENTRY_FEE));
+    const { fight } = duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 31);
+    expect(fight.landEach).toBe(landForFight(ECONOMY.JUVENILE_ENTRY_FEE));
     const kidlat = byName(w.devFlock, "Kidlat");
-    expect(kidlat.wins + kidlat.losses).toBe(0); // career untouched
-    expect(kidlat.practiceWins + kidlat.practiceLosses).toBe(1);
+    expect(kidlat.wins + kidlat.losses).toBe(1); // one record, ruled round 15
   });
 
   test("hardcore PvP: the losing side force-retires, the winner fights on", () => {
@@ -359,8 +358,8 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
 });
 
 describe("the land curve (fight up)", () => {
-  test("superlinear in the fee: practice 1 · real 7 · hardcore 23", () => {
-    expect(landForFight(ECONOMY.PRACTICE_ENTRY_FEE)).toBe(1);
+  test("superlinear in the fee: juvenile 1 · real 7 · hardcore 23", () => {
+    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBe(1);
     expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBe(7);
     expect(landForFight(ECONOMY.HARDCORE_ENTRY_FEE)).toBe(23);
     // 3× the fee pays MORE than 3× the land — the "fight up" incentive.

@@ -16,7 +16,7 @@ export const CALENDAR = {
 // ── Age gates (in bird-years, derived: currentWeek - birthWeek) ─────────────
 export const AGE = {
   EGG: 0, //          age 0 = egg (sex hidden until hatch)
-  CHICK: 1, //        age 1 = discovery year: amateur fights + training only
+  CHICK: 1, //        age 1 = discovery year: juvenile fights only
   REAL_STAKES: 2, //  age 2+ = real fights (career record starts)
   FORK: 3, //         age 3+ = hardcore AND manual retirement unlock together
   FIGHTING_CAP: 9, // age 9 = force-retire (natural lifespan, compressed)
@@ -188,7 +188,7 @@ export const ECONOMY = {
   // Entries (winner takes the pooled pot = 2× entry):
   REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
   HARDCORE_ENTRY_FEE: 120, // $1.50 a side — and the loser's career (the key rule)
-  PRACTICE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
+  JUVENILE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
   GACHA_ROLL_PRICE: 80, //    one roll = $1 — PAID rolls feed the juice pool (round 14; was a silent burn)
   FREE_PULLS_PER_CHECK_IN: 2, // daily login bonus: two free gacha pulls
 } as const;
@@ -212,7 +212,7 @@ export const LAND = {
   DAILY_BUY_CAP: 1000, //  max LT purchasable per farm per game-day ($10 worth)
 } as const;
 
-// The land curve: practice (8 GP) → 1 LT · real/claimer (40 GP) → 7 LT ·
+// The land curve: juvenile (8 GP) → 1 LT · real/claimer (40 GP) → 7 LT ·
 // hardcore (120 GP) → 23 LT. Superlinear on purpose (7 > 5×1, 23 > 3×7·⅓).
 export function landForFight(fee: number): number {
   return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT)));

@@ -43,8 +43,6 @@ CREATE TABLE IF NOT EXISTS birds (
   birth_day INTEGER NOT NULL,
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
-  practice_wins INTEGER NOT NULL DEFAULT 0,
-  practice_losses INTEGER NOT NULL DEFAULT 0,
   retired_by TEXT CHECK (retired_by IN ('manual','age','hardcore')),
   retired_week INTEGER,
   listed_stud INTEGER NOT NULL DEFAULT 0,
@@ -75,7 +73,7 @@ CREATE TABLE IF NOT EXISTS battle_log (
   lobby_id INTEGER NOT NULL,
   farm_id TEXT NOT NULL,
   bird_id TEXT NOT NULL,
-  mode TEXT NOT NULL CHECK (mode IN ('practice','real','hardcore')),
+  mode TEXT NOT NULL CHECK (mode IN ('juvenile','real','hardcore')),
   format TEXT NOT NULL CHECK (format IN ('longKnife','shortKnife','longGaff','shortGaff')),
   lobby TEXT NOT NULL DEFAULT 'open' CHECK (lobby IN ('open','maiden','nw2','nw3','claimer')),
   claim_price INTEGER,
@@ -91,7 +89,7 @@ CREATE TABLE IF NOT EXISTS battle_log (
 
 CREATE TABLE IF NOT EXISTS lobbies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  mode TEXT NOT NULL CHECK (mode IN ('practice','real','hardcore')),
+  mode TEXT NOT NULL CHECK (mode IN ('juvenile','real','hardcore')),
   class_type TEXT NOT NULL CHECK (class_type IN ('open','maiden','nw2','nw3','claimer')),
   format TEXT NOT NULL CHECK (format IN ('longKnife','shortKnife','longGaff','shortGaff')),
   price INTEGER,

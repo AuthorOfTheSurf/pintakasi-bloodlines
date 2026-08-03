@@ -7,7 +7,7 @@ import { ECONOMY, STATS } from "@/engine/config";
 
 describe("seeded database", () => {
   const db = createDb(":memory:");
-  const { farmId } = seedGame(db);
+  const { farmId } = seedGame(db, { flock: "legacy" });
 
   test("world clock at day 0; the dev farm has the starting stake", () => {
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();

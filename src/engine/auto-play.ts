@@ -18,7 +18,7 @@ import { mulberry32 } from "./rng";
  *
  * The day, in order: check in, spend every free gacha pull, stake all liquid
  * land, stand retired roosters at stud, buy one cover for the first hen with
- * an empty nest, enter every active bird on the card (real at 2+, practice
+ * an empty nest, enter every active bird on the card (real at 2+, juvenile
  * under it).
  */
 const quietly = (fn: () => unknown) => {
@@ -79,7 +79,7 @@ export function playHonestDay(db: DB, farmId: string): void {
     const spec: LobbySpec =
       bird.age >= 2
         ? { mode: "real", classType: "open", format: "shortKnife" }
-        : { mode: "practice", classType: "open", format: "shortKnife" };
+        : { mode: "juvenile", classType: "open", format: "shortKnife" };
     quietly(() => lobbies.enter(bird.id, spec));
   }
 }

@@ -42,7 +42,7 @@ const MAX_CLAIMS_PER_DAY = 2;
  */
 export class Bots {
   /** Create the six bot farms + their starter flocks. Idempotent. */
-  static seed(db: DB): void {
+  static seed(db: DB, opts: { flock?: "eggs" | "legacy" } = {}): void {
     const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
     for (const bot of BOT_FARMS) {
       const exists = db.select().from(farms).where(eq(farms.id, bot.id)).get();
@@ -67,7 +67,7 @@ export class Bots {
         gpCents: ECONOMY.STARTING_GP * 100,
         message: `${bot.name} registered — starting purse ${ECONOMY.STARTING_GP} GP`,
       });
-      seedStarterFlock(db, bot.id, { seed: bot.flockSeed, idPrefix: bot.id });
+      seedStarterFlock(db, bot.id, { seed: bot.flockSeed, idPrefix: bot.id, shape: opts.flock });
     }
   }
 
@@ -216,7 +216,7 @@ export class Bots {
     rng: Rng
   ): { mode: FightMode; classType: Lobby; format: FightFormat; price?: number } {
     const format = bestFormat(bird, rng);
-    if (bird.age === 1) return { mode: "practice", classType: "open", format };
+    if (bird.age === 1) return { mode: "juvenile", classType: "open", format };
     if (bird.age >= 3 && rng() < bot.hardcoreNerve) {
       return { mode: "hardcore", classType: "open", format };
     }

@@ -17,14 +17,14 @@ import { mulberry32 } from "./rng";
  */
 function world() {
   const db = createDb(":memory:");
-  const dev = seedGame(db);
+  const dev = seedGame(db, { flock: "legacy" });
   const game = new Game(db, dev.farmId);
   const { farm: rivalFarm } = game.farms.register({
     name: "Rival Gamefarm",
     primaryColor: "black",
     secondaryColor: "red",
   });
-  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival" });
+  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
   return {
     db,
     farmId: dev.farmId,
@@ -77,12 +77,12 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   expect(["male", "female"]).toContain(chick.sex);
   expect(["rooster", "hen"]).toContain(chick.sexLabel!);
 
-  // 3. The discovery year: an amateur card against the rival's chick.
-  const practice = duel(w, chick.id, "Kidlat", { mode: "practice", classType: "open", format: "shortKnife" }, 21);
-  expect(practice.birds).toContain("Alon");
-  const afterPractice = flock.byId(chick.id);
-  expect(afterPractice.wins + afterPractice.losses).toBe(0); // career untouched
-  expect(afterPractice.practiceWins + afterPractice.practiceLosses).toBe(1);
+  // 3. The discovery year: a juvenile card against the rival's chick.
+  const juvenile = duel(w, chick.id, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 21);
+  expect(juvenile.birds).toContain("Alon");
+  const afterJuvenile = flock.byId(chick.id);
+  // ONE lifetime record (round 15): juvenile fights count like any other.
+  expect(afterJuvenile.wins + afterJuvenile.losses).toBe(1);
   // Stats are FIXED at birth (round 13) — no training; discovery is fought.
 
   // 4. Age 2 — real stakes open, the record starts.
@@ -93,7 +93,7 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   ).toThrow(/age 3/);
   duel(w, chick.id, "Alab", { mode: "real", classType: "open", format: "shortKnife" }, 33);
   const afterReal = flock.byId(chick.id);
-  expect(afterReal.wins + afterReal.losses).toBe(1);
+  expect(afterReal.wins + afterReal.losses).toBe(2); // juvenile + real — one record
 
   // 5. Age 3 — the fork opens as a package: hardcore AND retirement.
   tick = game.tickWeek();
@@ -140,6 +140,37 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   // The wallet stayed a single closed number all game.
   const gp = w.db.select().from(farms).where(eq(farms.id, w.farmId)).get()!.gp;
   expect(Number.isInteger(gp)).toBe(true);
+});
+
+describe("the cold start (round 15 — every stable begins with 4 eggs)", () => {
+  test("four named age-0 eggs; nobody fights week one; Friday hatches the flock", () => {
+    const db = createDb(":memory:");
+    const dev = seedGame(db); // PRODUCTION shape — no legacy flock
+    const game = new Game(db, dev.farmId);
+    const flock = new Flock(db, dev.farmId);
+
+    const eggs = flock.all();
+    expect(eggs.length).toBe(4);
+    expect(eggs.every((b) => b.status === "egg" && b.age === 0 && b.named === 1)).toBe(true);
+    expect(eggs.filter((b) => b.sex === "hidden").length).toBe(4); // sexes hidden until hatch
+    expect(new Set(eggs.map((b) => b.element)).size).toBe(4); // four distinct elements
+
+    // Week one: eggs can't be carded at all.
+    expect(() =>
+      game.lobbies.enter(eggs[0].id, { mode: "juvenile", classType: "open", format: "shortKnife" })
+    ).toThrow(/not an active fighter/);
+
+    // Friday: the whole flock hatches at age 1 — juvenile year opens.
+    const tick = game.tickWeek();
+    expect(tick.fridays[0].hatched.length).toBe(4);
+    const chick = flock.all()[0];
+    expect(chick.age).toBe(1);
+    expect(["rooster", "hen"]).toContain(chick.sexLabel!);
+    expect(
+      game.lobbies.enter(chick.id, { mode: "juvenile", classType: "open", format: "shortKnife" })
+        .entryId
+    ).toBeGreaterThan(0);
+  });
 });
 
 describe("hardcore arm of the loop", () => {

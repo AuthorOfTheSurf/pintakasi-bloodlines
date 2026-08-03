@@ -12,7 +12,7 @@ import { mulberry32 } from "./rng";
 
 function world() {
   const db = createDb(":memory:");
-  const dev = seedGame(db);
+  const dev = seedGame(db, { flock: "legacy" });
   const game = new Game(db, dev.farmId);
   const { farm: rival } = game.farms.register({
     name: "Rival Gamefarm",

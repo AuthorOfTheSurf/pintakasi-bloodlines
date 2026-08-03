@@ -9,8 +9,8 @@ import { Game } from "./game";
 
 function world() {
   const db = createDb(":memory:");
-  const dev = seedGame(db);
-  Bots.seed(db);
+  const dev = seedGame(db, { flock: "legacy" });
+  Bots.seed(db, { flock: "legacy" });
   return { db, game: new Game(db, dev.farmId) };
 }
 
@@ -24,7 +24,7 @@ const totalGp = (db: DB) =>
 describe("seeding the bot stables", () => {
   test("six farms, flagged, flocked — and idempotent", () => {
     const { db } = world();
-    Bots.seed(db); // second call must be a no-op
+    Bots.seed(db, { flock: "legacy" }); // second call must be a no-op
     const bots = db.select().from(farms).where(eq(farms.isBot, 1)).all();
     expect(bots.length).toBe(BOT_FARMS.length);
     for (const bot of BOT_FARMS) {
@@ -35,7 +35,7 @@ describe("seeding the bot stables", () => {
 
   test("worlds without bots are untouched — playDay no-ops", () => {
     const db = createDb(":memory:");
-    seedGame(db);
+    seedGame(db, { flock: "legacy" });
     expect(Bots.playDay(db)).toEqual([]);
   });
 });

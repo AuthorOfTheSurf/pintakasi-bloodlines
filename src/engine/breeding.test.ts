@@ -11,7 +11,7 @@ import { mulberry32 } from "./rng";
 
 function freshGame(seed = 42) {
   const db = createDb(":memory:");
-  const fid = seedGame(db).farmId;
+  const fid = seedGame(db, { flock: "legacy" }).farmId;
   return { db, farmId: fid, breeding: new Breeding(db, fid, mulberry32(seed)), flock: new Flock(db, fid) };
 }
 

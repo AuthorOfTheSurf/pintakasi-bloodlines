@@ -16,13 +16,13 @@ import {
 import { emit } from "./events";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
-import { canHardcore, canPractice, canRealFight } from "./lifecycle";
+import { canHardcore, canJuvenile, canRealFight } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
 
-export type FightMode = "practice" | "real" | "hardcore";
+export type FightMode = "juvenile" | "real" | "hardcore";
 
 const MODE_FEES: Record<FightMode, number> = {
-  practice: ECONOMY.PRACTICE_ENTRY_FEE,
+  juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
   real: ECONOMY.REAL_ENTRY_FEE,
   hardcore: ECONOMY.HARDCORE_ENTRY_FEE,
 };
@@ -74,8 +74,8 @@ export interface EntryCard {
     sexLabel: "rooster" | "hen" | null;
     age: number;
     stars: string; // e.g. "2.5★ Fire" — visible from birth
+    // ONE lifetime record (ruled round 15) — juvenile fights included.
     career: { wins: number; losses: number };
-    amateur: { wins: number; losses: number };
     formatRecords: Partial<Record<FightFormat, FormatRecord>>;
   };
   mine: boolean; // your own entry — you cannot claim it
@@ -472,14 +472,10 @@ export class Lobbies {
       farmNames.push(farm.name);
       // Escrow settle: winner takes the pooled pot (own stake back + the
       // other side's), loser's escrow is the pot. Land pays both fighters.
-      // The FARM's record moves here too (real + hardcore only) — it can't
-      // be derived from owned birds later, because birds transfer.
-      const farmRecord =
-        lobby.mode === "practice"
-          ? {}
-          : side.won
-            ? { wins: farm.wins + 1 }
-            : { losses: farm.losses + 1 };
+      // The FARM's record moves here too — it can't be derived from owned
+      // birds later, because birds transfer. ONE record (ruled round 15):
+      // juvenile fights count toward the lifetime record like any other.
+      const farmRecord = side.won ? { wins: farm.wins + 1 } : { losses: farm.losses + 1 };
       database
         .update(farms)
         .set({
@@ -491,15 +487,7 @@ export class Lobbies {
         .run();
       database
         .update(birds)
-        .set(
-          lobby.mode === "practice"
-            ? side.won
-              ? { practiceWins: side.row.practiceWins + 1 }
-              : { practiceLosses: side.row.practiceLosses + 1 }
-            : side.won
-              ? { wins: side.row.wins + 1 }
-              : { losses: side.row.losses + 1 }
-        )
+        .set(side.won ? { wins: side.row.wins + 1 } : { losses: side.row.losses + 1 })
         .where(eq(birds.id, side.row.id))
         .run();
       // The key rule's teeth — in PvP both owners signed up for it.
@@ -726,8 +714,8 @@ export class Lobbies {
         sexLabel: bird.sexLabel,
         age: bird.age,
         stars: bird.stars,
+        // ONE lifetime record (ruled round 15) — juvenile fights included.
         career: { wins: bird.wins, losses: bird.losses },
-        amateur: { wins: bird.practiceWins, losses: bird.practiceLosses },
         formatRecords: this.formatRecords(bird.id),
       },
       mine: entry.farmId === this.farmId,
@@ -747,7 +735,7 @@ export class Lobbies {
 
   private checkGate(name: string, age: number, mode: FightMode): void {
     const gates: Record<FightMode, [ok: boolean, rule: string]> = {
-      practice: [canPractice(age), "practice opens at age 1"],
+      juvenile: [canJuvenile(age), "juvenile opens at age 1"],
       real: [canRealFight(age), "real stakes open at age 2"],
       hardcore: [canHardcore(age), "hardcore opens at age 3 (and ends at the cap)"],
     };
@@ -760,14 +748,11 @@ export class Lobbies {
     const { mode, classType, price } = spec;
     if (mode === "hardcore" && classType !== "open")
       throw new Error("Hardcore runs in the open only — the key rule needs no ladder");
-    if (mode === "practice" && classType !== "open" && classType !== "maiden")
-      throw new Error("Amateur lobbies are open or maiden only");
+    if (mode === "juvenile" && classType !== "open" && classType !== "maiden")
+      throw new Error("Juvenile lobbies are open or maiden only");
 
-    if (classType === "maiden") {
-      const winsInClass = mode === "practice" ? bird.practiceWins : bird.wins;
-      if (winsInClass > 0)
-        throw new Error(`${bird.name} has won before — maidens take never-winners only`);
-    }
+    if (classType === "maiden" && bird.wins > 0)
+      throw new Error(`${bird.name} has won before — maidens take never-winners only`);
     if (classType === "nw2" && bird.wins >= 2)
       throw new Error(`${bird.name} has ${bird.wins} career wins — nw2 takes fewer than 2`);
     if (classType === "nw3" && bird.wins >= 3)

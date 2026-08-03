@@ -5,21 +5,31 @@ import { AGE } from "./config";
  * Age gates as pure functions. Age is always DERIVED: currentWeek - birthWeek
  * (one bird-year per game-week). Never stored, never mutated.
  *
- * age 0 = egg · 1 = discovery year (practice only — stats are FIXED at
+ * age 0 = egg · 1 = discovery year (juvenile only — stats are FIXED at
  * birth; discovery means fighting the formats, not training) · 2+ = real
  * stakes · 3+ = the fork (hardcore AND manual retirement unlock together) ·
  * 9 = fighting cap (force-retire).
  */
 
-export function ageOf(bird: Pick<BirdRow, "birthWeek">, currentWeek: number): number {
-  return currentWeek - bird.birthWeek;
+/**
+ * A retired bird's age FREEZES at its retirement week (ruled round 15 —
+ * "week 6, age 17" starters were retirees still accruing bird-years). The
+ * frozen number is the age the career ended at; active birds keep aging.
+ */
+export function ageOf(
+  bird: Pick<BirdRow, "birthWeek"> & Partial<Pick<BirdRow, "retiredWeek">>,
+  currentWeek: number
+): number {
+  const asOf =
+    bird.retiredWeek != null && bird.retiredWeek < currentWeek ? bird.retiredWeek : currentWeek;
+  return asOf - bird.birthWeek;
 }
 
 export function isEggAge(age: number): boolean {
   return age < AGE.CHICK;
 }
 
-export function canPractice(age: number): boolean {
+export function canJuvenile(age: number): boolean {
   return age >= AGE.CHICK && age < AGE.FIGHTING_CAP;
 }
 

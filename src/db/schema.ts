@@ -66,10 +66,8 @@ export const birds = sqliteTable("birds", {
   // price — that's player price-setting + supply/demand, ruled 2026-08-03.)
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
-  // The AMATEUR record — discovery-year practice fights; small stakes,
+  // The AMATEUR record — discovery-year juvenile fights; small stakes,
   // never touches stud value.
-  practiceWins: integer("practice_wins").notNull().default(0),
-  practiceLosses: integer("practice_losses").notNull().default(0),
   // How the career ended (null while egg/active).
   retiredBy: text("retired_by", { enum: ["manual", "age", "hardcore"] }),
   retiredWeek: integer("retired_week"),
@@ -116,7 +114,7 @@ export const battleLog = sqliteTable("battle_log", {
   lobbyId: integer("lobby_id").notNull(),
   farmId: text("farm_id").notNull(),
   birdId: text("bird_id").notNull(),
-  mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
+  mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
   // The weapon format — the "distance" this fight was run at.
   format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
   // The lobby class — open / maiden / nw2 / nw3 / claimer.
@@ -150,7 +148,7 @@ export const battleLog = sqliteTable("battle_log", {
 //   COMPLETED — fights concluded, refunds paid, claims settled.
 export const lobbies = sqliteTable("lobbies", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
+  mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
   classType: text("class_type", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] }).notNull(),
   format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
   price: integer("price"), // claimer tag — null for every other class

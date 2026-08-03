@@ -144,7 +144,119 @@ export function BirdSprite({
       style={{ imageRendering: "pixelated", shapeRendering: "crispEdges", verticalAlign: "middle" }}
       aria-hidden
     >
-      {pixels(map, palette)}
+      {/* The maps are authored facing left; birds face RIGHT (ruled round 15). */}
+      <g transform="scale(-1,1) translate(-16,0)">{pixels(map, palette)}</g>
+    </svg>
+  );
+}
+
+// ── Element icons (round 15) — 12×12, two tones each ───────────────────────
+// a = main tone · b = accent
+const ELEMENT_MAPS: Record<string, { map: string[]; a: string; b: string }> = {
+  Fire: {
+    a: "#c93a26",
+    b: "#f0a832",
+    map: [
+      ".....a......",
+      ".....a......",
+      "....aa......",
+      "....aaa.....",
+      "...aaaa.....",
+      "..aaabaa....",
+      "..aabbba....",
+      ".aaabbbaa...",
+      ".aabbbbba...",
+      ".aabbbbba...",
+      "..aabbbaa...",
+      "...aaaaa....",
+    ],
+  },
+  Water: {
+    a: "#2f6fd0",
+    b: "#7ec8e3",
+    map: [
+      ".....a......",
+      "....aaa.....",
+      "....aaa.....",
+      "...aaaaa....",
+      "..aaaaaaa...",
+      "..abaaaaa...",
+      ".aabbaaaaa..",
+      ".aabaaaaaa..",
+      ".aaaaaaaaa..",
+      "..aaaaaaa...",
+      "...aaaaa....",
+      "....aaa.....",
+    ],
+  },
+  Wood: {
+    a: "#3f9e4d",
+    b: "#a0522d",
+    map: [
+      "........a...",
+      "......aaa...",
+      "....aaaaa...",
+      "...aaaaaa...",
+      "..aaaaaaa...",
+      "..aaaaaa....",
+      ".aaaaaaa....",
+      ".aaaaaa.....",
+      ".aaaaa......",
+      "..aab.......",
+      "....b.......",
+      "...b........",
+    ],
+  },
+  Earth: {
+    a: "#6b4423",
+    b: "#23201c",
+    map: [
+      "............",
+      ".....a......",
+      "....aaa.....",
+      "....aaa.....",
+      "...aaaaa....",
+      "...aabaa....",
+      "..aaabba....",
+      "..aaabbaa...",
+      ".aaaabbaaa..",
+      ".aaaaaaaaa..",
+      "aaaaaaaaaaa.",
+      "............",
+    ],
+  },
+  Metal: {
+    a: "#c0c4cc",
+    b: "#e0b52c",
+    map: [
+      "............",
+      "............",
+      "............",
+      "...aaaaaa...",
+      "..aabaaaaa..",
+      "..abaaaaaa..",
+      ".aaaaaaaaaa.",
+      ".aaaaaaaaaa.",
+      "aaaaaaaaaaaa",
+      "aaaaaaaaaaaa",
+      "............",
+      "............",
+    ],
+  },
+};
+
+export function ElementSprite({ element, size = 14 }: { element: string; size?: number }) {
+  const spec = ELEMENT_MAPS[element];
+  if (!spec) return null;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 12 12"
+      style={{ imageRendering: "pixelated", shapeRendering: "crispEdges", verticalAlign: "middle" }}
+      aria-hidden
+    >
+      {pixels(spec.map, { a: spec.a, b: spec.b })}
     </svg>
   );
 }

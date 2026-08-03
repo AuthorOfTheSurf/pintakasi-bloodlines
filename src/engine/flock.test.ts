@@ -7,14 +7,14 @@ import { GameClock } from "./game-clock";
 import {
   canHardcore,
   canManualRetire,
-  canPractice,
+  canJuvenile,
   canRealFight,
   mustRetire,
 } from "./lifecycle";
 
 function freshGame() {
   const db = createDb(":memory:");
-  const { farmId } = seedGame(db);
+  const { farmId } = seedGame(db, { flock: "legacy" });
   return { db, farmId, clock: new GameClock(db), flock: new Flock(db, farmId) };
 }
 
@@ -37,7 +37,7 @@ function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: numbe
 
 describe("age gate matrix", () => {
   test("each age hits exactly the ruled gates", () => {
-    // [age, practice, real, hardcore, manualRetire, forceRetire] — no train
+    // [age, juvenile, real, hardcore, manualRetire, forceRetire] — no train
     // column: stats are fixed at birth (ruled round 13).
     const matrix: [number, boolean, boolean, boolean, boolean, boolean][] = [
       [0, false, false, false, false, false], // egg
@@ -47,8 +47,8 @@ describe("age gate matrix", () => {
       [8, true, true, true, true, false], //     last fighting year
       [9, false, false, false, true, true], //   cap
     ];
-    for (const [age, practice, real, hardcore, manual, force] of matrix) {
-      expect([age, canPractice(age)]).toEqual([age, practice]);
+    for (const [age, juvenile, real, hardcore, manual, force] of matrix) {
+      expect([age, canJuvenile(age)]).toEqual([age, juvenile]);
       expect([age, canRealFight(age)]).toEqual([age, real]);
       expect([age, canHardcore(age)]).toEqual([age, hardcore]);
       expect([age, canManualRetire(age)]).toEqual([age, manual]);

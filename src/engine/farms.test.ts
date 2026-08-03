@@ -9,7 +9,7 @@ import { Flock } from "./flock";
 
 function fresh() {
   const db = createDb(":memory:");
-  const dev = seedGame(db);
+  const dev = seedGame(db, { flock: "legacy" });
   return { db, dev, farmsApi: new Farms(db) };
 }
 
@@ -25,7 +25,7 @@ describe("registration", () => {
     expect(apiKey.startsWith("fk_")).toBe(true);
     expect(farm.gp).toBe(ECONOMY.STARTING_GP);
     expect(farm.country).toBe("🇵🇭");
-    seedStarterFlock(db, farm.id, { seed: 7 });
+    seedStarterFlock(db, farm.id, { seed: 7, shape: "legacy" });
     expect(new Flock(db, farm.id).all().length).toBe(8);
     // Key resolves back to the farm.
     expect(farmsApi.byKey(apiKey).id).toBe(farm.id);
@@ -44,7 +44,7 @@ describe("registration", () => {
   test("farms are isolated: your flock is not my flock", () => {
     const { db, dev, farmsApi } = fresh();
     const { farm } = farmsApi.register({ name: "Rival", primaryColor: "black", secondaryColor: "red" });
-    seedStarterFlock(db, farm.id, { seed: 9 });
+    seedStarterFlock(db, farm.id, { seed: 9, shape: "legacy" });
     const mine = new Flock(db, dev.farmId);
     const theirs = new Flock(db, farm.id);
     expect(mine.all().length).toBe(8);

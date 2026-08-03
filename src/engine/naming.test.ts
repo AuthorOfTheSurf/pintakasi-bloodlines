@@ -19,13 +19,13 @@ describe("world-unique bird names", () => {
       seedStarterFlock(db, farm.id, { seed: 100 + i, idPrefix: `f${i}` });
     }
     const names = db.select({ name: birds.name }).from(birds).all().map((r) => r.name);
-    expect(names.length).toBe(7 * 8);
+    expect(names.length).toBe(7 * 4); // 4 starter eggs per farm since round 15
     expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(names.length);
   });
 
   test("uniqueName hands out roman successors; rename refuses a taken name", () => {
     const db = createDb(":memory:");
-    const { farmId } = seedGame(db);
+    const { farmId } = seedGame(db, { flock: "legacy" });
     expect(uniqueName(db, "Dalisay")).toBe("Dalisay II");
     expect(uniqueName(db, "Halimaw")).toBe("Halimaw"); // free — untouched
     const flock = new Flock(db, farmId);
@@ -42,7 +42,7 @@ describe("world-unique bird names", () => {
 describe("the naming law (round 14)", () => {
   test("an auto-named bird is refused at the lobby door until christened", () => {
     const db = createDb(":memory:");
-    const { farmId } = seedGame(db);
+    const { farmId } = seedGame(db, { flock: "legacy" });
     const game = new Game(db, farmId);
 
     // Dalisay × Bagwis (own retired pair, unrelated) → auto-named egg.
@@ -54,7 +54,7 @@ describe("the naming law (round 14)", () => {
     const flock = new Flock(db, farmId);
     expect(flock.byId(egg.id).status).toBe("active");
 
-    const spec = { mode: "practice", classType: "open", format: "shortKnife" } as const;
+    const spec = { mode: "juvenile", classType: "open", format: "shortKnife" } as const;
     expect(() => game.lobbies.enter(egg.id, spec)).toThrow(/name a bird before its first fight/);
 
     flock.rename(egg.id, "Maelstrom");

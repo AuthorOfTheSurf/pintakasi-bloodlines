@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
-import { gradeOf, overallGradeOf } from "@/engine/grades";
-import { BASE_COAT_HEX, BirdSprite, EggSprite, TOKEN_EGG_HEX } from "./sprites";
+import { gradeColor, gradeOf, overallGradeOf } from "@/engine/grades";
+import { BASE_COAT_HEX, BirdSprite, EggSprite, ElementSprite, TOKEN_EGG_HEX } from "./sprites";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -79,8 +79,6 @@ export interface BirdRowUI {
   status: string;
   wins: number;
   losses: number;
-  practiceWins: number;
-  practiceLosses: number;
 }
 
 export interface BreedingRowUI {
@@ -225,22 +223,38 @@ function BirdAvatarCell(props: { data?: BirdRowUI }) {
   return <BirdSprite sex={d.sex} baseCoat={d.baseCoat} trimColor={d.trimColor} size={30} />;
 }
 
-/** Grade prominent, raw number in secondary grey (round 14 — the table got dense). */
+/**
+ * Grade prominent — colored per family (round 15: C blue · B orange ·
+ * A green · S purple · O amber) — raw number in secondary grey.
+ */
 function GradeCell(props: { value?: number }) {
   if (props.value == null) return null;
+  const grade = gradeOf(props.value);
   return (
     <span>
-      <b className="grade">{gradeOf(props.value)}</b> <span className="statnum">{props.value}</span>
+      <b className="grade" style={{ color: gradeColor(grade) }}>{grade}</b>{" "}
+      <span className="statnum">{props.value}</span>
     </span>
   );
 }
 
 function TotalCell(props: { value?: number }) {
   if (props.value == null) return null;
+  const grade = overallGradeOf(props.value);
   return (
     <span>
-      <b className="grade">{overallGradeOf(props.value)}</b>{" "}
+      <b className="grade" style={{ color: gradeColor(grade) }}>{grade}</b>{" "}
       <span className="statnum">{props.value}</span>
+    </span>
+  );
+}
+
+/** Element with its pixel icon. */
+function ElementCell(props: { value?: string }) {
+  if (!props.value) return null;
+  return (
+    <span>
+      <ElementSprite element={props.value} size={14} /> {props.value}
     </span>
   );
 }
@@ -268,21 +282,22 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   {
     colId: "avatar",
     headerName: "",
-    width: 58,
+    width: 64,
     pinned: "left",
     sortable: false,
     filter: false,
     resizable: false,
     cellRenderer: BirdAvatarCell,
+    // Kill the default cell padding — it was squeezing the sprite and
+    // showing an overflow ellipsis beside it.
+    cellStyle: { padding: 0, display: "flex", alignItems: "center", justifyContent: "center" },
   },
   { field: "name", minWidth: 150, pinned: "left" },
   farmCol("farm", "farm", "farm"),
   { field: "sex", width: 95 },
-  { field: "baseCoat", headerName: "coat", width: 95 },
-  { field: "trimColor", headerName: "trim", width: 105 },
   { field: "age", type: "rightAligned", width: 75 },
   { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
-  { field: "element", width: 100 },
+  { field: "element", width: 115, cellRenderer: ElementCell },
   { field: "total", headerName: "Overall", type: "rightAligned", width: 120, sort: "desc", cellRenderer: TotalCell },
   statCol("agility", "agi"),
   statCol("sight", "sig"),
@@ -293,8 +308,9 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   { field: "status", width: 150 },
   { field: "wins", headerName: "W", type: "rightAligned", width: 70 },
   { field: "losses", headerName: "L", type: "rightAligned", width: 70 },
-  { field: "practiceWins", headerName: "aW", type: "rightAligned", width: 70 },
-  { field: "practiceLosses", headerName: "aL", type: "rightAligned", width: 70 },
+  // Unimportant — parked at the far end (ruled round 15).
+  { field: "baseCoat", headerName: "coat", width: 95 },
+  { field: "trimColor", headerName: "trim", width: 105 },
 ];
 
 const BREEDING_COLS: ColDef<BreedingRowUI>[] = [
@@ -360,6 +376,23 @@ const LEDGER_COLS: ColDef<LedgerRowUI>[] = [
     cellClassRules: deltaClasses,
   },
 ];
+
+// "Higher is better" is the better assumption (ruled round 15): every
+// numeric (right-aligned) column sorts DESCENDING on the first click.
+const DESC_FIRST: ("desc" | "asc" | null)[] = ["desc", "asc", null];
+for (const cols of [
+  FARM_COLS,
+  FIGHT_COLS,
+  BIRD_COLS,
+  BREEDING_COLS,
+  GACHA_COLS,
+  GP_COLS,
+  LEDGER_COLS,
+] as ColDef[][]) {
+  for (const c of cols) {
+    if (c.type === "rightAligned" && c.sortable !== false) c.sortingOrder = DESC_FIRST;
+  }
+}
 
 const TABS = ["Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "The Ledger"] as const;
 type Tab = (typeof TABS)[number];

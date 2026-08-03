@@ -14,14 +14,14 @@ const SPEC: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnif
 
 function world() {
   const db = createDb(":memory:");
-  const dev = seedGame(db); // "Bukidnon Farms"
+  const dev = seedGame(db, { flock: "legacy" }); // "Bukidnon Farms"
   const game = new Game(db, dev.farmId);
   const { farm: rivalFarm } = game.farms.register({
     name: "Rival Gamefarm",
     primaryColor: "black",
     secondaryColor: "red",
   });
-  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival" });
+  seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
   return {
     db,
     devId: dev.farmId,
@@ -45,7 +45,7 @@ describe("carding a claimer", () => {
     const w = world();
     const alab = byName(w.devFlock, "Alab");
     expect(() => w.dev.enter(alab.id, { ...SPEC, price: 123 })).toThrow(/claiming tag/);
-    expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "practice" as never })).toThrow(/open or maiden/);
+    expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "juvenile" as never })).toThrow(/open or maiden/);
     // An open entry takes no claims.
     const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "shortKnife" });
     const openEntry = open.lobby.entries[0].entryId;
