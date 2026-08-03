@@ -133,6 +133,29 @@ describe("the 8-cap (lock the lobby even)", () => {
     expect(card.bird.stars).toContain("★");
     expect("agility" in card.bird).toBe(false);
   });
+
+  test("no farm holds more than half a lobby — clumps split, full lobbies match everyone", () => {
+    const w = world();
+    // A second wave of starters: 8 active birds in the dev barn. Before the
+    // seating rule these all sat in ONE lobby and most went home unmatched.
+    seedStarterFlock(w.db, w.devId, { seed: 77, idPrefix: "dev2", shape: "legacy" });
+    const spec: LobbySpec = { mode: "juvenile", classType: "open", format: "shortKnife" };
+    for (const bird of w.devFlock.all().filter((b) => b.status === "active"))
+      w.dev.enter(bird.id, spec);
+    let board = w.dev.board();
+    expect(board.map((l) => l.filled)).toEqual([4, 4]); // the clump split at half
+
+    seedStarterFlock(w.db, w.rivalId, { seed: 78, idPrefix: "rival2", shape: "legacy" });
+    for (const bird of w.rivalFlock.all().filter((b) => b.status === "active"))
+      w.rival.enter(bird.id, spec);
+    board = w.dev.board();
+    expect(board.map((l) => l.filled)).toEqual([8, 8]);
+
+    // Both lobbies are half-and-half — the card goes off with ZERO cancellations.
+    const card2 = w.game.tickDay().card;
+    expect(card2.reduce((s, l) => s + l.fights.length, 0)).toBe(8);
+    expect(card2.reduce((s, l) => s + l.unmatched.length, 0)).toBe(0);
+  });
 });
 
 describe("the card goes off (pure PvP)", () => {

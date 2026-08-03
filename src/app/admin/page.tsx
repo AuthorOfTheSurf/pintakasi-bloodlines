@@ -1,8 +1,8 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { TickControls } from "./tick-controls";
-import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbyEntries } from "@/db/schema";
-import { ECONOMY } from "@/engine/config";
+import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries } from "@/db/schema";
+import { ECONOMY, FORMATS, type FightFormat } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { ageOf } from "@/engine/lifecycle";
@@ -83,7 +83,8 @@ export default function Admin() {
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
   const log = d.select().from(battleLog).all();
   const rolls = d.select().from(gachaTokens).all().length;
-  const pendingEntries = d.select().from(lobbyEntries).all().filter((e) => e.status === "pending");
+  const allEntries = d.select().from(lobbyEntries).all();
+  const pendingEntries = allEntries.filter((e) => e.status === "pending");
   const pendingClaims = d.select().from(claims).all().filter((c) => c.status === "pending");
   const allEvents = d.select().from(events).all();
 
@@ -110,6 +111,47 @@ export default function Admin() {
     const shown = opts.cents ? gpFmt(Math.abs(diff)) : Math.abs(diff).toLocaleString();
     return <span className={`diff ${diff > 0 ? "up" : "down"}`}>{diff > 0 ? "+" : "−"}{shown}</span>;
   };
+
+  // ── The card (round 17) — the most recent day's schedule, lobby by lobby ──
+  // Between manual ticks the board is empty (auto-play + resolve both happen
+  // inside the tick), so this is usually the card that WENT OFF at the last
+  // tick — the place to spot gaps: thin lobbies, odd fields, farm clumps.
+  const allLobbies = d.select().from(lobbies).all();
+  const cardDay = allLobbies.length ? Math.max(...allLobbies.map((l) => l.dayOpened)) : null;
+  const bname = (id: string) => birdById.get(id)?.name ?? id;
+  const cardLobbies = allLobbies
+    .filter((l) => l.dayOpened === cardDay)
+    .map((l) => {
+      const entries = allEntries.filter((e) => e.lobbyId === l.id);
+      const bouts = log
+        .filter((r) => r.lobbyId === l.id && r.result === "win")
+        .map((w) => ({
+          winner: bname(w.birdId),
+          winnerFarm: fname(w.farmId),
+          loser: w.opponentName,
+          loserFarm: fname(w.opponentFarmId),
+          figures: [w.pitFigure, log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0] as const,
+        }));
+      return {
+        id: l.id,
+        label:
+          `${l.mode.toUpperCase()}${l.classType === "open" ? "" : "·" + l.classType.toUpperCase()}` +
+          `${l.price ? ` @ ${l.price} GP tag` : ""} · ${FORMATS[l.format as FightFormat].label}`,
+        hardcore: l.mode === "hardcore",
+        filled: entries.length,
+        capacity: l.capacity,
+        bouts,
+        unmatched: entries
+          .filter((e) => e.status === "unmatched")
+          .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId), fee: e.fee })),
+        pending: entries
+          .filter((e) => e.status === "pending")
+          .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId) })),
+      };
+    });
+  const cardFights = cardLobbies.reduce((s, l) => s + l.bouts.length, 0);
+  const cardCancelled = cardLobbies.reduce((s, l) => s + l.unmatched.length, 0);
+  const cardPending = cardLobbies.reduce((s, l) => s + l.pending.length, 0);
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {
@@ -290,7 +332,7 @@ export default function Admin() {
       <section className="cards">
         <div className="card">
           <div className="big">
-            <GpIcon /> {gpFmt(now.gpCents)} GP {delta("gpCents", { cents: true })}
+            <GpIcon size={22} /> {gpFmt(now.gpCents)} GP {delta("gpCents", { cents: true })}
           </div>
           <div className="label">Golden Pesos in circulation</div>
           <div className="sub">
@@ -299,21 +341,21 @@ export default function Admin() {
         </div>
         <div className="card">
           <div className="big">
-            <GpIcon /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
+            <GpIcon size={22} /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
           </div>
           <div className="label">juice pool (fight schedule)</div>
           <div className="sub">breed cuts + paid gacha — Wednesday finals will spend it</div>
         </div>
         <div className="card">
           <div className="big">
-            <GpIcon /> {gpFmt(now.stakerCents)} GP {delta("stakerCents", { cents: true })}
+            <GpIcon size={22} /> {gpFmt(now.stakerCents)} GP {delta("stakerCents", { cents: true })}
           </div>
           <div className="label">staker pool (undistributed)</div>
           <div className="sub">pays pro-rata at every day tick</div>
         </div>
         <div className="card">
           <div className="big">
-            <LtIcon /> {now.landMinted.toLocaleString()} LT {delta("landMinted")}
+            <LtIcon size={22} /> {now.landMinted.toLocaleString()} LT {delta("landMinted")}
           </div>
           <div className="label">Land Tokens minted</div>
           <div className="sub">
@@ -359,6 +401,50 @@ export default function Admin() {
         </div>
       </section>
 
+      {cardDay !== null && (
+        <section className="cardday">
+          <h2>
+            The Card — Day {cardDay}{" "}
+            <span className="cardsum">
+              {cardPending > 0
+                ? `${cardPending} awaiting post time`
+                : `went off at the last tick · ${cardFights} fights · ${cardCancelled} cancelled`}
+            </span>
+          </h2>
+          <div className="lobbies">
+            {cardLobbies.map((l) => (
+              <div className="lobby" key={l.id}>
+                <div className="lobby-head">
+                  {l.label}
+                  <span className="fill">
+                    {l.filled}/{l.capacity} · #{l.id}
+                  </span>
+                </div>
+                {l.bouts.map((b, i) => (
+                  <div className="bout" key={i}>
+                    ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
+                    <span className="figs">
+                      figures {b.figures[0]}/{b.figures[1]}
+                      {l.hardcore ? " · loser force-retired" : ""}
+                    </span>
+                  </div>
+                ))}
+                {l.unmatched.map((u, i) => (
+                  <div className="bout cancelled" key={i}>
+                    ✗ {u.bird} ({u.farm}) — drew nobody, {u.fee} GP refunded
+                  </div>
+                ))}
+                {l.pending.map((p, i) => (
+                  <div className="bout pending" key={i}>
+                    … {p.bird} ({p.farm}) — on the card, awaiting post
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <AdminTabs
         farms={farmRows}
         fights={fightRows}
@@ -402,6 +488,18 @@ const CSS = `
   .tick-last { color: #9a8f78; font-size: .9em; }
   .grade { color: #f4e9d0; }
   .statnum { color: #9a8f78; font-size: .88em; }
+  .cardday { margin-top: 1.5rem; }
+  .cardday h2 { color: #e8b64c; font-size: 1rem; margin: 0 0 .6rem; }
+  .cardday .cardsum { color: #9a8f78; font-weight: 400; font-size: .85em; margin-left: .5em; }
+  .lobbies { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: .6rem; }
+  .lobby { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px; padding: .55rem .75rem; }
+  .lobby-head { color: #e8b64c; margin-bottom: .3rem; }
+  .lobby-head .fill { color: #9a8f78; float: right; }
+  .bout { color: #cfc6b2; padding: .12rem 0; }
+  .bout b { color: #f4e9d0; }
+  .bout .figs { color: #9a8f78; }
+  .bout.cancelled { color: #e07a6a; }
+  .bout.pending { color: #9fd3f0; }
   .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }

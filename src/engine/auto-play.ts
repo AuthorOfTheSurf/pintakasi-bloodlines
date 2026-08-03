@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
+import { bestFormat } from "./bots";
 import { Breeding } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
@@ -74,12 +75,16 @@ export function playHonestDay(db: DB, farmId: string): void {
     quietly(() => void flockApi.rename(bird.id, drawStarterNames(db, 1, mulberry32(700 + day))[0]));
   }
 
+  // Card by style, like the bots do (round 17): one format for everyone
+  // piled the whole stable into a single lobby key, where matchmaking's
+  // no-barn-mates rule sent most of them home unmatched.
+  const cardRng = mulberry32(1100 + day);
   const lobbies = new Lobbies(db, farmId);
   for (const bird of flockApi.all().filter((b) => b.status === "active")) {
     const spec: LobbySpec =
       bird.age >= 2
-        ? { mode: "real", classType: "open", format: "shortKnife" }
-        : { mode: "juvenile", classType: "open", format: "shortKnife" };
+        ? { mode: "real", classType: "open", format: bestFormat(bird, cardRng) }
+        : { mode: "juvenile", classType: "open", format: bestFormat(bird, cardRng) };
     quietly(() => lobbies.enter(bird.id, spec));
   }
 }

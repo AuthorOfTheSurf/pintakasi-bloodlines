@@ -233,8 +233,12 @@ export class Bots {
   }
 }
 
-/** A bot can read its OWN birds' stats — pick the format that fits them. */
-function bestFormat(bird: BirdView, rng: Rng): FightFormat {
+/**
+ * An owner can read their OWN birds' stats — pick the format that fits them.
+ * Shared with auto-play (round 17): every stable cards by style, which also
+ * spreads the field across formats instead of piling into one lobby key.
+ */
+export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
   const scores: Record<FightFormat, number> = {
     longKnife: bird.agility + bird.sight, // the sprint
     shortKnife: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid

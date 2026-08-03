@@ -642,12 +642,19 @@ export class Lobbies {
       .all()
       .filter((l) => l.price === (spec.price ?? null));
     for (const lobby of open) {
-      const filled = this.database
+      const entries = this.database
         .select()
         .from(lobbyEntries)
         .where(eq(lobbyEntries.lobbyId, lobby.id))
-        .all().length;
-      if (filled < lobby.capacity) return lobby;
+        .all();
+      if (entries.length >= lobby.capacity) continue;
+      // The matchmaker's seating rule (round 17): no farm may hold more than
+      // half a lobby. Matchmaking never draws barn-mates, so a lobby that is
+      // mostly one farm's birds strands the surplus — capped at half, a FULL
+      // lobby always admits a perfect cross-barn matching.
+      const mine = entries.filter((e) => e.farmId === this.farmId).length;
+      if (mine >= lobby.capacity / 2) continue;
+      return lobby;
     }
     return this.database
       .insert(lobbies)
