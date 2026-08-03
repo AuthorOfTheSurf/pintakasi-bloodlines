@@ -19,7 +19,6 @@ export type EventType =
   | "farm_registered"
   | "check_in" // the daily airdrop: GP drip + free pulls
   | "gacha" // a roll: token, land, maybe a mystery egg
-  | "train"
   | "hatch"
   | "retire" // manual, age cap, or hardcore loss (data.by)
   | "breed" // hen's farm buys a cover (fee out)

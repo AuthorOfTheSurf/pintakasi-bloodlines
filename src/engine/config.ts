@@ -319,11 +319,10 @@ export const FARM_COLORS = [
 ] as const;
 export type FarmColor = (typeof FARM_COLORS)[number];
 
-// ── Training (age-1 discovery year) ─────────────────────────────────────────
-export const TRAINING = {
-  GAIN_PER_SESSION: 20, // per session, to one chosen stat (0–2000 scale)
-  SESSIONS_PER_DAY: 3, //  daily cap — tick a day to reset
-} as const;
+// NOTE: there is deliberately NO training mechanic (ruled 2026-08-03 round
+// 13): a bird's stats are FIXED AT BIRTH — the game is discovering what it's
+// good at and using it well. PFL-style aging curves (peak form mid-career)
+// are a possible future layer, not a stat-raiser.
 
 // ── Barn ────────────────────────────────────────────────────────────────────
 export const BARN = {

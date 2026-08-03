@@ -93,9 +93,14 @@ export class Breeding {
     if (!ownStud && !fatherRow.listedStud)
       throw new Error(`${fatherRow.name} is not listed in the breeding barn`);
 
-    // One egg per hen at a time (ruled 2026-08-03 round 12): she sits on it
-    // until Hatch Friday. This is the hen-side cap that keeps a 5-day sim
-    // from laying five "Egg of Dalisay" — the rooster side has the 14+2.
+    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const day = state.dayIndex;
+    const week = GameClock.weekOf(day);
+
+    // One egg per hen at a time (ruled round 12, timeline round 13): the
+    // cover makes her pregnant now, the egg lays Friday, hatches the Friday
+    // after — and she's blocked until the hatch. This is the hen-side cap;
+    // the rooster side has the 14+2.
     const sitting = this.database
       .select()
       .from(birds)
@@ -103,7 +108,7 @@ export class Breeding {
       .all();
     if (sitting.length > 0)
       throw new Error(
-        `${mother.name} is already sitting on ${sitting[0].name} — one egg per hen; it hatches next Hatch Friday`
+        `${mother.name} is already ${sitting[0].birthWeek > week ? "pregnant with" : "sitting on"} ${sitting[0].name} — one egg per hen until it hatches`
       );
 
     const forbidden = this.forbiddenReason(mother, fatherRow);
@@ -111,10 +116,6 @@ export class Breeding {
 
     if (this.flock.barnCount() >= BARN.CAPACITY)
       throw new Error(`The barn is full (${BARN.CAPACITY})`);
-
-    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    const day = state.dayIndex;
-    const week = GameClock.weekOf(day);
 
     // The weekly cover caps: public slots for outside hens, a reserved
     // handful for the owner's own. Top studs capping out is the POINT —
@@ -151,6 +152,10 @@ export class Breeding {
     const stats = this.inheritStats(mother, fatherRow);
     const { element, halfStars } = this.inheritStars(mother, fatherRow);
 
+    // The nest timeline (ruled 2026-08-03 round 13): the cover makes the
+    // hen pregnant NOW; the egg is LAID on the nearest coming Friday
+    // (birthWeek = week + 1) and hatches the Friday after that, as an
+    // age-1 chick. birthDay keeps the conception day for history.
     const egg = {
       id: randomUUID(),
       farmId: this.farmId, // the hen's farm — hens keep the egg
@@ -161,7 +166,7 @@ export class Breeding {
       ...stats,
       element,
       halfStars,
-      birthWeek: week,
+      birthWeek: week + 1,
       birthDay: day,
       motherId: mother.id,
       fatherId: fatherRow.id,
@@ -174,7 +179,7 @@ export class Breeding {
       farmId: this.farmId,
       birdId: egg.id,
       gpCents: -ECONOMY.BREED_FEE * 100,
-      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? " (own stud)" : ` (${studFarm.name}'s stud)`} → ${egg.name}`,
+      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? " (own stud)" : ` (${studFarm.name}'s stud)`} → ${egg.name} (lays Friday, hatches the Friday after)`,
       data: split,
     });
     emit(this.database, {
@@ -287,7 +292,11 @@ export class Breeding {
     return { hen: hen.name, studs, excluded };
   }
 
-  /** Covers already bought against a rooster this game-week. */
+  /**
+   * Covers already bought against a rooster this game-week — counted by
+   * CONCEPTION day (birthDay), since the egg's birthWeek is the coming
+   * lay-Friday, not the week the cover was sold.
+   */
   private coversThisWeek(
     fatherId: string,
     fatherFarmId: string,
@@ -296,8 +305,9 @@ export class Breeding {
     const eggs = this.database
       .select()
       .from(birds)
-      .where(and(eq(birds.fatherId, fatherId), eq(birds.birthWeek, week)))
-      .all();
+      .where(eq(birds.fatherId, fatherId))
+      .all()
+      .filter((e) => GameClock.weekOf(e.birthDay) === week);
     const owner = eggs.filter((e) => e.farmId === fatherFarmId).length;
     return { owner, public: eggs.length - owner };
   }

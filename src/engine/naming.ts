@@ -11,16 +11,21 @@ import { randInt } from "./rng";
  * ("Egg of Dalisay II"), and rename simply refuses a taken name.
  */
 
-/** The starter-name pool for non-dev farms — Filipino/sabong-flavored. */
+/**
+ * The starter-name pool for non-dev farms — short (≤12 chars), English,
+ * fun (ruled round 13: no need to emphasize Filipino flavor; have fun).
+ */
 export const NAME_POOL = [
-  "Agila", "Amihan", "Habagat", "Bagyo", "Sigwa", "Unos", "Daluyong", "Bituin",
-  "Tala", "Liwayway", "Takipsilim", "Maharlika", "Lakan", "Lakambini", "Mutya",
-  "Diwata", "Sampaguita", "Hiraya", "Marikit", "Malakas", "Maganda", "Bathala",
-  "Mayari", "Apolaki", "Urduja", "Sikatuna", "Bagani", "Datu", "Rajah",
-  "Kalasag", "Sibat", "Kampilan", "Balisong", "Sundang", "Panday", "Bayani",
-  "Magiting", "Salakay", "Dagundong", "Kulog", "Bulkan", "Apoy", "Baga",
-  "Alitaptap", "Tikbalang", "Sarimanok", "Adarna", "Katala", "Kalaw", "Ginto",
-  "Pilak", "Tanso", "Bakal", "Patalim", "Tari", "Llamado", "Dehado",
+  "Thunderbolt", "Razorbeak", "Sawblade", "Firecracker", "Dynamite",
+  "Sidewinder", "Warhammer", "Buckshot", "Crowbar", "Tornado", "Vendetta",
+  "Scrapper", "Ricochet", "Haymaker", "Uppercut", "Dropkick", "Whirlwind",
+  "Steeltoe", "Gunpowder", "Matchstick", "Hotshot", "Jackpot", "Longshot",
+  "Moonshine", "Midnight", "Copperhead", "Diesel", "Cyclone", "Monsoon",
+  "Avalanche", "Wildfire", "Ember", "Scorch", "Blaze", "Talon", "Spur",
+  "Cluck Norris", "Hen Solo", "Eggbert", "Shellshock", "General Tso",
+  "Kung Pow", "Drumstick", "Nugget", "Omelet", "Benedict", "Scramble",
+  "Sunny Side", "Yolko", "Gizzard", "Featherfist", "Beakonator", "Wingman",
+  "Flapjack", "Peckasso", "Birdzilla", "Clucky", "Eggscalibur", "Poultrygeist",
 ] as const;
 
 const ROMAN: [number, string][] = [

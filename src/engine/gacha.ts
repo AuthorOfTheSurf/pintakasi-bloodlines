@@ -113,6 +113,7 @@ export class Gacha {
       message:
         `rolled the gacha${freePullUsed ? " (free pull)" : ` (${price} GP)`} — ${token} token, +${LAND.PER_GACHA_ROLL} LT` +
         (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
+      data: { token, price, free: freePullUsed, land: LAND.PER_GACHA_ROLL, egg: egg?.name ?? null },
     });
 
     const after = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;

@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS farms (
   land_bought_day INTEGER,
   land_bought_today INTEGER NOT NULL DEFAULT 0,
   created_day INTEGER NOT NULL DEFAULT 0,
-  is_bot INTEGER NOT NULL DEFAULT 0
+  is_bot INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS birds (
@@ -130,10 +132,4 @@ CREATE TABLE IF NOT EXISTS events (
   data TEXT
 );
 
-CREATE TABLE IF NOT EXISTS training_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  day_index INTEGER NOT NULL,
-  bird_id TEXT NOT NULL,
-  stat TEXT NOT NULL CHECK (stat IN ('agility','sight','stamina','gameness','station','condition'))
-);
 `;

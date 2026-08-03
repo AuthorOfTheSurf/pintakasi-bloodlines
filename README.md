@@ -40,11 +40,14 @@ One SQLite file = one world. Three kinds exist; never confuse them:
 | World | File | Who writes it |
 |---|---|---|
 | **Live** (prod) | `data/game.db` on whatever box serves the game (the Zo machine — NOT Vercel; SQLite needs a persistent disk) | The players, via `bun dev` / `next start` |
-| **Simulation** | `data/sim.db` (local) | `bun run simulate [days]` — fresh-seeds and plays N days with the bots |
+| **Simulation** | `data/sim-YYYYMMDD-HHMM.db` — every run gets its OWN timestamped file | `bun run simulate [days]` — seeds a fresh world (starting Monday) and plays N days with the bots |
 | **Tests** | `:memory:` | `bun test` — never touches disk |
 
-- View a sim: `bun run simulate 5`, then `bun dev:sim` → http://localhost:3435/admin (port 3435, so it can run beside the live server on 3434).
+- View a sim: `bun run simulate 5`, then `bun dev:sim` → http://localhost:3435/admin — it always resolves to the NEWEST sim db (port 3435, so it can run beside the live server on 3434).
+- Continue the newest run instead of starting fresh: `bun run simulate 7 --keep` — handy for pausing mid-week, inspecting the state, then playing on.
+- Old sim files are just files — delete them whenever, or keep them all; space is cheap.
+- The `-wal` / `-shm` files beside a db are SQLite's write-ahead log and its shared-memory index — bookkeeping for recent writes, auto-managed. If you copy a db while a server has it open, copy all three (or just stop the server first).
 - The `/admin` header names the database file it's reading — check it before trusting what you see.
-- `PINTAKASI_DB=<path>` points the server at any world; `simulate --db=<path>` retargets the sim.
+- `PINTAKASI_DB=<path>` points the server at any world (`latest-sim` = newest sim file); `simulate --db=<path>` retargets the sim.
 - **Wipe guard**: `simulate` refuses to reseed a database containing registered player farms (anyone beyond the seeded dev farm + bots) unless you pass `--force`. `db:seed` never wipes — it only seeds an empty file.
 - All `data/*.db` files are gitignored: a `git pull` can never touch a world. Back up the live world by copying the file (e.g. a nightly `cp data/game.db backups/` cron on the host).

@@ -1,6 +1,7 @@
 import type { DB } from "./client";
 import { birds, farms, gameState, type NewBird } from "./schema";
 import { ECONOMY, ELEMENTS, STATS, type Element } from "@/engine/config";
+import { emit } from "@/engine/events";
 import { drawStarterNames } from "@/engine/naming";
 import { mulberry32, randInt, type Rng } from "@/engine/rng";
 
@@ -72,6 +73,12 @@ export function seedGame(
     })
     .run();
 
+  emit(db, {
+    type: "farm_registered",
+    farmId: DEV_FARM_ID,
+    gpCents: (opts.startingGp ?? ECONOMY.STARTING_GP) * 100,
+    message: `Bukidnon Farms registered — starting purse ${opts.startingGp ?? ECONOMY.STARTING_GP} GP`,
+  });
   seedStarterFlock(db, DEV_FARM_ID, { seed: opts.seed, idPrefix: "starter" });
   return { farmId: DEV_FARM_ID, apiKey: DEV_FARM_KEY };
 }

@@ -5,7 +5,8 @@ import { AGE } from "./config";
  * Age gates as pure functions. Age is always DERIVED: currentWeek - birthWeek
  * (one bird-year per game-week). Never stored, never mutated.
  *
- * age 0 = egg · 1 = discovery year (practice/training only) · 2+ = real
+ * age 0 = egg · 1 = discovery year (practice only — stats are FIXED at
+ * birth; discovery means fighting the formats, not training) · 2+ = real
  * stakes · 3+ = the fork (hardcore AND manual retirement unlock together) ·
  * 9 = fighting cap (force-retire).
  */
@@ -20,10 +21,6 @@ export function isEggAge(age: number): boolean {
 
 export function canPractice(age: number): boolean {
   return age >= AGE.CHICK && age < AGE.FIGHTING_CAP;
-}
-
-export function canTrain(age: number): boolean {
-  return age === AGE.CHICK; // training belongs to the discovery year
 }
 
 export function canRealFight(age: number): boolean {

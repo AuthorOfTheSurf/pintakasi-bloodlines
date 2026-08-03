@@ -62,10 +62,15 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   expect(egg.name).toBe("Egg of Dalisay");
   expect(egg.age).toBe(0);
   expect(egg.sex).toBe("hidden");
+  expect(egg.eggStage).toBe("gestating"); // pregnant now — lays Friday
 
-  // 2. Next Hatch Friday it hatches into an age-1 chick; the 50-50 sex is
-  //    revealed and the player names it.
-  let tick = game.tickWeek();
+  // 2. The nest timeline (round 13): the hen is pregnant now; the egg is
+  //    LAID on the first Friday and HATCHES on the second, as an age-1
+  //    chick whose 50-50 sex is revealed for the player to name.
+  let tick = game.tickWeek(); // Friday 1 — laid, not hatched
+  expect(tick.fridays[0].hatched.length).toBe(0);
+  expect(flock.byId(egg.id).eggStage).toBe("laid");
+  tick = game.tickWeek(); // Friday 2 — the hatch
   expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(egg.id);
   const chick = flock.rename(egg.id, "Alon");
   expect(chick.age).toBe(1);
@@ -78,11 +83,7 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   const afterPractice = flock.byId(chick.id);
   expect(afterPractice.wins + afterPractice.losses).toBe(0); // career untouched
   expect(afterPractice.practiceWins + afterPractice.practiceLosses).toBe(1);
-  // ...and training (the duel's tick opened a fresh day).
-  const gamenessBefore = afterPractice.gameness;
-  flock.train(chick.id, "gameness");
-  flock.train(chick.id, "gameness");
-  expect(flock.byId(chick.id).gameness).toBe(gamenessBefore + 40);
+  // Stats are FIXED at birth (round 13) — no training; discovery is fought.
 
   // 4. Age 2 — real stakes open, the record starts.
   tick = game.tickWeek();
@@ -120,8 +121,10 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
     )
   ).toThrow(/Bloodline restriction/);
 
-  // 7. Next Friday: generation 2 is on the ground, lineage shows the line.
-  tick = game.tickWeek();
+  // 7. Two Fridays on (lay, then hatch): generation 2 is on the ground,
+  //    and the lineage shows the line.
+  tick = game.tickWeek(); // laid
+  tick = game.tickWeek(); // hatched
   expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(gen2.id);
   const tree = breeding.lineage(gen2.id)!;
   const parents = [tree.mother!.name, tree.father!.name];

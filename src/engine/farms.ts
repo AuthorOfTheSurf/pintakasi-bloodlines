@@ -16,6 +16,9 @@ export interface FarmView {
   stakedLand: number; // land in THE pool — earning the breed-fee cut daily
   freePulls: number;
   checkedInToday: boolean;
+  // The FARM's own career record (real + hardcore), stamped at fight time.
+  wins: number;
+  losses: number;
 }
 
 /**
@@ -88,6 +91,7 @@ export class Farms {
     emit(this.database, {
       type: "farm_registered",
       farmId: id,
+      gpCents: ECONOMY.STARTING_GP * 100,
       message: `${name} registered — starting purse ${ECONOMY.STARTING_GP} GP`,
     });
     return { farm: this.view(this.rowById(id)), apiKey };
@@ -272,6 +276,8 @@ export class Farms {
       stakedLand: row.stakedLand,
       freePulls: row.freePulls,
       checkedInToday: row.lastCheckInDay === this.today(),
+      wins: row.wins,
+      losses: row.losses,
     };
   }
 

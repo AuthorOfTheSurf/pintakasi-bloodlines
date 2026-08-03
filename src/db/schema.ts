@@ -27,6 +27,11 @@ export const farms = sqliteTable("farms", {
   createdDay: integer("created_day").notNull().default(0),
   // House-run bot stables (see engine/bot-config.ts) — rivals, not the house.
   isBot: integer("is_bot").notNull().default(0),
+  // The FARM's career record (real + hardcore), stamped at fight time —
+  // it can't be derived from owned birds later, because birds transfer
+  // (claims, future sales) and take their own records with them.
+  wins: integer("wins").notNull().default(0),
+  losses: integer("losses").notNull().default(0),
 });
 
 export const birds = sqliteTable("birds", {
@@ -195,14 +200,7 @@ export const events = sqliteTable("events", {
   data: text("data"), // JSON — splits, figures, whatever the type carries
 });
 
-export const trainingLog = sqliteTable("training_log", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  dayIndex: integer("day_index").notNull(),
-  birdId: text("bird_id").notNull(),
-  stat: text("stat", {
-    enum: ["agility", "sight", "stamina", "gameness", "station", "condition"],
-  }).notNull(),
-});
+// (training_log is GONE — stats are fixed at birth, ruled 2026-08-03 rd 13.)
 
 export type BirdRow = typeof birds.$inferSelect;
 export type NewBird = typeof birds.$inferInsert;

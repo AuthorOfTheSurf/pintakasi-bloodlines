@@ -166,6 +166,19 @@ describe("the card goes off (pure PvP)", () => {
     expect(w.dev.board().length).toBe(0);
   });
 
+  test("the FARM's record moves at fight time — practice never touches it", () => {
+    const w = world();
+    duel(w, "Alab", REAL, 7001);
+    const dev = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
+    const rival = w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!;
+    // Stamped on both farms at fight time — one won, one lost.
+    expect([dev.wins + dev.losses, rival.wins + rival.losses]).toEqual([1, 1]);
+    expect([dev.wins + rival.wins, dev.losses + rival.losses]).toEqual([1, 1]);
+    duel(w, "Kidlat", { mode: "practice", classType: "open", format: "shortKnife" }, 31);
+    const after = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
+    expect(after.wins + after.losses).toBe(1); // the amateur card left it alone
+  });
+
   test("an odd lobby strands one bird: fee back, no land, no fight", () => {
     const w = world();
     const before = totalGp(w.db);

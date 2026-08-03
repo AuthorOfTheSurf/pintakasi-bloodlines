@@ -1,6 +1,6 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import * as schema from "./schema";
 import { DDL } from "./ddl";
@@ -42,12 +42,33 @@ function splitStatements(ddl: string): string[] {
 }
 
 export function defaultDbPath(): string {
-  return process.env.PINTAKASI_DB ?? path.join(process.cwd(), "data", "game.db");
+  const env = process.env.PINTAKASI_DB;
+  if (env === "latest-sim") return latestSimDb();
+  return env ?? path.join(process.cwd(), "data", "game.db");
 }
 
-// Lazy singleton for the app (routes/MCP); tests always call createDb(":memory:").
+/**
+ * Every simulation run writes its own timestamped file (data/sim-*.db).
+ * PINTAKASI_DB=latest-sim (what `bun dev:sim` sets) resolves to the newest
+ * one — the names sort chronologically.
+ */
+export function latestSimDb(): string {
+  const dir = path.join(process.cwd(), "data");
+  const sims = (existsSync(dir) ? readdirSync(dir) : []).filter((f) => /^sim-.*\.db$/.test(f)).sort();
+  if (sims.length === 0)
+    throw new Error("No simulation databases in data/ — run `bun run simulate` first");
+  return path.join(dir, sims[sims.length - 1]);
+}
+
+// Lazy singleton for the app (routes/MCP), keyed by the resolved path — so
+// a dev:sim server picks up a NEWER sim run on the next request.
 let _db: DB | null = null;
+let _dbPath = "";
 export function db(): DB {
-  if (!_db) _db = createDb();
+  const p = defaultDbPath();
+  if (!_db || p !== _dbPath) {
+    _db = createDb(p);
+    _dbPath = p;
+  }
   return _db;
 }

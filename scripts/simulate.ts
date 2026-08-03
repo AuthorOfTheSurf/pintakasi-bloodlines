@@ -1,20 +1,23 @@
 /**
- * The observable smoke run: fresh-seed a SIMULATION database (data/sim.db —
- * never the live world unless you point it there), then play N days — the
- * dev farm plays a simple honest day here, the six bot stables play theirs
- * inside the tick. Everything lands on the unified ledger; view it with
- * `bun dev:sim` → http://localhost:3435/admin.
+ * The observable smoke run. EVERY run writes its own timestamped database
+ * (data/sim-YYYYMMDD-HHMM.db) — iterate freely, nothing clashes, nothing
+ * needs wiping. The world starts on a MONDAY (day 3 — the calendar's day 0
+ * is a Friday): the dev farm plays a simple honest day, the six bot stables
+ * play theirs inside the tick. View the newest run with `bun dev:sim` →
+ * http://localhost:3435/admin.
  *
- *   bun run simulate [days=5] [--keep] [--db=path] [--force]
+ *   bun run simulate [days=5] [--keep] [--db=path] [--force] [--start=friday]
  *
- * --keep  plays on top of the existing database instead of reseeding.
- * --db    target another database file (e.g. --db=data/game.db).
- * --force required to WIPE a database that contains registered player
- *         farms — the guard that keeps a sim from eating the real world.
+ * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
+ * --db     target a specific database file.
+ * --force  required to reseed a db holding registered player farms.
+ * --start  friday to start the world on day 0 instead of Monday.
  */
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
-import { createDb } from "@/db/client";
+import { eq } from "drizzle-orm";
+import { createDb, latestSimDb } from "@/db/client";
+import { farms, gameState } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { Bots } from "@/engine/bots";
 import { Breeding } from "@/engine/breeding";
@@ -22,14 +25,23 @@ import { Game } from "@/engine/game";
 import { Gacha } from "@/engine/gacha";
 import { mulberry32 } from "@/engine/rng";
 import type { LobbySpec } from "@/engine/lobbies";
-import { farms } from "@/db/schema";
 
 const args = process.argv.slice(2);
 const days = Number(args.find((a) => /^\d+$/.test(a))) || 5;
 const keep = args.includes("--keep");
 const force = args.includes("--force");
+const startFriday = args.includes("--start=friday");
 const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
-const dbPath = path.resolve(dbArg ?? path.join(process.cwd(), "data", "sim.db"));
+
+function stamp(): string {
+  const t = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}-${pad(t.getHours())}${pad(t.getMinutes())}`;
+}
+
+const dbPath = path.resolve(
+  dbArg ?? (keep ? latestSimDb() : path.join(process.cwd(), "data", `sim-${stamp()}.db`))
+);
 
 if (!keep && existsSync(dbPath)) {
   // The wipe guard: a database holding farms that were REGISTERED (not
@@ -55,7 +67,12 @@ const db = createDb(dbPath);
 if (!keep) {
   seedGame(db);
   Bots.seed(db);
-  console.log(`Fresh world seeded at ${dbPath}\n`);
+  if (!startFriday) {
+    // Day 0 is a Friday; Zane's sims start on a MONDAY (day 3). Nothing
+    // happens on the skipped weekend — no check-ins, no cards.
+    db.update(gameState).set({ dayIndex: 3 }).where(eq(gameState.id, 1)).run();
+  }
+  console.log(`Fresh world seeded at ${dbPath}${startFriday ? "" : " — starting Monday (day 3)"}\n`);
 }
 
 const game = new Game(db, DEV_FARM_ID);
@@ -79,11 +96,6 @@ for (let day = 1; day <= days; day++) {
   }
 
   const flock = game.flock.all();
-  for (const chick of flock.filter((b) => b.status === "active" && b.age === 1)) {
-    const stats = ["agility", "sight", "stamina", "gameness", "station", "condition"] as const;
-    const lowest = stats.reduce((lo, s) => (chick[s] < chick[lo] ? s : lo), stats[0]);
-    for (let i = 0; i < 3; i++) quietly(() => game.flock.train(chick.id, lowest));
-  }
 
   quietly(() => {
     const farm = game.farms.rowById(DEV_FARM_ID);
@@ -93,6 +105,7 @@ for (let day = 1; day <= days; day++) {
   const breeding = new Breeding(db, DEV_FARM_ID, mulberry32(500 + day));
   for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
     quietly(() => breeding.listStud(rooster.id));
+
   // One cover a day, first hen whose nest is empty (one egg per hen).
   for (const hen of flock.filter((b) => b.status === "retired" && b.sex === "female")) {
     let bred = false;
@@ -120,11 +133,11 @@ for (let day = 1; day <= days; day++) {
   const unmatched = tick.card.reduce((s, l) => s + l.unmatched.length, 0);
   const claims = tick.card.reduce((s, l) => s + l.claims.length, 0);
   console.log(
-    `Day ${tick.clock.dayIndex}: ${fights} fights, ${unmatched} unmatched, ${claims} claims settled, ` +
-      `staking paid ${tick.staking.paidGp.toFixed(2)} GP to ${tick.staking.stakers} stakers` +
+    `Day ${tick.clock.dayIndex} (${tick.clock.date.split(",")[0]}): ${fights} fights, ${unmatched} unmatched, ` +
+      `${claims} claims settled, staking paid ${tick.staking.paidGp.toFixed(2)} GP to ${tick.staking.stakers} stakers` +
       (tick.fridays.length ? ` — HATCH FRIDAY (${tick.fridays[0].hatched.length} hatched)` : "")
   );
 }
 
 console.log(`\nDone → ${dbPath}`);
-console.log(`Run \`bun dev:sim\` and open http://localhost:3435/admin to see every line of it.`);
+console.log(`Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`);

@@ -9,7 +9,6 @@ import {
   canManualRetire,
   canPractice,
   canRealFight,
-  canTrain,
   mustRetire,
 } from "./lifecycle";
 
@@ -38,18 +37,18 @@ function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: numbe
 
 describe("age gate matrix", () => {
   test("each age hits exactly the ruled gates", () => {
-    // [age, practice, train, real, hardcore, manualRetire, forceRetire]
-    const matrix: [number, boolean, boolean, boolean, boolean, boolean, boolean][] = [
-      [0, false, false, false, false, false, false], // egg
-      [1, true, true, false, false, false, false], //  discovery year
-      [2, true, false, true, false, false, false], //  real stakes
-      [3, true, false, true, true, true, false], //    the fork opens as a package
-      [8, true, false, true, true, true, false], //    last fighting year
-      [9, false, false, false, false, true, true], //  cap
+    // [age, practice, real, hardcore, manualRetire, forceRetire] — no train
+    // column: stats are fixed at birth (ruled round 13).
+    const matrix: [number, boolean, boolean, boolean, boolean, boolean][] = [
+      [0, false, false, false, false, false], // egg
+      [1, true, false, false, false, false], //  discovery year
+      [2, true, true, false, false, false], //   real stakes
+      [3, true, true, true, true, false], //     the fork opens as a package
+      [8, true, true, true, true, false], //     last fighting year
+      [9, false, false, false, true, true], //   cap
     ];
-    for (const [age, practice, train, real, hardcore, manual, force] of matrix) {
+    for (const [age, practice, real, hardcore, manual, force] of matrix) {
       expect([age, canPractice(age)]).toEqual([age, practice]);
-      expect([age, canTrain(age)]).toEqual([age, train]);
       expect([age, canRealFight(age)]).toEqual([age, real]);
       expect([age, canHardcore(age)]).toEqual([age, hardcore]);
       expect([age, canManualRetire(age)]).toEqual([age, manual]);

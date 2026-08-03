@@ -1,21 +1,32 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbyEntries } from "@/db/schema";
+import { ECONOMY } from "@/engine/config";
+import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { ageOf } from "@/engine/lifecycle";
-import { AdminTabs, type BirdRowUI, type FarmRowUI, type FightRowUI, type LedgerRowUI } from "./grids";
+import {
+  AdminTabs,
+  type BirdRowUI,
+  type BreedingRowUI,
+  type FarmRowUI,
+  type FightRowUI,
+  type GachaRowUI,
+  type GpRowUI,
+  type LedgerRowUI,
+} from "./grids";
 
 export const dynamic = "force-dynamic";
 
 /**
  * The Stewards' Office — the admin view. Top-line figures up top; below,
- * one tab bar switching between the AG Grid tables (Farms / Fights /
- * Birds / The Ledger). Read-only; everything is derived from the same
- * SQLite the game runs on — the header names WHICH database file, so a
- * sim run and the live world are never mistaken for each other.
+ * one tab bar switching the AG Grid tables (Farms / Fights / Birds /
+ * Breeding / Gacha / GP / The Ledger). Read-only; everything derives from
+ * the same SQLite the game runs on — the header names WHICH database file,
+ * so a sim run and the live world are never mistaken for each other.
  */
 
-const LEDGER_LIMIT = 2000;
+const LEDGER_LIMIT = 3000;
 const FIGHT_LIMIT = 1000;
 
 function gpFmt(cents: number): string {
@@ -26,7 +37,6 @@ const TYPE_LABELS: Record<string, string> = {
   farm_registered: "register",
   check_in: "check-in",
   gacha: "gacha",
-  train: "train",
   hatch: "hatch",
   retire: "retire",
   breed: "breed",
@@ -63,7 +73,6 @@ export default function Admin() {
 
   const allFarms = d.select().from(farms).all();
   const farmById = new Map(allFarms.map((f) => [f.id, f]));
-  const farmName = (id: string | null) => (id ? (farmById.get(id)?.name ?? id) : "— world —");
   const allBirds = d.select().from(birds).all();
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
   const log = d.select().from(battleLog).all();
@@ -71,6 +80,13 @@ export default function Admin() {
   const pendingEntries = d.select().from(lobbyEntries).all().filter((e) => e.status === "pending");
   const pendingClaims = d.select().from(claims).all().filter((c) => c.status === "pending");
   const allEvents = d.select().from(events).all();
+
+  // Farm display helpers — name + the two colors, everywhere a farm shows.
+  const fname = (id: string | null) => (id ? (farmById.get(id)?.name ?? id) : "— world —");
+  const fcolors = (id: string | null | undefined) => {
+    const f = id ? farmById.get(id) : undefined;
+    return f ? { P: f.primaryColor, S: f.secondaryColor } : { P: undefined, S: undefined };
+  };
 
   // ── Top-line figures ──────────────────────────────────────────────────────
   const walletCents = allFarms.reduce((s, f) => s + f.gp * 100 + f.gpCents, 0);
@@ -83,65 +99,150 @@ export default function Admin() {
   const byStatus = { egg: 0, active: 0, retired: 0 };
   for (const b of allBirds) byStatus[b.status]++;
   const winRows = log.filter((r) => r.result === "win"); // one per fight
-  const covers = allBirds.filter((b) => b.motherId !== null).length;
+  const bred = allBirds.filter((b) => b.motherId !== null);
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {
     const mine = allBirds.filter((b) => b.farmId === f.id);
-    const rec = log.filter((r) => r.farmId === f.id && r.mode !== "practice");
     return {
       name: f.name,
       bot: f.isBot === 1,
-      primaryColor: f.primaryColor,
-      secondaryColor: f.secondaryColor,
+      farmP: f.primaryColor,
+      farmS: f.secondaryColor,
       gp: (f.gp * 100 + f.gpCents) / 100,
       liquidLt: f.landTokens,
       stakedLt: f.stakedLand,
       birds: mine.length,
-      wins: rec.filter((r) => r.result === "win").length,
-      losses: rec.filter((r) => r.result === "loss").length,
+      wins: f.wins,
+      losses: f.losses,
       studs: mine.filter((b) => b.listedStud === 1).length,
     };
   });
 
-  const fightRows: FightRowUI[] = winRows
-    .slice(-FIGHT_LIMIT)
-    .map((w) => {
-      const mirror = log.find((r) => r.lobbyId === w.lobbyId && r.birdId === w.opponentBirdId);
-      return {
-        day: w.dayIndex,
-        card:
-          `${w.mode.toUpperCase()}${w.lobby !== "open" ? "·" + w.lobby.toUpperCase() : ""}` +
-          `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}`,
-        winner: birdById.get(w.birdId)?.name ?? w.birdId,
-        winnerFarm: farmName(w.farmId),
-        loser: w.opponentName,
-        loserFarm: farmName(w.opponentFarmId),
-        winFigure: w.pitFigure,
-        loseFigure: mirror?.pitFigure ?? 0,
-        pot: w.gpDelta * 2,
-      };
-    });
+  const fightRows: FightRowUI[] = winRows.slice(-FIGHT_LIMIT).map((w) => {
+    const mirror = log.find((r) => r.lobbyId === w.lobbyId && r.birdId === w.opponentBirdId);
+    return {
+      day: w.dayIndex,
+      card:
+        `${w.mode.toUpperCase()}${w.lobby !== "open" ? "·" + w.lobby.toUpperCase() : ""}` +
+        `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}`,
+      winner: birdById.get(w.birdId)?.name ?? w.birdId,
+      winnerFarm: fname(w.farmId),
+      winnerFarmP: fcolors(w.farmId).P ?? "",
+      winnerFarmS: fcolors(w.farmId).S ?? "",
+      loser: w.opponentName,
+      loserFarm: fname(w.opponentFarmId),
+      loserFarmP: fcolors(w.opponentFarmId).P ?? "",
+      loserFarmS: fcolors(w.opponentFarmId).S ?? "",
+      winFigure: w.pitFigure,
+      loseFigure: mirror?.pitFigure ?? 0,
+      pot: w.gpDelta * 2,
+    };
+  });
 
   const birdRows: BirdRowUI[] = allBirds.map((b) => ({
     name: b.name,
-    farm: farmName(b.farmId),
+    farm: fname(b.farmId),
+    farmP: fcolors(b.farmId).P ?? "",
+    farmS: fcolors(b.farmId).S ?? "",
     sex: b.status === "egg" ? "?" : b.sex === "male" ? "rooster" : "hen",
-    age: ageOf(b, week),
+    age: Math.max(0, ageOf(b, week)),
     stars: b.halfStars / 2,
     element: b.element,
-    status: `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}${b.listedStud ? " · at stud" : ""}`,
+    agility: b.agility,
+    sight: b.sight,
+    stamina: b.stamina,
+    gameness: b.gameness,
+    station: b.station,
+    condition: b.condition,
+    total: b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition,
+    status:
+      b.status === "egg"
+        ? b.birthWeek > week
+          ? "pregnant"
+          : "in the nest"
+        : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}${b.listedStud ? " · at stud" : ""}`,
     wins: b.wins,
     losses: b.losses,
     practiceWins: b.practiceWins,
     practiceLosses: b.practiceLosses,
   }));
 
+  const split = splitBreedFee(ECONOMY.BREED_FEE);
+  const breedingRows: BreedingRowUI[] = bred.map((b, i) => {
+    const father = b.fatherId ? birdById.get(b.fatherId) : undefined;
+    const studFarmId = father?.farmId ?? null;
+    return {
+      seq: i,
+      conceived: b.birthDay,
+      egg: b.name,
+      hen: (b.motherId && birdById.get(b.motherId)?.name) || b.motherId || "?",
+      rooster: father?.name ?? b.fatherId ?? "?",
+      studFarm: fname(studFarmId),
+      studFarmP: fcolors(studFarmId).P ?? "",
+      studFarmS: fcolors(studFarmId).S ?? "",
+      nestFarm: fname(b.farmId),
+      nestFarmP: fcolors(b.farmId).P ?? "",
+      nestFarmS: fcolors(b.farmId).S ?? "",
+      lays: b.birthWeek * 7,
+      hatches: (b.birthWeek + 1) * 7,
+      stage: b.status === "egg" ? (b.birthWeek > week ? "pregnant" : "in the nest") : "hatched",
+      fee: split.feeGp,
+      studShare: split.studOwnerCents / 100,
+    };
+  });
+
+  const gachaRows: GachaRowUI[] = allEvents
+    .filter((e) => e.type === "gacha" && e.data)
+    .map((e, i) => {
+      const data = JSON.parse(e.data!) as {
+        token: string;
+        price: number;
+        free: boolean;
+        land: number;
+        egg: string | null;
+      };
+      return {
+        seq: i,
+        day: e.dayIndex,
+        farm: fname(e.farmId),
+        farmP: fcolors(e.farmId).P ?? "",
+        farmS: fcolors(e.farmId).S ?? "",
+        token: data.token,
+        cost: data.free ? "free" : `${data.price} GP`,
+        lt: data.land,
+        egg: data.egg ?? "",
+      };
+    });
+
+  const gpRows: GpRowUI[] = [];
+  for (const e of allEvents) {
+    const base = {
+      day: e.dayIndex,
+      farm: fname(e.farmId),
+      farmP: fcolors(e.farmId).P,
+      farmS: fcolors(e.farmId).S,
+    };
+    if (e.type === "farm_registered") {
+      gpRows.push({ seq: gpRows.length, ...base, flow: "starting purse", amount: (e.gpCents ?? ECONOMY.STARTING_GP * 100) / 100 });
+    } else if (e.type === "check_in") {
+      gpRows.push({ seq: gpRows.length, ...base, flow: "daily drip", amount: (e.gpCents ?? 0) / 100 });
+    } else if (e.type === "pool_accrual" && e.data) {
+      const pools = JSON.parse(e.data) as { stakerPoolCents: number; juicePoolCents: number };
+      gpRows.push({ seq: gpRows.length, ...base, flow: "→ staker pool (breed cut)", amount: pools.stakerPoolCents / 100 });
+      gpRows.push({ seq: gpRows.length, ...base, flow: "→ juice pool (breed cut)", amount: pools.juicePoolCents / 100 });
+    } else if (e.type === "staking_payout") {
+      gpRows.push({ seq: gpRows.length, ...base, flow: "staking yield paid", amount: (e.gpCents ?? 0) / 100 });
+    }
+  }
+
   const ledgerRows: LedgerRowUI[] = allEvents.slice(-LEDGER_LIMIT).map((e) => ({
     id: e.id,
     day: e.dayIndex,
     type: TYPE_LABELS[e.type] ?? e.type,
-    farm: farmName(e.farmId),
+    farm: fname(e.farmId),
+    farmP: fcolors(e.farmId).P,
+    farmS: fcolors(e.farmId).S,
     message: e.message,
     gp: e.gpCents === null ? null : e.gpCents / 100,
     lt: e.lt,
@@ -190,7 +291,7 @@ export default function Admin() {
           <div className="big">{winRows.length}</div>
           <div className="label">fights fought</div>
           <div className="sub">
-            {covers} covers bought · {rolls} gacha rolls
+            {bred.length} covers bought · {rolls} gacha rolls
           </div>
         </div>
         <div className="card">
@@ -202,7 +303,15 @@ export default function Admin() {
         </div>
       </section>
 
-      <AdminTabs farms={farmRows} fights={fightRows} birds={birdRows} ledger={ledgerRows} />
+      <AdminTabs
+        farms={farmRows}
+        fights={fightRows}
+        birds={birdRows}
+        breeding={breedingRows}
+        gacha={gachaRows}
+        gp={gpRows}
+        ledger={ledgerRows}
+      />
     </main>
   );
 }
@@ -230,4 +339,5 @@ const CSS = `
   .farm-chip { white-space: nowrap; }
   .dot { display: inline-block; width: .65em; height: .65em; border-radius: 50%; border: 2px solid; margin-right: .4em; }
   .bot { color: #12100d; background: #9a8f78; border-radius: 3px; font-size: .7em; padding: 0 .3em; margin-left: .45em; vertical-align: middle; }
+  .world { color: #9a8f78; font-style: italic; }
 `;

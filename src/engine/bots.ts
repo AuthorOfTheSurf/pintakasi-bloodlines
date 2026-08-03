@@ -5,6 +5,7 @@ import { seedStarterFlock } from "@/db/seed-data";
 import { BOT_FARMS, type BotProfile } from "./bot-config";
 import { CLAIMER, ECONOMY, type FightFormat, type Lobby } from "./config";
 import { Breeding } from "./breeding";
+import { emit } from "./events";
 import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { Gacha } from "./gacha";
@@ -18,7 +19,6 @@ export interface BotDayReport {
   checkedIn: boolean;
   stakedLand: number; // bots stake every liquid LT, daily
   studsListed: number; // retired roosters put up in the breeding barn
-  trained: number; // training sessions run
   bred: string | null; // egg name, if a cover was bought (barn included)
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
   claimsPlaced: number;
@@ -30,7 +30,7 @@ const MAX_CLAIMS_PER_DAY = 2;
 
 /**
  * The bot stables' daily play. Called at the top of every tick — the bots
- * play the CLOSING day (check in, train, breed, card birds, place claims),
+ * play the CLOSING day (check in, breed, card birds, place claims),
  * then the clock advances and the card they just joined goes off. They are
  * ordinary farms driving the ordinary engine: every rule that binds a
  * player binds them, and every decision uses only information a player
@@ -60,6 +60,12 @@ export class Bots {
           isBot: 1,
         })
         .run();
+      emit(db, {
+        type: "farm_registered",
+        farmId: bot.id,
+        gpCents: ECONOMY.STARTING_GP * 100,
+        message: `${bot.name} registered — starting purse ${ECONOMY.STARTING_GP} GP`,
+      });
       seedStarterFlock(db, bot.id, { seed: bot.flockSeed, idPrefix: bot.id });
     }
   }
@@ -89,7 +95,6 @@ export class Bots {
       checkedIn: false,
       stakedLand: 0,
       studsListed: 0,
-      trained: 0,
       bred: null,
       entered: [],
       claimsPlaced: 0,
@@ -123,13 +128,8 @@ export class Bots {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
     }
 
-    // 2. Train the discovery-year chicks — lowest stat first.
-    for (const chick of flock.all().filter((b) => b.status === "active" && b.age === 1)) {
-      for (let s = 0; s < 3; s++) {
-        if (!quietly(() => void flock.train(chick.id, lowestStat(chick)))) break;
-        report.trained++;
-      }
-    }
+    // (No training step — stats are fixed at birth, ruled round 13. The
+    // discovery year is fought, not trained.)
 
     // 3. Breed through the BARN, if the drive and a legal cover line up —
     //    bots shop other farms' listed studs like anyone else.
@@ -238,11 +238,6 @@ function bestFormat(bird: BirdView, rng: Rng): FightFormat {
   return (Object.entries(scores) as [FightFormat, number][]).reduce((best, cur) =>
     cur[1] + jitter() > best[1] + jitter() ? cur : best
   )[0];
-}
-
-function lowestStat(bird: BirdView) {
-  const statNames = ["agility", "sight", "stamina", "gameness", "station", "condition"] as const;
-  return statNames.reduce((low, s) => (bird[s] < bird[low] ? s : low), statNames[0]);
 }
 
 function shuffle<T>(items: T[], rng: Rng): T[] {

@@ -11,7 +11,7 @@
     "db:push": "drizzle-kit push",
     "db:seed": "bun run src/db/seed.ts",
     "simulate": "bun run scripts/simulate.ts",
-    "dev:sim": "PINTAKASI_DB=data/sim.db PINTAKASI_DIST=.next-sim next dev -p 3435"
+    "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",

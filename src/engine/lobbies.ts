@@ -467,11 +467,20 @@ export class Lobbies {
       farmNames.push(farm.name);
       // Escrow settle: winner takes the pooled pot (own stake back + the
       // other side's), loser's escrow is the pot. Land pays both fighters.
+      // The FARM's record moves here too (real + hardcore only) — it can't
+      // be derived from owned birds later, because birds transfer.
+      const farmRecord =
+        lobby.mode === "practice"
+          ? {}
+          : side.won
+            ? { wins: farm.wins + 1 }
+            : { losses: farm.losses + 1 };
       database
         .update(farms)
         .set({
           gp: farm.gp + (side.won ? side.entry.fee * 2 : 0),
           landTokens: farm.landTokens + landEach,
+          ...farmRecord,
         })
         .where(eq(farms.id, side.entry.farmId))
         .run();

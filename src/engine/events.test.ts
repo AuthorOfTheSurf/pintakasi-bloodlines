@@ -35,8 +35,9 @@ describe("the unified ledger", () => {
   test("registration and check-in land on the ledger with exact deltas", () => {
     const w = world();
     const reg = ofType(w.db, "farm_registered");
-    expect(reg.length).toBe(1); // the rival — the dev farm is seeded directly
-    expect(reg[0].farmId).toBe(w.rivalId);
+    expect(reg.length).toBe(2); // the seeded dev farm logs its purse too
+    expect(reg.map((r) => r.farmId).sort()).toEqual([w.devId, w.rivalId].sort());
+    expect(reg[0].gpCents).toBe(ECONOMY.STARTING_GP * 100);
 
     w.game.farms.checkIn(w.devId);
     const [checkIn] = ofType(w.db, "check_in");
@@ -109,13 +110,8 @@ describe("the unified ledger", () => {
     expect(payout.message).toContain("+2.50 GP");
   });
 
-  test("training and the manual retirement both log", () => {
+  test("the manual retirement logs", () => {
     const w = world();
-    w.game.flock.train("starter-5", "gameness"); // Kidlat, age 1
-    const [train] = ofType(w.db, "train");
-    expect(train.birdId).toBe("starter-5");
-    expect(train.message).toContain("gameness");
-
     w.game.flock.retire("starter-7"); // Sinag, age 3
     const [retire] = ofType(w.db, "retire");
     expect(retire.message).toContain("Sinag");

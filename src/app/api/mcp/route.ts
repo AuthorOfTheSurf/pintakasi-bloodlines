@@ -51,8 +51,9 @@ function createServer(farmId: string | null): McpServer {
         "Pintakasi: Bloodlines — a digital sabong game. YOU are the game client: narrate fights and hatch days with color, present choices clearly, and let the player decide.",
         "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. No farm on this connection? register_farm, save the key, and reconnect with ?key=… on the MCP URL. (When only one farm exists, the key is optional.)",
         "THE DAILY RITUAL: check_in once per game-day — it pays the GP drip ($10 = 800 GP) and 2 free gacha pulls. Do it first thing.",
-        "THE LOOP: breed retired birds → egg hatches next Hatch Friday as an age-1 chick → practice/train through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
-        "AGE GATES: 0 = egg · 1 = practice + training only · 2+ = real fights · 3+ = hardcore + manual retirement · 9 = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.",
+        "THE LOOP: breed retired birds → the hen is pregnant NOW, the egg is LAID next Friday and HATCHES the Friday after as an age-1 chick → practice through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
+        "AGE GATES: 0 = egg · 1 = practice only · 2+ = real fights · 3+ = hardcore + manual retirement · 9 = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.",
+        "STATS ARE FIXED AT BIRTH — there is NO training. The skill is DISCOVERY: fight the amateur year across formats, read the pit figures, and learn what the bird already is. Use it well.",
         "EVERY FIGHT IS PvP — PURE, BETWEEN BARNS. The house supplies nobody. The rhythm: during the game-day you ENTER birds into lobbies (enter_lobby / enter_claimer); at the day tick every lobby GOES OFF — its birds are randomly paired and fight each other. Matchmaking NEVER pairs two birds from the same barn: enter several birds in one lobby freely, they will only ever draw other farms (birds left with only barn-mates go unmatched and refund). Entries are BINDING (fee escrowed, the bird's daily fight spent). Lobbies lock at 8 (even — a full lobby guarantees everyone a fight); a lobby that goes off odd strands one bird, whose fee refunds. There is a real risk a lobby doesn't fill — that's the game: judge your birds' strength and pick where they should be fighting.",
         "THE ECONOMY IS POOLED ($1 = 80 GP): both sides post the entry, winner takes the pot — win +entry, lose −entry. No fight prints GP. The subsidy is LAND: both fighters earn Land Tokens scaled to the entry fee and slightly MORE than linearly (practice 1 LT · real 7 LT · hardcore 23 LT) — fighting UP into dearer company pays extra land. Unmatched birds earn none. Land is also buyable (buy_land, $0.01/LT, capped daily) and NEVER sellable.",
         "ONE FIGHT PER BIRD PER GAME-DAY — a hard count, not a cooldown. A full barn is how you fight more than once a day.",
@@ -330,19 +331,7 @@ function createServer(farmId: string | null): McpServer {
     async ({ entryId }) => ruled(() => game().lobbies.claim(entryId))
   );
 
-  server.registerTool(
-    "train",
-    {
-      title: "Train (Discovery Year)",
-      description:
-        "Train an age-1 chick: a small gain to a chosen stat, limited sessions per day. This is what the discovery year is for — alongside amateur fights across the formats to type the bird.",
-      inputSchema: z.object({
-        birdId: z.string(),
-        stat: z.enum(STAT_NAMES),
-      }),
-    },
-    async ({ birdId, stat }) => ruled(() => game().flock.train(birdId, stat))
-  );
+  // (No train tool — stats are fixed at birth, ruled 2026-08-03 round 13.)
 
   server.registerTool(
     "retire_bird",
