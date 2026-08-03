@@ -42,6 +42,19 @@ function gpFmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/**
+ * The card's name for a lobby: mode·class, with "REAL" left unsaid (round
+ * 20 — real stakes are the default, so only juvenile and hardcore announce
+ * themselves). A plain real/open card just reads OPEN.
+ */
+function cardLabel(mode: string, classType: string): string {
+  const parts = [
+    ...(mode === "real" ? [] : [mode.toUpperCase()]),
+    ...(classType === "open" ? [] : [classType.toUpperCase()]),
+  ];
+  return parts.length ? parts.join("·") : "OPEN";
+}
+
 const TYPE_LABELS: Record<string, string> = {
   farm_registered: "register",
   check_in: "check-in",
@@ -145,7 +158,7 @@ export default function Admin() {
       return {
         id: l.id,
         label:
-          `${l.mode.toUpperCase()}${l.classType === "open" ? "" : "·" + l.classType.toUpperCase()}` +
+          cardLabel(l.mode, l.classType) +
           `${l.price ? ` @ ${l.price} GP tag` : ""} · ${FORMATS[l.format as FightFormat].label}`,
         hardcore: l.mode === "hardcore",
         filled: entries.length,
@@ -170,7 +183,7 @@ export default function Admin() {
     ? Math.max(...allTournaments.map((t) => t.weekIndex))
     : null;
   const FORMAT_LABEL = (f: string) => FORMATS[f as FightFormat]?.label ?? f;
-  // Show the two most recent weeks: last Wednesday's crowns stay visible
+  // Show the two most recent weeks: last week's crowns stay visible
   // while the new week's registrations gather.
   const pintakasiBoxes = allTournaments
     .filter((t) => pintakasiWeek !== null && t.weekIndex >= pintakasiWeek - 1)
@@ -199,6 +212,7 @@ export default function Admin() {
       const champion = entries.find((e) => e.status === "champion");
       return {
         id: t.id,
+        weekIndex: t.weekIndex,
         label: `${FORMAT_LABEL(t.format)} Championship · wk ${t.weekIndex}`,
         status: t.status,
         bracketSize: t.bracketSize,
@@ -213,7 +227,9 @@ export default function Admin() {
           bouts: bouts.filter((b) => b.round === r),
         })),
       };
-    });
+    })
+    // This week's three columns first, last week's crowns underneath.
+    .sort((a, b) => b.weekIndex - a.weekIndex || a.id - b.id);
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {
@@ -234,11 +250,17 @@ export default function Admin() {
   });
 
   const fightRows: FightRowUI[] = winRows.slice(-FIGHT_LIMIT).map((w) => {
-    const mirror = log.find((r) => r.lobbyId === w.lobbyId && r.birdId === w.opponentBirdId);
+    const mirror = log.find(
+      (r) =>
+        r.lobbyId === w.lobbyId &&
+        r.tournamentId === w.tournamentId &&
+        r.birdId === w.opponentBirdId &&
+        r.opponentBirdId === w.birdId
+    );
     return {
       day: w.dayIndex,
       card:
-        `${w.mode.toUpperCase()}${w.lobby !== "open" ? "·" + w.lobby.toUpperCase() : ""}` +
+        (w.tournamentId ? "🏆 PINTAKASI" : cardLabel(w.mode, w.lobby)) +
         `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}`,
       winner: birdById.get(w.birdId)?.name ?? w.birdId,
       winnerFarm: fname(w.farmId),
@@ -287,37 +309,40 @@ export default function Admin() {
     bump(netLt, e.birdId, e.landGranted);
   }
 
-  const birdRows: BirdRowUI[] = allBirds.map((b) => ({
+  const birdRows: BirdRowUI[] = allBirds.map((b) => {
+    // An egg keeps its stats to itself (round 20) — element and stars show
+    // from the moment it's laid, everything else waits for the hatch.
+    const inShell = b.status === "egg";
+    const stat = (v: number) => (inShell ? null : v);
+    return {
     name: b.name,
     farm: fname(b.farmId),
     farmP: fcolors(b.farmId).P ?? "",
     farmS: fcolors(b.farmId).S ?? "",
-    sex: b.status === "egg" ? "?" : b.sex === "male" ? "rooster" : "hen",
+    sex: inShell ? "?" : b.sex === "male" ? "rooster" : "hen",
     baseCoat: b.baseCoat,
     trimColor: b.trimColor,
     age: Math.max(0, ageOf(b, week)),
     stars: b.halfStars / 2,
     element: b.element,
-    agility: b.agility,
-    sight: b.sight,
-    stamina: b.stamina,
-    gameness: b.gameness,
-    station: b.station,
-    condition: b.condition,
-    total: b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition,
-    status:
-      b.status === "egg"
-        ? b.birthWeek > week
-          ? "pregnant"
-          : "in the nest"
-        : b.listedStud
-          ? "Studding" // a rooster registered in the breed barn (ruled round 15)
-          : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}`,
+    agility: stat(b.agility),
+    sight: stat(b.sight),
+    stamina: stat(b.stamina),
+    gameness: stat(b.gameness),
+    station: stat(b.station),
+    condition: stat(b.condition),
+    total: stat(b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition),
+    status: inShell
+      ? "Egg" // the hen is pregnant; the bird is an egg (round 20)
+      : b.listedStud
+        ? "Studding" // a rooster registered in the breed barn (ruled round 15)
+        : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}`,
     wins: b.wins,
     losses: b.losses,
     netGp: (netGpCents.get(b.id) ?? 0) / 100,
     netLt: netLt.get(b.id) ?? 0,
-  }));
+    };
+  });
 
   const split = splitBreedFee(ECONOMY.BREED_FEE);
   const breedingRows: BreedingRowUI[] = bred.map((b, i) => {
@@ -441,7 +466,7 @@ export default function Admin() {
             <GpIcon size={22} /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
           </div>
           <div className="label">juice pool (fight schedule)</div>
-          <div className="sub">breed cuts + paid gacha — the Pintakasi spends it every Wednesday</div>
+          <div className="sub">breed cuts + paid gacha — the Pintakasi spends it every Thursday</div>
         </div>
         <div className="card">
           <div className="big">
@@ -497,55 +522,6 @@ export default function Admin() {
           </div>
         </div>
       </section>
-
-      {pintakasiWeek !== null && (
-        <section className="cardday">
-          <h2>
-            🏆 The Pintakasi{" "}
-            <span className="cardsum">
-              the blade championships — hardcore throughout, crowns every Wednesday
-            </span>
-          </h2>
-          <div className="lobbies">
-            {pintakasiBoxes.map((t) => (
-              <div className="lobby" key={t.id}>
-                <div className="lobby-head">
-                  {t.label}
-                  <span className="fill">
-                    {t.status === "open"
-                      ? `${t.pending} registered`
-                      : t.status === "cancelled"
-                        ? "cancelled"
-                        : `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP`}
-                  </span>
-                </div>
-                {t.champion && (
-                  <div className="bout crown">
-                    🏆 <b>{t.champion.bird}</b> ({t.champion.farm}) — champion, +{gpFmt(t.champion.wonCents)} GP
-                  </div>
-                )}
-                {t.rounds.map((r) => (
-                  <div key={r.name}>
-                    <div className="roundname">{r.name}</div>
-                    {r.bouts.map((b, i) => (
-                      <div className="bout" key={i}>
-                        ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
-                        <span className="figs">figures {b.figures[0]}/{b.figures[1]} · loser force-retired</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-                {t.status === "cancelled" && (
-                  <div className="bout cancelled">✗ field too small — entries refunded, juice held</div>
-                )}
-                {t.status === "open" && t.pending === 0 && (
-                  <div className="bout pending">… no registrants yet</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       <AdminTabs
         farms={farmRows}
@@ -603,6 +579,70 @@ export default function Admin() {
             </section>
           )
         }
+        pintakasiCount={pintakasiBoxes.filter((t) => t.weekIndex === pintakasiWeek).length}
+        pintakasi={
+          pintakasiWeek === null ? (
+            <p className="cardsum">No championship has been run yet — the crowns go off Thursdays.</p>
+          ) : (
+            <section className="cardday">
+              <h2>
+                🏆 The Pintakasi{" "}
+                <span className="cardsum">
+                  the blade championships — hardcore throughout, crowns every Thursday
+                </span>
+              </h2>
+              {/* One column per championship — three blades, three columns. */}
+              <div className="crowns">
+                {pintakasiBoxes.map((t) => (
+                  <div className="lobby" key={t.id}>
+                    <div className="lobby-head">
+                      {t.label}
+                      <span className="fill">
+                        {t.status === "open"
+                          ? `${t.pending} registered`
+                          : t.status === "cancelled"
+                            ? "cancelled"
+                            : `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP`}
+                      </span>
+                    </div>
+                    {t.champion && (
+                      <div className="bout crown">
+                        🏆 <b>{t.champion.bird}</b> ({t.champion.farm}) — champion, +
+                        {gpFmt(t.champion.wonCents)} GP
+                      </div>
+                    )}
+                    {t.rounds.map((r) => (
+                      <div key={r.name}>
+                        <div className={r.name === "Final" ? "roundname final" : "roundname"}>
+                          {r.name}
+                        </div>
+                        {r.bouts.map((b, i) => (
+                          <div className="bout" key={i}>
+                            ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
+                            <span className="figs">
+                              figures {b.figures[0]}/{b.figures[1]}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                    {t.status === "completed" && (
+                      <div className="hardcore-note">All losing birds force-retired.</div>
+                    )}
+                    {t.status === "cancelled" && (
+                      <div className="bout cancelled">
+                        ✗ field too small — entries refunded, juice held
+                      </div>
+                    )}
+                    {t.status === "open" && t.pending === 0 && (
+                      <div className="bout pending">… no registrants yet</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )
+        }
       />
     </main>
   );
@@ -642,6 +682,10 @@ const CSS = `
   .cardday h2 { color: #e8b64c; font-size: 1rem; margin: 0 0 .6rem; }
   .cardday .cardsum { color: #9a8f78; font-weight: 400; font-size: .85em; margin-left: .5em; }
   .lobbies { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: .6rem; }
+  /* The Pintakasi runs three championships a week — three columns. */
+  .crowns { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+  @media (max-width: 1100px) { .crowns { grid-template-columns: 1fr; } }
+  .hardcore-note { color: #e07a6a; margin-top: .45rem; }
   .lobby { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px; padding: .55rem .75rem; }
   .lobby-head { color: #e8b64c; margin-bottom: .3rem; }
   .lobby-head .fill { color: #9a8f78; float: right; }
@@ -652,6 +696,9 @@ const CSS = `
   .bout.pending { color: #9fd3f0; }
   .bout.crown { color: #ffbf00; }
   .roundname { color: #9a8f78; font-size: .85em; margin-top: .35rem; letter-spacing: .05em; }
+  /* The Final is the headline of a championship — say it in gold. */
+  .roundname.final { color: #e8b64c; font-size: 1em; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; margin-top: .5rem; }
   .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }

@@ -69,13 +69,15 @@ export interface BirdRowUI {
   age: number;
   stars: number;
   element: string;
-  agility: number;
-  sight: number;
-  stamina: number;
-  gameness: number;
-  station: number;
-  condition: number;
-  total: number; // the six stats summed — the raw-material score
+  // null while the bird is still in the shell — an egg's book is closed
+  // (round 20). Element and stars stay visible from the day it's laid.
+  agility: number | null;
+  sight: number | null;
+  stamina: number | null;
+  gameness: number | null;
+  station: number | null;
+  condition: number | null;
+  total: number | null; // the six stats summed — the raw-material score
   status: string;
   wins: number;
   losses: number;
@@ -223,7 +225,7 @@ const FIGHT_COLS: ColDef<FightRowUI>[] = [
 function BirdAvatarCell(props: { data?: BirdRowUI }) {
   const d = props.data;
   if (!d) return null;
-  if (d.status === "egg" || d.status === "pregnant" || d.status === "in the nest")
+  if (d.status === "Egg")
     return <EggSprite shell={BASE_COAT_HEX[d.baseCoat] ?? BASE_COAT_HEX.Cream} size={24} />;
   return <BirdSprite sex={d.sex} baseCoat={d.baseCoat} trimColor={d.trimColor} size={30} />;
 }
@@ -422,9 +424,12 @@ for (const cols of [
   }
 }
 
-// "The Card" rides in the tab bar too (round 19) — the day's schedule is
-// worth a look, not a third of the page above every table.
-const TABS = ["Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "The Ledger", "The Card"] as const;
+// "The Card" and "The Pintakasi" ride in the tab bar too (rounds 19–20) —
+// worth a look each, not two thirds of the page above every table.
+const TABS = [
+  "Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "The Ledger",
+  "The Card", "🏆 The Pintakasi",
+] as const;
 type Tab = (typeof TABS)[number];
 
 export function AdminTabs({
@@ -437,6 +442,8 @@ export function AdminTabs({
   ledger,
   card,
   cardCount,
+  pintakasi,
+  pintakasiCount,
 }: {
   farms: FarmRowUI[];
   fights: FightRowUI[];
@@ -447,6 +454,8 @@ export function AdminTabs({
   ledger: LedgerRowUI[];
   card: React.ReactNode; // rendered server-side — the lobby boxes
   cardCount: number;
+  pintakasi: React.ReactNode; // …and the week's three championship columns
+  pintakasiCount: number;
 }) {
   const [tab, setTab] = useState<Tab>("Farms");
   const counts: Record<Tab, number> = {
@@ -458,6 +467,7 @@ export function AdminTabs({
     GP: gp.length,
     "The Ledger": ledger.length,
     "The Card": cardCount,
+    "🏆 The Pintakasi": pintakasiCount,
   };
 
   const base = { sortable: true, filter: true, resizable: true };
@@ -482,6 +492,7 @@ export function AdminTabs({
       {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
+      <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { farms } from "@/db/schema";
+import { birds, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
 import { Flock } from "./flock";
@@ -43,7 +43,7 @@ const RIVAL_SLOT: Record<string, number> = {
   Kidlat: 5, Alab: 6, Sinag: 7, "Batong Buhay": 8,
 };
 const rivalByName = (w: ReturnType<typeof world>, name: string) =>
-  w.rivalFlock.byId(`rival-${RIVAL_SLOT[name]}`);
+  w.rivalFlock.byId(RIVAL_SLOT[name] ? `rival-${RIVAL_SLOT[name]}` : name);
 
 /** Card my bird against a rival bird and let the night go off. */
 function duel(w: ReturnType<typeof world>, myBirdId: string, rivalName: string, spec: LobbySpec, seed: number) {
@@ -77,8 +77,23 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   expect(["male", "female"]).toContain(chick.sex);
   expect(["rooster", "hen"]).toContain(chick.sexLabel!);
 
-  // 3. The discovery year: a juvenile card against the rival's chick.
-  const juvenile = duel(w, chick.id, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 21);
+  // 3. The discovery year: a juvenile card against a rival chick of the same
+  // age. Round 20 closed the juvenile division to age 1, so the rival's own
+  // seeded "Kidlat" (three by now) can no longer make the weight — the
+  // rival hatches a contemporary instead.
+  const week = Math.floor(
+    w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
+  );
+  w.db
+    .insert(birds)
+    .values({
+      id: "rival-chick", farmId: rivalByName(w, "Kidlat").farmId, name: "Rival Chick",
+      sex: "male", status: "active",
+      agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
+      element: "Wood", halfStars: 2, birthWeek: week - 1, birthDay: (week - 1) * 7, named: 1,
+    })
+    .run();
+  const juvenile = duel(w, chick.id, "rival-chick", { mode: "juvenile", classType: "open", format: "shortKnife" }, 21);
   expect(juvenile.birds).toContain("Alon");
   const afterJuvenile = flock.byId(chick.id);
   // ONE lifetime record (round 15): juvenile fights count like any other.

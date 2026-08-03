@@ -137,22 +137,23 @@ describe("the 8-cap (lock the lobby even)", () => {
     seedStarterFlock(w.db, third.id, { seed: 9, idPrefix: "third", shape: "legacy" });
     const thirdLobbies = new Lobbies(w.db, third.id);
     const thirdFlock = new Flock(w.db, third.id);
-    const spec: LobbySpec = { mode: "juvenile", classType: "open", format: "shortKnife" };
+    const spec: LobbySpec = { mode: "real", classType: "open", format: "shortKnife" };
 
-    // Every active bird can juvenile — 4 per farm, 12 total.
+    // Round 20: the juvenile division is age 1 only, so the pile-up test
+    // runs at real stakes — 3 age-2+ birds per farm, 9 total.
     for (const [api, flock] of [
       [w.dev, w.devFlock],
       [w.rival, w.rivalFlock],
       [thirdLobbies, thirdFlock],
     ] as const) {
-      for (const bird of flock.all().filter((b) => b.status === "active")) {
+      for (const bird of flock.all().filter((b) => b.status === "active" && b.age >= 2)) {
         api.enter(bird.id, spec);
       }
     }
     const board = w.dev.board();
     expect(board.length).toBe(2);
     expect(board[0].filled).toBe(LOBBY.CAPACITY); // locked full — everyone guaranteed a fight
-    expect(board[1].filled).toBe(4); // the overflow lobby
+    expect(board[1].filled).toBe(1); // the 9th entrant, in a fresh lobby
     expect(board.every((l) => l.capacity === LOBBY.CAPACITY)).toBe(true);
     // The board is fogged: stars public, stats hidden.
     const card = board[0].entries[0];
@@ -165,21 +166,21 @@ describe("the 8-cap (lock the lobby even)", () => {
     // A second wave of starters: 8 active birds in the dev barn. Before the
     // seating rule these all sat in ONE lobby and most went home unmatched.
     seedStarterFlock(w.db, w.devId, { seed: 77, idPrefix: "dev2", shape: "legacy" });
-    const spec: LobbySpec = { mode: "juvenile", classType: "open", format: "shortKnife" };
-    for (const bird of w.devFlock.all().filter((b) => b.status === "active"))
-      w.dev.enter(bird.id, spec);
+    const spec: LobbySpec = { mode: "real", classType: "open", format: "shortKnife" };
+    const stakesBirds = (flock: Flock) =>
+      flock.all().filter((b) => b.status === "active" && b.age >= 2);
+    for (const bird of stakesBirds(w.devFlock)) w.dev.enter(bird.id, spec);
     let board = w.dev.board();
-    expect(board.map((l) => l.filled)).toEqual([4, 4]); // the clump split at half
+    expect(board.map((l) => l.filled)).toEqual([4, 2]); // the clump split at half
 
     seedStarterFlock(w.db, w.rivalId, { seed: 78, idPrefix: "rival2", shape: "legacy" });
-    for (const bird of w.rivalFlock.all().filter((b) => b.status === "active"))
-      w.rival.enter(bird.id, spec);
+    for (const bird of stakesBirds(w.rivalFlock)) w.rival.enter(bird.id, spec);
     board = w.dev.board();
-    expect(board.map((l) => l.filled)).toEqual([8, 8]);
+    expect(board.map((l) => l.filled)).toEqual([8, 4]);
 
     // Both lobbies are half-and-half — the card goes off with ZERO cancellations.
     const card2 = w.game.tickDay().card;
-    expect(card2.reduce((s, l) => s + l.fights.length, 0)).toBe(8);
+    expect(card2.reduce((s, l) => s + l.fights.length, 0)).toBe(6);
     expect(card2.reduce((s, l) => s + l.unmatched.length, 0)).toBe(0);
   });
 });

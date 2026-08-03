@@ -42,9 +42,9 @@ describe("age gate matrix", () => {
     const matrix: [number, boolean, boolean, boolean, boolean, boolean][] = [
       [0, false, false, false, false, false], // egg
       [1, true, false, false, false, false], //  discovery year
-      [2, true, true, false, false, false], //   real stakes
-      [3, true, true, true, true, false], //     the fork opens as a package
-      [8, true, true, true, true, false], //     last fighting year
+      [2, false, true, false, false, false], //  real stakes (juvenile CLOSES — round 20)
+      [3, false, true, true, true, false], //    the fork opens as a package
+      [8, false, true, true, true, false], //    last fighting year
       [9, false, false, false, true, true], //   cap
     ];
     for (const [age, juvenile, real, hardcore, manual, force] of matrix) {

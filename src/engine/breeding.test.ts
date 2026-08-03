@@ -39,7 +39,7 @@ describe("breed", () => {
     expect(farm.gpCents).toBe(0);
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     expect(state.stakerPoolCents).toBe(400);
-    expect(state.juicePoolCents).toBe(7800);
+    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 7800); // genesis seed + the cover's cut
   });
 
   test("child stats stay in bounds and near the parent average", () => {

@@ -45,7 +45,12 @@ describe("carding a claimer", () => {
     const w = world();
     const alab = byName(w.devFlock, "Alab");
     expect(() => w.dev.enter(alab.id, { ...SPEC, price: 123 })).toThrow(/claiming tag/);
-    expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "juvenile" as never })).toThrow(/open or maiden/);
+    // Round 20: the juvenile door now checks the age first — Alab is 2, so
+    // it never reaches the class rule. Kidlat (1) does.
+    expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "juvenile" as never })).toThrow(/discovery year only/);
+    expect(() =>
+      w.dev.enter(byName(w.devFlock, "Kidlat").id, { ...SPEC, mode: "juvenile" as never })
+    ).toThrow(/open or maiden/);
     // An open entry takes no claims.
     const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "shortKnife" });
     const openEntry = open.lobby.entries[0].entryId;

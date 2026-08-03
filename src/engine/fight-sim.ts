@@ -165,24 +165,38 @@ export function simulatePair(
     lines.push(`Time is called — ${winner === 0 ? a.name : b.name} kept more wind.`);
   }
 
-  // ── The Pit Figures ───────────────────────────────────────────────────────
-  // Damage margin per turn, normalized by the blade's damage scale so
-  // figures compare across formats, adjusted for opponent quality, then
-  // fogged: separate noise per side + banding. A narrow loss to a monster
-  // can out-figure an ugly win over a dud — the discovery signal working.
+  // ── The Pit Figures (rebuilt round 20 — the ghost standard) ───────────────
+  // The winner is timed against an invisible maxed-out bird: its damage
+  // output per turn, normalized by the blade so figures compare across
+  // distances, as a fraction of GHOST_PACE. The loser is scored DOWN from
+  // the winner by the finishing margin — the fight's beaten lengths. One
+  // noise roll for the whole fight (the track variant), so the fog can
+  // never put a loser above the bird that beat it.
+  const won = winner === 0 ? a : b;
+  const lost = winner === 0 ? b : a;
+  const variant = randInt(rng, -FIGURE.NOISE, FIGURE.NOISE);
+  const band = (raw: number) =>
+    Math.max(0, Math.min(FIGURE.MAX, Math.round((raw + variant) / FIGURE.BAND) * FIGURE.BAND));
+
+  const pace = won.dealt / Math.max(1, turnsFought) / fmt.damageMult;
+  // …plus the class of the bird that was beaten (see config): pace alone
+  // can't tell a monster from a maiden, because every turn is decided by
+  // the DIFFERENCE between two rolls.
   const avg = (s: BirdStats) => Object.values(s).reduce((x, y) => x + y, 0) / 6;
-  const figureFor = (self: Fighter, other: Fighter, selfAvg: number, otherAvg: number) => {
-    const marginPerTurn = (self.dealt - other.dealt) / Math.max(1, turnsFought) / fmt.damageMult;
-    const raw =
-      FIGURE.BASE +
-      marginPerTurn * FIGURE.MARGIN_SCALE +
-      (otherAvg - selfAvg) / FIGURE.OPP_ADJ_DIVISOR +
-      randInt(rng, -FIGURE.NOISE, FIGURE.NOISE);
-    return Math.max(0, Math.min(FIGURE.MAX, Math.round(raw / FIGURE.BAND) * FIGURE.BAND));
-  };
-  const avgA = avg(aIn.stats);
-  const avgB = avg(bIn.stats);
-  const figures: [number, number] = [figureFor(a, b, avgA, avgB), figureFor(b, a, avgB, avgA)];
+  const beatenClass = (avg(lost.stats) - FIGURE.CLASS_BASE) / FIGURE.CLASS_DIVISOR;
+  const winnerRaw =
+    (pace / FIGURE.GHOST_PACE[format]) * FIGURE.GHOST_FIGURE + beatenClass;
+  // Beaten lengths: the gap in wind left at the end, as a fraction of the
+  // loser's own pool. A bird that ran, or emptied, was beaten by the length
+  // of the pit; a bird that lost on wind at the bell was beaten by inches.
+  const remaining = (f: Fighter) => Math.max(0, f.wind) / f.maxWind;
+  const margin = lost.ran ? 1 : Math.min(1, Math.max(0, remaining(won) - remaining(lost)));
+  const beaten = Math.max(FIGURE.MIN_BEATEN, margin * FIGURE.BEATEN_SCALE);
+
+  const winnerFigure = band(winnerRaw);
+  const loserFigure = Math.min(winnerFigure - FIGURE.BAND, band(winnerRaw - beaten));
+  const figures: [number, number] =
+    winner === 0 ? [winnerFigure, loserFigure] : [loserFigure, winnerFigure];
 
   lines.push(`🏆 ${winner === 0 ? a.name : b.name} WINS.`);
   lines.push(`Pit Figures: ${a.name} ${figures[0]} · ${b.name} ${figures[1]} (${fmt.label})`);

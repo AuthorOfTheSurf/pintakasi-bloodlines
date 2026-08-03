@@ -4,7 +4,7 @@ import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { chaseCrowns } from "./bots";
-import { PINTAKASI } from "./config";
+import { ECONOMY, PINTAKASI } from "./config";
 import { Flock } from "./flock";
 import { mulberry32 } from "./rng";
 import { Game } from "./game";
@@ -56,10 +56,10 @@ const totalCents = (db: DB) => {
   );
 };
 
-/** Tick from Friday day 0 through the Wednesday resolution (day 5 → 6). */
-function tickThroughWednesday(game: Game) {
+/** Tick from Friday day 0 through crown day — Thursday, day 6 (round 20). */
+function tickThroughCrownDay(game: Game) {
   let last;
-  for (let i = 0; i < 6; i++) last = game.tickDay();
+  for (let i = 0; i < 7; i++) last = game.tickDay();
   return last!;
 }
 
@@ -70,10 +70,14 @@ describe("the week's blades & the calendar", () => {
     expect(Tournaments.bladesOfWeek(2)).toEqual(["longKnife", "shortGaff", "shortKnife"]);
   });
 
-  test("entries target this Wednesday — Thursday's roll to next week", () => {
-    expect(Tournaments.targetWeek(0)).toBe(0); // Friday
-    expect(Tournaments.targetWeek(5)).toBe(0); // Wednesday itself — last call
-    expect(Tournaments.targetWeek(6)).toBe(1); // Thursday — the crowns are gone
+  test("crown day is the week's last day — every entry belongs to its own week", () => {
+    expect(Tournaments.targetWeek(0)).toBe(0); // Friday, the week opens
+    expect(Tournaments.targetWeek(5)).toBe(0); // Wednesday — one card left first
+    expect(Tournaments.targetWeek(6)).toBe(0); // Thursday — crown day, last call
+    expect(Tournaments.targetWeek(7)).toBe(1); // Friday again — a new week
+    expect(Tournaments.isCrownDay(6)).toBe(true);
+    expect(Tournaments.isCrownDay(5)).toBe(false);
+    expect(Tournaments.isCrownDay(13)).toBe(true); // next week's Thursday
   });
 });
 
@@ -107,6 +111,20 @@ describe("registration & the Selection Committee", () => {
     expect(new Set(pending.map((e) => e.birdId)).size).toBe(2); //      different bodies
     // Idempotent within the week: a second pass adds nothing.
     expect(chaseCrowns(w.db, w.devId, 0, mulberry32(12)).length).toBe(0);
+  });
+
+  // Round 20: three per barn per crown — load the blade with specialists,
+  // but no barn owns a bracket.
+  test("a barn may load one championship with three birds — and no more", () => {
+    const w = world();
+    // A deep barn: a second legacy wave gives four age-3+ birds.
+    seedStarterFlock(w.db, w.devId, { seed: 55, idPrefix: "dev2", shape: "legacy" });
+    const eligible = w.devFlock.all().filter((b) => b.status === "active" && b.age >= 3);
+    expect(eligible.length).toBe(4);
+    for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "longKnife");
+    expect(() => w.dev.enter(eligible[3].id, "longKnife")).toThrow(/limit per championship/);
+    // The fourth bird is welcome in a DIFFERENT crown.
+    expect(() => w.dev.enter(eligible[3].id, "shortGaff")).not.toThrow();
   });
 
   test("the fee escrows at entry; the board ranks the public field", () => {
@@ -187,7 +205,7 @@ describe("registration & the Selection Committee", () => {
   });
 });
 
-describe("the Wednesday resolution", () => {
+describe("the crown-day resolution", () => {
   test("a 4-bird bracket runs start to finish: crowns, retirements, purse, land — GP exact", () => {
     const w = world();
     w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
@@ -196,7 +214,7 @@ describe("the Wednesday resolution", () => {
     w.rival.enter("rival-8", "longKnife");
     const before = totalCents(w.db);
 
-    const tick = tickThroughWednesday(w.game);
+    const tick = tickThroughCrownDay(w.game);
     expect(tick.pintakasi.length).toBe(1);
     const result = tick.pintakasi[0];
     expect(result.cancelled).toBe(false);
@@ -213,9 +231,11 @@ describe("the Wednesday resolution", () => {
     const champ = all.find((b) => b.name === result.champion!.bird)!;
     expect(champ.status).toBe("active");
 
-    // GP to the top: purse = 800 GP of entries (no juice yet). In a 4-bracket
-    // the SF losers fell in round one — zero GP; champion 5/7, runner-up 2/7.
-    expect(result.purseCents).toBe(4 * PINTAKASI.ENTRY_FEE * 100);
+    // GP to the top: purse = 800 GP of entries + the juice pool, which the
+    // world seeds at genesis (round 20) and this lone running crown takes in
+    // full. In a 4-bracket the SF losers fell in round one — zero GP;
+    // champion 5/7, runner-up 2/7.
+    expect(result.purseCents).toBe(4 * PINTAKASI.ENTRY_FEE * 100 + ECONOMY.SEED_JUICE * 100);
     const paid = result.payouts.reduce((s, p) => s + p.gpCents, 0);
     expect(paid).toBe(result.purseCents); // dust included, nothing stranded
     expect(result.payouts.length).toBe(2); // champion + runner-up only
@@ -245,7 +265,7 @@ describe("the Wednesday resolution", () => {
     w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "shortGaff");
     w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "shortGaff");
     w.rival.enter("rival-7", "shortGaff");
-    const result = tickThroughWednesday(w.game).pintakasi[0];
+    const result = tickThroughCrownDay(w.game).pintakasi[0];
     expect(result.bracketSize).toBe(4);
     expect(result.rounds[0].byes.length).toBe(1);
     expect(result.rounds[0].fights.length).toBe(1);
@@ -259,7 +279,7 @@ describe("the Wednesday resolution", () => {
     const sinag = byName(w.db, w.devFlock, "Sinag");
     const before = totalCents(w.db);
     w.dev.enter(sinag.id, "longKnife");
-    const tick = tickThroughWednesday(w.game);
+    const tick = tickThroughCrownDay(w.game);
     const result = tick.pintakasi[0];
     expect(result.cancelled).toBe(true);
     expect(totalCents(w.db)).toBe(before);
@@ -275,7 +295,7 @@ describe("the Wednesday resolution", () => {
     w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
     w.rival.enter("rival-7", "longKnife");
     const before = totalCents(w.db);
-    const result = tickThroughWednesday(w.game).pintakasi[0];
+    const result = tickThroughCrownDay(w.game).pintakasi[0];
     // One championship ran — it takes the WHOLE week's juice.
     expect(result.purseCents).toBe(2 * PINTAKASI.ENTRY_FEE * 100 + 30_000);
     // A 2-bracket's runner-up is a first-round loser: zero GP, champion sweeps.
@@ -287,7 +307,7 @@ describe("the Wednesday resolution", () => {
     expect(totalCents(w.db)).toBe(before);
   });
 
-  test("a registrant that died before Wednesday is refunded at close", () => {
+  test("a registrant that died before crown day is refunded at close", () => {
     const w = world();
     const sinag = byName(w.db, w.devFlock, "Sinag");
     w.dev.enter(sinag.id, "longKnife");
@@ -299,7 +319,7 @@ describe("the Wednesday resolution", () => {
       .set({ status: "retired", retiredBy: "hardcore", retiredWeek: 0 })
       .where(eq(birds.id, sinag.id))
       .run();
-    const result = tickThroughWednesday(w.game).pintakasi[0];
+    const result = tickThroughCrownDay(w.game).pintakasi[0];
     expect(result.field).toBe(2); // the two rivals fought it out
     const entry = w.db
       .select()
@@ -309,7 +329,7 @@ describe("the Wednesday resolution", () => {
     expect(entry.status).toBe("refunded");
   });
 
-  test("a week jump (Fri → Fri) crosses Wednesday and resolves exactly once", () => {
+  test("a week jump (Fri → Fri) crosses crown day and resolves exactly once", () => {
     const w = world();
     w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
     w.rival.enter("rival-7", "longKnife");
@@ -321,7 +341,7 @@ describe("the Wednesday resolution", () => {
     ).toBe(1);
   });
 
-  test("Wednesday's lobby door refuses a Pintakasi registrant — its crown is its card", () => {
+  test("crown day's lobby door refuses a Pintakasi registrant — its crown is its card", () => {
     const w = world();
     const bb = byName(w.db, w.devFlock, "Batong Buhay");
     w.dev.enter(bb.id, "longKnife");
@@ -329,7 +349,7 @@ describe("the Wednesday resolution", () => {
     // Monday: the registrant fights normal cards freely (entry succeeds).
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3 (Monday)
     lobbies.enter(bb.id, { mode: "real", classType: "open", format: "shortKnife" });
-    for (let i = 0; i < 2; i++) w.game.tickDay(); // → day 5 (Wednesday)
+    for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 6 (Thursday, crown day)
     expect(() =>
       lobbies.enter(bb.id, { mode: "real", classType: "open", format: "shortKnife" })
     ).toThrow(/Pintakasi/);

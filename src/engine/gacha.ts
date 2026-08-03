@@ -73,7 +73,7 @@ export class Gacha {
     // Paid rolls feed the juice pool (round 14 — this was a silent BURN
     // before: the GP left the wallet and went nowhere, which would have
     // broken the conservation proof on the first real spend). Gacha revenue
-    // now subsidizes the Wednesday finals, and the books stay zero-sum.
+    // now subsidizes the weekly championships, and the books stay zero-sum.
     if (price > 0) {
       const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
       this.database

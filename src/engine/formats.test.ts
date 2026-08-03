@@ -60,21 +60,52 @@ describe("the Pit Figures (discovery signal)", () => {
     }
   });
 
-  test("the opponent adjustment leans the underdog's figure up", () => {
-    // Same fight sampled many times: the weaker bird's figure gets the
-    // (stronger opponent) bonus, so ON AVERAGE it shouldn't trail by much
-    // more than the outcome margin alone would suggest.
-    let weakSum = 0;
-    let strongSum = 0;
-    const RUNS = 60;
-    for (let seed = 1; seed <= RUNS; seed++) {
-      const sim = simulatePair(bird("Weak", 280), bird("Strong", 420, "Water"), "shortKnife", mulberry32(seed), "T");
-      weakSum += sim.figures[0];
-      strongSum += sim.figures[1];
+  // Round 20, Zane: "wondering how a lower fight figure (45) beat a higher
+  // one (55)? In PFL this wouldn't be possible." It can't happen now — the
+  // winner is timed against the ghost and the loser is scored DOWN from it.
+  test("the winner ALWAYS out-figures the bird it beat — no inversions", () => {
+    for (const format of Object.keys(FORMATS) as FightFormat[]) {
+      for (let seed = 1; seed <= 60; seed++) {
+        // Deliberately lopsided both ways, plus even matches.
+        for (const [x, y] of [[280, 420], [420, 280], [350, 350]] as const) {
+          const sim = simulatePair(bird("A", x), bird("B", y, "Water"), format, mulberry32(seed), "T");
+          const [w, l] = sim.winner === 0 ? sim.figures : [sim.figures[1], sim.figures[0]];
+          expect(w).toBeGreaterThan(l);
+        }
+      }
     }
-    // The adjustment exists: the gap in average figures is far smaller than
-    // the 140-point book gap would produce raw (a sanity band, not a law).
-    expect(strongSum / RUNS - weakSum / RUNS).toBeLessThan(40);
+  });
+
+  test("figures rise with the class of the bird you beat — the ghost standard", () => {
+    // Same blade, same seeds: beating better company figures higher, which
+    // is what makes figures comparable across cards.
+    const meanWinner = (level: number) => {
+      let sum = 0;
+      const RUNS = 60;
+      for (let seed = 1; seed <= RUNS; seed++) {
+        const sim = simulatePair(bird("A", level), bird("B", level, "Water"), "shortKnife", mulberry32(seed), "T");
+        sum += Math.max(...sim.figures);
+      }
+      return sum / RUNS;
+    };
+    const starters = meanWinner(320);
+    const elite = meanWinner(1200);
+    expect(elite).toBeGreaterThan(starters + 20);
+    // …and a starter-grade win sits near the middle of the scale, not at 0.
+    expect(starters).toBeGreaterThan(35);
+    expect(starters).toBeLessThan(70);
+  });
+
+  test("a narrow loss still carries a real figure — losing to a monster pays", () => {
+    // The loser is the winner's figure minus beaten lengths, so being close
+    // to a big performance out-figures winning a bad one.
+    let closeLosses = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const sim = simulatePair(bird("A", 1200), bird("B", 1200, "Water"), "longGaff", mulberry32(seed), "T");
+      const loser = Math.min(...sim.figures);
+      if (loser > 55) closeLosses++;
+    }
+    expect(closeLosses).toBeGreaterThan(0);
   });
 });
 

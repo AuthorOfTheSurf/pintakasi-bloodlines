@@ -24,7 +24,7 @@ export interface TickView {
   daysAdvanced: number;
   fridays: HatchFridayEvents[]; // hatches + force-retirements, per Friday crossed
   card: LobbyResolution[]; // the day's lobbies going off — public events
-  pintakasi: TournamentResolution[]; // Wednesday's blade championships (round 18)
+  pintakasi: TournamentResolution[]; // crown day's blade championships (round 18)
   bots: BotDayReport[]; // what the bot stables did before post time
   staking: { paidGp: number; stakers: number }; // the day's pro-rata payout
 }
@@ -91,12 +91,12 @@ export class Game {
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
     // The day has turned — the card goes off (fights first, then claims),
-    // then the main event: every departed Wednesday runs its Pintakasi
+    // then the main event: every departed crown day runs its Pintakasi
     // (undercard first, crowns second), then the staking pool pays out.
     const card = Lobbies.resolve(this.database);
     const pintakasi: TournamentResolution[] = [];
     for (let d = preDay; d < result.state.dayIndex; d++) {
-      if (d % 7 === 5) pintakasi.push(...Tournaments.resolveWednesday(this.database, d));
+      if (Tournaments.isCrownDay(d)) pintakasi.push(...Tournaments.resolveCrownDay(this.database, d));
     }
     const staking = Farms.distributeStaking(this.database);
     // The office's memory: today's top-line metrics, for tomorrow's diffs.

@@ -80,7 +80,18 @@ export function seedGame(
   db: DB,
   opts: { seed?: number; startingGp?: number; flock?: "eggs" | "legacy" } = {}
 ): { farmId: string; apiKey: string } {
-  db.insert(gameState).values({ id: 1, dayIndex: 0 }).run();
+  // The world opens with juice in the pot (ruled round 20) — the first
+  // championships need a purse worth dying for before breed fees have had
+  // a month to fill the pool. Printed once, at genesis, like starting purses.
+  db.insert(gameState)
+    .values({ id: 1, dayIndex: 0, juicePoolCents: ECONOMY.SEED_JUICE * 100 })
+    .run();
+  emit(db, {
+    type: "pool_accrual",
+    farmId: null,
+    message: `the juice pool opens at ${ECONOMY.SEED_JUICE} GP — seed money for the first Pintakasi`,
+    data: { stakerPoolCents: 0, juicePoolCents: ECONOMY.SEED_JUICE * 100, source: "genesis" },
+  });
 
   db.insert(farms)
     .values({

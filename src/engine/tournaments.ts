@@ -13,20 +13,21 @@ type EntryRow = typeof tournamentEntries.$inferSelect;
 
 /**
  * THE PINTAKASI (ruled 2026-08-03 round 18) — the weekly blade Majors.
- * Three championships every Wednesday (anchors + the rotating middle blade),
- * hardcore throughout, one day, committee-seeded. See config.PINTAKASI for
- * the full charter. The week's rhythm:
+ * Three championships on the week's LAST DAY (Thursday since round 20 —
+ * anchors + the rotating middle blade), hardcore throughout, one day,
+ * committee-seeded. See config.PINTAKASI for the full charter. The rhythm:
  *
- *   - Any day, owners REGISTER an age-3+ bird into one of the week's three
- *     blades (fee escrowed, binding). Entries made on a Thursday belong to
- *     the NEXT Wednesday — the week has already crowned its champions.
+ *   - Any day, owners REGISTER age-3+ birds into the week's three blades
+ *     (fee escrowed, binding) — up to PINTAKASI.MAX_PER_BARN per crown, so
+ *     a deep barn loads a blade with specialists. Crown day is the last day
+ *     of the game week, so registration simply closes with the week.
  *   - The FIELD IS PUBLIC all week (unlike the fogged daily card): entering
  *     the biggest stage is choosing to be seen, and the Selection
  *     Committee's bump line only works if you can see who you'd bump.
  *   - At 64 entrants the Committee LIVE-BUMPS: a newcomer either outranks
  *     the current weakest (who goes home refunded) or is itself refused.
  *     Ranking: career earnings → career wins → average pit figure.
- *   - At the tick that ends Wednesday, each championship runs START TO
+ *   - At the tick that ends crown day, each championship runs START TO
  *     FINISH: bracket = next power of two (byes to the top seeds), classic
  *     seeding (1v16, 8v9…), winners heal to full between rounds. Every
  *     loser force-retires. GP to the top, land to the fallen.
@@ -101,12 +102,18 @@ export class Tournaments {
   }
 
   /**
-   * The Wednesday an entry made TODAY fights on. Thursday is the one day
-   * "after" — its entries roll to next week's championships.
+   * The crown day an entry made TODAY fights on. Since round 20 the crowns
+   * run on the week's LAST day, so today's entry always belongs to today's
+   * week — no roll-forward case left (registering on crown day itself is
+   * last call, and the fields resolve at that day's tick).
    */
   static targetWeek(dayIndex: number): number {
-    const week = Math.floor(dayIndex / 7);
-    return dayIndex % 7 === 6 ? week + 1 : week;
+    return Math.floor(dayIndex / 7);
+  }
+
+  /** Is this day index a crown day? */
+  static isCrownDay(dayIndex: number): boolean {
+    return dayIndex % 7 === PINTAKASI.DAY_OF_WEEK;
   }
 
   /** Register a bird for one of the week's championships. Binding. */
@@ -128,7 +135,7 @@ export class Tournaments {
           .join(" / ")}`
       );
 
-    // One bird, one championship per week — one body, one Wednesday.
+    // One bird, one championship per week — one body, one crown day.
     const weekTournamentIds = this.database
       .select()
       .from(tournaments)
@@ -145,6 +152,14 @@ export class Tournaments {
       throw new Error(`${bird.name} is already registered for this week's Pintakasi`);
 
     const tournament = this.findOrOpen(week, format);
+    // …and at most MAX_PER_BARN birds from one barn in one championship
+    // (ruled round 20 — load the blade with specialists, but no barn owns
+    // a bracket).
+    const mine = this.pendingEntries(tournament.id).filter((e) => e.farmId === this.farmId);
+    if (mine.length >= PINTAKASI.MAX_PER_BARN)
+      throw new Error(
+        `Your barn already has ${mine.length} in the ${label(tournament.format)} — ${PINTAKASI.MAX_PER_BARN} is the limit per championship`
+      );
     const fee = tournament.entryFee;
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     if (farm.gp < fee)
@@ -204,18 +219,17 @@ export class Tournaments {
     });
     return {
       entryId: inserted.id,
-      note: `Registered. The ${label(tournament.format)} runs Wednesday — every loser force-retires; the champion takes the purse.`,
+      note: `Registered. The ${label(tournament.format)} runs Thursday — every loser force-retires; the champion takes the purse.`,
     };
   }
 
   /**
-   * Does this farm already have a pending entry this week? Pass a blade to
-   * ask about that championship only — the rule is one bird per CROWN, so a
-   * stable may chase all three of a week's crowns with three different birds
-   * (round 19: the fields were thin because auto-play and the bots stopped
-   * at one entry a week between them).
+   * How many of this barn's birds are standing in this week's championships
+   * — all of them, or one blade's if a format is named. The rule is one bird
+   * per CROWN with up to MAX_PER_BARN birds per barn per crown (rounds
+   * 19–20), so this is what the callers check before sending another.
    */
-  hasEntryThisWeek(format?: FightFormat): boolean {
+  myEntriesThisWeek(format?: FightFormat): number {
     const week = Tournaments.targetWeek(this.today());
     const ids = this.database
       .select()
@@ -229,7 +243,7 @@ export class Tournaments {
       .from(tournamentEntries)
       .where(and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending")))
       .all()
-      .some((e) => ids.includes(e.tournamentId));
+      .filter((e) => ids.includes(e.tournamentId)).length;
   }
 
   /** The week's championships — fields PUBLIC, ranked as the committee sees them today. */
@@ -263,10 +277,10 @@ export class Tournaments {
   }
 
   /**
-   * The Wednesday resolution — every open championship of `dayIndex`'s week
-   * runs start to finish. Called by Game.tick for each departed Wednesday.
+   * The crown-day resolution — every open championship of `dayIndex`'s week
+   * runs start to finish. Called by Game.tick for each departed crown day.
    */
-  static resolveWednesday(database: DB, dayIndex: number): TournamentResolution[] {
+  static resolveCrownDay(database: DB, dayIndex: number): TournamentResolution[] {
     const week = Math.floor(dayIndex / 7);
     const open = database
       .select()
@@ -571,7 +585,7 @@ export class Tournaments {
       database
         .insert(battleLog)
         .values({
-          dayIndex: t.weekIndex * 7 + 5, // the Wednesday this crown was fought
+          dayIndex: t.weekIndex * 7 + PINTAKASI.DAY_OF_WEEK, // the day this crown was fought
           lobbyId: null,
           tournamentId: t.id,
           farmId: side.entry.farmId,

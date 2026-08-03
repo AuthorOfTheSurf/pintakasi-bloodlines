@@ -29,8 +29,14 @@ export function isEggAge(age: number): boolean {
   return age < AGE.CHICK;
 }
 
+/**
+ * The discovery year ONLY (ruled round 20: "juveniles should only be
+ * competing against juveniles"). The gate used to stay open at every age,
+ * so a five-year-old could drop into a juvenile card and beat up chicks.
+ * Now age 1 is a closed division, 2+ is one group, and hardcore is 3+.
+ */
 export function canJuvenile(age: number): boolean {
-  return age >= AGE.CHICK && age < AGE.FIGHTING_CAP;
+  return age === AGE.CHICK;
 }
 
 export function canRealFight(age: number): boolean {

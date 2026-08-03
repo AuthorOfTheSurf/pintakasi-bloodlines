@@ -290,7 +290,7 @@ export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
  * shared by the bots and by auto-play.
  *
  * The old behavior stopped at ONE entry per stable per week, which capped
- * a three-crown Wednesday at one field of seven across ten farms — most
+ * a three-crown week at one field of seven across ten farms — most
  * championships cancelled for want of a second bird. The rule was never
  * one bird per STABLE, it's one bird per CROWN: so walk the week's three
  * blades and send the barn's best specialist to each, cheapest signal
@@ -312,32 +312,44 @@ export function chaseCrowns(
   const reserve = opts.reserve ?? 0;
   const entered: string[] = [];
 
-  for (const blade of Tournaments.bladesOfWeek(Tournaments.targetWeek(today))) {
-    if (tournaments.hasEntryThisWeek(blade)) continue; // this crown's already ours to lose
-    if (opts.nerve !== undefined && rng() >= opts.nerve) continue;
-    const purse = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
-    if (purse.gp < PINTAKASI.ENTRY_FEE + reserve) break;
+  const blades = Tournaments.bladesOfWeek(Tournaments.targetWeek(today));
+  const eligible = flock.all().filter((b) => b.status === "active" && b.named && canHardcore(b.age));
+  if (eligible.length === 0) return entered;
 
-    const candidates = flock
-      .all()
-      .filter((b) => b.status === "active" && b.named && canHardcore(b.age))
-      .sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade]);
-    // Try the best few in turn — a bird already committed to another crown
-    // this week, or refused by the Selection Committee, just steps aside.
-    for (const bird of candidates.slice(0, 3)) {
-      let ok = false;
+  // Each bird declares for the running blade it reads BEST at — that's the
+  // specialist rule, and it stops a shallow barn from piling its whole
+  // roster into whichever crown happens to be checked first.
+  const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
+  for (const bird of eligible) {
+    const home = blades.reduce((best, b) =>
+      formatScores(bird)[b] > formatScores(bird)[best] ? b : best
+    );
+    declared.get(home)!.push(bird);
+  }
+
+  const send = (blade: FightFormat, candidates: BirdView[]): boolean => {
+    let sent = tournaments.myEntriesThisWeek(blade);
+    for (const bird of candidates.sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade])) {
+      if (sent >= PINTAKASI.MAX_PER_BARN) break;
+      if (db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp < PINTAKASI.ENTRY_FEE + reserve)
+        return false; // out of money, out of crowns
       try {
         tournaments.enter(bird.id, blade);
-        ok = true;
-      } catch {
-        /* the committee (or the calendar) said no — next bird */
-      }
-      if (ok) {
         entered.push(bird.name);
-        break;
+        sent++;
+      } catch {
+        /* already committed elsewhere, barn full, or the committee said no */
       }
     }
-  }
+    return true;
+  };
+
+  const chosen = blades.filter((b) => opts.nerve === undefined || rng() < opts.nerve);
+  // Pass 1: specialists into their own blade.
+  for (const blade of chosen) if (!send(blade, [...declared.get(blade)!])) return entered;
+  // Pass 2: anyone still idle fills a crown that's short — up to MAX_PER_BARN
+  // per blade. A body in a bracket beats a body in the barn.
+  for (const blade of chosen) if (!send(blade, [...eligible])) return entered;
   return entered;
 }
 

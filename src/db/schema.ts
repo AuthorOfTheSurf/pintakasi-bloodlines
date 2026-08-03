@@ -214,7 +214,7 @@ export const tournaments = sqliteTable("tournaments", {
 
 // One bird registered for a championship. Fee escrows at entry (binding).
 // `bumped` = displaced by a stronger late entrant (Selection Committee,
-// refunded); `refunded` = died/retired before Wednesday, or the field was
+// refunded); `refunded` = died/retired before crown day, or the field was
 // too small to run. eliminated_round: 1 = the bracket's first round;
 // equal to the round count = lost the final (the runner-up).
 export const tournamentEntries = sqliteTable("tournament_entries", {

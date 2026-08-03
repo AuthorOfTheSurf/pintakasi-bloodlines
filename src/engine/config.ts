@@ -160,19 +160,46 @@ export const BATTLE = {
 } as const;
 
 // ── Pit Figure (the Fleet-Figure analog — every fight pays out signal) ──────
-// One banded rating per fight, normalized PER FORMAT so figures compare
-// across blade classes ("LK 60 · SK 70 · LG 85" says: try gaffs). Computed
-// from damage margin per turn vs. the opponent's strength — so a narrow loss
-// to a monster can out-figure an ugly win over a dud. Deliberately coarse:
-// banded + noisy, and it never decomposes by stat (the play-by-play carries
-// the qualitative tell instead). Part of the fog.
+// REBUILT round 20, PFL-true. The old figure scored each bird against its
+// OPPONENT, which let a loser out-figure the winner of the same fight
+// (Zane: "in PFL this wouldn't be possible"). PFL horses are timed against
+// an invisible maxed-out GHOST, and the rest of the field is scored down
+// from the winner by beaten lengths. Same shape here:
+//
+//  1. The WINNER's figure is absolute — its damage output per turn
+//     (normalized by the blade, so figures compare across distances)
+//     measured against GHOST_PACE, the pace a maxed-out bird sets.
+//     Matching the ghost = GHOST_FIGURE (100). Typical starters ≈ 50.
+//  2. The LOSER is scored DOWN from the winner by the finishing margin —
+//     wind left, the fight's "beaten lengths." A narrow loss to a big
+//     performance still figures well; a blowout does not.
+//  3. ONE noise roll per fight, applied to both sides (PFL's track
+//     variant), so the fog never reorders the result.
+//
+// Still deliberately coarse — banded, never decomposed by stat. The
+// play-by-play carries the qualitative tell.
+// One wrinkle the calibration run exposed: because every turn is decided by
+// the DIFFERENCE between two rolls, two maxed-out birds trade exactly as
+// much damage as two starters — raw pace alone carries no quality signal at
+// all. So the figure also books the CLASS of the bird that was beaten,
+// measured off the starter band. That's how graded-stakes figures work too:
+// a strong field lifts everyone's number, and beating a monster is the
+// whole point. The old "narrow loss to a monster figures well" property
+// survives — the loser now inherits it through the winner's figure instead
+// of leapfrogging it.
 export const FIGURE = {
-  BASE: 50, //         an even fight figures ~50
-  MARGIN_SCALE: 8, //  each point of format-normalized margin-per-turn moves the figure this much
-  OPP_ADJ_DIVISOR: 8, // (opponent avg stat − yours)/this — beating up matters more
-  NOISE: 4, //         ± uniform noise before banding (fog)
-  BAND: 5, //          displayed to the nearest 5
-  MAX: 120, //         clamp range [0, MAX]
+  // The pace a maxed-out ghost sets, per blade — tuned so an even fight
+  // between STARTERS figures ~50 in every format (gaff fights run longer,
+  // so their damage-per-turn is lower by nature; this is the normalizer).
+  GHOST_PACE: { longKnife: 5.6, shortKnife: 5.2, longGaff: 4.0, shortGaff: 3.6 },
+  GHOST_FIGURE: 100, //  what matching the ghost's pace scores
+  CLASS_BASE: 320, //    the starter band's middle — class credit starts here
+  CLASS_DIVISOR: 20, //  each 20 points of beaten-opponent average = +1 figure
+  BEATEN_SCALE: 45, //   figure points subtracted across a full-margin loss
+  MIN_BEATEN: 5, //      a loss is always at least one band below the win
+  NOISE: 4, //           ± uniform, ONE roll per fight (the track variant)
+  BAND: 5, //            displayed to the nearest 5
+  MAX: 150, //           clamp range [0, MAX] — headroom for bred stock
 } as const;
 
 // ── Economy (GP — pegged at $1 = 80 GP, re-ruled 2026-08-03) ────────────────
@@ -200,7 +227,12 @@ export const ECONOMY = {
   HARDCORE_ENTRY_FEE: 120, // $1.50 a side — and the loser's career (the key rule)
   JUVENILE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
   GACHA_ROLL_PRICE: 80, //    one roll = $1 — PAID rolls feed the juice pool (round 14; was a silent burn)
-  FREE_PULLS_PER_CHECK_IN: 2, // daily login bonus: two free gacha pulls
+  FREE_PULLS_PER_CHECK_IN: 1, // daily login bonus: ONE free gacha pull (was 2 — round 20)
+  // The world opens with juice already in the pot (ruled round 20): three
+  // days of drip, so the first championships are worth entering before
+  // breeding fees have had time to fill the pool. Printed once, at genesis,
+  // like the starting purses — never again.
+  SEED_JUICE: 2_400, // = DAILY_DRIP × 3
 } as const;
 
 // ── Land Tokens (the second currency — the subsidy, and one-way) ────────────
@@ -313,7 +345,8 @@ export const CLAIMER = {
 } as const;
 
 // ── The Pintakasi (ruled 2026-08-03 round 18) — the weekly blade Majors ─────
-// Every WEDNESDAY, three championships — one per blade "distance", PFL-Majors
+// Every THURSDAY (moved off Wednesday in round 20 — the birds get one more
+// ordinary card first), three championships — one per blade "distance", PFL-Majors
 // style (Sprint/Gallop/Classic): Long Knife and Short Gaff always run, the
 // middle blade ROTATES Short Knife / Long Gaff by week parity, so every
 // blade gets crowns over time. Specialized-yet-strong birds are the point —
@@ -321,7 +354,7 @@ export const CLAIMER = {
 //
 // The rules: hardcore throughout (every loser force-retires), age 3+, flat
 // open-stakes entry, ONE DAY — the whole bracket runs back-to-back at the
-// Wednesday tick, winners healing to full between rounds (Zane's ruling:
+// crown-day tick, winners healing to full between rounds (Zane's ruling:
 // a game, not a simulation — nobody re-registers day after day). Committee-
 // seeded bracket (1v16, 8v9…) from earnings → wins → avg figure; byes to
 // the top seeds; barn-mates can draw each other — so be it. Field scales
@@ -336,6 +369,14 @@ export const CLAIMER = {
 export const PINTAKASI = {
   ENTRY_FEE: 200, //  $2.50 — open stakes, the dearest card in the game
   MAX_BRACKET: 64,
+  // Which day the crowns run. dayIndex % 7: 0 = Friday (day 0 of the game
+  // week) … 5 = Wednesday, 6 = THURSDAY. Moved Wed → Thu in round 20 so a
+  // bird can take one more ordinary card before its championship.
+  DAY_OF_WEEK: 6,
+  // How many birds one barn may enter in ONE championship (ruled round 20).
+  // Not one per stable — a deep barn should be able to load a blade with
+  // three specialists, and the fields should start OVERFLOWING.
+  MAX_PER_BARN: 3,
   MIN_FIELD: 2, //    a straight final still crowns; below this, cancelled
   LAND_EXPONENT: 1.25, // vs. LAND.FIGHT_EXPONENT 1.15 — the Majors mint hard
   // GP purse shares by FINISHING STAGE. First-round losers are zeroed

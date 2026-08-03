@@ -107,7 +107,8 @@ describe("gacha", () => {
     gacha.roll(); // no free pulls yet — this costs 80 GP
     gacha.roll();
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.juicePoolCents).toBe(2 * ECONOMY.GACHA_ROLL_PRICE * 100); // both arrived, exactly
+    // The pool opens with the genesis seed (round 20); both paid rolls land on top.
+    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 2 * ECONOMY.GACHA_ROLL_PRICE * 100);
   });
 
   test("gacha birds are CONSTRAINED — no tier out-muscles bred stock (round 14)", () => {

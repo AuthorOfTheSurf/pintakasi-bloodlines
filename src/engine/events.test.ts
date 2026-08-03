@@ -61,7 +61,8 @@ describe("the unified ledger", () => {
     expect(income.farmId).toBe(w.devId); // own stud — the share comes home
     expect(income.gpCents).toBe(split.studOwnerCents);
 
-    const [pools] = ofType(w.db, "pool_accrual");
+    // [0] is the genesis juice seed (round 20) — the cover's cut is next.
+    const pools = ofType(w.db, "pool_accrual")[1];
     expect(pools.farmId).toBeNull(); // a world event
     expect(JSON.parse(pools.data!)).toEqual({
       stakerPoolCents: split.stakerPoolCents,
@@ -81,7 +82,7 @@ describe("the unified ledger", () => {
     const entries = ofType(w.db, "entry");
     expect(entries.length).toBe(3);
     expect(entries[0].gpCents).toBe(-ECONOMY.REAL_ENTRY_FEE * 100);
-    expect(entries[0].message).toContain("REAL");
+    expect(entries[0].message).toContain("OPEN"); // "REAL" is the unsaid default (round 20)
 
     const fights = ofType(w.db, "fight");
     expect(fights.length).toBe(1); // one row per fight, not per side

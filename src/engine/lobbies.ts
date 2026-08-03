@@ -18,6 +18,7 @@ import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile, canRealFight } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
+import { Tournaments } from "./tournaments";
 
 export type FightMode = "juvenile" | "real" | "hardcore";
 
@@ -34,8 +35,14 @@ function labelOf(lobby: {
   format: FightFormat;
   price: number | null;
 }): string {
+  // "REAL" is the default and goes unsaid (round 20) — only juvenile and
+  // hardcore cards announce their mode.
+  const parts: string[] = [];
+  if (lobby.mode !== "real") parts.push(lobby.mode.toUpperCase());
+  if (lobby.classType !== "open") parts.push(lobby.classType.toUpperCase());
+  if (parts.length === 0) parts.push("OPEN");
   return (
-    `${lobby.mode.toUpperCase()}${lobby.classType === "open" ? "" : "·" + lobby.classType.toUpperCase()}` +
+    parts.join("·") +
     (lobby.price ? ` @ ${lobby.price} GP tag` : "") +
     ` · ${FORMATS[lobby.format].label}`
   );
@@ -184,9 +191,9 @@ export class Lobbies {
     const today = this.today();
     this.checkFightCap(bird.id, bird.name, today);
 
-    // A Pintakasi registrant fights normal cards all week — except
-    // Wednesday, when its championship IS its card (round 18).
-    if (today % 7 === 5) {
+    // A Pintakasi registrant fights normal cards all week — except on crown
+    // day, when its championship IS its card (round 18; Thursday since 20).
+    if (Tournaments.isCrownDay(today)) {
       const registered = this.database
         .select()
         .from(tournamentEntries)
@@ -762,7 +769,7 @@ export class Lobbies {
 
   private checkGate(name: string, age: number, mode: FightMode): void {
     const gates: Record<FightMode, [ok: boolean, rule: string]> = {
-      juvenile: [canJuvenile(age), "juvenile opens at age 1"],
+      juvenile: [canJuvenile(age), "the juvenile division is the discovery year only — age 1"],
       real: [canRealFight(age), "real stakes open at age 2"],
       hardcore: [canHardcore(age), "hardcore opens at age 3 (and ends at the cap)"],
     };
