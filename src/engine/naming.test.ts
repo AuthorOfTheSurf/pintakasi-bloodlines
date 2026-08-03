@@ -4,6 +4,7 @@ import { birds } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
+import { Game } from "./game";
 import { roman, uniqueName } from "./naming";
 
 /** Bird names are unique across the WORLD — ruled 2026-08-03 (round 12). */
@@ -35,5 +36,29 @@ describe("world-unique bird names", () => {
 
   test("roman numerals hold up", () => {
     expect([2, 3, 4, 9, 14, 40].map(roman)).toEqual(["II", "III", "IV", "IX", "XIV", "XL"]);
+  });
+});
+
+describe("the naming law (round 14)", () => {
+  test("an auto-named bird is refused at the lobby door until christened", () => {
+    const db = createDb(":memory:");
+    const { farmId } = seedGame(db);
+    const game = new Game(db, farmId);
+
+    // Dalisay × Bagwis (own retired pair, unrelated) → auto-named egg.
+    const { egg } = game.breeding.breed("starter-2", "starter-3");
+    expect(egg.named).toBe(0);
+
+    game.tickWeek(); // laid
+    game.tickWeek(); // hatched at age 1
+    const flock = new Flock(db, farmId);
+    expect(flock.byId(egg.id).status).toBe("active");
+
+    const spec = { mode: "practice", classType: "open", format: "shortKnife" } as const;
+    expect(() => game.lobbies.enter(egg.id, spec)).toThrow(/name a bird before its first fight/);
+
+    flock.rename(egg.id, "Maelstrom");
+    expect(flock.byId(egg.id).named).toBe(1);
+    expect(game.lobbies.enter(egg.id, spec).entryId).toBeGreaterThan(0);
   });
 });

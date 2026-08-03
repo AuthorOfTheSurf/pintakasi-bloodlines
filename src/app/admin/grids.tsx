@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
+import { gradeOf, overallGradeOf } from "@/engine/grades";
+import { BASE_COAT_HEX, BirdSprite, EggSprite, TOKEN_EGG_HEX } from "./sprites";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -62,6 +64,8 @@ export interface BirdRowUI {
   farmP: string;
   farmS: string;
   sex: string;
+  baseCoat: string;
+  trimColor: string;
   age: number;
   stars: number;
   element: string;
@@ -212,21 +216,74 @@ const FIGHT_COLS: ColDef<FightRowUI>[] = [
   { field: "pot", headerName: "pot GP", type: "rightAligned", width: 95 },
 ];
 
+/** The profile photo — egg sprite while in the shell, coat + trim after. */
+function BirdAvatarCell(props: { data?: BirdRowUI }) {
+  const d = props.data;
+  if (!d) return null;
+  if (d.status === "egg" || d.status === "pregnant" || d.status === "in the nest")
+    return <EggSprite shell={BASE_COAT_HEX[d.baseCoat] ?? BASE_COAT_HEX.Cream} size={24} />;
+  return <BirdSprite sex={d.sex} baseCoat={d.baseCoat} trimColor={d.trimColor} size={30} />;
+}
+
+/** Grade prominent, raw number in secondary grey (round 14 — the table got dense). */
+function GradeCell(props: { value?: number }) {
+  if (props.value == null) return null;
+  return (
+    <span>
+      <b className="grade">{gradeOf(props.value)}</b> <span className="statnum">{props.value}</span>
+    </span>
+  );
+}
+
+function TotalCell(props: { value?: number }) {
+  if (props.value == null) return null;
+  return (
+    <span>
+      <b className="grade">{overallGradeOf(props.value)}</b>{" "}
+      <span className="statnum">{props.value}</span>
+    </span>
+  );
+}
+
+/** The mystery-egg column — the shell tinted by the token that dropped it. */
+function GachaEggCell(props: { value?: string; data?: GachaRowUI }) {
+  if (!props.value || !props.data) return null;
+  return (
+    <span>
+      <EggSprite shell={TOKEN_EGG_HEX[props.data.token] ?? TOKEN_EGG_HEX.White} size={18} />{" "}
+      {props.value}
+    </span>
+  );
+}
+
 const statCol = (field: keyof BirdRowUI, header: string): ColDef<BirdRowUI> => ({
   field,
   headerName: header,
   type: "rightAligned",
-  width: 80,
+  width: 92,
+  cellRenderer: GradeCell,
 });
 
 const BIRD_COLS: ColDef<BirdRowUI>[] = [
+  {
+    colId: "avatar",
+    headerName: "",
+    width: 58,
+    pinned: "left",
+    sortable: false,
+    filter: false,
+    resizable: false,
+    cellRenderer: BirdAvatarCell,
+  },
   { field: "name", minWidth: 150, pinned: "left" },
   farmCol("farm", "farm", "farm"),
   { field: "sex", width: 95 },
+  { field: "baseCoat", headerName: "coat", width: 95 },
+  { field: "trimColor", headerName: "trim", width: 105 },
   { field: "age", type: "rightAligned", width: 75 },
   { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
   { field: "element", width: 100 },
-  { field: "total", headerName: "Total Score", type: "rightAligned", width: 115, sort: "desc" },
+  { field: "total", headerName: "Overall", type: "rightAligned", width: 120, sort: "desc", cellRenderer: TotalCell },
   statCol("agility", "agi"),
   statCol("sight", "sig"),
   statCol("stamina", "sta"),
@@ -262,7 +319,7 @@ const GACHA_COLS: ColDef<GachaRowUI>[] = [
   { field: "token", width: 110 },
   { field: "cost", width: 100 },
   { field: "lt", headerName: "+LT", type: "rightAligned", width: 80 },
-  { field: "egg", headerName: "mystery egg", minWidth: 170 },
+  { field: "egg", headerName: "mystery egg", minWidth: 170, cellRenderer: GachaEggCell },
 ];
 
 const GP_COLS: ColDef<GpRowUI>[] = [
@@ -351,7 +408,7 @@ export function AdminTabs({
       </nav>
       {pane("Farms", 420, <AgGridReact<FarmRowUI> theme={officeTheme} rowData={farms} columnDefs={FARM_COLS} defaultColDef={base} />)}
       {pane("Fights", 640, <AgGridReact<FightRowUI> theme={officeTheme} rowData={fights} columnDefs={FIGHT_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
-      {pane("Birds", 640, <AgGridReact<BirdRowUI> theme={officeTheme} rowData={birds} columnDefs={BIRD_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
+      {pane("Birds", 640, <AgGridReact<BirdRowUI> theme={officeTheme} rowData={birds} columnDefs={BIRD_COLS} defaultColDef={{ ...base, floatingFilter: true }} rowHeight={38} />)}
       {pane("Breeding", 640, <AgGridReact<BreedingRowUI> theme={officeTheme} rowData={breeding} columnDefs={BREEDING_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("Gacha", 640, <AgGridReact<GachaRowUI> theme={officeTheme} rowData={gacha} columnDefs={GACHA_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}

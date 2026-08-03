@@ -65,7 +65,7 @@ function createServer(farmId: string | null): McpServer {
           " GP — the ladder brackets the 160 GP breed floor). Other farms place_claim with the tag escrowed; claims are SEALED. At post time the bird fights for its ORIGINAL owner (who keeps the pooled prize), then one claim wins (RNG if several — losers refund in full), the owner banks the tag, and the bird transfers — even if the bird went unmatched (the sale doesn't need the fight). You cannot claim your own bird. The house never claims. Winning AND getting claimed is an income spike — a legitimate play. Claiming undervalued birds and racing them UP is a full playstyle.",
         "DISCOVERY: every fight returns a PIT FIGURE — banded, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
         "HARDCORE IS THE CHARGED DECISION: bigger pot, but the LOSER of the pair is FORCE-RETIRED on the spot — both owners signed up for that by entering. Open class only. Always confirm with the player first — never enter one on your own judgment.",
-        "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way.",
+        "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way. THE NAMING LAW: a bird CANNOT fight while still wearing its auto-name ('Egg of …', 'Mystery Egg (…)') — entering is refused until name_bird is called. Make naming part of the hatch-day ritual, BEFORE the first card.",
         "TWO RECORDS: career (real + hardcore) and amateur (practice). Report them separately. NOTE: the record does NOT set stud prices — stud pricing is player speculation and supply/demand (flat 160 GP for now).",
         "BREEDING IS PvP TOO — THE BARN: both parents retired, hen × rooster, not close kin. list_stud stands your retired roosters (14 covers/week public + 2 owner-reserved); browse_studs shows a hen every stud she can take, with kin exclusions NAMED. A cover costs 160 GP flat (min AND max for now — player pricing later) and SPLITS 2.5% to land stakers / 48.75% fight juice / 48.75% to the stud's owner. Hens pay, hens keep the egg. Selling covers is income; top studs capping out is by design.",
         "STAKE YOUR LAND — ALWAYS. stake_land every LT as soon as you earn it (one pool for now): staked land collects the breeding fees' staker cut daily, pro-rata. Land never sells, so idle liquid LT earns nothing — staked LT compounds your GP. Tell the player to DESIRE land and stack it: it may be worth real money someday ($1/LT is the dream). Fight-entry fees don't feed the pool yet; breeding does.",
@@ -164,7 +164,8 @@ function createServer(farmId: string | null): McpServer {
     "name_bird",
     {
       title: "Name a Bird",
-      description: "Give a bird a player-chosen name — the ritual for a freshly hatched chick.",
+      description:
+        "Give a bird a player-chosen name — the ritual for a freshly hatched chick, and REQUIRED before its first fight (the naming law: auto-named birds are refused at the lobby door). Names are world-unique.",
       inputSchema: z.object({
         id: z.string(),
         name: z.string().describe("The new name"),

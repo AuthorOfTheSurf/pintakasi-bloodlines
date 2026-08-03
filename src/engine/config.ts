@@ -189,7 +189,7 @@ export const ECONOMY = {
   REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
   HARDCORE_ENTRY_FEE: 120, // $1.50 a side — and the loser's career (the key rule)
   PRACTICE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
-  GACHA_ROLL_PRICE: 80, //    one roll = $1
+  GACHA_ROLL_PRICE: 80, //    one roll = $1 — PAID rolls feed the juice pool (round 14; was a silent burn)
   FREE_PULLS_PER_CHECK_IN: 2, // daily login bonus: two free gacha pulls
 } as const;
 
@@ -333,27 +333,53 @@ export const BARN = {
 export const GACHA_TOKENS = ["White", "Green", "Blue", "Purple", "Gold"] as const;
 export type GachaToken = (typeof GACHA_TOKENS)[number];
 
-// Drop weights out of 100 rolls: ~50 White, ~27 Green, ~15 Blue, ~6 Purple,
-// ~2 Gold. What the item tokens DO comes later — the MVP tests the price flow.
+// Drop weights out of 100 rolls (tuned round 14 — eggs were out-producing
+// breeding: 2 free pulls/day × a 23% egg rate ≈ 3.2 eggs/farm/week vs. the
+// nest rule's ~1/hen/week; "Mystery Egg (Blue) VIII" in the feed was the
+// tell). Now ~16 eggs per 100 rolls. What the item tokens DO comes later.
 export const GACHA_WEIGHTS: Record<GachaToken, number> = {
-  White: 50,
-  Green: 27,
-  Blue: 15,
-  Purple: 6,
-  Gold: 2,
+  White: 55,
+  Green: 29,
+  Blue: 10,
+  Purple: 5,
+  Gold: 1,
 };
 
 // ── Gacha birds (Zane leaning yes, 2026-08-02 — built config-gated) ─────────
 // Blue/Purple/Gold rolls ALSO drop a MYSTERY EGG: random element, hidden
 // 50-50 sex, no parents, hatches next Hatch Friday like any egg. This is the
 // non-breeding bird faucet — the way a stable fills fast and finds elements
-// its barn doesn't carry — balanced against breeding purely by price
-// (~23% of $1 rolls drop an egg ≈ $4.35/bird vs the $2 breed floor, but no
-// retired pair needed). Delete a tier here to turn its eggs off.
+// its barn doesn't carry. Delete a tier here to turn its eggs off.
+//
+// CONSTRAINED round 14 (Zane's ruling): gacha birds must NOT out-muscle the
+// bred stock. No tier's statMax exceeds the starter ceiling (400) by more
+// than a whisker — the old Gold tier (350–700) strictly dominated anything
+// gen-1 breeding could make. The jackpot is now STARS (breeding material),
+// never raw stats: breeding stays the only way up the stat ladder.
 export const GACHA_BIRDS: Partial<
   Record<GachaToken, { halfStars: [min: number, max: number]; statMin: number; statMax: number }>
 > = {
-  Blue: { halfStars: [1, 4], statMin: 250, statMax: 450 }, //   starter-grade, maybe lucky stars
-  Purple: { halfStars: [3, 7], statMin: 300, statMax: 550 }, // above the starter band
-  Gold: { halfStars: [5, 10], statMin: 350, statMax: 700 }, //  the jackpot hen/rooster
+  Blue: { halfStars: [0, 3], statMin: 200, statMax: 350 }, //   below starter grade — a body in the barn
+  Purple: { halfStars: [2, 5], statMin: 250, statMax: 400 }, // the starter band, decent stars
+  Gold: { halfStars: [4, 8], statMin: 300, statMax: 450 }, //   the jackpot is the STARS, not the stats
 };
+
+// ── Coats (round 14 — appearance v0: base coat + element-tinted trim) ───────
+// Every bird gets a base coat and a trim color at creation, so birds are
+// distinguishable by something besides their names. Trim colors come in two
+// per element, loosely keyed to the element itself. Placeholder genetics:
+// a bred chick takes a parent's base coat (small mutation chance); proper
+// coat-breeding mechanics are a later, deliberate redo.
+export const BASE_COATS = ["Grey", "Brown", "Cream"] as const;
+export type BaseCoat = (typeof BASE_COATS)[number];
+
+export const TRIM_BY_ELEMENT: Record<Element, [string, string]> = {
+  Fire: ["Red", "Orange"],
+  Water: ["Blue", "Light Blue"],
+  Wood: ["Chestnut", "Green"],
+  Earth: ["Dark Brown", "Black"],
+  Metal: ["Silver", "Yellow"],
+};
+
+// Coat mutation: chance a bred chick's base coat ignores both parents.
+export const COAT_MUTATION_CHANCE = 0.1;

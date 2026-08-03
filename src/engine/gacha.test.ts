@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
 import { farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
-import { ECONOMY, GACHA_BIRDS, GACHA_TOKENS, LAND } from "./config";
+import { gameState } from "@/db/schema";
+import { BASE_COATS, ECONOMY, GACHA_BIRDS, GACHA_TOKENS, LAND, STATS, TRIM_BY_ELEMENT } from "./config";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Game } from "./game";
@@ -98,5 +99,42 @@ describe("gacha", () => {
   test("an empty wallet cannot roll", () => {
     const { db, farmId } = fresh({ startingGp: 50 });
     expect(() => new Gacha(db, farmId, mulberry32(3)).roll()).toThrow(/A roll costs/);
+  });
+
+  test("PAID rolls feed the juice pool — no GP is ever burned (round 14)", () => {
+    const { db, farmId } = fresh();
+    const gacha = new Gacha(db, farmId, mulberry32(42));
+    gacha.roll(); // no free pulls yet — this costs 80 GP
+    gacha.roll();
+    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    expect(state.juicePoolCents).toBe(2 * ECONOMY.GACHA_ROLL_PRICE * 100); // both arrived, exactly
+  });
+
+  test("gacha birds are CONSTRAINED — no tier out-muscles bred stock (round 14)", () => {
+    // The ruling: gacha stats never meaningfully beat the starter ceiling;
+    // the Gold jackpot is STARS (breeding material), not raw stats.
+    for (const tier of Object.values(GACHA_BIRDS)) {
+      expect(tier.statMax).toBeLessThanOrEqual(STATS.STARTER_MAX + 50);
+    }
+
+    // Every dropped egg obeys its tier's stat bounds, wears a coat, and is unnamed.
+    const { db, farmId } = fresh();
+    db.update(farms).set({ gp: 10_000_000 }).where(eq(farms.id, farmId)).run();
+    const gacha = new Gacha(db, farmId, mulberry32(11));
+    let eggs = 0;
+    for (let i = 0; i < 200 && eggs < 5; i++) {
+      const r = gacha.roll();
+      if (!r.egg) continue;
+      eggs++;
+      const tier = GACHA_BIRDS[r.token]!;
+      for (const stat of [r.egg.agility, r.egg.sight, r.egg.stamina, r.egg.gameness, r.egg.station, r.egg.condition]) {
+        expect(stat).toBeGreaterThanOrEqual(tier.statMin);
+        expect(stat).toBeLessThanOrEqual(tier.statMax);
+      }
+      expect(r.egg.named).toBe(0); // auto-named — the naming law applies
+      expect(BASE_COATS as readonly string[]).toContain(r.egg.baseCoat);
+      expect(TRIM_BY_ELEMENT[r.egg.element] as readonly string[]).toContain(r.egg.trimColor);
+    }
+    expect(eggs).toBeGreaterThan(0);
   });
 });

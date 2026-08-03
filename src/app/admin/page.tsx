@@ -150,6 +150,8 @@ export default function Admin() {
     farmP: fcolors(b.farmId).P ?? "",
     farmS: fcolors(b.farmId).S ?? "",
     sex: b.status === "egg" ? "?" : b.sex === "male" ? "rooster" : "hen",
+    baseCoat: b.baseCoat,
+    trimColor: b.trimColor,
     age: Math.max(0, ageOf(b, week)),
     stars: b.halfStars / 2,
     element: b.element,
@@ -232,9 +234,16 @@ export default function Admin() {
     } else if (e.type === "check_in") {
       gpRows.push({ seq: gpRows.length, ...base, flow: "daily drip", amount: (e.gpCents ?? 0) / 100 });
     } else if (e.type === "pool_accrual" && e.data) {
-      const pools = JSON.parse(e.data) as { stakerPoolCents: number; juicePoolCents: number };
-      gpRows.push({ seq: gpRows.length, ...base, flow: "→ staker pool (breed cut)", amount: pools.stakerPoolCents / 100 });
-      gpRows.push({ seq: gpRows.length, ...base, flow: "→ juice pool (breed cut)", amount: pools.juicePoolCents / 100 });
+      const pools = JSON.parse(e.data) as {
+        stakerPoolCents: number;
+        juicePoolCents: number;
+        source?: string;
+      };
+      const cut = pools.source === "gacha" ? "gacha spend" : "breed cut";
+      if (pools.stakerPoolCents > 0)
+        gpRows.push({ seq: gpRows.length, ...base, flow: `→ staker pool (${cut})`, amount: pools.stakerPoolCents / 100 });
+      if (pools.juicePoolCents > 0)
+        gpRows.push({ seq: gpRows.length, ...base, flow: `→ juice pool (${cut})`, amount: pools.juicePoolCents / 100 });
     } else if (e.type === "staking_payout") {
       gpRows.push({ seq: gpRows.length, ...base, flow: "staking yield paid", amount: (e.gpCents ?? 0) / 100 });
     }
@@ -354,6 +363,8 @@ const CSS = `
     border: 1px solid #e8b64c; border-radius: 4px; padding: .35rem .9rem; font-weight: 600; }
   .ticks button:disabled { opacity: .5; cursor: wait; }
   .tick-last { color: #9a8f78; font-size: .9em; }
+  .grade { color: #f4e9d0; }
+  .statnum { color: #9a8f78; font-size: .88em; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }
   .dot { display: inline-block; width: .65em; height: .65em; border-radius: 50%; border: 2px solid; margin-right: .4em; }

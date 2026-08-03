@@ -4,13 +4,16 @@ import type { DB } from "@/db/client";
 import { birds, farms, gameState, type BirdRow } from "@/db/schema";
 import {
   BARN,
+  BASE_COATS,
   BREEDING,
   BREED_SPLIT,
+  COAT_MUTATION_CHANCE,
   COVERS,
   ECONOMY,
   ELEMENTS,
   STATS,
   STAT_NAMES,
+  TRIM_BY_ELEMENT,
   type Element,
 } from "./config";
 import { emit, fmtGp } from "./events";
@@ -97,6 +100,11 @@ export class Breeding {
     const day = state.dayIndex;
     const week = GameClock.weekOf(day);
 
+    // Permanent law before temporal state: an illegal PAIRING is refused as
+    // such even while the hen happens to be pregnant.
+    const forbidden = this.forbiddenReason(mother, fatherRow);
+    if (forbidden) throw new Error(`Bloodline restriction: ${forbidden}`);
+
     // One egg per hen at a time (ruled round 12, timeline round 13): the
     // cover makes her pregnant now, the egg lays Friday, hatches the Friday
     // after — and she's blocked until the hatch. This is the hen-side cap;
@@ -110,9 +118,6 @@ export class Breeding {
       throw new Error(
         `${mother.name} is already ${sitting[0].birthWeek > week ? "pregnant with" : "sitting on"} ${sitting[0].name} — one egg per hen until it hatches`
       );
-
-    const forbidden = this.forbiddenReason(mother, fatherRow);
-    if (forbidden) throw new Error(`Bloodline restriction: ${forbidden}`);
 
     if (this.flock.barnCount() >= BARN.CAPACITY)
       throw new Error(`The barn is full (${BARN.CAPACITY})`);
@@ -152,6 +157,16 @@ export class Breeding {
     const stats = this.inheritStats(mother, fatherRow);
     const { element, halfStars } = this.inheritStars(mother, fatherRow);
 
+    // Coat v0 (round 14): take a parent's base coat, small mutation chance;
+    // trim keys off the chick's own element. Real coat genetics come later.
+    const baseCoat =
+      this.rng() < COAT_MUTATION_CHANCE
+        ? BASE_COATS[randInt(this.rng, 0, BASE_COATS.length - 1)]
+        : this.rng() < 0.5
+          ? mother.baseCoat
+          : fatherRow.baseCoat;
+    const trimColor = TRIM_BY_ELEMENT[element][this.rng() < 0.5 ? 0 : 1];
+
     // The nest timeline (ruled 2026-08-03 round 13): the cover makes the
     // hen pregnant NOW; the egg is LAID on the nearest coming Friday
     // (birthWeek = week + 1) and hatches the Friday after that, as an
@@ -170,6 +185,9 @@ export class Breeding {
       birthDay: day,
       motherId: mother.id,
       fatherId: fatherRow.id,
+      named: 0, // auto-named "Egg of <hen>" — the naming law wants a real one
+      baseCoat,
+      trimColor,
     };
     this.database.insert(birds).values(egg).run();
 

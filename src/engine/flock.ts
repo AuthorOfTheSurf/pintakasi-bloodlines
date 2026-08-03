@@ -62,13 +62,17 @@ export class Flock {
     return this.view(row);
   }
 
-  /** Player-given names — eggs keep their auto-name until hatched + renamed. */
+  /**
+   * Player-given names — eggs keep their auto-name until hatched + renamed.
+   * Renaming satisfies the naming law (round 14): a bird cannot enter its
+   * first fight while still wearing an auto-name.
+   */
   rename(id: string, name: string): BirdView {
     const trimmed = name.trim();
     if (!trimmed) throw new Error("Name cannot be empty");
     if (nameTaken(this.database, trimmed, id))
       throw new Error(`The name "${trimmed}" is taken — bird names are unique across the world`);
-    this.database.update(birds).set({ name: trimmed }).where(eq(birds.id, id)).run();
+    this.database.update(birds).set({ name: trimmed, named: 1 }).where(eq(birds.id, id)).run();
     return this.byId(id);
   }
 

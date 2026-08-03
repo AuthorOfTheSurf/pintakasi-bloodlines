@@ -1,6 +1,13 @@
 import type { DB } from "./client";
 import { birds, farms, gameState, type NewBird } from "./schema";
-import { ECONOMY, ELEMENTS, STATS, type Element } from "@/engine/config";
+import {
+  BASE_COATS,
+  ECONOMY,
+  ELEMENTS,
+  STATS,
+  TRIM_BY_ELEMENT,
+  type Element,
+} from "@/engine/config";
 import { emit } from "@/engine/events";
 import { drawStarterNames } from "@/engine/naming";
 import { mulberry32, randInt, type Rng } from "@/engine/rng";
@@ -97,24 +104,30 @@ export function seedStarterFlock(
   const names =
     farmId === DEV_FARM_ID ? STARTERS.map((s) => s.name) : drawStarterNames(db, STARTERS.length, rng);
 
-  const rows: NewBird[] = STARTERS.map((s, i) => ({
-    id: `${prefix}-${i + 1}`,
-    farmId,
-    name: names[i],
-    sex: s.sex,
-    status: s.status,
-    ...rollStats(rng),
-    element: s.element ?? ELEMENTS[i % ELEMENTS.length],
-    halfStars: s.halfStars,
-    birthWeek: -s.age, // age at week 0 = 0 - birthWeek
-    birthDay: -s.age * 7,
-    wins: s.wins ?? 0,
-    losses: s.losses ?? 0,
-    retiredBy: s.status === "retired" ? ("age" as const) : null,
-    retiredWeek: s.status === "retired" ? -1 : null,
-    motherId: null,
-    fatherId: null,
-  }));
+  const rows: NewBird[] = STARTERS.map((s, i) => {
+    const element = s.element ?? (ELEMENTS[i % ELEMENTS.length] as Element);
+    return {
+      id: `${prefix}-${i + 1}`,
+      farmId,
+      name: names[i],
+      sex: s.sex,
+      status: s.status,
+      ...rollStats(rng),
+      element,
+      halfStars: s.halfStars,
+      birthWeek: -s.age, // age at week 0 = 0 - birthWeek
+      birthDay: -s.age * 7,
+      wins: s.wins ?? 0,
+      losses: s.losses ?? 0,
+      retiredBy: s.status === "retired" ? ("age" as const) : null,
+      retiredWeek: s.status === "retired" ? -1 : null,
+      motherId: null,
+      fatherId: null,
+      named: 1, // starters arrive with real names — the naming law is satisfied
+      baseCoat: BASE_COATS[randInt(rng, 0, BASE_COATS.length - 1)],
+      trimColor: TRIM_BY_ELEMENT[element][randInt(rng, 0, 1)],
+    };
+  });
 
   db.insert(birds).values(rows).run();
 }

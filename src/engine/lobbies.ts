@@ -173,6 +173,11 @@ export class Lobbies {
   enter(birdId: string, spec: LobbySpec, seed?: number): { entryId: number; lobby: LobbyView } {
     const bird = this.flock.byId(birdId);
     if (bird.status !== "active") throw new Error(`${bird.name} is not an active fighter`);
+    // The naming law (round 14): no bird fights under an auto-name.
+    if (!bird.named)
+      throw new Error(
+        `${bird.name} hasn't been given a real name — name a bird before its first fight`
+      );
     this.checkGate(bird.name, bird.age, spec.mode);
     this.checkClass(bird, spec);
 

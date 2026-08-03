@@ -6,6 +6,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies, type LobbySpec } from "./lobbies";
+import { drawStarterNames } from "./naming";
 import { mulberry32 } from "./rng";
 
 /**
@@ -67,8 +68,14 @@ export function playHonestDay(db: DB, farmId: string): void {
     if (bred) break;
   }
 
+  // The naming law (round 14): christen unnamed hatchlings before carding.
+  const flockApi = new Flock(db, farmId);
+  for (const bird of flock.filter((b) => b.status === "active" && !b.named)) {
+    quietly(() => void flockApi.rename(bird.id, drawStarterNames(db, 1, mulberry32(700 + day))[0]));
+  }
+
   const lobbies = new Lobbies(db, farmId);
-  for (const bird of flock.filter((b) => b.status === "active")) {
+  for (const bird of flockApi.all().filter((b) => b.status === "active")) {
     const spec: LobbySpec =
       bird.age >= 2
         ? { mode: "real", classType: "open", format: "shortKnife" }

@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS birds (
   retired_week INTEGER,
   listed_stud INTEGER NOT NULL DEFAULT 0,
   mother_id TEXT,
-  father_id TEXT
+  father_id TEXT,
+  named INTEGER NOT NULL DEFAULT 0,
+  base_coat TEXT NOT NULL DEFAULT 'Brown',
+  trim_color TEXT NOT NULL DEFAULT 'Red'
 );
 
 CREATE TABLE IF NOT EXISTS game_state (

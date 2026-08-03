@@ -78,6 +78,14 @@ export const birds = sqliteTable("birds", {
   listedStud: integer("listed_stud").notNull().default(0),
   motherId: text("mother_id"),
   fatherId: text("father_id"),
+  // The naming law (round 14): a bird must be given a real name before its
+  // first fight. Auto-names ("Egg of Dalisay", "Mystery Egg (Blue)") leave
+  // this 0; rename() flips it. Seeded starters arrive named.
+  named: integer("named").notNull().default(0),
+  // Appearance v0 (round 14): base coat + element-tinted trim, assigned at
+  // creation. Proper coat genetics are a later redo.
+  baseCoat: text("base_coat").notNull().default("Brown"),
+  trimColor: text("trim_color").notNull().default("Red"),
 });
 
 // The WORLD clock — one row, shared by every farm. Wallets live on farms.

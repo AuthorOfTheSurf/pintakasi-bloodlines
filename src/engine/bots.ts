@@ -5,6 +5,7 @@ import { seedStarterFlock } from "@/db/seed-data";
 import { BOT_FARMS, type BotProfile } from "./bot-config";
 import { CLAIMER, ECONOMY, type FightFormat, type Lobby } from "./config";
 import { Breeding } from "./breeding";
+import { drawStarterNames } from "./naming";
 import { emit } from "./events";
 import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
@@ -130,6 +131,12 @@ export class Bots {
 
     // (No training step — stats are fixed at birth, ruled round 13. The
     // discovery year is fought, not trained.)
+
+    // 2. The naming law (round 14): no bird fights under an auto-name.
+    //    Christen every unnamed active bird from the pool before carding.
+    for (const bird of flock.all().filter((b) => b.status === "active" && !b.named)) {
+      quietly(() => void flock.rename(bird.id, drawStarterNames(db, 1, rng)[0]));
+    }
 
     // 3. Breed through the BARN, if the drive and a legal cover line up —
     //    bots shop other farms' listed studs like anyone else.

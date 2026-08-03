@@ -4,6 +4,7 @@ import type { DB } from "@/db/client";
 import { birds, farms, gachaTokens, gameState } from "@/db/schema";
 import {
   BARN,
+  BASE_COATS,
   BREEDING,
   ECONOMY,
   ELEMENTS,
@@ -11,6 +12,7 @@ import {
   GACHA_TOKENS,
   GACHA_WEIGHTS,
   LAND,
+  TRIM_BY_ELEMENT,
   type Element,
   type GachaToken,
 } from "./config";
@@ -68,6 +70,24 @@ export class Gacha {
       .where(eq(farms.id, this.farmId))
       .run();
 
+    // Paid rolls feed the juice pool (round 14 — this was a silent BURN
+    // before: the GP left the wallet and went nowhere, which would have
+    // broken the conservation proof on the first real spend). Gacha revenue
+    // now subsidizes the Wednesday finals, and the books stay zero-sum.
+    if (price > 0) {
+      const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+      this.database
+        .update(gameState)
+        .set({ juicePoolCents: state.juicePoolCents + price * 100 })
+        .where(eq(gameState.id, 1))
+        .run();
+      emit(this.database, {
+        type: "pool_accrual",
+        message: `gacha spend: +${price}.00 GP juice pool`,
+        data: { stakerPoolCents: 0, juicePoolCents: price * 100, source: "gacha" },
+      });
+    }
+
     const token = weightedPick(this.rng, GACHA_WEIGHTS);
     this.database.insert(gachaTokens).values({ farmId: this.farmId, token, rolledDay: today }).run();
 
@@ -98,7 +118,11 @@ export class Gacha {
           birthDay: today,
           motherId: null,
           fatherId: null,
+          named: 0, // "Mystery Egg (…)" is an auto-name — the naming law applies
+          baseCoat: BASE_COATS[randInt(this.rng, 0, BASE_COATS.length - 1)],
+          trimColor: "", // resolved below, once the element is fixed
         };
+        row.trimColor = TRIM_BY_ELEMENT[row.element][this.rng() < 0.5 ? 0 : 1];
         this.database.insert(birds).values(row).run();
         egg = this.flock.byId(row.id);
       }
