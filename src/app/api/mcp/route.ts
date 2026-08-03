@@ -53,11 +53,11 @@ function createServer(farmId: string | null): McpServer {
         "THE DAILY RITUAL: check_in once per game-day — it pays the GP drip ($10 = 800 GP) and 2 free gacha pulls. Do it first thing.",
         "THE LOOP: breed retired birds → egg hatches next Hatch Friday as an age-1 chick → practice/train through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
         "AGE GATES: 0 = egg · 1 = practice + training only · 2+ = real fights · 3+ = hardcore + manual retirement · 9 = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.",
-        "EVERY FIGHT IS PvP — PURE, BETWEEN BARNS. The house supplies nobody. The rhythm: during the game-day you ENTER birds into lobbies (enter_lobby / enter_claimer); at the day tick every lobby GOES OFF — its birds are randomly paired and fight each other. Entries are BINDING (fee escrowed, the bird's daily fight spent). Lobbies lock at 8 (even — a full lobby guarantees everyone a fight); a lobby that goes off odd strands one bird, whose fee refunds. There is a real risk a lobby doesn't fill — that's the game: judge your birds' strength and pick where they should be fighting.",
+        "EVERY FIGHT IS PvP — PURE, BETWEEN BARNS. The house supplies nobody. The rhythm: during the game-day you ENTER birds into lobbies (enter_lobby / enter_claimer); at the day tick every lobby GOES OFF — its birds are randomly paired and fight each other. Matchmaking NEVER pairs two birds from the same barn: enter several birds in one lobby freely, they will only ever draw other farms (birds left with only barn-mates go unmatched and refund). Entries are BINDING (fee escrowed, the bird's daily fight spent). Lobbies lock at 8 (even — a full lobby guarantees everyone a fight); a lobby that goes off odd strands one bird, whose fee refunds. There is a real risk a lobby doesn't fill — that's the game: judge your birds' strength and pick where they should be fighting.",
         "THE ECONOMY IS POOLED ($1 = 80 GP): both sides post the entry, winner takes the pot — win +entry, lose −entry. No fight prints GP. The subsidy is LAND: both fighters earn Land Tokens scaled to the entry fee and slightly MORE than linearly (practice 1 LT · real 7 LT · hardcore 23 LT) — fighting UP into dearer company pays extra land. Unmatched birds earn none. Land is also buyable (buy_land, $0.01/LT, capped daily) and NEVER sellable.",
         "ONE FIGHT PER BIRD PER GAME-DAY — a hard count, not a cooldown. A full barn is how you fight more than once a day.",
         "WEAPON FORMATS ARE THE DISTANCE DIAL — the player's core skill is picking the right one: longKnife (the sprint — agility/sight decide it), shortKnife (the hybrid), longGaff (the route — stamina starts to rule), shortGaff (the marathon — gameness dictates the deep rounds). Any bird can enter any format; it's just disadvantaged outside its type.",
-        "CLASSES ARE THE LADDER: open · maiden (never-winners only) · nw2/nw3 (fewer than 2/3 career wins) · claimer (priced). The field is WHOEVER ENTERS — read lobby_board before entering: the entries are public (stars, records, figures — never stats), so scout the competition and pick your spot.",
+        "CLASSES ARE THE LADDER: open · maiden (never-winners only) · nw2/nw3 (fewer than 2/3 career wins) · claimer (priced). The field is WHOEVER ENTERS — but the board is FOGGED: lobby_board shows every lobby and its fill count, NEVER whose birds are inside (no dodging — predicting a lobby's strength from its mode, class, and tag is the skill). The one exception: CLAIMER fields are fully visible (stars, records, figures — never stats), because claims are placed on specific birds. Fighting for a tag is choosing to be seen.",
         "CLAIMERS ARE THE MARKETPLACE — farm-to-farm, escrowed, PRE-FIGHT: enter_claimer cards a bird at a tag price (" +
           CLAIMER.PRICES.join("/") +
           " GP — the ladder brackets the 160 GP breed floor). Other farms place_claim with the tag escrowed; claims are SEALED. At post time the bird fights for its ORIGINAL owner (who keeps the pooled prize), then one claim wins (RNG if several — losers refund in full), the owner banks the tag, and the bird transfers — even if the bird went unmatched (the sale doesn't need the fight). You cannot claim your own bird. The house never claims. Winning AND getting claimed is an income spike — a legitimate play. Claiming undervalued birds and racing them UP is a full playstyle.",
@@ -66,6 +66,7 @@ function createServer(farmId: string | null): McpServer {
         "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way.",
         "TWO RECORDS: career (real + hardcore — drives stud value) and amateur (practice). Report them separately.",
         "BREEDING: both parents must be retired, hen × rooster, not close kin. The $2 (160 GP) fee is the FLOOR price — markets come later.",
+        "SIX BOT STABLES play every game-day (they card birds, breed, and shop the claimer fields just before post time). They are RIVALS, not the house — same rules, own wallets. Their day shows up in the tick result; narrate notable bot moves (a claim on the player's bird!) with color.",
         "Rule violations come back as ⛔ text — read them to the player as house rules, not errors.",
       ].join("\n"),
     }
@@ -208,7 +209,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "Enter a Lobby (Tonight's Card)",
       description:
-        "Put a bird on tonight's card — PURE PvP: at the day tick the lobby's birds are randomly paired and fight EACH OTHER. BINDING: the fee escrows and the bird's daily fight is spent. Lobbies lock at 8; going off odd refunds one bird. Pick the WEAPON FORMAT (distance dial) and CLASS (ladder dial) deliberately — and scout lobby_board first, the field is whoever entered. Modes: practice (age 1+, amateur record, 8 GP) · real (2+, career record, 40 GP) · hardcore (3+, 120 GP, LOSER FORCE-RETIRED — confirm first, open class only). Land pays both fighters, scaled up with the fee. Claimers run through enter_claimer.",
+        "Put a bird on tonight's card — PURE PvP: at the day tick the lobby's birds are randomly paired and fight EACH OTHER (never two of your own — enter several birds freely, matchmaking keeps barn-mates apart). BINDING: the fee escrows and the bird's daily fight is spent. Lobbies lock at 8; birds without an opponent refund. Pick the WEAPON FORMAT (distance dial) and CLASS (ladder dial) deliberately — lobby_board shows fill counts, not fields (fogged), so judge where your bird belongs. Modes: practice (age 1+, amateur record, 8 GP) · real (2+, career record, 40 GP) · hardcore (3+, 120 GP, LOSER FORCE-RETIRED — confirm first, open class only). Land pays both fighters, scaled up with the fee. Claimers run through enter_claimer.",
       inputSchema: z.object({
         birdId: z.string(),
         mode: z.enum(["practice", "real", "hardcore"]).default("real"),
@@ -233,7 +234,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "The Board (Tonight's Card)",
       description:
-        "Every open lobby world-wide with its entries — who's fighting tonight, and where the soft spots are. Public info only: farm, bird name/sex/age/stars, career + amateur records, per-format Pit Figure lines. The six stats are HIDDEN (reading figures is the skill) and claims on claimer entries are SEALED. Scout this BEFORE entering — the field is whoever enters.",
+        "Every open lobby world-wide — FOGGED: you see each lobby's mode/class/format/tag and its fill count, plus YOUR OWN entries, never other barns' birds (no dodging). The exception is CLAIMER lobbies, whose fields are fully visible so claims can be placed: farm, bird name/sex/age/stars, career + amateur records, per-format Pit Figure lines. The six stats are ALWAYS hidden (reading figures is the skill) and claims already placed are SEALED. Scout this before entering — fill counts tell you where the action is.",
       annotations: { readOnlyHint: true },
     },
     async () => ruled(() => game().lobbies.board())
@@ -246,7 +247,7 @@ function createServer(farmId: string | null): McpServer {
       description:
         "Card a bird (age 2+) in a claimer lobby at a tag price: " +
         CLAIMER.PRICES.join(" / ") +
-        " GP. Same PvP card rules as enter_lobby (binding, 40 GP fee, random pairing at the tick) — PLUS other farms may claim the bird (sealed) until post time. You keep the pooled prize either way; if claimed, you also bank the tag and the bird transfers AFTER the fight — even if it went unmatched. Cheap tag = claimable but quick money; dear tag = safer, dearer company.",
+        " GP. Same PvP card rules as enter_lobby (binding, 40 GP fee, random pairing at the tick) — PLUS the bird's card is publicly visible (claimers are the one un-fogged class) and other farms may claim it (sealed) until post time. You keep the pooled prize either way; if claimed, you also bank the tag and the bird transfers AFTER the fight — even if it went unmatched. Cheap tag = claimable but quick money; dear tag = safer, dearer company.",
       inputSchema: z.object({
         birdId: z.string(),
         format: z

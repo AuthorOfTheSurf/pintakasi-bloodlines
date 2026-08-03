@@ -213,6 +213,67 @@ describe("the card goes off (pure PvP)", () => {
   });
 });
 
+describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
+  test("the board hides other barns' birds — fill count public, field fogged", () => {
+    const w = world();
+    w.dev.enter(byName(w.devFlock, "Alab").id, REAL);
+    // The rival sees the lobby and how full it is — never who's inside.
+    const theirView = w.rival.board()[0];
+    expect(theirView.filled).toBe(1);
+    expect(theirView.entries.length).toBe(0);
+    // You always see your own entries.
+    const myView = w.dev.board()[0];
+    expect(myView.entries.length).toBe(1);
+    expect(myView.entries[0].mine).toBe(true);
+  });
+
+  test("claimer fields are the exception — visible so claims can be placed", () => {
+    const w = world();
+    w.dev.enter(byName(w.devFlock, "Alab").id, {
+      mode: "real",
+      classType: "claimer",
+      format: "shortKnife",
+      price: 100,
+    });
+    const theirView = w.rival.board()[0];
+    expect(theirView.entries.length).toBe(1);
+    expect(theirView.entries[0].bird.name).toBe("Alab");
+    expect(theirView.entries[0].mine).toBe(false);
+  });
+
+  test("matchmaking never pairs barn-mates — the excess goes home refunded", () => {
+    const w = world();
+    const before = totalGp(w.db);
+    // Three dev birds against one rival bird: only ONE cross-barn fight is
+    // possible; the two leftover dev birds must not meet each other.
+    for (const name of ["Alab", "Sinag", "Batong Buhay"]) {
+      w.dev.enter(byName(w.devFlock, name).id, REAL, 808);
+    }
+    w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
+    const lobby = w.game.tickDay().card[0];
+    expect(lobby.fights.length).toBe(1);
+    expect(lobby.fights[0].farms.sort()).toEqual(["Bukidnon Farms", "Rival Gamefarm"]);
+    expect(lobby.unmatched.length).toBe(2);
+    expect(lobby.unmatched.every((u) => u.farm === "Bukidnon Farms")).toBe(true);
+    expect(totalGp(w.db)).toBe(before); // both refunds conserve GP exactly
+  });
+
+  test("two birds apiece, many seeds — every draw is cross-barn", () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const w = world();
+      w.dev.enter(byName(w.devFlock, "Alab").id, REAL, seed);
+      w.dev.enter(byName(w.devFlock, "Sinag").id, REAL);
+      w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
+      w.rival.enter(byName(w.rivalFlock, "Sinag").id, REAL);
+      const lobby = w.game.tickDay().card[0];
+      expect(lobby.fights.length).toBe(2);
+      for (const f of lobby.fights) {
+        expect(f.farms[0]).not.toBe(f.farms[1]);
+      }
+    }
+  });
+});
+
 describe("the land curve (fight up)", () => {
   test("superlinear in the fee: practice 1 · real 7 · hardcore 23", () => {
     expect(landForFight(ECONOMY.PRACTICE_ENTRY_FEE)).toBe(1);

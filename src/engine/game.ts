@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
+import { Bots, type BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
 import { BARN } from "./config";
@@ -20,6 +21,7 @@ export interface TickView {
   daysAdvanced: number;
   fridays: HatchFridayEvents[]; // hatches + force-retirements, per Friday crossed
   card: LobbyResolution[]; // the day's lobbies going off — public events
+  bots: BotDayReport[]; // what the bot stables did before post time
 }
 
 /**
@@ -66,11 +68,15 @@ export class Game {
   }
 
   private tick(kind: "day" | "week"): TickView {
+    // The bot stables play the closing day first — filling lobbies, placing
+    // claims — so the card that goes off has their money on it. No-op on
+    // worlds without bots seeded.
+    const bots = Bots.playDay(this.database);
     const fridays: HatchFridayEvents[] = [];
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
     // The day has turned — the card goes off (fights first, then claims).
     const card = Lobbies.resolve(this.database);
-    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card };
+    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, bots };
   }
 }

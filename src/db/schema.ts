@@ -19,6 +19,8 @@ export const farms = sqliteTable("farms", {
   landBoughtDay: integer("land_bought_day"),
   landBoughtToday: integer("land_bought_today").notNull().default(0),
   createdDay: integer("created_day").notNull().default(0),
+  // House-run bot stables (see engine/bot-config.ts) — rivals, not the house.
+  isBot: integer("is_bot").notNull().default(0),
 });
 
 export const birds = sqliteTable("birds", {

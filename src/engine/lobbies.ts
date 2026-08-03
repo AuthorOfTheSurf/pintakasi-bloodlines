@@ -43,9 +43,13 @@ export type FormatRecord = {
 };
 
 /**
- * What the board shows about an entered bird — the PUBLIC card. Deliberately
- * fogged: stars and records are public (as in life), the six stats are NOT.
- * Reading figures well is how you pick your spots — and your claims.
+ * What the board shows about an entered bird. Deliberately fogged twice over:
+ * stars and records are public (as in life), the six stats are NOT — and in
+ * every class except claimers, WHO is entered is hidden until post time
+ * (ruled 2026-08-03: visible fields promote dodging; predicting a lobby's
+ * strength is part of the skill). Claimer fields stay visible because a
+ * claim is placed on a specific bird before the fight — fighting for a tag
+ * IS the exposure.
  */
 export interface EntryCard {
   entryId: number;
@@ -70,8 +74,9 @@ export interface LobbyView {
   format: FightFormat;
   price: number | null; // claimer tag
   fee: number; // entry fee a side
-  filled: number;
+  filled: number; // ALWAYS public — how full, never who
   capacity: number;
+  // Fogged: your own entries, plus the full field in claimer lobbies only.
   entries: EntryCard[];
 }
 
@@ -105,12 +110,17 @@ export interface LobbyResolution {
  *      one when that lobby is full. Size is LOCKED at 8: even, so a full
  *      lobby guarantees every bird a fight. Entries are BINDING (fee
  *      escrowed, the bird's daily fight spent).
- *   2. The board is public — players judge their birds' strength and pick
- *      where to fight. Claimer entries also take sealed claims (tag
- *      escrowed; one per farm; never your own bird).
- *   3. At the day tick every lobby GOES OFF: its birds are randomly paired
- *      and fight each other. An odd bird out refunds its fee and earns no
- *      land. Winners take the pooled pot; both fighters earn land scaled
+ *   2. The board is public but FOGGED — you see every lobby and how full it
+ *      is, never whose birds are in it (no dodging; judging a lobby's
+ *      likely strength is the skill). The one exception is claimer lobbies:
+ *      those fields are visible, because sealed claims (tag escrowed; one
+ *      per farm; never your own bird) are placed on specific birds before
+ *      post time. Fighting for a tag is choosing to be seen.
+ *   3. At the day tick every lobby GOES OFF: its birds are randomly paired —
+ *      NEVER two from the same barn (ruled 2026-08-03: you may enter
+ *      several birds, and matchmaking keeps them apart). Birds left with
+ *      only barn-mates to fight go unmatched: fee refunded, no land.
+ *      Winners take the pooled pot; both fighters earn land scaled
  *      superlinearly to the fee (fighting up pays extra). Hardcore losers
  *      force-retire. Then claims settle: one wins per entry (RNG), the
  *      owner banks the tag, the bird transfers, losers refund in full —
@@ -257,13 +267,7 @@ export class Lobbies {
         .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
         .all();
 
-      // Random matchmaking: shuffle, then pair off consecutive entries.
-      // Same-farm pairings are allowed — post two birds, they can meet.
-      const shuffled = [...entries];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = randInt(rng, 0, i);
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
+      const { pairs, leftovers } = Lobbies.matchmake(entries, rng);
 
       const label =
         `${lobby.mode.toUpperCase()}${lobby.classType === "open" ? "" : "·" + lobby.classType.toUpperCase()}` +
@@ -271,15 +275,13 @@ export class Lobbies {
         ` · ${FORMATS[lobby.format].label}`;
       const event: LobbyResolution = { lobbyId: lobby.id, label, fights: [], unmatched: [], claims: [] };
 
-      for (let i = 0; i + 1 < shuffled.length; i += 2) {
-        event.fights.push(
-          Lobbies.runFight(database, lobby, shuffled[i], shuffled[i + 1], label, rng, week)
-        );
+      for (const [a, b] of pairs) {
+        event.fights.push(Lobbies.runFight(database, lobby, a, b, label, rng, week));
       }
 
-      // The odd bird out: fee back, no fight, no land.
-      if (shuffled.length % 2 === 1) {
-        const odd = shuffled[shuffled.length - 1];
+      // Birds left standing — the odd bird out, or barn-mates with nobody
+      // else to fight. Fee back, no fight, no land.
+      for (const odd of leftovers) {
         const farm = database.select().from(farms).where(eq(farms.id, odd.farmId)).get()!;
         database.update(farms).set({ gp: farm.gp + odd.fee }).where(eq(farms.id, odd.farmId)).run();
         database.update(lobbyEntries).set({ status: "unmatched" }).where(eq(lobbyEntries.id, odd.id)).run();
@@ -304,6 +306,47 @@ export class Lobbies {
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
+
+  /**
+   * Random pairing that NEVER matches barn-mates. Shuffle for randomness,
+   * group by farm, then repeatedly pair off the two largest groups (ties
+   * broken by the rng) — the classic greedy that maximizes cross-barn
+   * matches. Whatever remains is one farm's birds with nobody left to
+   * fight (or the plain odd bird out): they go home refunded.
+   */
+  private static matchmake(
+    entries: (typeof lobbyEntries.$inferSelect)[],
+    rng: Rng
+  ): {
+    pairs: [typeof lobbyEntries.$inferSelect, typeof lobbyEntries.$inferSelect][];
+    leftovers: (typeof lobbyEntries.$inferSelect)[];
+  } {
+    const shuffled = [...entries];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = randInt(rng, 0, i);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    const byFarm = new Map<string, (typeof lobbyEntries.$inferSelect)[]>();
+    for (const e of shuffled) {
+      const group = byFarm.get(e.farmId);
+      if (group) group.push(e);
+      else byFarm.set(e.farmId, [e]);
+    }
+
+    const pairs: [typeof lobbyEntries.$inferSelect, typeof lobbyEntries.$inferSelect][] = [];
+    for (;;) {
+      const groups = [...byFarm.values()].filter((g) => g.length > 0);
+      if (groups.length < 2) return { pairs, leftovers: groups.flat() };
+      groups.sort((a, b) => b.length - a.length);
+      const tiedA = groups.filter((g) => g.length === groups[0].length);
+      const groupA = tiedA[randInt(rng, 0, tiedA.length - 1)];
+      const rest = groups.filter((g) => g !== groupA);
+      const tiedB = rest.filter((g) => g.length === rest[0].length);
+      const groupB = tiedB[randInt(rng, 0, tiedB.length - 1)];
+      pairs.push([groupA.pop()!, groupB.pop()!]);
+    }
+  }
 
   private static runFight(
     database: DB,
@@ -496,6 +539,10 @@ export class Lobbies {
       .from(lobbyEntries)
       .where(eq(lobbyEntries.lobbyId, lobbyId))
       .all();
+    // The fog: fill count is public, the field is not — except claimers
+    // (claims are placed on specific birds) and your own entries.
+    const visible =
+      lobby.classType === "claimer" ? entries : entries.filter((e) => e.farmId === this.farmId);
     return {
       lobbyId: lobby.id,
       mode: lobby.mode,
@@ -505,7 +552,7 @@ export class Lobbies {
       fee: MODE_FEES[lobby.mode],
       filled: entries.length,
       capacity: lobby.capacity,
-      entries: entries.map((e) => this.card(e)),
+      entries: visible.map((e) => this.card(e)),
     };
   }
 

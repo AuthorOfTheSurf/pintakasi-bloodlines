@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS farms (
   free_pulls INTEGER NOT NULL DEFAULT 0,
   land_bought_day INTEGER,
   land_bought_today INTEGER NOT NULL DEFAULT 0,
-  created_day INTEGER NOT NULL DEFAULT 0
+  created_day INTEGER NOT NULL DEFAULT 0,
+  is_bot INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS birds (
