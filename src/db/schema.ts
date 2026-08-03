@@ -66,8 +66,12 @@ export const birds = sqliteTable("birds", {
   // price — that's player price-setting + supply/demand, ruled 2026-08-03.)
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
-  // The AMATEUR record — discovery-year juvenile fights; small stakes,
-  // never touches stud value.
+  // The STAKES wins (round 19) — real + hardcore only. The class LADDER
+  // (maiden / nw2 / nw3) reads THIS line, not the lifetime one: the
+  // discovery year is practice, so a chick that won juvenile fights is
+  // still a maiden the day real stakes open at age 2. The displayed record
+  // stays ONE lifetime line (ruled round 15) — this is eligibility only.
+  stakesWins: integer("stakes_wins").notNull().default(0),
   // How the career ended (null while egg/active).
   retiredBy: text("retired_by", { enum: ["manual", "age", "hardcore"] }),
   retiredWeek: integer("retired_week"),

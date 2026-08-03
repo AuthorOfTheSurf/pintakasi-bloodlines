@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
+import { shopAllClaimers } from "./auto-play";
 import { Bots, type BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
@@ -82,6 +83,10 @@ export class Game {
     // claims — so the card that goes off has their money on it. No-op on
     // worlds without bots seeded.
     const bots = Bots.playDay(this.database);
+    // Now that tonight's tags are posted, the player-side stables shop the
+    // claimer board (round 19) — they run their honest day BEFORE the bots,
+    // when the claimer fields are still empty.
+    shopAllClaimers(this.database);
     const fridays: HatchFridayEvents[] = [];
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);

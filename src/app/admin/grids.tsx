@@ -79,6 +79,11 @@ export interface BirdRowUI {
   status: string;
   wins: number;
   losses: number;
+  // What the bird has actually EARNED (round 19), across every card it ever
+  // fought: purses and pots net of its own entry fees, and the land its
+  // fights minted. The answer to "was this bird worth feeding?"
+  netGp: number;
+  netLt: number;
 }
 
 export interface BreedingRowUI {
@@ -270,11 +275,17 @@ function GachaEggCell(props: { value?: string; data?: GachaRowUI }) {
   );
 }
 
-const statCol = (field: keyof BirdRowUI, header: string): ColDef<BirdRowUI> => ({
+// The six stats, spelled out and all the same width (round 19) — abbreviated
+// headers ("agi / sig / sta") read like a spreadsheet nobody explained, and
+// ragged widths made the block hard to scan across rows.
+const STAT_COL_WIDTH = 130;
+const statCol = (field: keyof BirdRowUI): ColDef<BirdRowUI> => ({
   field,
-  headerName: header,
+  headerName: field,
   type: "rightAligned",
-  width: 92,
+  width: STAT_COL_WIDTH,
+  minWidth: STAT_COL_WIDTH,
+  maxWidth: STAT_COL_WIDTH,
   cellRenderer: GradeCell,
 });
 
@@ -296,18 +307,35 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   farmCol("farm", "farm", "farm"),
   { field: "sex", width: 95 },
   { field: "age", type: "rightAligned", width: 75 },
-  { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
+  // Element first, then its star rating — the type, then how much of it.
   { field: "element", width: 115, cellRenderer: ElementCell },
+  { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
   { field: "total", headerName: "Overall", type: "rightAligned", width: 120, sort: "desc", cellRenderer: TotalCell },
-  statCol("agility", "agi"),
-  statCol("sight", "sig"),
-  statCol("stamina", "sta"),
-  statCol("gameness", "gam"),
-  statCol("station", "stn"),
-  statCol("condition", "con"),
+  statCol("agility"),
+  statCol("sight"),
+  statCol("stamina"),
+  statCol("gameness"),
+  statCol("station"),
+  statCol("condition"),
   { field: "status", width: 150 },
   { field: "wins", headerName: "W", type: "rightAligned", width: 70 },
   { field: "losses", headerName: "L", type: "rightAligned", width: 70 },
+  {
+    field: "netGp",
+    headerName: "net GP",
+    type: "rightAligned",
+    width: 110,
+    valueFormatter: (p) => signed(p.value),
+    cellClassRules: deltaClasses,
+  },
+  {
+    field: "netLt",
+    headerName: "net LT",
+    type: "rightAligned",
+    width: 110,
+    valueFormatter: (p) => (p.value ? `+${num(p.value, 0)}` : ""),
+    cellClass: "up",
+  },
   // Unimportant — parked at the far end (ruled round 15).
   { field: "baseCoat", headerName: "coat", width: 95 },
   { field: "trimColor", headerName: "trim", width: 105 },
@@ -394,7 +422,9 @@ for (const cols of [
   }
 }
 
-const TABS = ["Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "The Ledger"] as const;
+// "The Card" rides in the tab bar too (round 19) — the day's schedule is
+// worth a look, not a third of the page above every table.
+const TABS = ["Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "The Ledger", "The Card"] as const;
 type Tab = (typeof TABS)[number];
 
 export function AdminTabs({
@@ -405,6 +435,8 @@ export function AdminTabs({
   gacha,
   gp,
   ledger,
+  card,
+  cardCount,
 }: {
   farms: FarmRowUI[];
   fights: FightRowUI[];
@@ -413,6 +445,8 @@ export function AdminTabs({
   gacha: GachaRowUI[];
   gp: GpRowUI[];
   ledger: LedgerRowUI[];
+  card: React.ReactNode; // rendered server-side — the lobby boxes
+  cardCount: number;
 }) {
   const [tab, setTab] = useState<Tab>("Farms");
   const counts: Record<Tab, number> = {
@@ -423,6 +457,7 @@ export function AdminTabs({
     Gacha: gacha.length,
     GP: gp.length,
     "The Ledger": ledger.length,
+    "The Card": cardCount,
   };
 
   const base = { sortable: true, filter: true, resizable: true };
@@ -446,6 +481,7 @@ export function AdminTabs({
       {pane("Gacha", 640, <AgGridReact<GachaRowUI> theme={officeTheme} rowData={gacha} columnDefs={GACHA_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
+      <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
     </section>
   );
 }

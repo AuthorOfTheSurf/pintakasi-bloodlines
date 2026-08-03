@@ -208,14 +208,21 @@ export class Tournaments {
     };
   }
 
-  /** Does this farm already have a pending entry this week? (Auto-play's guard.) */
-  hasEntryThisWeek(): boolean {
+  /**
+   * Does this farm already have a pending entry this week? Pass a blade to
+   * ask about that championship only — the rule is one bird per CROWN, so a
+   * stable may chase all three of a week's crowns with three different birds
+   * (round 19: the fields were thin because auto-play and the bots stopped
+   * at one entry a week between them).
+   */
+  hasEntryThisWeek(format?: FightFormat): boolean {
     const week = Tournaments.targetWeek(this.today());
     const ids = this.database
       .select()
       .from(tournaments)
       .where(eq(tournaments.weekIndex, week))
       .all()
+      .filter((t) => !format || t.format === format)
       .map((t) => t.id);
     return this.database
       .select()
@@ -534,7 +541,11 @@ export class Tournaments {
       const birdRow = database.select().from(birds).where(eq(birds.id, side.row.id)).get()!;
       database
         .update(birds)
-        .set(side.won ? { wins: birdRow.wins + 1 } : { losses: birdRow.losses + 1 })
+        .set(
+          side.won
+            ? { wins: birdRow.wins + 1, stakesWins: birdRow.stakesWins + 1 }
+            : { losses: birdRow.losses + 1 }
+        )
         .where(eq(birds.id, side.row.id))
         .run();
       // Hardcore throughout — the key rule, every round.

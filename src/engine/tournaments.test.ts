@@ -3,8 +3,10 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
+import { chaseCrowns } from "./bots";
 import { PINTAKASI } from "./config";
 import { Flock } from "./flock";
+import { mulberry32 } from "./rng";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
 import { Tournaments } from "./tournaments";
@@ -84,6 +86,27 @@ describe("registration & the Selection Committee", () => {
     expect(() => w.dev.enter(sinag.id, "longGaff")).toThrow(/doesn't run week 0/);
     w.dev.enter(sinag.id, "longKnife");
     expect(() => w.dev.enter(sinag.id, "shortGaff")).toThrow(/already registered/);
+  });
+
+  // Round 19: one bird per CROWN, not one per stable. The old callers
+  // stopped after a single entry a week, so three championships shared one
+  // field of seven across the whole world and two of them cancelled.
+  test("a stable chases every crown its barn can staff — one specialist per blade", () => {
+    const w = world();
+    const entered = chaseCrowns(w.db, w.devId, 0, mulberry32(11));
+    // Two age-3+ birds in a legacy barn — so two crowns, two different birds.
+    expect(entered.length).toBe(2);
+    expect(new Set(entered).size).toBe(2);
+    const pending = w.db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .filter((e) => e.farmId === w.devId && e.status === "pending");
+    expect(pending.length).toBe(2);
+    expect(new Set(pending.map((e) => e.tournamentId)).size).toBe(2); // different championships
+    expect(new Set(pending.map((e) => e.birdId)).size).toBe(2); //      different bodies
+    // Idempotent within the week: a second pass adds nothing.
+    expect(chaseCrowns(w.db, w.devId, 0, mulberry32(12)).length).toBe(0);
   });
 
   test("the fee escrows at entry; the board ranks the public field", () => {

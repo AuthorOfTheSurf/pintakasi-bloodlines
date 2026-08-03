@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
-import { bestFormat } from "./bots";
+import { bestFormat, chaseCrowns, ladderClass } from "./bots";
 import { Breeding } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
@@ -77,46 +77,79 @@ export function playHonestDay(db: DB, farmId: string): void {
     quietly(() => void flockApi.rename(bird.id, drawStarterNames(db, 1, mulberry32(700 + day))[0]));
   }
 
-  // The Pintakasi (round 18): once a week, the stable's best eligible bird
-  // registers for the blade championship nearest its style. Hardcore — the
+  // The Pintakasi (rounds 18–19): a specialist for every crown the week is
+  // running — one bird per championship, not one per stable. Hardcore: the
   // strongest stables put their strongest birds in; that's the design.
-  const tournaments = new Tournaments(db, farmId);
-  quietly(() => {
-    if (tournaments.hasEntryThisWeek()) return;
-    const eligible = flockApi
-      .all()
-      .filter((b) => b.status === "active" && b.named && canHardcore(b.age));
-    if (eligible.length === 0) return;
-    const total = (b: (typeof eligible)[number]) =>
-      b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
-    const best = eligible.reduce((top, b) => (total(b) > total(top) ? b : top));
-    const week = Tournaments.targetWeek(day);
-    const blades = Tournaments.bladesOfWeek(week);
-    const styled = bestFormat(best, mulberry32(1300 + day));
-    const blade = blades.includes(styled)
-      ? styled
-      : styled === "shortKnife"
-        ? "longGaff"
-        : "shortKnife"; // the middle blades swap when theirs isn't running
-    tournaments.enter(best.id, blade);
-  });
+  quietly(() => void chaseCrowns(db, farmId, day, mulberry32(1300 + day)));
 
   // Card by style, like the bots do (round 17): one format for everyone
   // piled the whole stable into a single lobby key, where matchmaking's
   // no-barn-mates rule sent most of them home unmatched.
+  //
+  // …and up the CLASS LADDER (round 19): the old auto-play carded every
+  // bird in the open, so player-side stables never used maidens or the
+  // conditions ladder at all. Now a bird climbs as it wins at stakes.
   const cardRng = mulberry32(1100 + day);
   const lobbies = new Lobbies(db, farmId);
   for (const bird of flockApi.all().filter((b) => b.status === "active")) {
+    const format = bestFormat(bird, cardRng);
     const spec: LobbySpec =
       bird.age >= 2
-        ? { mode: "real", classType: "open", format: bestFormat(bird, cardRng) }
-        : { mode: "juvenile", classType: "open", format: bestFormat(bird, cardRng) };
+        ? { mode: "real", classType: ladderClass(bird.stakesWins), format }
+        : { mode: "juvenile", classType: "open", format };
     quietly(() => lobbies.enter(bird.id, spec));
+  }
+
+}
+
+/**
+ * Shop the claimer board (round 19). Claiming was a bot-only habit — half
+ * the tag ladder's point (birds changing barns) never showed on a player-
+ * side stable at all. Two a day, on the same public read the bots use: a
+ * winning record, career left, never one of our own.
+ *
+ * SEPARATE from the honest day on purpose: auto-play runs before the bots
+ * card their birds, so at that moment the claimer fields are still empty.
+ * The tick calls this afterwards, once tonight's tags are actually posted.
+ */
+export function shopClaimers(db: DB, farmId: string): void {
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) return;
+  const farmsApi = new Farms(db);
+  const lobbies = new Lobbies(db, farmId);
+  const rng = mulberry32(1700 + state.dayIndex);
+  let placed = 0;
+  for (const lobby of lobbies.board()) {
+    if (placed >= AUTO_CLAIMS_PER_DAY) break;
+    if (lobby.classType !== "claimer" || lobby.status !== "open") continue;
+    for (const entry of lobby.entries) {
+      if (placed >= AUTO_CLAIMS_PER_DAY) break;
+      if (entry.mine) continue;
+      if (rng() >= AUTO_CLAIM_APPETITE) continue;
+      if (entry.bird.career.wins < entry.bird.career.losses) continue; // no lost causes
+      if (entry.bird.age > 6) continue; // too little career left to pay for the tag
+      if (farmsApi.rowById(farmId).gp <= (lobby.price ?? 0) + AUTO_RESERVE) continue;
+      quietly(() => {
+        lobbies.claim(entry.entryId);
+        placed++;
+      });
+    }
   }
 }
 
+/** Auto-play's claiming appetite — knobs, not doctrine. */
+const AUTO_CLAIMS_PER_DAY = 2;
+const AUTO_CLAIM_APPETITE = 0.35;
+const AUTO_RESERVE = 400; // GP never gambled into a tag
+
 /** Every player-owned (non-bot) stable plays its honest day. */
 export function playAllHonestDays(db: DB): void {
-  const owned = db.select().from(farms).all().filter((f) => f.isBot === 0);
-  for (const farm of owned) playHonestDay(db, farm.id);
+  for (const farm of ownedFarms(db)) playHonestDay(db, farm.id);
 }
+
+/** …and shops the claimer board once the night's tags are up (see above). */
+export function shopAllClaimers(db: DB): void {
+  for (const farm of ownedFarms(db)) shopClaimers(db, farm.id);
+}
+
+const ownedFarms = (db: DB) => db.select().from(farms).all().filter((f) => f.isBot === 0);

@@ -29,7 +29,9 @@ describe("seeded database", () => {
     for (const b of db.select().from(birds).all()) {
       for (const stat of [b.agility, b.sight, b.stamina, b.gameness, b.station, b.condition]) {
         expect(stat).toBeGreaterThanOrEqual(STATS.STARTER_MIN);
-        expect(stat).toBeLessThanOrEqual(STATS.STARTER_MAX);
+        // The band, or the talent spike above it (round 19) — never past
+        // the spike's ceiling: gen-1 birds don't out-muscle bred stock.
+        expect(stat).toBeLessThanOrEqual(STATS.STARTER_SPIKE_MAX);
       }
       expect(b.halfStars).toBeGreaterThanOrEqual(0);
       expect(b.halfStars).toBeLessThanOrEqual(10);

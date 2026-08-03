@@ -98,6 +98,32 @@ describe("entry rules (the door)", () => {
     w.dev.enter(alab.id, REAL);
     expect(() => w.dev.enter(alab.id, REAL)).toThrow(/already on tonight's card/);
   });
+
+  // Round 19: the ladder reads the STAKES record, not the lifetime line.
+  // Counting the discovery year made every two-year-old an ex-winner, and
+  // the maiden class sat unused for whole sim runs.
+  test("a juvenile win does not graduate a maiden — the ladder reads stakes wins", () => {
+    const w = world();
+    const kidlat = byName(w.devFlock, "Kidlat"); // age 1 — the discovery year
+    const JUV: LobbySpec = { mode: "juvenile", classType: "open", format: "shortKnife" };
+    for (let i = 0; i < 8 && byName(w.devFlock, "Kidlat").wins === 0; i++) {
+      w.dev.enter(kidlat.id, JUV);
+      w.rival.enter(rivalId("Kidlat"), JUV);
+      w.game.tickDay();
+    }
+    const afterPractice = byName(w.devFlock, "Kidlat");
+    expect(afterPractice.wins).toBeGreaterThan(0); // the lifetime line moved…
+    expect(afterPractice.stakesWins).toBe(0); //     …the ladder's line did not
+    expect(() =>
+      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "maiden", format: "shortKnife" })
+    ).not.toThrow();
+
+    // A seeded stakes record DOES graduate a bird: Sinag (age 3, 4W) is past
+    // the maiden class entirely.
+    const sinag = byName(w.devFlock, "Sinag");
+    expect(sinag.stakesWins).toBe(4);
+    expect(() => w.dev.enter(sinag.id, { ...REAL, classType: "maiden" })).toThrow(/won at stakes/);
+  });
 });
 
 describe("the 8-cap (lock the lobby even)", () => {

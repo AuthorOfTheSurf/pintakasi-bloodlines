@@ -22,7 +22,7 @@ const totalGp = (db: DB) =>
     .reduce((s, f) => s + f.gp, 0);
 
 describe("seeding the bot stables", () => {
-  test("six farms, flagged, flocked — and idempotent", () => {
+  test("every configured stable seeded, flagged, flocked — and idempotent", () => {
     const { db } = world();
     Bots.seed(db, { flock: "legacy" }); // second call must be a no-op
     const bots = db.select().from(farms).where(eq(farms.isBot, 1)).all();
@@ -46,7 +46,7 @@ describe("a bot day", () => {
     const tick = w.game.tickDay();
     expect(tick.bots.length).toBe(BOT_FARMS.length);
     expect(tick.bots.every((b) => b.checkedIn)).toBe(true);
-    // With six stables playing, the card is not empty.
+    // With every stable playing, the card is not empty.
     const carded = tick.bots.reduce((s, b) => s + b.entered.length, 0);
     expect(carded).toBeGreaterThan(0);
     const fights = tick.card.reduce((s, l) => s + l.fights.length, 0);

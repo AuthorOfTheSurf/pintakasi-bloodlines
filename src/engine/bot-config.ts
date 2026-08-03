@@ -76,4 +76,25 @@ export const BOT_FARMS: BotProfile[] = [
     flockSeed: 606, entryRate: 0.85, claimAggression: 0.2, breedDrive: 0.35,
     hardcoreNerve: 0.35, sellRate: 0.15, tagCourage: 0.6,
   },
+  // ── Round 19: three more stables — the card was running thin and the
+  //    Pintakasi's fields were thinner (seven farms, three crowns a week).
+  //    Deeper population = fuller lobbies, fuller brackets, more claims.
+  {
+    id: "bot-7", name: "Talisay Tari Club", country: "🇵🇭",
+    primaryColor: "purple", secondaryColor: "white", style: "pit",
+    flockSeed: 707, entryRate: 0.9, claimAggression: 0.1, breedDrive: 0.25,
+    hardcoreNerve: 0.45, sellRate: 0.1, tagCourage: 0.45, // the nerviest barn in the game
+  },
+  {
+    id: "bot-8", name: "Cuchillos de Sonora", country: "🇲🇽",
+    primaryColor: "green", secondaryColor: "red", style: "claimer",
+    flockSeed: 808, entryRate: 0.7, claimAggression: 0.8, breedDrive: 0.15,
+    hardcoreNerve: 0.1, sellRate: 0.5, tagCourage: 0.7, // shops the dear end of the tag ladder
+  },
+  {
+    id: "bot-9", name: "Cavite Bloodlines", country: "🇵🇭",
+    primaryColor: "brown", secondaryColor: "gold", style: "breeder",
+    flockSeed: 909, entryRate: 0.45, claimAggression: 0.05, breedDrive: 0.95,
+    hardcoreNerve: 0.08, sellRate: 0.55, tagCourage: 0.2, // breeds first, fights second
+  },
 ];

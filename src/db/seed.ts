@@ -1,3 +1,4 @@
+import { BOT_FARMS } from "@/engine/bot-config";
 import { Bots } from "@/engine/bots";
 import { createDb, defaultDbPath } from "./client";
 import { gameState } from "./schema";
@@ -12,4 +13,4 @@ if (existing.length > 0) {
 }
 seedGame(db);
 Bots.seed(db);
-console.log(`Seeded starter flock + 6 bot stables + ${defaultDbPath()}`);
+console.log(`Seeded starter flock + ${BOT_FARMS.length} bot stables + ${defaultDbPath()}`);

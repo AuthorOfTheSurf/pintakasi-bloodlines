@@ -3,7 +3,7 @@ import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
 import { BOT_FARMS, type BotProfile } from "./bot-config";
-import { CLAIMER, ECONOMY, type FightFormat, type Lobby } from "./config";
+import { CLAIMER, ECONOMY, PINTAKASI, type FightFormat, type Lobby } from "./config";
 import { Breeding } from "./breeding";
 import { drawStarterNames } from "./naming";
 import { emit } from "./events";
@@ -24,6 +24,7 @@ export interface BotDayReport {
   studsListed: number; // retired roosters put up in the breeding barn
   bred: string | null; // egg name, if a cover was bought (barn included)
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
+  crowns: string[]; // birds registered for this week's championships
   claimsPlaced: number;
 }
 
@@ -43,7 +44,8 @@ const MAX_CLAIMS_PER_DAY = 2;
  * No-ops (empty array) on worlds with no bot farms seeded — tests included.
  */
 export class Bots {
-  /** Create the six bot farms + their starter flocks. Idempotent. */
+  /** Create the bot farms + their starter flocks. Idempotent — a stable
+   *  added to BOT_FARMS later joins the world on the next seed call. */
   static seed(db: DB, opts: { flock?: "eggs" | "legacy" } = {}): void {
     const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
     for (const bot of BOT_FARMS) {
@@ -100,6 +102,7 @@ export class Bots {
       studsListed: 0,
       bred: null,
       entered: [],
+      crowns: [],
       claimsPlaced: 0,
     };
     const gp = () => db.select().from(farms).where(eq(farms.id, bot.id)).get()!.gp;
@@ -156,28 +159,12 @@ export class Bots {
       }
     }
 
-    // 3b. The Pintakasi (round 18): once a week, nerve permitting, the
-    //     bot's best eligible bird chases a crown. Doubled odds vs. a daily
-    //     hardcore — a championship is worth dying for.
-    if (rng() < Math.min(1, bot.hardcoreNerve * 2)) {
-      quietly(() => {
-        const tournaments = new Tournaments(db, bot.id);
-        if (tournaments.hasEntryThisWeek()) return;
-        const eligible = flock.all().filter((b) => b.status === "active" && b.named && canHardcore(b.age));
-        if (eligible.length === 0) return;
-        const total = (b: BirdView) =>
-          b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
-        const best = eligible.reduce((top, b) => (total(b) > total(top) ? b : top));
-        const blades = Tournaments.bladesOfWeek(Tournaments.targetWeek(today));
-        const styled = bestFormat(best, rng);
-        const blade = blades.includes(styled)
-          ? styled
-          : styled === "shortKnife"
-            ? "longGaff"
-            : "shortKnife";
-        tournaments.enter(best.id, blade);
-      });
-    }
+    // 3b. The Pintakasi (rounds 18–19): a specialist for every crown the
+    //     week is running. Nerve still decides how often a barn shows up —
+    //     but the floor is high, because dying for a championship is a
+    //     better bet than any Tuesday hardcore, and every barn knows it.
+    const nerve = Math.min(1, 0.4 + bot.hardcoreNerve * 1.6);
+    report.crowns = chaseCrowns(db, bot.id, today, rng, { nerve, reserve: RESERVE });
 
     // 4. LIQUIDITY FIRST — the job bots exist for. A lobby sitting at an
     //    odd count has a bird waiting with no opponent; join it. Fill
@@ -251,11 +238,38 @@ export class Bots {
       const idx = Math.min(CLAIMER.PRICES.length - 1, Math.round(edge * bot.tagCourage));
       return { mode: "real", classType: "claimer", format, price: CLAIMER.PRICES[idx] };
     }
-    // The self-sorting ladder: card in the most protective class that takes you.
-    const classType: Lobby =
-      bird.wins === 0 ? "maiden" : bird.wins < 2 ? "nw2" : bird.wins < 3 ? "nw3" : "open";
+    // The self-sorting ladder: card in the most protective class that takes
+    // you. Reads the STAKES record (round 19) — the discovery year doesn't
+    // graduate anybody, so a two-year-old starts at the bottom rung.
+    const classType: Lobby = ladderClass(bird.stakesWins);
     return { mode: "real", classType, format };
   }
+}
+
+/**
+ * The class ladder's rung for a given stakes record — the most protective
+ * class that still takes you. Shared by the bots and auto-play (round 19:
+ * player-side stables carded every bird in the OPEN and never climbed).
+ */
+export function ladderClass(stakesWins: number): Lobby {
+  if (stakesWins === 0) return "maiden";
+  if (stakesWins < 2) return "nw2";
+  if (stakesWins < 3) return "nw3";
+  return "open";
+}
+
+/**
+ * How well a bird reads at each distance — the owner's private study of its
+ * own stats. One table, two uses: pick the blade for a bird (bestFormat),
+ * or pick the bird for a blade (the Pintakasi, round 19).
+ */
+export function formatScores(bird: BirdView): Record<FightFormat, number> {
+  return {
+    longKnife: bird.agility + bird.sight, // the sprint
+    shortKnife: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid
+    longGaff: bird.stamina * 2, // the route
+    shortGaff: bird.gameness * 2, // the marathon
+  };
 }
 
 /**
@@ -264,16 +278,67 @@ export class Bots {
  * spreads the field across formats instead of piling into one lobby key.
  */
 export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
-  const scores: Record<FightFormat, number> = {
-    longKnife: bird.agility + bird.sight, // the sprint
-    shortKnife: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid
-    longGaff: bird.stamina * 2, // the route
-    shortGaff: bird.gameness * 2, // the marathon
-  };
+  const scores = formatScores(bird);
   const jitter = () => rng() * 100; // imperfect judges — bots misread the margin calls
   return (Object.entries(scores) as [FightFormat, number][]).reduce((best, cur) =>
     cur[1] + jitter() > best[1] + jitter() ? cur : best
   )[0];
+}
+
+/**
+ * THE CROWN CHASE (round 19) — every stable's weekly Pintakasi decision,
+ * shared by the bots and by auto-play.
+ *
+ * The old behavior stopped at ONE entry per stable per week, which capped
+ * a three-crown Wednesday at one field of seven across ten farms — most
+ * championships cancelled for want of a second bird. The rule was never
+ * one bird per STABLE, it's one bird per CROWN: so walk the week's three
+ * blades and send the barn's best specialist to each, cheapest signal
+ * first (a long-gaff crown wants the deepest wind, not the highest total).
+ *
+ * `nerve` gates each blade for the bots (a breeder shows up less often than
+ * a pit crew). Auto-play passes none — the Majors are the most +EV card on
+ * the board, and a stable with the bodies to spare enters all three.
+ */
+export function chaseCrowns(
+  db: DB,
+  farmId: string,
+  today: number,
+  rng: Rng,
+  opts: { nerve?: number; reserve?: number } = {}
+): string[] {
+  const tournaments = new Tournaments(db, farmId);
+  const flock = new Flock(db, farmId);
+  const reserve = opts.reserve ?? 0;
+  const entered: string[] = [];
+
+  for (const blade of Tournaments.bladesOfWeek(Tournaments.targetWeek(today))) {
+    if (tournaments.hasEntryThisWeek(blade)) continue; // this crown's already ours to lose
+    if (opts.nerve !== undefined && rng() >= opts.nerve) continue;
+    const purse = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+    if (purse.gp < PINTAKASI.ENTRY_FEE + reserve) break;
+
+    const candidates = flock
+      .all()
+      .filter((b) => b.status === "active" && b.named && canHardcore(b.age))
+      .sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade]);
+    // Try the best few in turn — a bird already committed to another crown
+    // this week, or refused by the Selection Committee, just steps aside.
+    for (const bird of candidates.slice(0, 3)) {
+      let ok = false;
+      try {
+        tournaments.enter(bird.id, blade);
+        ok = true;
+      } catch {
+        /* the committee (or the calendar) said no — next bird */
+      }
+      if (ok) {
+        entered.push(bird.name);
+        break;
+      }
+    }
+  }
+  return entered;
 }
 
 function shuffle<T>(items: T[], rng: Rng): T[] {

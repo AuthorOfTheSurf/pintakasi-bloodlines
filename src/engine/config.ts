@@ -41,8 +41,18 @@ export const STATS = {
   MAX: 2000, // ceiling — the PFL 0–2000 scale (letter-grade display comes later; store raw forever)
   // Starter flock rolls in this band (Zane: "~300"). Low on purpose — the
   // best birds in the game don't exist yet; breeding is the way up.
-  STARTER_MIN: 250,
+  STARTER_MIN: 240,
   STARTER_MAX: 400,
+  // The TALENT SPIKE (round 19): a flat 250–400 band graded every starter
+  // B or B+ and the Birds table read as one grey wall. Now each stat rolls
+  // a small chance to come in ABOVE the band instead — about a third of
+  // birds open with a green A somewhere, so a stable has something to point
+  // at on day one. Deliberately per-STAT: the six-stat average (the Overall
+  // grade) still sits in B/B+, because raising the WHOLE bird is what
+  // breeding is for.
+  STARTER_SPIKE_CHANCE: 0.07,
+  STARTER_SPIKE_MIN: 400,
+  STARTER_SPIKE_MAX: 520,
 } as const;
 
 // ── Elements (BaZi wuxing 克 kè "overcoming" cycle) ─────────────────────────

@@ -499,7 +499,15 @@ export class Lobbies {
         .run();
       database
         .update(birds)
-        .set(side.won ? { wins: side.row.wins + 1 } : { losses: side.row.losses + 1 })
+        .set(
+          side.won
+            ? {
+                wins: side.row.wins + 1,
+                // The ladder's line: practice wins don't graduate a maiden.
+                stakesWins: side.row.stakesWins + (lobby.mode === "juvenile" ? 0 : 1),
+              }
+            : { losses: side.row.losses + 1 }
+        )
         .where(eq(birds.id, side.row.id))
         .run();
       // The key rule's teeth — in PvP both owners signed up for it.
@@ -770,12 +778,15 @@ export class Lobbies {
     if (mode === "juvenile" && classType !== "open" && classType !== "maiden")
       throw new Error("Juvenile lobbies are open or maiden only");
 
-    if (classType === "maiden" && bird.wins > 0)
-      throw new Error(`${bird.name} has won before — maidens take never-winners only`);
-    if (classType === "nw2" && bird.wins >= 2)
-      throw new Error(`${bird.name} has ${bird.wins} career wins — nw2 takes fewer than 2`);
-    if (classType === "nw3" && bird.wins >= 3)
-      throw new Error(`${bird.name} has ${bird.wins} career wins — nw3 takes fewer than 3`);
+    // The ladder reads the STAKES record (round 19), not the lifetime line:
+    // juvenile fights are the discovery year, and counting them made every
+    // two-year-old an ex-winner — the maiden class went unused for weeks.
+    if (classType === "maiden" && bird.stakesWins > 0)
+      throw new Error(`${bird.name} has won at stakes — maidens take never-winners only`);
+    if (classType === "nw2" && bird.stakesWins >= 2)
+      throw new Error(`${bird.name} has ${bird.stakesWins} stakes wins — nw2 takes fewer than 2`);
+    if (classType === "nw3" && bird.stakesWins >= 3)
+      throw new Error(`${bird.name} has ${bird.stakesWins} stakes wins — nw3 takes fewer than 3`);
     if (classType === "claimer") {
       if (mode !== "real") throw new Error("Claimers are real fights");
       if (!price || !(CLAIMER.PRICES as readonly number[]).includes(price))

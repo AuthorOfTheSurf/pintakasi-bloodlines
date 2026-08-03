@@ -59,8 +59,13 @@ const STARTER_EGGS = 4;
 
 function rollStats(rng: Rng) {
   // ~300 on the 0–2000 scale (Zane's ruling) — headroom is the point:
-  // the best birds in the game don't exist yet.
-  const stat = () => randInt(rng, STATS.STARTER_MIN, STATS.STARTER_MAX);
+  // the best birds in the game don't exist yet. Round 19 adds the TALENT
+  // SPIKE: a stat occasionally rolls above the band instead of inside it,
+  // so some starters break into A somewhere without the whole bird moving.
+  const stat = () =>
+    rng() < STATS.STARTER_SPIKE_CHANCE
+      ? randInt(rng, STATS.STARTER_SPIKE_MIN, STATS.STARTER_SPIKE_MAX)
+      : randInt(rng, STATS.STARTER_MIN, STATS.STARTER_MAX);
   return {
     agility: stat(),
     sight: stat(),
@@ -136,6 +141,9 @@ export function seedStarterFlock(
         birthDay: -s.age * 7,
         wins: s.wins ?? 0,
         losses: s.losses ?? 0,
+        // A seeded record is a STAKES record — these birds fought before
+        // day 0, and the ladder should read them as the veterans they are.
+        stakesWins: s.wins ?? 0,
         retiredBy: s.status === "retired" ? ("age" as const) : null,
         retiredWeek: s.status === "retired" ? -1 : null,
         motherId: null,

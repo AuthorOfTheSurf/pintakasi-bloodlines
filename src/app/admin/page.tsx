@@ -2,7 +2,13 @@ import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { TickControls } from "./tick-controls";
 import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, tournamentEntries, tournaments } from "@/db/schema";
-import { ECONOMY, FORMATS, type FightFormat } from "@/engine/config";
+import {
+  ECONOMY,
+  FORMATS,
+  landForFight,
+  landForTournamentFight,
+  type FightFormat,
+} from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { ageOf } from "@/engine/lifecycle";
@@ -248,6 +254,39 @@ export default function Admin() {
     };
   });
 
+  // ── What each bird earned (round 19) ──────────────────────────────────────
+  // GP: pots won less entries lost on the daily card (gpDelta is already the
+  // signed net), plus Pintakasi purse less the 200 GP it cost to enter —
+  // a refunded or bumped registration nets nothing either way.
+  // LT: the land its fights minted (both fighters are paid, win or lose)
+  // plus the championship's elimination grant. Entry fees are stored on the
+  // entry rows; daily fees are fixed per mode, so they derive exactly.
+  const FEE_BY_MODE: Record<string, number> = {
+    juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
+    real: ECONOMY.REAL_ENTRY_FEE,
+    hardcore: ECONOMY.HARDCORE_ENTRY_FEE,
+  };
+  const netGpCents = new Map<string, number>();
+  const netLt = new Map<string, number>();
+  const bump = (map: Map<string, number>, key: string, by: number) =>
+    map.set(key, (map.get(key) ?? 0) + by);
+  const tournamentFee = new Map(allTournaments.map((t) => [t.id, t.entryFee]));
+  for (const r of log) {
+    bump(netGpCents, r.birdId, r.gpDelta * 100); // 0 on Pintakasi rows — the purse settles below
+    bump(
+      netLt,
+      r.birdId,
+      r.tournamentId
+        ? landForTournamentFight(tournamentFee.get(r.tournamentId) ?? 0)
+        : landForFight(FEE_BY_MODE[r.mode])
+    );
+  }
+  for (const e of allTEntries) {
+    if (e.status === "refunded" || e.status === "bumped") continue; // fee came back
+    bump(netGpCents, e.birdId, e.gpWonCents - e.fee * 100);
+    bump(netLt, e.birdId, e.landGranted);
+  }
+
   const birdRows: BirdRowUI[] = allBirds.map((b) => ({
     name: b.name,
     farm: fname(b.farmId),
@@ -276,6 +315,8 @@ export default function Admin() {
           : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}`,
     wins: b.wins,
     losses: b.losses,
+    netGp: (netGpCents.get(b.id) ?? 0) / 100,
+    netLt: netLt.get(b.id) ?? 0,
   }));
 
   const split = splitBreedFee(ECONOMY.BREED_FEE);
@@ -457,50 +498,6 @@ export default function Admin() {
         </div>
       </section>
 
-      {cardDay !== null && (
-        <section className="cardday">
-          <h2>
-            The Card — Day {cardDay}{" "}
-            <span className="cardsum">
-              {cardPending > 0
-                ? `${cardPending} awaiting post time`
-                : `went off at the last tick · ${cardFights} fights · ${cardCancelled} cancelled`}
-            </span>
-          </h2>
-          <div className="lobbies">
-            {cardLobbies.map((l) => (
-              <div className="lobby" key={l.id}>
-                <div className="lobby-head">
-                  {l.label}
-                  <span className="fill">
-                    {l.filled}/{l.capacity} · #{l.id}
-                  </span>
-                </div>
-                {l.bouts.map((b, i) => (
-                  <div className="bout" key={i}>
-                    ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
-                    <span className="figs">
-                      figures {b.figures[0]}/{b.figures[1]}
-                      {l.hardcore ? " · loser force-retired" : ""}
-                    </span>
-                  </div>
-                ))}
-                {l.unmatched.map((u, i) => (
-                  <div className="bout cancelled" key={i}>
-                    ✗ {u.bird} ({u.farm}) — drew nobody, {u.fee} GP refunded
-                  </div>
-                ))}
-                {l.pending.map((p, i) => (
-                  <div className="bout pending" key={i}>
-                    … {p.bird} ({p.farm}) — on the card, awaiting post
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
       {pintakasiWeek !== null && (
         <section className="cardday">
           <h2>
@@ -558,6 +555,54 @@ export default function Admin() {
         gacha={gachaRows}
         gp={gpRows}
         ledger={ledgerRows}
+        cardCount={cardLobbies.length}
+        card={
+          cardDay === null ? (
+            <p className="cardsum">No card has been posted yet — tick a day.</p>
+          ) : (
+            <section className="cardday">
+              <h2>
+                Day {cardDay}{" "}
+                <span className="cardsum">
+                  {cardPending > 0
+                    ? `${cardPending} awaiting post time`
+                    : `went off at the last tick · ${cardFights} fights · ${cardCancelled} cancelled`}
+                </span>
+              </h2>
+              <div className="lobbies">
+                {cardLobbies.map((l) => (
+                  <div className="lobby" key={l.id}>
+                    <div className="lobby-head">
+                      {l.label}
+                      <span className="fill">
+                        {l.filled}/{l.capacity} · #{l.id}
+                      </span>
+                    </div>
+                    {l.bouts.map((b, i) => (
+                      <div className="bout" key={i}>
+                        ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
+                        <span className="figs">
+                          figures {b.figures[0]}/{b.figures[1]}
+                          {l.hardcore ? " · loser force-retired" : ""}
+                        </span>
+                      </div>
+                    ))}
+                    {l.unmatched.map((u, i) => (
+                      <div className="bout cancelled" key={i}>
+                        ✗ {u.bird} ({u.farm}) — drew nobody, {u.fee} GP refunded
+                      </div>
+                    ))}
+                    {l.pending.map((p, i) => (
+                      <div className="bout pending" key={i}>
+                        … {p.bird} ({p.farm}) — on the card, awaiting post
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )
+        }
       />
     </main>
   );
