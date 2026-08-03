@@ -1,5 +1,6 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
+import { TickControls } from "./tick-controls";
 import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbyEntries } from "@/db/schema";
 import { ECONOMY } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
@@ -260,6 +261,7 @@ export default function Admin() {
         <p className="dbpath">
           database: <b>{path.basename(dbPath)}</b> <span className="dim">({dbPath})</span>
         </p>
+        <TickControls />
       </header>
 
       <section className="cards">
@@ -335,6 +337,11 @@ const CSS = `
     border: 1px solid #3a342a; border-radius: 4px; padding: .35rem .9rem; }
   .tabs button.on { color: #12100d; background: #e8b64c; border-color: #e8b64c; }
   .tabs .count { opacity: .7; font-size: .85em; margin-left: .3em; }
+  .ticks { margin-top: .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .ticks button { font: inherit; cursor: pointer; color: #12100d; background: #e8b64c;
+    border: 1px solid #e8b64c; border-radius: 4px; padding: .35rem .9rem; font-weight: 600; }
+  .ticks button:disabled { opacity: .5; cursor: wait; }
+  .tick-last { color: #9a8f78; font-size: .9em; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }
   .dot { display: inline-block; width: .65em; height: .65em; border-radius: 50%; border: 2px solid; margin-right: .4em; }

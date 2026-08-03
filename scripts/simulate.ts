@@ -1,23 +1,21 @@
 /**
  * The observable smoke run. EVERY run writes its own timestamped database
  * (data/sim-YYYYMMDD-HHMM.db) — iterate freely, nothing clashes, nothing
- * needs wiping. The world starts on a MONDAY (day 3 — the calendar's day 0
- * is a Friday): the dev farm plays a simple honest day, the six bot stables
+ * needs wiping. The world starts on day 0, a Friday (Zane's ruling,
+ * 2026-08-03): the dev farm plays a simple honest day, the six bot stables
  * play theirs inside the tick. View the newest run with `bun dev:sim` →
  * http://localhost:3435/admin.
  *
- *   bun run simulate [days=5] [--keep] [--db=path] [--force] [--start=friday]
+ *   bun run simulate [days=5] [--keep] [--db=path] [--force]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
  * --force  required to reseed a db holding registered player farms.
- * --start  friday to start the world on day 0 instead of Monday.
  */
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
 import { createDb, latestSimDb } from "@/db/client";
-import { farms, gameState } from "@/db/schema";
+import { farms } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { Bots } from "@/engine/bots";
 import { Breeding } from "@/engine/breeding";
@@ -33,7 +31,6 @@ const dayArg = args.find((a) => /^\d+$/.test(a));
 const days = dayArg === undefined ? 5 : Number(dayArg);
 const keep = args.includes("--keep");
 const force = args.includes("--force");
-const startFriday = args.includes("--start=friday");
 const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
 
 function stamp(): string {
@@ -70,12 +67,7 @@ const db = createDb(dbPath);
 if (!keep) {
   seedGame(db);
   Bots.seed(db);
-  if (!startFriday) {
-    // Day 0 is a Friday; Zane's sims start on a MONDAY (day 3). Nothing
-    // happens on the skipped weekend — no check-ins, no cards.
-    db.update(gameState).set({ dayIndex: 3 }).where(eq(gameState.id, 1)).run();
-  }
-  console.log(`Fresh world seeded at ${dbPath}${startFriday ? "" : " — starting Monday (day 3)"}\n`);
+  console.log(`Fresh world seeded at ${dbPath} — day 0, Friday\n`);
 }
 
 const game = new Game(db, DEV_FARM_ID);
