@@ -27,7 +27,10 @@ import { mulberry32 } from "@/engine/rng";
 import type { LobbySpec } from "@/engine/lobbies";
 
 const args = process.argv.slice(2);
-const days = Number(args.find((a) => /^\d+$/.test(a))) || 5;
+const dayArg = args.find((a) => /^\d+$/.test(a));
+// `simulate 0` is a real request: seed a fresh world and play NO days —
+// the manual-play starting point (tick it yourself via the API).
+const days = dayArg === undefined ? 5 : Number(dayArg);
 const keep = args.includes("--keep");
 const force = args.includes("--force");
 const startFriday = args.includes("--start=friday");
