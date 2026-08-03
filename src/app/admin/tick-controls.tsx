@@ -3,8 +3,9 @@
 /**
  * The Stewards' Office clock levers — advance the world without leaving the
  * browser. +1 Day ticks one day; +1 Week jumps to the next Friday inclusive
- * (the API's tickWeek semantics: bots play ONE closing day and ONE card
- * resolves, not seven). The dev farm's fixed key authenticates the call.
+ * (the API's tickWeek semantics: ONE closing day plays and ONE card resolves,
+ * not seven). Every stable plays its honest day — bots and player farms
+ * alike (sim-era rule). The dev farm's fixed key authenticates the call.
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";

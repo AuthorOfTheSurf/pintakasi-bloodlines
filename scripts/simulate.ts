@@ -17,12 +17,9 @@ import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
 import { farms } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
+import { playAllHonestDays } from "@/engine/auto-play";
 import { Bots } from "@/engine/bots";
-import { Breeding } from "@/engine/breeding";
 import { Game } from "@/engine/game";
-import { Gacha } from "@/engine/gacha";
-import { mulberry32 } from "@/engine/rng";
-import type { LobbySpec } from "@/engine/lobbies";
 
 const args = process.argv.slice(2);
 const dayArg = args.find((a) => /^\d+$/.test(a));
@@ -71,56 +68,10 @@ if (!keep) {
 }
 
 const game = new Game(db, DEV_FARM_ID);
-const quietly = (fn: () => unknown) => {
-  try {
-    fn();
-  } catch {
-    /* the sim takes no for an answer, like the bots do */
-  }
-};
 
 for (let day = 1; day <= days; day++) {
-  // ── The dev farm's honest day ─────────────────────────────────────────
-  quietly(() => game.farms.checkIn(DEV_FARM_ID));
-
-  const gacha = new Gacha(db, DEV_FARM_ID, mulberry32(9000 + day));
-  for (;;) {
-    const farm = game.farms.rowById(DEV_FARM_ID);
-    if (farm.freePulls <= 0) break;
-    quietly(() => gacha.roll());
-  }
-
-  const flock = game.flock.all();
-
-  quietly(() => {
-    const farm = game.farms.rowById(DEV_FARM_ID);
-    if (farm.landTokens > 0) game.farms.stake(DEV_FARM_ID, farm.landTokens);
-  });
-
-  const breeding = new Breeding(db, DEV_FARM_ID, mulberry32(500 + day));
-  for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
-    quietly(() => breeding.listStud(rooster.id));
-
-  // One cover a day, first hen whose nest is empty (one egg per hen).
-  for (const hen of flock.filter((b) => b.status === "retired" && b.sex === "female")) {
-    let bred = false;
-    quietly(() => {
-      const barn = breeding.browseStuds(hen.id);
-      if (barn.studs.length > 0) {
-        breeding.breed(hen.id, barn.studs[0].birdId);
-        bred = true;
-      }
-    });
-    if (bred) break;
-  }
-
-  for (const bird of flock.filter((b) => b.status === "active")) {
-    const spec: LobbySpec =
-      bird.age >= 2
-        ? { mode: "real", classType: "open", format: "shortKnife" }
-        : { mode: "practice", classType: "open", format: "shortKnife" };
-    quietly(() => game.lobbies.enter(bird.id, spec));
-  }
+  // ── Every player-owned stable plays its honest day ───────────────────
+  playAllHonestDays(db);
 
   // ── The day turns: bots play, the card goes off, staking pays ────────
   const tick = game.tickDay();
