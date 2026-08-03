@@ -10,6 +10,7 @@ import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
 import { Gacha } from "./gacha";
 import { baselineBefore, recordSnapshot } from "./snapshots";
+import { Tournaments, type TournamentResolution } from "./tournaments";
 
 export interface GameStateView {
   clock: ClockState; // the WORLD clock — shared by every farm
@@ -22,6 +23,7 @@ export interface TickView {
   daysAdvanced: number;
   fridays: HatchFridayEvents[]; // hatches + force-retirements, per Friday crossed
   card: LobbyResolution[]; // the day's lobbies going off — public events
+  pintakasi: TournamentResolution[]; // Wednesday's blade championships (round 18)
   bots: BotDayReport[]; // what the bot stables did before post time
   staking: { paidGp: number; stakers: number }; // the day's pro-rata payout
 }
@@ -36,6 +38,7 @@ export class Game {
   readonly flock: Flock;
   readonly breeding: Breeding;
   readonly lobbies: Lobbies;
+  readonly tournaments: Tournaments;
   readonly gacha: Gacha;
   readonly farms: Farms;
 
@@ -47,6 +50,7 @@ export class Game {
     this.flock = new Flock(database, farmId);
     this.breeding = new Breeding(database, farmId);
     this.lobbies = new Lobbies(database, farmId);
+    this.tournaments = new Tournaments(database, farmId);
     this.gacha = new Gacha(database, farmId);
     this.farms = new Farms(database);
   }
@@ -82,11 +86,16 @@ export class Game {
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
     // The day has turned — the card goes off (fights first, then claims),
-    // then the staking pool pays the day's breed-fee cut to staked land.
+    // then the main event: every departed Wednesday runs its Pintakasi
+    // (undercard first, crowns second), then the staking pool pays out.
     const card = Lobbies.resolve(this.database);
+    const pintakasi: TournamentResolution[] = [];
+    for (let d = preDay; d < result.state.dayIndex; d++) {
+      if (d % 7 === 5) pintakasi.push(...Tournaments.resolveWednesday(this.database, d));
+    }
     const staking = Farms.distributeStaking(this.database);
     // The office's memory: today's top-line metrics, for tomorrow's diffs.
     recordSnapshot(this.database);
-    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, bots, staking };
+    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, pintakasi, bots, staking };
   }
 }

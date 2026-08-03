@@ -10,8 +10,10 @@ import { emit } from "./events";
 import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { Gacha } from "./gacha";
+import { canHardcore } from "./lifecycle";
 import { Lobbies, type FightMode } from "./lobbies";
 import { mulberry32, randInt, type Rng } from "./rng";
+import { Tournaments } from "./tournaments";
 
 /** What one bot stable did with its day — surfaced on the tick view. */
 export interface BotDayReport {
@@ -152,6 +154,29 @@ export class Bots {
           }
         }
       }
+    }
+
+    // 3b. The Pintakasi (round 18): once a week, nerve permitting, the
+    //     bot's best eligible bird chases a crown. Doubled odds vs. a daily
+    //     hardcore — a championship is worth dying for.
+    if (rng() < Math.min(1, bot.hardcoreNerve * 2)) {
+      quietly(() => {
+        const tournaments = new Tournaments(db, bot.id);
+        if (tournaments.hasEntryThisWeek()) return;
+        const eligible = flock.all().filter((b) => b.status === "active" && b.named && canHardcore(b.age));
+        if (eligible.length === 0) return;
+        const total = (b: BirdView) =>
+          b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
+        const best = eligible.reduce((top, b) => (total(b) > total(top) ? b : top));
+        const blades = Tournaments.bladesOfWeek(Tournaments.targetWeek(today));
+        const styled = bestFormat(best, rng);
+        const blade = blades.includes(styled)
+          ? styled
+          : styled === "shortKnife"
+            ? "longGaff"
+            : "shortKnife";
+        tournaments.enter(best.id, blade);
+      });
     }
 
     // 4. LIQUIDITY FIRST — the job bots exist for. A lobby sitting at an

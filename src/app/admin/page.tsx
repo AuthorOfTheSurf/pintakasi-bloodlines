@@ -1,7 +1,7 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { TickControls } from "./tick-controls";
-import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries } from "@/db/schema";
+import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, tournamentEntries, tournaments } from "@/db/schema";
 import { ECONOMY, FORMATS, type FightFormat } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
@@ -58,6 +58,10 @@ const TYPE_LABELS: Record<string, string> = {
   stake: "stake",
   unstake: "unstake",
   buy_land: "buy land",
+  tournament_entry: "pintakasi entry",
+  tournament_bump: "committee bump",
+  purse_payout: "purse",
+  champion: "champion",
 };
 
 export default function Admin() {
@@ -152,6 +156,58 @@ export default function Admin() {
   const cardFights = cardLobbies.reduce((s, l) => s + l.bouts.length, 0);
   const cardCancelled = cardLobbies.reduce((s, l) => s + l.unmatched.length, 0);
   const cardPending = cardLobbies.reduce((s, l) => s + l.pending.length, 0);
+
+  // ── The Pintakasi (round 18) — the latest week's blade championships ──────
+  const allTournaments = d.select().from(tournaments).all();
+  const allTEntries = d.select().from(tournamentEntries).all();
+  const pintakasiWeek = allTournaments.length
+    ? Math.max(...allTournaments.map((t) => t.weekIndex))
+    : null;
+  const FORMAT_LABEL = (f: string) => FORMATS[f as FightFormat]?.label ?? f;
+  // Show the two most recent weeks: last Wednesday's crowns stay visible
+  // while the new week's registrations gather.
+  const pintakasiBoxes = allTournaments
+    .filter((t) => pintakasiWeek !== null && t.weekIndex >= pintakasiWeek - 1)
+    .map((t) => {
+      const entries = allTEntries.filter((e) => e.tournamentId === t.id);
+      const elimRound = new Map(entries.map((e) => [e.birdId, e.eliminatedRound]));
+      const totalRounds = t.bracketSize ? Math.log2(t.bracketSize) : 0;
+      const roundName = (r: number) => {
+        const fromFinal = totalRounds - r;
+        if (fromFinal === 0) return "Final";
+        if (fromFinal === 1) return "Semifinals";
+        if (fromFinal === 2) return "Quarterfinals";
+        return `Round of ${(t.bracketSize ?? 0) / Math.pow(2, r - 1)}`;
+      };
+      const bouts = log
+        .filter((r) => r.tournamentId === t.id && r.result === "win")
+        .map((w) => ({
+          round: elimRound.get(w.opponentBirdId) ?? 1,
+          winner: bname(w.birdId),
+          winnerFarm: fname(w.farmId),
+          loser: w.opponentName,
+          loserFarm: fname(w.opponentFarmId),
+          figures: [w.pitFigure, log.find((r) => r.tournamentId === t.id && r.birdId === w.opponentBirdId && r.opponentBirdId === w.birdId)?.pitFigure ?? 0] as const,
+        }))
+        .sort((a, b) => b.round - a.round);
+      const champion = entries.find((e) => e.status === "champion");
+      return {
+        id: t.id,
+        label: `${FORMAT_LABEL(t.format)} Championship · wk ${t.weekIndex}`,
+        status: t.status,
+        bracketSize: t.bracketSize,
+        field: entries.filter((e) => e.status !== "bumped" && e.status !== "refunded").length,
+        pending: entries.filter((e) => e.status === "pending").length,
+        purseCents: t.purseCents,
+        champion: champion
+          ? { bird: bname(champion.birdId), farm: fname(champion.farmId), wonCents: champion.gpWonCents }
+          : null,
+        rounds: [...new Set(bouts.map((b) => b.round))].map((r) => ({
+          name: roundName(r),
+          bouts: bouts.filter((b) => b.round === r),
+        })),
+      };
+    });
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {
@@ -344,7 +400,7 @@ export default function Admin() {
             <GpIcon size={22} /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
           </div>
           <div className="label">juice pool (fight schedule)</div>
-          <div className="sub">breed cuts + paid gacha — Wednesday finals will spend it</div>
+          <div className="sub">breed cuts + paid gacha — the Pintakasi spends it every Wednesday</div>
         </div>
         <div className="card">
           <div className="big">
@@ -445,6 +501,55 @@ export default function Admin() {
         </section>
       )}
 
+      {pintakasiWeek !== null && (
+        <section className="cardday">
+          <h2>
+            🏆 The Pintakasi{" "}
+            <span className="cardsum">
+              the blade championships — hardcore throughout, crowns every Wednesday
+            </span>
+          </h2>
+          <div className="lobbies">
+            {pintakasiBoxes.map((t) => (
+              <div className="lobby" key={t.id}>
+                <div className="lobby-head">
+                  {t.label}
+                  <span className="fill">
+                    {t.status === "open"
+                      ? `${t.pending} registered`
+                      : t.status === "cancelled"
+                        ? "cancelled"
+                        : `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP`}
+                  </span>
+                </div>
+                {t.champion && (
+                  <div className="bout crown">
+                    🏆 <b>{t.champion.bird}</b> ({t.champion.farm}) — champion, +{gpFmt(t.champion.wonCents)} GP
+                  </div>
+                )}
+                {t.rounds.map((r) => (
+                  <div key={r.name}>
+                    <div className="roundname">{r.name}</div>
+                    {r.bouts.map((b, i) => (
+                      <div className="bout" key={i}>
+                        ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
+                        <span className="figs">figures {b.figures[0]}/{b.figures[1]} · loser force-retired</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {t.status === "cancelled" && (
+                  <div className="bout cancelled">✗ field too small — entries refunded, juice held</div>
+                )}
+                {t.status === "open" && t.pending === 0 && (
+                  <div className="bout pending">… no registrants yet</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <AdminTabs
         farms={farmRows}
         fights={fightRows}
@@ -500,6 +605,8 @@ const CSS = `
   .bout .figs { color: #9a8f78; }
   .bout.cancelled { color: #e07a6a; }
   .bout.pending { color: #9fd3f0; }
+  .bout.crown { color: #ffbf00; }
+  .roundname { color: #9a8f78; font-size: .85em; margin-top: .35rem; letter-spacing: .05em; }
   .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }

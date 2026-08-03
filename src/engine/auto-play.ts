@@ -7,8 +7,10 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies, type LobbySpec } from "./lobbies";
+import { canHardcore } from "./lifecycle";
 import { drawStarterNames } from "./naming";
 import { mulberry32 } from "./rng";
+import { Tournaments } from "./tournaments";
 
 /**
  * The honest day a player-owned stable plays when nobody is at the keyboard.
@@ -74,6 +76,30 @@ export function playHonestDay(db: DB, farmId: string): void {
   for (const bird of flock.filter((b) => b.status === "active" && !b.named)) {
     quietly(() => void flockApi.rename(bird.id, drawStarterNames(db, 1, mulberry32(700 + day))[0]));
   }
+
+  // The Pintakasi (round 18): once a week, the stable's best eligible bird
+  // registers for the blade championship nearest its style. Hardcore — the
+  // strongest stables put their strongest birds in; that's the design.
+  const tournaments = new Tournaments(db, farmId);
+  quietly(() => {
+    if (tournaments.hasEntryThisWeek()) return;
+    const eligible = flockApi
+      .all()
+      .filter((b) => b.status === "active" && b.named && canHardcore(b.age));
+    if (eligible.length === 0) return;
+    const total = (b: (typeof eligible)[number]) =>
+      b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
+    const best = eligible.reduce((top, b) => (total(b) > total(top) ? b : top));
+    const week = Tournaments.targetWeek(day);
+    const blades = Tournaments.bladesOfWeek(week);
+    const styled = bestFormat(best, mulberry32(1300 + day));
+    const blade = blades.includes(styled)
+      ? styled
+      : styled === "shortKnife"
+        ? "longGaff"
+        : "shortKnife"; // the middle blades swap when theirs isn't running
+    tournaments.enter(best.id, blade);
+  });
 
   // Card by style, like the bots do (round 17): one format for everyone
   // piled the whole stable into a single lobby key, where matchmaking's

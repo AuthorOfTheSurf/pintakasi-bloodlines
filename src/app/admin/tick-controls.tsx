@@ -14,6 +14,7 @@ interface TickSummary {
   clock: { dayIndex: number; date: string; isHatchFriday: boolean };
   fridays: { hatched: unknown[] }[];
   card: { fights: unknown[]; unmatched: unknown[]; claims: unknown[] }[];
+  pintakasi: { label: string; cancelled: boolean; champion: { bird: string } | null }[];
   staking: { paidGp: number; stakers: number };
   error?: string;
 }
@@ -35,10 +36,14 @@ export function TickControls() {
       const fights = t.card.reduce((s, l) => s + l.fights.length, 0);
       const unmatched = t.card.reduce((s, l) => s + l.unmatched.length, 0);
       const hatched = t.fridays.reduce((s, f) => s + f.hatched.length, 0);
+      const crowns = (t.pintakasi ?? [])
+        .map((p) => (p.cancelled ? `${p.label} cancelled` : `${p.champion?.bird} 👑 ${p.label}`))
+        .join(", ");
       setLast(
         `${t.clock.date} — ${fights} fights, ${unmatched} unmatched, ` +
           `staking paid ${t.staking.paidGp.toFixed(2)} GP to ${t.staking.stakers}` +
-          (t.fridays.length ? ` · HATCH FRIDAY (${hatched} hatched)` : "")
+          (t.fridays.length ? ` · HATCH FRIDAY (${hatched} hatched)` : "") +
+          (crowns ? ` · PINTAKASI: ${crowns}` : "")
       );
       router.refresh();
     } catch (err) {

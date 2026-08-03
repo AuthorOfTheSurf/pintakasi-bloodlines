@@ -302,6 +302,64 @@ export const CLAIMER = {
   PRICES: [50, 100, 200, 400, 600], // $0.625 · $1.25 · $2.50 · $5 · $7.50
 } as const;
 
+// ── The Pintakasi (ruled 2026-08-03 round 18) — the weekly blade Majors ─────
+// Every WEDNESDAY, three championships — one per blade "distance", PFL-Majors
+// style (Sprint/Gallop/Classic): Long Knife and Short Gaff always run, the
+// middle blade ROTATES Short Knife / Long Gaff by week parity, so every
+// blade gets crowns over time. Specialized-yet-strong birds are the point —
+// no crown rewards a bird built to dominate every distance.
+//
+// The rules: hardcore throughout (every loser force-retires), age 3+, flat
+// open-stakes entry, ONE DAY — the whole bracket runs back-to-back at the
+// Wednesday tick, winners healing to full between rounds (Zane's ruling:
+// a game, not a simulation — nobody re-registers day after day). Committee-
+// seeded bracket (1v16, 8v9…) from earnings → wins → avg figure; byes to
+// the top seeds; barn-mates can draw each other — so be it. Field scales
+// with the population: next power of two, 64 max, overflow live-bumps the
+// weakest entrant (the Selection Committee's other job).
+//
+// The money: GP to the TOP (purse = entries + the week's juice-pool share;
+// first-round losers take zero), LAND to the FALLEN (fights mint on a
+// steeper curve than the daily card, and elimination grants pay the
+// earliest-eliminated the most — the winner takes the money, the dead take
+// the land, so a first-round hardcore death is never a pure loss).
+export const PINTAKASI = {
+  ENTRY_FEE: 200, //  $2.50 — open stakes, the dearest card in the game
+  MAX_BRACKET: 64,
+  MIN_FIELD: 2, //    a straight final still crowns; below this, cancelled
+  LAND_EXPONENT: 1.25, // vs. LAND.FIGHT_EXPONENT 1.15 — the Majors mint hard
+  // GP purse shares by FINISHING STAGE. First-round losers are zeroed
+  // whatever stage they fell at, and the remaining shares renormalize —
+  // so an 8-bracket pays champion/runner-up/SF only, and a straight final
+  // pays the champion everything. Rounding dust goes to the champion.
+  PURSE_SHARES: {
+    champion: 0.5,
+    runnerUp: 0.2,
+    sfLoser: 0.1, //  each (×2)
+    qfLoser: 0.025, // each (×4)
+  },
+  // LT grants by ELIMINATION STAGE — the fallen-weighted inversion.
+  // Keyed by "rounds from the final" at elimination (champion included).
+  LAND_GRANTS: {
+    champion: 5,
+    runnerUp: 10,
+    sf: 15,
+    qf: 25,
+    r16: 40,
+    r32: 55,
+    r64: 70,
+  },
+  // The week's three blades: the anchors always run, MIDDLE[week % 2] joins.
+  ANCHORS: ["longKnife", "shortGaff"],
+  MIDDLE: ["shortKnife", "longGaff"],
+} as const;
+
+// The Majors' land curve — same shape as landForFight, steeper exponent.
+// On the 200 GP entry: (200/8)^1.25 ≈ 56 LT per fighter per fight.
+export function landForTournamentFight(fee: number): number {
+  return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, PINTAKASI.LAND_EXPONENT)));
+}
+
 // ── Fight cadence ───────────────────────────────────────────────────────────
 // One fight per bird per GAME-DAY — a hard count, deliberately NOT a 24-hour
 // cooldown (fight at 11 PM, fight again at 12:01 AM; fine). Real-time

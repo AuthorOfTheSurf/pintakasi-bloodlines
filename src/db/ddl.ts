@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS gacha_tokens (
 CREATE TABLE IF NOT EXISTS battle_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   day_index INTEGER NOT NULL,
-  lobby_id INTEGER NOT NULL,
+  lobby_id INTEGER,
+  tournament_id INTEGER,
   farm_id TEXT NOT NULL,
   bird_id TEXT NOT NULL,
   mode TEXT NOT NULL CHECK (mode IN ('juvenile','real','hardcore')),
@@ -119,6 +120,32 @@ CREATE TABLE IF NOT EXISTS claims (
   price INTEGER NOT NULL,
   day_placed INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','won','refunded'))
+);
+
+CREATE TABLE IF NOT EXISTS tournaments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  week_index INTEGER NOT NULL,
+  format TEXT NOT NULL CHECK (format IN ('longKnife','shortKnife','longGaff','shortGaff')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','completed','cancelled')),
+  seed INTEGER NOT NULL,
+  entry_fee INTEGER NOT NULL,
+  bracket_size INTEGER,
+  purse_cents INTEGER,
+  day_resolved INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS tournament_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament_id INTEGER NOT NULL,
+  bird_id TEXT NOT NULL,
+  farm_id TEXT NOT NULL,
+  fee INTEGER NOT NULL,
+  day_entered INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','bumped','refunded','eliminated','champion')),
+  seed_rank INTEGER,
+  eliminated_round INTEGER,
+  gp_won_cents INTEGER NOT NULL DEFAULT 0,
+  land_granted INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS events (

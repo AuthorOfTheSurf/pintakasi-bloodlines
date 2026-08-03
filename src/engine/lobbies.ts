@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birds, claims, farms, gameState, lobbies, lobbyEntries, type BirdRow } from "@/db/schema";
+import { battleLog, birds, claims, farms, gameState, lobbies, lobbyEntries, tournamentEntries, type BirdRow } from "@/db/schema";
 import {
   BARN,
   CADENCE,
@@ -183,6 +183,18 @@ export class Lobbies {
 
     const today = this.today();
     this.checkFightCap(bird.id, bird.name, today);
+
+    // A Pintakasi registrant fights normal cards all week — except
+    // Wednesday, when its championship IS its card (round 18).
+    if (today % 7 === 5) {
+      const registered = this.database
+        .select()
+        .from(tournamentEntries)
+        .where(and(eq(tournamentEntries.birdId, bird.id), eq(tournamentEntries.status, "pending")))
+        .all();
+      if (registered.length > 0)
+        throw new Error(`${bird.name} is registered for the Pintakasi — tonight's crown is its card`);
+    }
 
     const fee = MODE_FEES[spec.mode];
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;

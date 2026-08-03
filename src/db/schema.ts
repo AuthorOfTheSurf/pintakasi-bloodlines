@@ -111,7 +111,10 @@ export const gachaTokens = sqliteTable("gacha_tokens", {
 export const battleLog = sqliteTable("battle_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dayIndex: integer("day_index").notNull(), // the day the card was posted
-  lobbyId: integer("lobby_id").notNull(),
+  // Exactly one of these two is set: a daily-card fight has a lobby, a
+  // Pintakasi fight has a tournament (round 18).
+  lobbyId: integer("lobby_id"),
+  tournamentId: integer("tournament_id"),
   farmId: text("farm_id").notNull(),
   birdId: text("bird_id").notNull(),
   mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
@@ -188,6 +191,42 @@ export const claims = sqliteTable("claims", {
   price: integer("price").notNull(), // escrowed
   dayPlaced: integer("day_placed").notNull(),
   status: text("status", { enum: ["pending", "won", "refunded"] }).notNull().default("pending"),
+});
+
+// THE PINTAKASI (round 18) — one row per weekly blade championship. Three
+// per week (anchors + the rotating middle blade). Field data lives in
+// tournament_entries; bracket_size/purse_cents fill in at resolution.
+export const tournaments = sqliteTable("tournaments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  weekIndex: integer("week_index").notNull(),
+  format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  status: text("status", { enum: ["open", "completed", "cancelled"] }).notNull().default("open"),
+  seed: integer("seed").notNull(), // drives every fight in the bracket
+  entryFee: integer("entry_fee").notNull(),
+  bracketSize: integer("bracket_size"), // set at close: next pow2 ≥ field, ≤ 64
+  purseCents: integer("purse_cents"), // set at resolution: entries + juice share
+  dayResolved: integer("day_resolved"),
+});
+
+// One bird registered for a championship. Fee escrows at entry (binding).
+// `bumped` = displaced by a stronger late entrant (Selection Committee,
+// refunded); `refunded` = died/retired before Wednesday, or the field was
+// too small to run. eliminated_round: 1 = the bracket's first round;
+// equal to the round count = lost the final (the runner-up).
+export const tournamentEntries = sqliteTable("tournament_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tournamentId: integer("tournament_id").notNull(),
+  birdId: text("bird_id").notNull(),
+  farmId: text("farm_id").notNull(),
+  fee: integer("fee").notNull(),
+  dayEntered: integer("day_entered").notNull(),
+  status: text("status", { enum: ["pending", "bumped", "refunded", "eliminated", "champion"] })
+    .notNull()
+    .default("pending"),
+  seedRank: integer("seed_rank"), // committee rank, set at close (1 = top seed)
+  eliminatedRound: integer("eliminated_round"),
+  gpWonCents: integer("gp_won_cents").notNull().default(0),
+  landGranted: integer("land_granted").notNull().default(0),
 });
 
 // The UNIFIED LEDGER (round 11) — every meaningful happening, one

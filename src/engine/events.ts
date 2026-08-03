@@ -36,7 +36,11 @@ export type EventType =
   | "staking_payout" // the day's pro-rata staker yield
   | "stake"
   | "unstake"
-  | "buy_land";
+  | "buy_land"
+  | "tournament_entry" // a bird registered for the Pintakasi (fee escrowed)
+  | "tournament_bump" // the Selection Committee displaced the weakest (refund)
+  | "purse_payout" // a share of a championship purse banked
+  | "champion"; // a Pintakasi crown (world event)
 
 export interface EmitInput {
   type: EventType;
