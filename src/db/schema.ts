@@ -110,8 +110,15 @@ export const battleLog = sqliteTable("battle_log", {
 
 // A LOBBY — one slot on tonight's card, keyed by (mode, class, format[,
 // tag]). Fills to capacity (8 — even, so a full lobby guarantees every bird
-// a fight), then a fresh one opens. At the day tick every lobby goes off:
-// entries are randomly paired and fight each other. Pure PvP — no house.
+// a fight), then a fresh one opens. Pure PvP — no house. The card runs
+// PFL's three states (ruled 2026-08-03):
+//   OPEN      — taking entries; the field is fogged (claimers excepted).
+//   CLOSED    — entries locked, matchups drawn AND REVEALED. Claimers close
+//               early (6 PM PH) so ~6 hours of informed claiming can happen;
+//               normal lobbies close minutes before post. Claims flow until
+//               the fight completes — last-second claims either make it or
+//               they're too late.
+//   COMPLETED — fights concluded, refunds paid, claims settled.
 export const lobbies = sqliteTable("lobbies", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   mode: text("mode", { enum: ["practice", "real", "hardcore"] }).notNull(),
@@ -120,7 +127,7 @@ export const lobbies = sqliteTable("lobbies", {
   price: integer("price"), // claimer tag — null for every other class
   capacity: integer("capacity").notNull().default(8), // 16/32/64 = future tournament brackets
   seed: integer("seed").notNull(), // drives the pairing shuffle + fight seeds
-  status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
+  status: text("status", { enum: ["open", "closed", "completed"] }).notNull().default("open"),
   dayOpened: integer("day_opened").notNull(),
 });
 
@@ -137,6 +144,9 @@ export const lobbyEntries = sqliteTable("lobby_entries", {
   status: text("status", { enum: ["pending", "fought", "unmatched"] })
     .notNull()
     .default("pending"),
+  // The draw — set when the lobby CLOSES (matchups revealed); null after
+  // close = no opponent this card (refunds when the lobby completes).
+  opponentEntryId: integer("opponent_entry_id"),
   battleLogId: integer("battle_log_id"), // this side's row, set at resolution
   claimedByFarmId: text("claimed_by_farm_id"), // claimer entries: set if a claim won
 });

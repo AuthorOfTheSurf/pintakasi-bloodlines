@@ -274,6 +274,70 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
   });
 });
 
+describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
+  test("close locks entries, draws the matchups, and lifts the fog", () => {
+    const w = world();
+    w.dev.enter(byName(w.devFlock, "Alab").id, REAL, 909);
+    w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
+    Lobbies.close(w.db, "all");
+
+    // The reveal: the rival now sees the full field and the draw.
+    const view = w.rival.board()[0];
+    expect(view.status).toBe("closed");
+    expect(view.entries.length).toBe(2);
+    const mine = view.entries.find((e) => e.mine)!;
+    expect(mine.drew).toEqual({ bird: "Alab", farm: "Bukidnon Farms" });
+
+    // Entries are locked — a latecomer opens a FRESH lobby, not this one.
+    const late = w.rival.enter(byName(w.rivalFlock, "Sinag").id, REAL);
+    expect(late.lobby.lobbyId).not.toBe(view.lobbyId);
+    expect(late.lobby.status).toBe("open");
+  });
+
+  test("a drawless bird is revealed at close but refunds only at post", () => {
+    const w = world();
+    w.dev.enter(byName(w.devFlock, "Alab").id, REAL, 313);
+    Lobbies.close(w.db, "all");
+    expect(w.dev.board()[0].entries[0].drew).toBeNull();
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - ECONOMY.REAL_ENTRY_FEE); // still escrowed
+    Lobbies.complete(w.db);
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP); // fee home at post time
+  });
+
+  test("the claiming window: claims land AFTER close, before the fight completes", () => {
+    const w = world();
+    const spec: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: 100 };
+    const devAlab = byName(w.devFlock, "Alab");
+    const { lobby } = w.dev.enter(devAlab.id, spec, 606);
+    w.rival.enter(byName(w.rivalFlock, "Alab").id, spec);
+
+    // 6 PM: claimers close early — draw revealed, entries locked, claims OPEN.
+    Lobbies.close(w.db, "claimers");
+    const closedView = w.rival.board().find((l) => l.classType === "claimer")!;
+    expect(closedView.status).toBe("closed");
+    expect(closedView.entries.find((e) => !e.mine)!.drew).not.toBeUndefined();
+    w.rival.claim(lobby.entries[0].entryId); // an informed, last-hours claim
+
+    // Post time: the fight fires and the claim settles.
+    const events = Lobbies.complete(w.db);
+    expect(events[0].fights.length).toBe(1);
+    expect(events[0].claims.length).toBe(1);
+    const owner = w.db.select().from(farms).all().find((f) => f.name === "Rival Gamefarm")!;
+    expect(
+      w.db.select().from(lobbyEntries).all().find((e) => e.birdId === devAlab.id)!.claimedByFarmId
+    ).toBe(owner.id);
+  });
+
+  test("a completed card takes no more claims", () => {
+    const w = world();
+    const spec: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: 100 };
+    const { lobby } = w.dev.enter(byName(w.devFlock, "Alab").id, spec, 77);
+    Lobbies.close(w.db, "all");
+    Lobbies.complete(w.db);
+    expect(() => w.rival.claim(lobby.entries[0].entryId)).toThrow(/No open entry/);
+  });
+});
+
 describe("the land curve (fight up)", () => {
   test("superlinear in the fee: practice 1 · real 7 · hardcore 23", () => {
     expect(landForFight(ECONOMY.PRACTICE_ENTRY_FEE)).toBe(1);

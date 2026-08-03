@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS lobbies (
   price INTEGER,
   capacity INTEGER NOT NULL DEFAULT 8,
   seed INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed','completed')),
   day_opened INTEGER NOT NULL
 );
 
@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS lobby_entries (
   fee INTEGER NOT NULL,
   day_entered INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','fought','unmatched')),
+  opponent_entry_id INTEGER,
   battle_log_id INTEGER,
   claimed_by_farm_id TEXT
 );

@@ -64,11 +64,15 @@ export interface EntryCard {
     formatRecords: Partial<Record<FightFormat, FormatRecord>>;
   };
   mine: boolean; // your own entry — you cannot claim it
+  // The draw, once the lobby has CLOSED: who this bird fights tonight.
+  // Absent while open; null after close = no opponent (refunds at post).
+  drew?: { bird: string; farm: string } | null;
   // Claims on claimer entries are SEALED — no count shown until post time.
 }
 
 export interface LobbyView {
   lobbyId: number;
+  status: "open" | "closed"; // completed lobbies leave the board
   mode: FightMode;
   classType: Lobby;
   format: FightFormat;
@@ -76,7 +80,8 @@ export interface LobbyView {
   fee: number; // entry fee a side
   filled: number; // ALWAYS public — how full, never who
   capacity: number;
-  // Fogged: your own entries, plus the full field in claimer lobbies only.
+  // OPEN: fogged — your own entries, plus the full field in claimer
+  // lobbies only. CLOSED: the reveal — every entry, with its draw.
   entries: EntryCard[];
 }
 
@@ -116,15 +121,24 @@ export interface LobbyResolution {
  *      those fields are visible, because sealed claims (tag escrowed; one
  *      per farm; never your own bird) are placed on specific birds before
  *      post time. Fighting for a tag is choosing to be seen.
- *   3. At the day tick every lobby GOES OFF: its birds are randomly paired —
- *      NEVER two from the same barn (ruled 2026-08-03: you may enter
- *      several birds, and matchmaking keeps them apart). Birds left with
- *      only barn-mates to fight go unmatched: fee refunded, no land.
- *      Winners take the pooled pot; both fighters earn land scaled
- *      superlinearly to the fee (fighting up pays extra). Hardcore losers
- *      force-retire. Then claims settle: one wins per entry (RNG), the
- *      owner banks the tag, the bird transfers, losers refund in full —
- *      even if the bird went unmatched (the sale doesn't need the fight).
+ *   3. The card runs PFL's three states (ruled 2026-08-03). CLOSE locks the
+ *      entries and DRAWS THE MATCHUPS — randomly, NEVER two from the same
+ *      barn (enter several birds; matchmaking keeps them apart) — and the
+ *      fog lifts: the full field and who drew whom go public. Claimers
+ *      close hours before post (6 PM PH) so claiming happens informed;
+ *      normal lobbies close minutes before. Claims keep flowing until the
+ *      lobby COMPLETES — a last-second claim either makes it or it's too
+ *      late.
+ *   4. COMPLETE fires the fights: birds with no draw (odd bird out, or
+ *      barn-mates with nobody else) refund — no fight, no land. Winners
+ *      take the pooled pot; both fighters earn land scaled superlinearly
+ *      to the fee (fighting up pays extra). Hardcore losers force-retire.
+ *      Then claims settle: one wins per entry (RNG), the owner banks the
+ *      tag, the bird transfers, losers refund in full — even if the bird
+ *      went unmatched (the sale doesn't need the fight).
+ *
+ * On manual ticks close-all and complete run back-to-back; the real-time
+ * clock (issue #1) spreads them across the PH evening.
  */
 export class Lobbies {
   private flock: Flock;
@@ -164,13 +178,16 @@ export class Lobbies {
     return { entryId: inserted.id, lobby: this.viewLobby(lobby.id) };
   }
 
-  /** The public board — every open lobby and its (fogged) entries. */
+  /**
+   * The public board — every OPEN lobby (fogged) and every CLOSED one
+   * (revealed: full field + the draw). Completed lobbies are history.
+   */
   board(): LobbyView[] {
     return this.database
       .select()
       .from(lobbies)
-      .where(eq(lobbies.status, "open"))
       .all()
+      .filter((l) => l.status === "open" || l.status === "closed")
       .map((l) => this.viewLobby(l.id));
   }
 
@@ -250,24 +267,50 @@ export class Lobbies {
   }
 
   /**
-   * The day tick's sweep — every open lobby goes off. Called AFTER the
-   * clock advances, so a card posted on day D goes off as day D ends.
+   * CLOSE — entries lock, matchups are drawn, the fog lifts. Claimers
+   * close early (6 PM PH) for the claiming window; "all" is the pre-post
+   * sweep. The draw is seeded by the lobby, so a replayed close replays.
    */
-  static resolve(database: DB): LobbyResolution[] {
-    const events: LobbyResolution[] = [];
-    const week = Math.floor(
-      database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
-    );
-
+  static close(database: DB, which: "claimers" | "all"): number {
+    let closedCount = 0;
     for (const lobby of database.select().from(lobbies).where(eq(lobbies.status, "open")).all()) {
+      if (which === "claimers" && lobby.classType !== "claimer") continue;
       const rng = mulberry32(lobby.seed);
       const entries = database
         .select()
         .from(lobbyEntries)
         .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
         .all();
+      const { pairs } = Lobbies.matchmake(entries, rng);
+      for (const [a, b] of pairs) {
+        database.update(lobbyEntries).set({ opponentEntryId: b.id }).where(eq(lobbyEntries.id, a.id)).run();
+        database.update(lobbyEntries).set({ opponentEntryId: a.id }).where(eq(lobbyEntries.id, b.id)).run();
+      }
+      database.update(lobbies).set({ status: "closed" }).where(eq(lobbies.id, lobby.id)).run();
+      closedCount++;
+    }
+    return closedCount;
+  }
 
-      const { pairs, leftovers } = Lobbies.matchmake(entries, rng);
+  /**
+   * COMPLETE — every closed lobby goes off: the drawn pairs fight, the
+   * drawless refund, then claims settle. The fight stream is seeded
+   * independently of the draw stream so close and complete can happen
+   * hours apart without breaking replays.
+   */
+  static complete(database: DB): LobbyResolution[] {
+    const events: LobbyResolution[] = [];
+    const week = Math.floor(
+      database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
+    );
+
+    for (const lobby of database.select().from(lobbies).where(eq(lobbies.status, "closed")).all()) {
+      const rng = mulberry32((lobby.seed ^ 0x9e3779b9) >>> 0); // the post-time stream
+      const entries = database
+        .select()
+        .from(lobbyEntries)
+        .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
+        .all();
 
       const label =
         `${lobby.mode.toUpperCase()}${lobby.classType === "open" ? "" : "·" + lobby.classType.toUpperCase()}` +
@@ -275,13 +318,16 @@ export class Lobbies {
         ` · ${FORMATS[lobby.format].label}`;
       const event: LobbyResolution = { lobbyId: lobby.id, label, fights: [], unmatched: [], claims: [] };
 
-      for (const [a, b] of pairs) {
-        event.fights.push(Lobbies.runFight(database, lobby, a, b, label, rng, week));
+      // The drawn pairs fight, in draw order.
+      for (const entry of entries) {
+        const other = entries.find((e) => e.id === entry.opponentEntryId);
+        if (!other || other.id < entry.id) continue; // fight once per pair
+        event.fights.push(Lobbies.runFight(database, lobby, entry, other, label, rng, week));
       }
 
-      // Birds left standing — the odd bird out, or barn-mates with nobody
-      // else to fight. Fee back, no fight, no land.
-      for (const odd of leftovers) {
+      // The drawless — the odd bird out, or barn-mates with nobody else
+      // to fight. Fee back, no fight, no land.
+      for (const odd of entries.filter((e) => e.opponentEntryId === null)) {
         const farm = database.select().from(farms).where(eq(farms.id, odd.farmId)).get()!;
         database.update(farms).set({ gp: farm.gp + odd.fee }).where(eq(farms.id, odd.farmId)).run();
         database.update(lobbyEntries).set({ status: "unmatched" }).where(eq(lobbyEntries.id, odd.id)).run();
@@ -299,10 +345,20 @@ export class Lobbies {
         }
       }
 
-      database.update(lobbies).set({ status: "resolved" }).where(eq(lobbies.id, lobby.id)).run();
+      database.update(lobbies).set({ status: "completed" }).where(eq(lobbies.id, lobby.id)).run();
       events.push(event);
     }
     return events;
+  }
+
+  /**
+   * The manual tick's sweep: close whatever is still open, then the whole
+   * card goes off. The real-time clock (issue #1) calls close and complete
+   * on their own PH schedule instead.
+   */
+  static resolve(database: DB): LobbyResolution[] {
+    Lobbies.close(database, "all");
+    return Lobbies.complete(database);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
@@ -539,12 +595,17 @@ export class Lobbies {
       .from(lobbyEntries)
       .where(eq(lobbyEntries.lobbyId, lobbyId))
       .all();
-    // The fog: fill count is public, the field is not — except claimers
-    // (claims are placed on specific birds) and your own entries.
+    // The fog, while OPEN: fill count is public, the field is not — except
+    // claimers (claims are placed on specific birds) and your own entries.
+    // CLOSED is the reveal: everyone, and who drew whom.
+    const closed = lobby.status === "closed";
     const visible =
-      lobby.classType === "claimer" ? entries : entries.filter((e) => e.farmId === this.farmId);
+      closed || lobby.classType === "claimer"
+        ? entries
+        : entries.filter((e) => e.farmId === this.farmId);
     return {
       lobbyId: lobby.id,
+      status: closed ? "closed" : "open",
       mode: lobby.mode,
       classType: lobby.classType,
       format: lobby.format,
@@ -552,15 +613,19 @@ export class Lobbies {
       fee: MODE_FEES[lobby.mode],
       filled: entries.length,
       capacity: lobby.capacity,
-      entries: visible.map((e) => this.card(e)),
+      entries: visible.map((e) => this.card(e, closed ? entries : undefined)),
     };
   }
 
-  private card(entry: typeof lobbyEntries.$inferSelect): EntryCard {
+  /** `field` is passed only once the lobby has closed — it carries the draw. */
+  private card(
+    entry: typeof lobbyEntries.$inferSelect,
+    field?: (typeof lobbyEntries.$inferSelect)[]
+  ): EntryCard {
     const ownerFlock = new Flock(this.database, entry.farmId);
     const bird = ownerFlock.byId(entry.birdId);
     const farm = this.database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
-    return {
+    const view: EntryCard = {
       entryId: entry.id,
       farm: {
         name: farm.name,
@@ -579,6 +644,17 @@ export class Lobbies {
       },
       mine: entry.farmId === this.farmId,
     };
+    if (field) {
+      const opponent = field.find((e) => e.id === entry.opponentEntryId);
+      if (!opponent) {
+        view.drew = null; // no draw — refunds at post time
+      } else {
+        const oppBird = this.database.select().from(birds).where(eq(birds.id, opponent.birdId)).get()!;
+        const oppFarm = this.database.select().from(farms).where(eq(farms.id, opponent.farmId)).get()!;
+        view.drew = { bird: oppBird.name, farm: oppFarm.name };
+      }
+    }
+    return view;
   }
 
   private checkGate(name: string, age: number, mode: FightMode): void {

@@ -138,6 +138,7 @@ export class Bots {
     //    per lobby per bot — a bot's own birds can't fight each other.
     const roster = () => shuffle(flock.all().filter((b) => b.status === "active" && b.age >= 1), rng);
     for (const lobby of lobbies.board()) {
+      if (lobby.status !== "open") continue; // closed = entries locked
       if (lobby.filled % 2 === 0) continue;
       if (lobby.mode === "hardcore" && rng() >= bot.hardcoreNerve) continue; // nobody's talked into dying
       if (gp() <= lobby.fee + RESERVE) break;
