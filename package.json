@@ -10,10 +10,13 @@
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "db:seed": "bun run src/db/seed.ts",
-    "simulate": "bun run scripts/simulate.ts"
+    "simulate": "bun run scripts/simulate.ts",
+    "dev:sim": "PINTAKASI_DB=data/sim.db PINTAKASI_DIST=.next-sim next dev -p 3435"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
+    "ag-grid-community": "^36.0.2",
+    "ag-grid-react": "^36.0.2",
     "better-sqlite3": "^12.2.0",
     "drizzle-orm": "^0.45.2",
     "next": "^16.2.6",

@@ -16,6 +16,7 @@ import {
 } from "./config";
 import { emit } from "./events";
 import { Flock, type BirdView } from "./flock";
+import { uniqueName } from "./naming";
 import { GameClock } from "./game-clock";
 import { freshSeed, mulberry32, randInt, weightedPick, type Rng } from "./rng";
 
@@ -82,7 +83,7 @@ export class Gacha {
         const row = {
           id: randomUUID(),
           farmId: this.farmId,
-          name: `Mystery Egg (${token})`,
+          name: uniqueName(this.database, `Mystery Egg (${token})`),
           sex: this.rng() < BREEDING.FEMALE_CHANCE ? ("female" as const) : ("male" as const),
           status: "egg" as const,
           agility: stat(),

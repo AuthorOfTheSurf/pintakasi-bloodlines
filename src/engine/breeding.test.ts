@@ -6,6 +6,7 @@ import { seedGame } from "@/db/seed-data";
 import { Breeding } from "./breeding";
 import { ECONOMY, STATS } from "./config";
 import { Flock } from "./flock";
+import { Game } from "./game";
 import { mulberry32 } from "./rng";
 
 function freshGame(seed = 42) {
@@ -82,6 +83,21 @@ describe("breed", () => {
   });
 });
 
+describe("the nest (one egg per hen — round 12)", () => {
+  test("a hen sits on her egg until Hatch Friday; then she can lay again", () => {
+    const w = freshGame(7);
+    const game = new Game(w.db, w.farmId);
+    w.breeding.breed("starter-2", "starter-1"); // Dalisay lays
+    expect(() => w.breeding.breed("starter-2", "starter-3")).toThrow(/already sitting/);
+    // The OTHER hen is free — the rule is per hen, not per farm.
+    expect(() => w.breeding.breed("starter-4", "starter-3")).not.toThrow();
+    game.tickWeek(); // Hatch Friday — the nest empties
+    const { egg } = w.breeding.breed("starter-2", "starter-3");
+    // The first chick still wears "Egg of Dalisay" — names stay world-unique.
+    expect(egg.name).toBe("Egg of Dalisay II");
+  });
+});
+
 describe("the breeding barn (breeding PvP)", () => {
   function withRival(seed = 42) {
     const w = freshGame(seed);
@@ -97,8 +113,15 @@ describe("the breeding barn (breeding PvP)", () => {
         gp: ECONOMY.STARTING_GP,
       })
       .run();
-    // The rival's foundation pair — unrelated to the dev starters.
-    for (const [id, sex] of [["rival-stud", "male"], ["rival-hen", "female"]] as const) {
+    // The rival's foundation birds — unrelated to the dev starters. Three
+    // hens, because a hen sits on ONE egg at a time (round 12): the
+    // owner-covers test needs a fresh hen per cover.
+    for (const [id, sex] of [
+      ["rival-stud", "male"],
+      ["rival-hen", "female"],
+      ["rival-hen-2", "female"],
+      ["rival-hen-3", "female"],
+    ] as const) {
       w.db
         .insert(birds)
         .values({
@@ -147,10 +170,10 @@ describe("the breeding barn (breeding PvP)", () => {
   test("covers cap: 14 public a week, 2 owner-reserved — and they overflow", () => {
     const w = withRival();
     w.rivalBreeding.listStud("rival-stud");
-    // Owner slots: the rival's own hen covers twice, the third refuses.
+    // Owner slots: two of the rival's own hens cover, the third refuses.
     w.rivalBreeding.breed("rival-hen", "rival-stud");
-    w.rivalBreeding.breed("rival-hen", "rival-stud");
-    expect(() => w.rivalBreeding.breed("rival-hen", "rival-stud")).toThrow(/owner covers/);
+    w.rivalBreeding.breed("rival-hen-2", "rival-stud");
+    expect(() => w.rivalBreeding.breed("rival-hen-3", "rival-stud")).toThrow(/owner covers/);
     // Public slots: 14 outside hens, the 15th refuses.
     for (let i = 0; i < 14; i++) {
       w.db

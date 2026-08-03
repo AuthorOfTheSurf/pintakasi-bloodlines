@@ -36,8 +36,14 @@ function world() {
   };
 }
 
+// Rival birds by canonical STARTER slot — names are world-unique now (the
+// rival draws pool names), but the seed ids stay deterministic.
+const RIVAL_SLOT: Record<string, number> = {
+  "Tandang Pula": 1, Dalisay: 2, Bagwis: 3, Perlas: 4,
+  Kidlat: 5, Alab: 6, Sinag: 7, "Batong Buhay": 8,
+};
 const rivalByName = (w: ReturnType<typeof world>, name: string) =>
-  w.rivalFlock.all().find((b) => b.name === name)!;
+  w.rivalFlock.byId(`rival-${RIVAL_SLOT[name]}`);
 
 /** Card my bird against a rival bird and let the night go off. */
 function duel(w: ReturnType<typeof world>, myBirdId: string, rivalName: string, spec: LobbySpec, seed: number) {

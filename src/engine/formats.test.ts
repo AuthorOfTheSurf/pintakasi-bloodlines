@@ -92,7 +92,7 @@ describe("format records (the past-performance lines)", () => {
     const rival = new Lobbies(db, rivalFarm.id);
     const rivalFlock = new Flock(db, rivalFarm.id);
     const alab = game.flock.all().find((b) => b.name === "Alab")!;
-    const rivalAlab = rivalFlock.all().find((b) => b.name === "Alab")!;
+    const rivalAlab = rivalFlock.byId("rival-6"); // the Alab slot — names are world-unique now
 
     const nights: FightFormat[] = ["longKnife", "longKnife", "shortGaff"];
     for (const [i, format] of nights.entries()) {

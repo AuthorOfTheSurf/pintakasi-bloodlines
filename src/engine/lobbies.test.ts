@@ -43,10 +43,18 @@ const totalGp = (db: DB) =>
     .reduce((s, f) => s + f.gp, 0);
 const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
 
-/** Both farms card their same-named starter; the lobby seed decides the night. */
+// Rival birds by canonical STARTER slot — names are world-unique now (each
+// farm draws its own from the pool), but the seed ids stay deterministic.
+const RIVAL_SLOT: Record<string, number> = {
+  "Tandang Pula": 1, Dalisay: 2, Bagwis: 3, Perlas: 4,
+  Kidlat: 5, Alab: 6, Sinag: 7, "Batong Buhay": 8,
+};
+const rivalId = (name: string) => `rival-${RIVAL_SLOT[name]}`;
+
+/** Both farms card the same starter slot; the lobby seed decides the night. */
 function duel(w: ReturnType<typeof world>, name: string, spec: LobbySpec, seed: number) {
   w.dev.enter(byName(w.devFlock, name).id, spec, seed);
-  w.rival.enter(byName(w.rivalFlock, name).id, spec);
+  w.rival.enter(rivalId(name), spec);
   const tick = w.game.tickDay();
   const lobby = tick.card.find((l) => l.fights.length > 0)!;
   return { tick, fight: lobby.fights[0] };
@@ -162,8 +170,8 @@ describe("the card goes off (pure PvP)", () => {
     const w = world();
     const before = totalGp(w.db);
     w.dev.enter(byName(w.devFlock, "Alab").id, REAL, 555);
-    w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
-    w.rival.enter(byName(w.rivalFlock, "Sinag").id, REAL);
+    w.rival.enter(rivalId("Alab"), REAL);
+    w.rival.enter(rivalId("Sinag"), REAL);
     const tick = w.game.tickDay();
     const lobby = tick.card[0];
     expect(lobby.fights.length).toBe(1);
@@ -188,7 +196,7 @@ describe("the card goes off (pure PvP)", () => {
     const { fight } = duel(w, "Sinag", { mode: "hardcore", classType: "open", format: "shortKnife" }, 99);
     expect(fight.forcedRetirements.length).toBe(1);
     const devSinag = byName(w.devFlock, "Sinag");
-    const rivalSinag = byName(w.rivalFlock, "Sinag");
+    const rivalSinag = w.rivalFlock.byId(rivalId("Sinag"));
     const loser = fight.winnerFarm === "Bukidnon Farms" ? rivalSinag : devSinag;
     const winner = fight.winnerFarm === "Bukidnon Farms" ? devSinag : rivalSinag;
     expect(loser.status).toBe("retired");
@@ -248,7 +256,7 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
     for (const name of ["Alab", "Sinag", "Batong Buhay"]) {
       w.dev.enter(byName(w.devFlock, name).id, REAL, 808);
     }
-    w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
+    w.rival.enter(rivalId("Alab"), REAL);
     const lobby = w.game.tickDay().card[0];
     expect(lobby.fights.length).toBe(1);
     expect(lobby.fights[0].farms.sort()).toEqual(["Bukidnon Farms", "Rival Gamefarm"]);
@@ -262,8 +270,8 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
       const w = world();
       w.dev.enter(byName(w.devFlock, "Alab").id, REAL, seed);
       w.dev.enter(byName(w.devFlock, "Sinag").id, REAL);
-      w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
-      w.rival.enter(byName(w.rivalFlock, "Sinag").id, REAL);
+      w.rival.enter(rivalId("Alab"), REAL);
+      w.rival.enter(rivalId("Sinag"), REAL);
       const lobby = w.game.tickDay().card[0];
       expect(lobby.fights.length).toBe(2);
       for (const f of lobby.fights) {
@@ -277,7 +285,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
   test("close locks entries, draws the matchups, and lifts the fog", () => {
     const w = world();
     w.dev.enter(byName(w.devFlock, "Alab").id, REAL, 909);
-    w.rival.enter(byName(w.rivalFlock, "Alab").id, REAL);
+    w.rival.enter(rivalId("Alab"), REAL);
     Lobbies.close(w.db, "all");
 
     // The reveal: the rival now sees the full field and the draw.
@@ -288,7 +296,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     expect(mine.drew).toEqual({ bird: "Alab", farm: "Bukidnon Farms" });
 
     // Entries are locked — a latecomer opens a FRESH lobby, not this one.
-    const late = w.rival.enter(byName(w.rivalFlock, "Sinag").id, REAL);
+    const late = w.rival.enter(rivalId("Sinag"), REAL);
     expect(late.lobby.lobbyId).not.toBe(view.lobbyId);
     expect(late.lobby.status).toBe("open");
   });
@@ -308,7 +316,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     const spec: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: 100 };
     const devAlab = byName(w.devFlock, "Alab");
     const { lobby } = w.dev.enter(devAlab.id, spec, 606);
-    w.rival.enter(byName(w.rivalFlock, "Alab").id, spec);
+    w.rival.enter(rivalId("Alab"), spec);
 
     // 6 PM: claimers close early — draw revealed, entries locked, claims OPEN.
     Lobbies.close(w.db, "claimers");

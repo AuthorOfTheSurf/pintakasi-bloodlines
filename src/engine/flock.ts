@@ -4,6 +4,7 @@ import { birds, trainingLog, type BirdRow } from "@/db/schema";
 import { STATS, TRAINING, type StatName } from "./config";
 import { emit } from "./events";
 import { GameClock } from "./game-clock";
+import { nameTaken } from "./naming";
 import { ageOf, canManualRetire, canTrain, isEggAge, mustRetire } from "./lifecycle";
 
 /** A bird as the player sees it: row + derived age and display fields. */
@@ -62,6 +63,8 @@ export class Flock {
   rename(id: string, name: string): BirdView {
     const trimmed = name.trim();
     if (!trimmed) throw new Error("Name cannot be empty");
+    if (nameTaken(this.database, trimmed, id))
+      throw new Error(`The name "${trimmed}" is taken — bird names are unique across the world`);
     this.database.update(birds).set({ name: trimmed }).where(eq(birds.id, id)).run();
     return this.byId(id);
   }

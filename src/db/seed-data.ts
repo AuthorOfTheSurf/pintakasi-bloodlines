@@ -1,6 +1,7 @@
 import type { DB } from "./client";
 import { birds, farms, gameState, type NewBird } from "./schema";
 import { ECONOMY, ELEMENTS, STATS, type Element } from "@/engine/config";
+import { drawStarterNames } from "@/engine/naming";
 import { mulberry32, randInt, type Rng } from "@/engine/rng";
 
 /**
@@ -84,10 +85,15 @@ export function seedStarterFlock(
   const rng = mulberry32(opts.seed ?? 3000);
   const prefix = opts.idPrefix ?? `${farmId}-starter`;
 
+  // Names are world-unique (round 12): the dev farm keeps the canonical
+  // eight; every other farm draws its own from the pool.
+  const names =
+    farmId === DEV_FARM_ID ? STARTERS.map((s) => s.name) : drawStarterNames(db, STARTERS.length, rng);
+
   const rows: NewBird[] = STARTERS.map((s, i) => ({
     id: `${prefix}-${i + 1}`,
     farmId,
-    name: s.name,
+    name: names[i],
     sex: s.sex,
     status: s.status,
     ...rollStats(rng),

@@ -36,6 +36,7 @@ function world() {
 
 const gp = (db: DB, id: string) => db.select().from(farms).where(eq(farms.id, id)).get()!.gp;
 const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
+// Rival slot 6 = the Alab-slot starter (names are world-unique now; ids are stable).
 const owner = (db: DB, birdId: string) =>
   db.select().from(birds).where(eq(birds.id, birdId)).get()!.farmId;
 
@@ -69,7 +70,7 @@ describe("post time (claims settle after the fights)", () => {
     const w = world();
     const devAlab = byName(w.devFlock, "Alab");
     const { lobby } = w.dev.enter(devAlab.id, SPEC, 606);
-    w.rival.enter(byName(w.rivalFlock, "Alab").id, SPEC); // the opponent, same tag
+    w.rival.enter("rival-6", SPEC); // the opponent, same tag
     w.rival.claim(lobby.entries[0].entryId);
 
     const tick = w.game.tickDay();

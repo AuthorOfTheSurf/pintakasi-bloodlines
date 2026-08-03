@@ -15,6 +15,7 @@ import {
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { creditCents } from "./farms";
+import { uniqueName } from "./naming";
 import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
 import { ageOf } from "./lifecycle";
@@ -92,6 +93,19 @@ export class Breeding {
     if (!ownStud && !fatherRow.listedStud)
       throw new Error(`${fatherRow.name} is not listed in the breeding barn`);
 
+    // One egg per hen at a time (ruled 2026-08-03 round 12): she sits on it
+    // until Hatch Friday. This is the hen-side cap that keeps a 5-day sim
+    // from laying five "Egg of Dalisay" — the rooster side has the 14+2.
+    const sitting = this.database
+      .select()
+      .from(birds)
+      .where(and(eq(birds.motherId, mother.id), eq(birds.status, "egg")))
+      .all();
+    if (sitting.length > 0)
+      throw new Error(
+        `${mother.name} is already sitting on ${sitting[0].name} — one egg per hen; it hatches next Hatch Friday`
+      );
+
     const forbidden = this.forbiddenReason(mother, fatherRow);
     if (forbidden) throw new Error(`Bloodline restriction: ${forbidden}`);
 
@@ -140,7 +154,7 @@ export class Breeding {
     const egg = {
       id: randomUUID(),
       farmId: this.farmId, // the hen's farm — hens keep the egg
-      name: `Egg of ${mother.name}`,
+      name: uniqueName(this.database, `Egg of ${mother.name}`),
       // 50-50, decided now but hidden from every view until hatch day.
       sex: this.rng() < BREEDING.FEMALE_CHANCE ? ("female" as const) : ("male" as const),
       status: "egg" as const,
