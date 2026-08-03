@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS farms (
   secondary_color TEXT NOT NULL,
   api_key TEXT NOT NULL UNIQUE,
   gp INTEGER NOT NULL,
+  gp_cents INTEGER NOT NULL DEFAULT 0,
   land_tokens INTEGER NOT NULL DEFAULT 0,
+  staked_land INTEGER NOT NULL DEFAULT 0,
   last_check_in_day INTEGER,
   free_pulls INTEGER NOT NULL DEFAULT 0,
   land_bought_day INTEGER,
@@ -43,13 +45,16 @@ CREATE TABLE IF NOT EXISTS birds (
   practice_losses INTEGER NOT NULL DEFAULT 0,
   retired_by TEXT CHECK (retired_by IN ('manual','age','hardcore')),
   retired_week INTEGER,
+  listed_stud INTEGER NOT NULL DEFAULT 0,
   mother_id TEXT,
   father_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS game_state (
   id INTEGER PRIMARY KEY,
-  day_index INTEGER NOT NULL DEFAULT 0
+  day_index INTEGER NOT NULL DEFAULT 0,
+  staker_pool_cents INTEGER NOT NULL DEFAULT 0,
+  juice_pool_cents INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS gacha_tokens (

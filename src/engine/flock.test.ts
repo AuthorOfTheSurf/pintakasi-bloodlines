@@ -11,7 +11,6 @@ import {
   canRealFight,
   canTrain,
   mustRetire,
-  studValue,
 } from "./lifecycle";
 
 function freshGame() {
@@ -103,7 +102,10 @@ describe("retirement", () => {
     const retired = flock.retire(sinag.id);
     expect(retired.status).toBe("retired");
     expect(retired.retiredBy).toBe("manual");
-    expect(retired.studValue).toBe(studValue({ wins: 4, losses: 1 }));
+    // No studValue anywhere: stud price is player-set (flat 160 for now) —
+    // winning does not mechanically raise it (ruled 2026-08-03).
+    expect("studValue" in retired).toBe(false);
+    expect(retired.wins).toBe(4);
   });
 
   test("the fighting cap force-retires on Hatch Friday", () => {

@@ -96,7 +96,6 @@ test("the full breeding-lifecycle loop closes — PvP edition", () => {
   const retiree = flock.retire(chick.id);
   expect(retiree.status).toBe("retired");
   expect(retiree.retiredBy).toBe("manual");
-  expect(retiree.studValue).toBeGreaterThan(0);
 
   // 6. The career→barn pipe: breed the retiree with an UNRELATED retiree.
   const partner = retiree.sex === "female" ? "starter-3" : "starter-4";

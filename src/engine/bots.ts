@@ -16,8 +16,10 @@ export interface BotDayReport {
   farm: string;
   style: BotProfile["style"];
   checkedIn: boolean;
+  stakedLand: number; // bots stake every liquid LT, daily
+  studsListed: number; // retired roosters put up in the breeding barn
   trained: number; // training sessions run
-  bred: string | null; // egg name, if a pair went to the barn
+  bred: string | null; // egg name, if a cover was bought (barn included)
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
   claimsPlaced: number;
 }
@@ -85,6 +87,8 @@ export class Bots {
       farm: bot.name,
       style: bot.style,
       checkedIn: false,
+      stakedLand: 0,
+      studsListed: 0,
       trained: 0,
       bred: null,
       entered: [],
@@ -100,11 +104,23 @@ export class Bots {
       }
     };
 
-    // 1. The daily ritual: check in, spend the free pulls.
+    // 1. The daily ritual: check in, spend the free pulls, then STAKE every
+    //    liquid Land Token — bots model the intended posture (stack it,
+    //    stake it; it may be worth real money someday).
     report.checkedIn = quietly(() => farmsApi.checkIn(bot.id));
     const gacha = new Gacha(db, bot.id, rng);
     while (db.select().from(farms).where(eq(farms.id, bot.id)).get()!.freePulls > 0) {
       if (!quietly(() => gacha.roll())) break;
+    }
+    const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokens;
+    if (liquid > 0 && quietly(() => farmsApi.stake(bot.id, liquid))) report.stakedLand = liquid;
+
+    // 1b. Stand the retired roosters at stud — selling covers is income.
+    const breeding = new Breeding(db, bot.id, rng);
+    for (const rooster of flock.all().filter(
+      (b) => b.status === "retired" && b.sex === "male" && !b.listedStud
+    )) {
+      if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
     }
 
     // 2. Train the discovery-year chicks — lowest stat first.
@@ -115,18 +131,17 @@ export class Bots {
       }
     }
 
-    // 3. Breed, if the drive and a legal pair line up.
+    // 3. Breed through the BARN, if the drive and a legal cover line up —
+    //    bots shop other farms' listed studs like anyone else.
     if (rng() < bot.breedDrive && gp() > ECONOMY.BREED_FEE + RESERVE) {
-      const retired = flock.all().filter((b) => b.status === "retired");
-      const hens = retired.filter((b) => b.sex === "female");
-      const roosters = retired.filter((b) => b.sex === "male");
-      const breeding = new Breeding(db, bot.id, rng);
+      const hens = flock.all().filter((b) => b.status === "retired" && b.sex === "female");
       outer: for (const hen of shuffle(hens, rng)) {
-        for (const rooster of shuffle(roosters, rng)) {
+        const { studs } = breeding.browseStuds(hen.id);
+        for (const stud of shuffle(studs, rng)) {
           let eggName: string | null = null;
-          if (quietly(() => (eggName = breeding.breed(hen.id, rooster.id).egg.name))) {
+          if (quietly(() => (eggName = breeding.breed(hen.id, stud.birdId).egg.name))) {
             report.bred = eggName;
-            break outer; // one clutch a day is plenty
+            break outer; // one cover a day is plenty
           }
         }
       }

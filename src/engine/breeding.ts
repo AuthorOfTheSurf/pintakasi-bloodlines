@@ -1,10 +1,22 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState, type BirdRow } from "@/db/schema";
-import { BARN, BREEDING, ECONOMY, ELEMENTS, STATS, STAT_NAMES, type Element } from "./config";
+import {
+  BARN,
+  BREEDING,
+  BREED_SPLIT,
+  COVERS,
+  ECONOMY,
+  ELEMENTS,
+  STATS,
+  STAT_NAMES,
+  type Element,
+} from "./config";
+import { creditCents } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
+import { ageOf } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
 
 export interface LineageNode {
@@ -13,6 +25,35 @@ export interface LineageNode {
   stars: string;
   mother: LineageNode | null;
   father: LineageNode | null;
+}
+
+/** A stud as the barn shows it — public card, own-stat fog intact. */
+export interface StudView {
+  birdId: string;
+  farm: string;
+  name: string;
+  stars: string;
+  age: number;
+  career: { wins: number; losses: number };
+  price: number; // locked to BREED_FEE for now — player pricing later
+  coversLeft: number; // public slots left this week (owner slots tracked apart)
+  mine: boolean;
+}
+
+/** How the cover fee decomposes — all integer centi-GP, sums exactly. */
+export interface FeeSplit {
+  feeGp: number;
+  stakerPoolCents: number;
+  juicePoolCents: number;
+  studOwnerCents: number;
+}
+
+export function splitBreedFee(feeGp: number): FeeSplit {
+  const total = feeGp * 100;
+  const stakerPoolCents = Math.round(total * BREED_SPLIT.STAKER_SHARE);
+  const rest = total - stakerPoolCents;
+  const juicePoolCents = Math.round(rest * BREED_SPLIT.JUICE_SHARE_OF_REST);
+  return { feeGp, stakerPoolCents, juicePoolCents, studOwnerCents: rest - juicePoolCents };
 }
 
 export class Breeding {
@@ -27,46 +68,77 @@ export class Breeding {
   }
 
   /**
-   * The career→barn pipe: only retired birds breed. Enforces the bloodline
-   * restriction, charges the breed fee, and lays an egg ("Egg of <mother>",
-   * age 0) that hatches next Hatch Friday.
+   * Buy a cover: YOUR retired hen × a retired rooster — your own, or any
+   * farm's LISTED stud (the breeding barn — breeding PvP, ruled 2026-08-03).
+   * The hen's owner pays the fee and keeps the egg ("Egg of <mother>", age
+   * 0, hatches next Hatch Friday). The fee SPLITS: staker pool / juice
+   * pool / the stud's owner. Covers are capped per rooster per week.
    */
-  breed(motherId: string, fatherId: string): { egg: BirdView; feePaid: number } {
-    const mother = this.flock.byId(motherId);
-    const father = this.flock.byId(fatherId);
+  breed(motherId: string, fatherId: string): { egg: BirdView; feePaid: number; split: FeeSplit } {
+    const mother = this.flock.byId(motherId); // must be OWN — hens keep the egg
+    const fatherRow = this.database.select().from(birds).where(eq(birds.id, fatherId)).get();
+    if (!fatherRow) throw new Error(`No bird with id ${fatherId}`);
 
     if (mother.sex !== "female")
       throw new Error(`${mother.name} is not female — the mother must be a hen`);
-    if (father.sex !== "male")
-      throw new Error(`${father.name} is not male — the father must be a rooster`);
-    for (const parent of [mother, father]) {
-      if (parent.status !== "retired")
-        throw new Error(`${parent.name} is not retired — only retired birds breed`);
-    }
+    if (fatherRow.sex !== "male")
+      throw new Error(`${fatherRow.name} is not male — the father must be a rooster`);
+    if (mother.status !== "retired")
+      throw new Error(`${mother.name} is not retired — only retired birds breed`);
+    if (fatherRow.status !== "retired")
+      throw new Error(`${fatherRow.name} is not retired — only retired birds breed`);
+    const ownStud = fatherRow.farmId === this.farmId;
+    if (!ownStud && !fatherRow.listedStud)
+      throw new Error(`${fatherRow.name} is not listed in the breeding barn`);
 
-    const forbidden = this.forbiddenReason(mother, father);
+    const forbidden = this.forbiddenReason(mother, fatherRow);
     if (forbidden) throw new Error(`Bloodline restriction: ${forbidden}`);
 
     if (this.flock.barnCount() >= BARN.CAPACITY)
       throw new Error(`The barn is full (${BARN.CAPACITY})`);
 
+    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const day = state.dayIndex;
+    const week = GameClock.weekOf(day);
+
+    // The weekly cover caps: public slots for outside hens, a reserved
+    // handful for the owner's own. Top studs capping out is the POINT —
+    // demand overflows into other studs.
+    const covers = this.coversThisWeek(fatherRow.id, fatherRow.farmId, week);
+    if (ownStud && covers.owner >= COVERS.OWNER_RESERVED)
+      throw new Error(
+        `${fatherRow.name} has used all ${COVERS.OWNER_RESERVED} owner covers this week`
+      );
+    if (!ownStud && covers.public >= COVERS.PER_WEEK)
+      throw new Error(`${fatherRow.name} is covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`);
+
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     if (farm.gp < ECONOMY.BREED_FEE)
-      throw new Error(`Breeding costs ${ECONOMY.BREED_FEE} GP — you have ${farm.gp}`);
+      throw new Error(`A cover costs ${ECONOMY.BREED_FEE} GP — you have ${farm.gp}`);
+
+    // The split (ruled 2026-08-03): per 80 GP — 2 to the staker pool, the
+    // rest 50/50 juice pool / stud owner. Exact in centi-GP.
+    const split = splitBreedFee(ECONOMY.BREED_FEE);
     this.database
       .update(farms)
       .set({ gp: farm.gp - ECONOMY.BREED_FEE })
       .where(eq(farms.id, this.farmId))
       .run();
-
-    const day = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
-    const week = GameClock.weekOf(day);
-    const stats = this.inheritStats(mother, father);
-    const { element, halfStars } = this.inheritStars(mother, father);
+    creditCents(this.database, fatherRow.farmId, split.studOwnerCents);
+    this.database
+      .update(gameState)
+      .set({
+        stakerPoolCents: state.stakerPoolCents + split.stakerPoolCents,
+        juicePoolCents: state.juicePoolCents + split.juicePoolCents,
+      })
+      .where(eq(gameState.id, 1))
+      .run();
+    const stats = this.inheritStats(mother, fatherRow);
+    const { element, halfStars } = this.inheritStars(mother, fatherRow);
 
     const egg = {
       id: randomUUID(),
-      farmId: this.farmId,
+      farmId: this.farmId, // the hen's farm — hens keep the egg
       name: `Egg of ${mother.name}`,
       // 50-50, decided now but hidden from every view until hatch day.
       sex: this.rng() < BREEDING.FEMALE_CHANCE ? ("female" as const) : ("male" as const),
@@ -77,10 +149,105 @@ export class Breeding {
       birthWeek: week,
       birthDay: day,
       motherId: mother.id,
-      fatherId: father.id,
+      fatherId: fatherRow.id,
     };
     this.database.insert(birds).values(egg).run();
-    return { egg: this.flock.byId(egg.id), feePaid: ECONOMY.BREED_FEE };
+    return { egg: this.flock.byId(egg.id), feePaid: ECONOMY.BREED_FEE, split };
+  }
+
+  // ── The breeding barn ──────────────────────────────────────────────────────
+
+  /** List a retired rooster for covers from any farm. Idempotent. */
+  listStud(birdId: string): { stud: string; listed: true; price: number } {
+    const bird = this.flock.byId(birdId); // own birds only
+    if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — the barn lists roosters`);
+    if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
+    this.database.update(birds).set({ listedStud: 1 }).where(eq(birds.id, birdId)).run();
+    return { stud: bird.name, listed: true, price: ECONOMY.BREED_FEE };
+  }
+
+  /** Pull a rooster from the barn. Covers already sold this week stand. */
+  unlistStud(birdId: string): { stud: string; listed: false } {
+    const bird = this.flock.byId(birdId);
+    this.database.update(birds).set({ listedStud: 0 }).where(eq(birds.id, birdId)).run();
+    return { stud: bird.name, listed: false };
+  }
+
+  /**
+   * The barn, from one hen's point of view: every stud she CAN breed with,
+   * plus the ones she can't and WHY (kin overlap is a natural question —
+   * name it rather than hiding the bird). Candidates: every farm's listed
+   * studs + your own retired roosters (listed or not — owner slots).
+   */
+  browseStuds(henId: string): {
+    hen: string;
+    studs: StudView[];
+    excluded: { name: string; farm: string; reason: string }[];
+  } {
+    const hen = this.flock.byId(henId);
+    if (hen.sex !== "female") throw new Error(`${hen.name} is a rooster — browse with a hen`);
+    if (hen.status !== "retired") throw new Error(`${hen.name} must be retired to breed`);
+
+    const week = GameClock.weekOf(
+      this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex
+    );
+    const candidates = this.database
+      .select()
+      .from(birds)
+      .where(and(eq(birds.sex, "male"), eq(birds.status, "retired")))
+      .all()
+      .filter((r) => r.listedStud === 1 || r.farmId === this.farmId);
+
+    const studs: StudView[] = [];
+    const excluded: { name: string; farm: string; reason: string }[] = [];
+    for (const rooster of candidates) {
+      const farm = this.database.select().from(farms).where(eq(farms.id, rooster.farmId)).get()!;
+      const mine = rooster.farmId === this.farmId;
+      const covers = this.coversThisWeek(rooster.id, rooster.farmId, week);
+      const kin = this.forbiddenReason(hen, rooster);
+      const coversLeft = mine
+        ? COVERS.OWNER_RESERVED - covers.owner
+        : COVERS.PER_WEEK - covers.public;
+      if (kin) {
+        excluded.push({ name: rooster.name, farm: farm.name, reason: kin });
+      } else if (coversLeft <= 0) {
+        excluded.push({
+          name: rooster.name,
+          farm: farm.name,
+          reason: mine
+            ? `owner covers used (${COVERS.OWNER_RESERVED}/${COVERS.OWNER_RESERVED} this week)`
+            : `covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`,
+        });
+      } else {
+        studs.push({
+          birdId: rooster.id,
+          farm: farm.name,
+          name: rooster.name,
+          stars: `${rooster.halfStars / 2}★ ${rooster.element}`,
+          age: ageOf(rooster, week),
+          career: { wins: rooster.wins, losses: rooster.losses },
+          price: ECONOMY.BREED_FEE,
+          coversLeft,
+          mine,
+        });
+      }
+    }
+    return { hen: hen.name, studs, excluded };
+  }
+
+  /** Covers already bought against a rooster this game-week. */
+  private coversThisWeek(
+    fatherId: string,
+    fatherFarmId: string,
+    week: number
+  ): { owner: number; public: number } {
+    const eggs = this.database
+      .select()
+      .from(birds)
+      .where(and(eq(birds.fatherId, fatherId), eq(birds.birthWeek, week)))
+      .all();
+    const owner = eggs.filter((e) => e.farmId === fatherFarmId).length;
+    return { owner, public: eggs.length - owner };
   }
 
   /** Child stat = parent average ± variance, with a rare mutation swing. */

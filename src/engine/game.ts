@@ -22,6 +22,7 @@ export interface TickView {
   fridays: HatchFridayEvents[]; // hatches + force-retirements, per Friday crossed
   card: LobbyResolution[]; // the day's lobbies going off — public events
   bots: BotDayReport[]; // what the bot stables did before post time
+  staking: { paidGp: number; stakers: number }; // the day's pro-rata payout
 }
 
 /**
@@ -75,8 +76,10 @@ export class Game {
     const fridays: HatchFridayEvents[] = [];
     const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
     const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
-    // The day has turned — the card goes off (fights first, then claims).
+    // The day has turned — the card goes off (fights first, then claims),
+    // then the staking pool pays the day's breed-fee cut to staked land.
     const card = Lobbies.resolve(this.database);
-    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, bots };
+    const staking = Farms.distributeStaking(this.database);
+    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, bots, staking };
   }
 }

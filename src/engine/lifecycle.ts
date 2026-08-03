@@ -1,5 +1,5 @@
 import type { BirdRow } from "@/db/schema";
-import { AGE, STUD } from "./config";
+import { AGE } from "./config";
 
 /**
  * Age gates as pure functions. Age is always DERIVED: currentWeek - birthWeek
@@ -42,7 +42,6 @@ export function mustRetire(age: number): boolean {
   return age >= AGE.FIGHTING_CAP;
 }
 
-/** The record converted to barn worth — what retirement "cashes out." */
-export function studValue(bird: Pick<BirdRow, "wins" | "losses">): number {
-  return Math.max(STUD.MIN, STUD.BASE + bird.wins * STUD.PER_WIN + bird.losses * STUD.PER_LOSS);
-}
+// NOTE: there is deliberately NO studValue formula. A stud's price is
+// player price-setting + supply/demand (ruled 2026-08-03) — winning does
+// not mechanically raise it. For now every cover costs ECONOMY.BREED_FEE.

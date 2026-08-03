@@ -3,7 +3,7 @@ import type { DB } from "@/db/client";
 import { birds, trainingLog, type BirdRow } from "@/db/schema";
 import { STATS, TRAINING, type StatName } from "./config";
 import { GameClock } from "./game-clock";
-import { ageOf, canManualRetire, canTrain, isEggAge, mustRetire, studValue } from "./lifecycle";
+import { ageOf, canManualRetire, canTrain, isEggAge, mustRetire } from "./lifecycle";
 
 /** A bird as the player sees it: row + derived age and display fields. */
 export interface BirdView extends Omit<BirdRow, "sex"> {
@@ -11,7 +11,6 @@ export interface BirdView extends Omit<BirdRow, "sex"> {
   sexLabel: "rooster" | "hen" | null; // the sabong layer over male/female
   age: number;
   stars: string; // e.g. "1.5★ Metal" — 0★ still resolves to a type
-  studValue: number | null; // only meaningful once retired
 }
 
 export interface HatchFridayEvents {
@@ -39,7 +38,6 @@ export class Flock {
       sexLabel: isEgg ? null : row.sex === "male" ? "rooster" : "hen",
       age: ageOf(row, currentWeek),
       stars: `${row.halfStars / 2}★ ${row.element}`,
-      studValue: row.status === "retired" ? studValue(row) : null,
     };
   }
 

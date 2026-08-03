@@ -19,17 +19,26 @@ function freshGame(seed = 42) {
 // (retired hen).
 
 describe("breed", () => {
-  test("lays 'Egg of <mother>' at age 0 and charges the fee", () => {
+  test("lays 'Egg of <mother>' at age 0; the fee SPLITS to the centi-GP", () => {
     const { db, breeding } = freshGame();
-    const { egg, feePaid } = breeding.breed("starter-2", "starter-1");
+    const { egg, feePaid, split } = breeding.breed("starter-2", "starter-1");
     expect(egg.name).toBe("Egg of Dalisay");
     expect(egg.status).toBe("egg");
     expect(egg.age).toBe(0);
     expect(egg.motherId).toBe("starter-2");
     expect(egg.fatherId).toBe("starter-1");
     expect(feePaid).toBe(ECONOMY.BREED_FEE);
+    // The ruled split, exact: 160 GP → 4.00 staker / 78.00 juice / 78.00 stud
+    // owner — and the pieces sum back to the fee, to the cent.
+    expect(split).toEqual({ feeGp: 160, stakerPoolCents: 400, juicePoolCents: 7800, studOwnerCents: 7800 });
+    expect(split.stakerPoolCents + split.juicePoolCents + split.studOwnerCents).toBe(16000);
+    // Own stud: the 78.00 stud share flows straight back — net cost 82 GP.
     const farm = db.select().from(farms).where(eq(farms.id, "farm-1")).get()!;
-    expect(farm.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.BREED_FEE);
+    expect(farm.gp).toBe(ECONOMY.STARTING_GP - 82);
+    expect(farm.gpCents).toBe(0);
+    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    expect(state.stakerPoolCents).toBe(400);
+    expect(state.juicePoolCents).toBe(7800);
   });
 
   test("child stats stay in bounds and near the parent average", () => {
@@ -69,7 +78,97 @@ describe("breed", () => {
   test("insufficient GP blocks breeding", () => {
     const { db, breeding } = freshGame();
     db.update(farms).set({ gp: 100 }).where(eq(farms.id, "farm-1")).run();
-    expect(() => breeding.breed("starter-2", "starter-1")).toThrow(/Breeding costs/);
+    expect(() => breeding.breed("starter-2", "starter-1")).toThrow(/cover costs/);
+  });
+});
+
+describe("the breeding barn (breeding PvP)", () => {
+  function withRival(seed = 42) {
+    const w = freshGame(seed);
+    const rivalId = "rival-farm";
+    w.db
+      .insert(farms)
+      .values({
+        id: rivalId,
+        name: "Rival Gamefarm",
+        primaryColor: "black",
+        secondaryColor: "red",
+        apiKey: "fk_rival",
+        gp: ECONOMY.STARTING_GP,
+      })
+      .run();
+    // The rival's foundation pair — unrelated to the dev starters.
+    for (const [id, sex] of [["rival-stud", "male"], ["rival-hen", "female"]] as const) {
+      w.db
+        .insert(birds)
+        .values({
+          id, farmId: rivalId, name: id, sex, status: "retired",
+          agility: 600, sight: 600, stamina: 600, gameness: 600, station: 600, condition: 600,
+          element: "Wood", halfStars: 6, birthWeek: -6, birthDay: -42,
+          retiredBy: "manual", retiredWeek: -1, motherId: null, fatherId: null,
+        })
+        .run();
+    }
+    return { ...w, rivalId, rivalBreeding: new Breeding(w.db, rivalId, mulberry32(seed + 1)) };
+  }
+
+  test("an unlisted foreign rooster refuses; listing opens the cover", () => {
+    const w = withRival();
+    expect(() => w.breeding.breed("starter-2", "rival-stud")).toThrow(/not listed/);
+    w.rivalBreeding.listStud("rival-stud");
+    const { egg, split } = w.breeding.breed("starter-2", "rival-stud");
+    // Hens keep the egg; the stud's owner banks 78.00 GP.
+    expect(egg.farmId).toBe("farm-1");
+    const rival = w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!;
+    expect(rival.gp).toBe(ECONOMY.STARTING_GP + split.studOwnerCents / 100);
+    const dev = w.db.select().from(farms).where(eq(farms.id, "farm-1")).get()!;
+    expect(dev.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.BREED_FEE);
+  });
+
+  test("browse_studs: eligible listed, kin NAMED in exclusions, own studs included", () => {
+    const w = withRival();
+    w.rivalBreeding.listStud("rival-stud");
+    const { studs, excluded } = w.breeding.browseStuds("starter-2"); // Dalisay
+    const names = studs.map((s) => s.name).sort();
+    // Both own retired roosters (unlisted — owner slots) + the listed rival.
+    expect(names).toEqual(["Bagwis", "Tandang Pula", "rival-stud"]);
+    expect(studs.find((s) => s.name === "rival-stud")!.mine).toBe(false);
+    expect(studs.find((s) => s.name === "rival-stud")!.coversLeft).toBe(14);
+    // Kin exclusion is NAMED, not hidden: breed a daughter, browse with her.
+    w.breeding.breed("starter-2", "starter-1");
+    const egg = w.db.select().from(birds).all().find((b) => b.name === "Egg of Dalisay")!;
+    w.db.update(birds).set({ status: "retired", sex: "female" }).where(eq(birds.id, egg.id)).run();
+    const view = w.breeding.browseStuds(egg.id);
+    const kinExcluded = view.excluded.find((e) => e.name === "Tandang Pula");
+    expect(kinExcluded?.reason).toMatch(/ancestor/);
+    expect(excluded.length).toBe(0);
+  });
+
+  test("covers cap: 14 public a week, 2 owner-reserved — and they overflow", () => {
+    const w = withRival();
+    w.rivalBreeding.listStud("rival-stud");
+    // Owner slots: the rival's own hen covers twice, the third refuses.
+    w.rivalBreeding.breed("rival-hen", "rival-stud");
+    w.rivalBreeding.breed("rival-hen", "rival-stud");
+    expect(() => w.rivalBreeding.breed("rival-hen", "rival-stud")).toThrow(/owner covers/);
+    // Public slots: 14 outside hens, the 15th refuses.
+    for (let i = 0; i < 14; i++) {
+      w.db
+        .insert(birds)
+        .values({
+          id: `hen-${i}`, farmId: "farm-1", name: `hen-${i}`, sex: "female", status: "retired",
+          agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
+          element: "Fire", halfStars: 4, birthWeek: -5, birthDay: -35,
+          retiredBy: "manual", retiredWeek: 0, motherId: null, fatherId: null,
+        })
+        .run();
+      w.breeding.breed(`hen-${i}`, "rival-stud");
+    }
+    expect(() => w.breeding.breed("starter-2", "rival-stud")).toThrow(/covered out/);
+    // The barn now shows it as excluded — demand overflows to other studs.
+    const { studs, excluded } = w.breeding.browseStuds("starter-2");
+    expect(excluded.some((e) => e.name === "rival-stud" && /covered out/.test(e.reason))).toBe(true);
+    expect(studs.some((s) => s.name === "Tandang Pula")).toBe(true);
   });
 });
 

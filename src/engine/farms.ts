@@ -10,10 +10,27 @@ export interface FarmView {
   country: string | null;
   primaryColor: string;
   secondaryColor: string;
-  gp: number;
-  landTokens: number;
+  gp: number; // decimal — whole GP + cents (staking yield goes fractional)
+  landTokens: number; // liquid land
+  stakedLand: number; // land in THE pool — earning the breed-fee cut daily
   freePulls: number;
   checkedInToday: boolean;
+}
+
+/**
+ * Credit a farm in centi-GP, exactly — cents roll into whole GP. This is
+ * the only doorway for fractional money (stud shares, staking payouts);
+ * everything else in the game stays whole-GP.
+ */
+export function creditCents(database: DB, farmId: string, cents: number): void {
+  if (cents <= 0) return;
+  const farm = database.select().from(farms).where(eq(farms.id, farmId)).get()!;
+  const total = farm.gpCents + cents;
+  database
+    .update(farms)
+    .set({ gp: farm.gp + Math.floor(total / 100), gpCents: total % 100 })
+    .where(eq(farms.id, farmId))
+    .run();
 }
 
 export interface RegisterInput {
@@ -128,6 +145,66 @@ export class Farms {
     };
   }
 
+  /**
+   * Stake land into THE pool (single pool for now — breeding/arena pools
+   * may split later). Staked land earns the breed-fee staker cut, paid
+   * pro-rata at every day tick. Stack it — it may be worth real money one
+   * day; it is NEVER sellable either way.
+   */
+  stake(farmId: string, amount: number): { farm: FarmView; staked: number } {
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Stake a whole, positive number of Land Tokens");
+    const farm = this.rowById(farmId);
+    if (farm.landTokens < amount)
+      throw new Error(`${farm.name} holds ${farm.landTokens} liquid LT — cannot stake ${amount}`);
+    this.database
+      .update(farms)
+      .set({ landTokens: farm.landTokens - amount, stakedLand: farm.stakedLand + amount })
+      .where(eq(farms.id, farmId))
+      .run();
+    return { farm: this.view(this.rowById(farmId)), staked: amount };
+  }
+
+  /** Unstake freely — the land comes home liquid (still never sellable). */
+  unstake(farmId: string, amount: number): { farm: FarmView; unstaked: number } {
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Unstake a whole, positive number of Land Tokens");
+    const farm = this.rowById(farmId);
+    if (farm.stakedLand < amount)
+      throw new Error(`${farm.name} has ${farm.stakedLand} LT staked — cannot unstake ${amount}`);
+    this.database
+      .update(farms)
+      .set({ landTokens: farm.landTokens + amount, stakedLand: farm.stakedLand - amount })
+      .where(eq(farms.id, farmId))
+      .run();
+    return { farm: this.view(this.rowById(farmId)), unstaked: amount };
+  }
+
+  /**
+   * The daily staking payout, run at the tick: the staker pool (breed-fee
+   * cuts accrued in centi-GP) splits pro-rata across staked land. Integer
+   * floor per farm; the dust carries in the pool for tomorrow. No stakers
+   * → the whole pool carries.
+   */
+  static distributeStaking(database: DB): { paidGp: number; stakers: number } {
+    const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const pool = state.stakerPoolCents;
+    const stakers = database.select().from(farms).all().filter((f) => f.stakedLand > 0);
+    const totalStaked = stakers.reduce((s, f) => s + f.stakedLand, 0);
+    if (pool <= 0 || totalStaked === 0) return { paidGp: 0, stakers: 0 };
+
+    let paid = 0;
+    for (const farm of stakers) {
+      const share = Math.floor((pool * farm.stakedLand) / totalStaked);
+      if (share > 0) creditCents(database, farm.id, share);
+      paid += share;
+    }
+    database
+      .update(gameState)
+      .set({ stakerPoolCents: pool - paid })
+      .where(eq(gameState.id, 1))
+      .run();
+    return { paidGp: paid / 100, stakers: stakers.length };
+  }
+
   byKey(apiKey: string): FarmRow {
     const row = this.database.select().from(farms).where(eq(farms.apiKey, apiKey)).get();
     if (!row) throw new Error("Unknown farm key");
@@ -153,8 +230,9 @@ export class Farms {
       country: row.country,
       primaryColor: row.primaryColor,
       secondaryColor: row.secondaryColor,
-      gp: row.gp,
+      gp: row.gp + row.gpCents / 100,
       landTokens: row.landTokens,
+      stakedLand: row.stakedLand,
       freePulls: row.freePulls,
       checkedInToday: row.lastCheckInDay === this.today(),
     };

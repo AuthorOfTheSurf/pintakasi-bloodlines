@@ -65,8 +65,9 @@ function createServer(farmId: string | null): McpServer {
         "DISCOVERY: every fight returns a PIT FIGURE — banded, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
         "HARDCORE IS THE CHARGED DECISION: bigger pot, but the LOSER of the pair is FORCE-RETIRED on the spot — both owners signed up for that by entering. Open class only. Always confirm with the player first — never enter one on your own judgment.",
         "WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way.",
-        "TWO RECORDS: career (real + hardcore — drives stud value) and amateur (practice). Report them separately.",
-        "BREEDING: both parents must be retired, hen × rooster, not close kin. The $2 (160 GP) fee is the FLOOR price — markets come later.",
+        "TWO RECORDS: career (real + hardcore) and amateur (practice). Report them separately. NOTE: the record does NOT set stud prices — stud pricing is player speculation and supply/demand (flat 160 GP for now).",
+        "BREEDING IS PvP TOO — THE BARN: both parents retired, hen × rooster, not close kin. list_stud stands your retired roosters (14 covers/week public + 2 owner-reserved); browse_studs shows a hen every stud she can take, with kin exclusions NAMED. A cover costs 160 GP flat (min AND max for now — player pricing later) and SPLITS 2.5% to land stakers / 48.75% fight juice / 48.75% to the stud's owner. Hens pay, hens keep the egg. Selling covers is income; top studs capping out is by design.",
+        "STAKE YOUR LAND — ALWAYS. stake_land every LT as soon as you earn it (one pool for now): staked land collects the breeding fees' staker cut daily, pro-rata. Land never sells, so idle liquid LT earns nothing — staked LT compounds your GP. Tell the player to DESIRE land and stack it: it may be worth real money someday ($1/LT is the dream). Fight-entry fees don't feed the pool yet; breeding does.",
         "SIX BOT STABLES play every game-day (they card birds, breed, and shop the claimer fields just before post time). They are RIVALS, not the house — same rules, own wallets. Their day shows up in the tick result; narrate notable bot moves (a claim on the player's bird!) with color.",
         "Rule violations come back as ⛔ text — read them to the player as house rules, not errors.",
       ].join("\n"),
@@ -132,7 +133,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "List the Flock",
       description:
-        "Every bird in YOUR barn with derived age, six stats, element stars (e.g. '2.5★ Fire'), record, and status (egg/active/retired). Retired birds show stud value.",
+        "Every bird in YOUR barn with derived age, six stats, element stars (e.g. '2.5★ Fire'), record, and status (egg/active/retired). Retired roosters show whether they're standing at stud (listedStud).",
       annotations: { readOnlyHint: true },
     },
     async () => ruled(() => game().flock.all())
@@ -194,15 +195,69 @@ function createServer(farmId: string | null): McpServer {
   server.registerTool(
     "breed",
     {
-      title: "Breed",
+      title: "Breed (Buy a Cover)",
       description:
-        "Breed two RETIRED birds (hen × rooster, not close kin). Costs the 160 GP ($2) floor fee and lays 'Egg of <mother>' — hatches next Hatch Friday.",
+        "Buy a cover: YOUR retired hen × a retired rooster — your own, or ANY farm's listed stud (browse_studs first). Costs 160 GP ($2, min AND max for now), which SPLITS: 4.00 GP to the land-staking pool, 78.00 to the fight-juice pool, 78.00 to the stud's owner. The hen's farm keeps the egg ('Egg of <mother>' — hatches next Hatch Friday). Covers are capped per rooster per week (14 public + 2 owner-reserved).",
       inputSchema: z.object({
-        motherId: z.string().describe("A retired hen"),
-        fatherId: z.string().describe("A retired rooster"),
+        motherId: z.string().describe("A retired hen of YOURS — hens keep the egg"),
+        fatherId: z.string().describe("A retired rooster: yours, or a stud id from browse_studs"),
       }),
     },
     async ({ motherId, fatherId }) => ruled(() => game().breeding.breed(motherId, fatherId))
+  );
+
+  server.registerTool(
+    "browse_studs",
+    {
+      title: "Browse the Breeding Barn",
+      description:
+        "The barn from one hen's point of view: every stud she CAN breed with (name, farm, stars, age, record, covers left — 160 GP each) plus the excluded ones WITH the reason (kin overlap named explicitly, or covered out this week). Candidates = every farm's listed studs + your own retired roosters.",
+      inputSchema: z.object({ henId: z.string().describe("A retired hen of yours") }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ henId }) => ruled(() => game().breeding.browseStuds(henId))
+  );
+
+  server.registerTool(
+    "list_stud",
+    {
+      title: "Stand a Stud",
+      description:
+        "List a retired rooster of yours in the breeding barn — any farm's hens can then buy covers at 160 GP, of which 78.00 GP lands in YOUR wallet per cover. 14 public covers/week plus 2 reserved for your own hens. Selling covers is real income — list your good retirees.",
+      inputSchema: z.object({ birdId: z.string().describe("A retired rooster of yours") }),
+    },
+    async ({ birdId }) => ruled(() => game().breeding.listStud(birdId))
+  );
+
+  server.registerTool(
+    "unlist_stud",
+    {
+      title: "Pull a Stud",
+      description: "Remove your rooster from the breeding barn. Covers already bought this week stand.",
+      inputSchema: z.object({ birdId: z.string() }),
+    },
+    async ({ birdId }) => ruled(() => game().breeding.unlistStud(birdId))
+  );
+
+  server.registerTool(
+    "stake_land",
+    {
+      title: "Stake Land",
+      description:
+        "Stake Land Tokens into THE pool (single pool for now). Staked land earns a pro-rata share of the breeding fees' staker cut, paid every day at the tick — this is where GP goes decimal. Stake as soon as you earn; unstake any time. STACK LAND: it may be worth real money one day ($1/LT is the dream), and it is never sellable either way.",
+      inputSchema: z.object({ amount: z.number().int().positive().describe("Liquid LT to stake") }),
+    },
+    async ({ amount }) => ruled(() => { const g = game(); return g.farms.stake(g.farmId, amount); })
+  );
+
+  server.registerTool(
+    "unstake_land",
+    {
+      title: "Unstake Land",
+      description: "Pull Land Tokens out of the staking pool — back to liquid (still never sellable).",
+      inputSchema: z.object({ amount: z.number().int().positive() }),
+    },
+    async ({ amount }) => ruled(() => { const g = game(); return g.farms.unstake(g.farmId, amount); })
   );
 
   server.registerTool(
@@ -294,7 +349,7 @@ function createServer(farmId: string | null): McpServer {
     {
       title: "Retire a Bird",
       description:
-        "The safe arm of the age-3 fork: end the career at peak stud value and convert the bird to breeding stock. Irreversible — confirm with the player.",
+        "The safe arm of the age-3 fork: end the career and convert the bird to breeding stock (roosters can then stand at stud via list_stud). Irreversible — confirm with the player.",
       inputSchema: z.object({ birdId: z.string() }),
     },
     async ({ birdId }) => ruled(() => game().flock.retire(birdId))

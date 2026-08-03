@@ -181,9 +181,9 @@ export const ECONOMY = {
   // The daily drip ($10/day, claimed via check-in) — accounts can't be
   // funded yet, so the faucet keeps testers liquid.
   DAILY_DRIP: 800,
-  // The MINIMUM breed price ($2). Deliberately NO maximum — when the
-  // marketplace/stud-cover market arrives, owners price their own retirees
-  // above this floor. For now the floor is the only price.
+  // The breed price ($2) — for now BOTH the minimum AND the maximum (ruled
+  // 2026-08-03): player-set stud pricing comes later; today every cover
+  // costs exactly this, and it SPLITS (see BREED_SPLIT below).
   BREED_FEE: 160,
   // Entries (winner takes the pooled pot = 2× entry):
   REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
@@ -200,7 +200,10 @@ export const ECONOMY = {
 // pays disproportionately. landForFight() below is the curve. An unmatched
 // entry (odd bird out) earns nothing — land is for FIGHTING, not queueing.
 // Priced: $0.01 = 1 LT, i.e. 80 GP buys 100 LT. Buyable with GP up to a
-// daily cap; NEVER sellable back — land only accumulates. Staking later.
+// daily cap; NEVER sellable back — land only accumulates. STAKING IS LIVE
+// (2026-08-03): one pool for now; staked LT earns a pro-rata share of the
+// breed-fee staker cut, distributed daily at the tick. (Fight-entry flow
+// into the pool: not yet. Multiple pools — breeding vs. arenas: later.)
 export const LAND = {
   FEE_PER_TOKEN: 8, //        the linear base: 1 LT per 8 GP of entry fee…
   FIGHT_EXPONENT: 1.15, //    …raised past linear — the "fight up" incentive
@@ -235,15 +238,30 @@ export const BREEDING = {
   FEMALE_CHANCE: 0.5,
 } as const;
 
-// ── Stud value (what a CAREER record converts to at retirement) ─────────────
-// studValue = BASE + wins×PER_WIN + losses×PER_LOSS, never below MIN.
-// Only real + hardcore fights count — the amateur record doesn't move this.
-// (On the $1 = 80 peg: base $1, each win +$0.30, floor $0.50.)
-export const STUD = {
-  BASE: 80, //     every retiree is worth at least a foundation price…
-  PER_WIN: 24, //  …each career win adds this…
-  PER_LOSS: -8, // …each career loss shaves this…
-  MIN: 40, //      …but no career craters below this floor
+// ── The breeding barn (ruled 2026-08-03 — breeding PvP out the gate) ────────
+// Stud OWNERS LIST retired roosters; any farm's hen can then buy the cover.
+// There is NO formula tying a stud's price to its record — stud price is
+// player price-setting, speculation, supply vs. demand (Zane's ruling; the
+// old win/loss studValue mechanic is deleted). For now the price is locked
+// to BREED_FEE; player-set pricing comes later.
+//
+// Every cover fee SPLITS (ruled 2026-08-03): per 80 GP — 2 GP (2.5%) to the
+// Land Token staking pool, and the other 78 split 50/50 between the fight-
+// juice pool (future tournament subsidy) and the stud's owner. On the 160
+// fee: 4.00 staker / 78.00 juice / 78.00 stud owner. Splits are computed in
+// CENTI-GP (integer hundredths) so the accounting stays exact — the staker
+// pool's pro-rata payouts are where GP goes decimal.
+export const BREED_SPLIT = {
+  STAKER_SHARE: 0.025, // → the single LT staking pool
+  // The remainder splits evenly: fight juice / stud owner.
+  JUICE_SHARE_OF_REST: 0.5,
+} as const;
+
+export const COVERS = {
+  PER_WEEK: 14, //     public cover slots per rooster per game-week…
+  OWNER_RESERVED: 2, // …plus these, reserved for the rooster's own farm.
+  // The point of the cap: top studs sell out → their price can rise (later,
+  // when pricing unlocks) → demand overflows into other studs.
 } as const;
 
 // ── Lobbies (re-ruled 2026-08-03: PURE PvP — the house supplies NOBODY) ─────

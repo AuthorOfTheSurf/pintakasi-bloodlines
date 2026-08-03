@@ -192,8 +192,7 @@ describe("the card goes off (pure PvP)", () => {
     const loser = fight.winnerFarm === "Bukidnon Farms" ? rivalSinag : devSinag;
     const winner = fight.winnerFarm === "Bukidnon Farms" ? devSinag : rivalSinag;
     expect(loser.status).toBe("retired");
-    expect(loser.retiredBy).toBe("hardcore");
-    expect(loser.studValue).not.toBeNull(); // the career converts, not evaporates
+    expect(loser.retiredBy).toBe("hardcore"); // the career converts, not evaporates
     expect(winner.status).toBe("active");
     expect(fight.landEach).toBe(landForFight(ECONOMY.HARDCORE_ENTRY_FEE));
   });

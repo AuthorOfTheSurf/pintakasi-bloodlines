@@ -11,7 +11,13 @@ export const farms = sqliteTable("farms", {
   secondaryColor: text("secondary_color").notNull(),
   apiKey: text("api_key").notNull().unique(),
   gp: integer("gp").notNull(),
+  // The fractional wallet: 0–99 hundredths of a GP. Staking payouts are
+  // pro-rata and go decimal; everything stays integer-exact in centi-GP.
+  gpCents: integer("gp_cents").notNull().default(0),
   landTokens: integer("land_tokens").notNull().default(0),
+  // Land staked into THE pool (single pool for now) — earns the breed-fee
+  // staker cut daily, pro-rata. Unstake freely; land itself never sells.
+  stakedLand: integer("staked_land").notNull().default(0),
   // Daily check-in: grants the GP drip + free gacha pulls, once per game-day.
   lastCheckInDay: integer("last_check_in_day"),
   freePulls: integer("free_pulls").notNull().default(0),
@@ -51,7 +57,8 @@ export const birds = sqliteTable("birds", {
   // (birds age one year per game-week; the derivation is Zane's ruling).
   birthWeek: integer("birth_week").notNull(),
   birthDay: integer("birth_day").notNull(), // day index, for flavor/history
-  // The CAREER record — real + hardcore fights; drives prizes and stud value.
+  // The CAREER record — real + hardcore fights. (It does NOT drive stud
+  // price — that's player price-setting + supply/demand, ruled 2026-08-03.)
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
   // The AMATEUR record — discovery-year practice fights; small stakes,
@@ -61,14 +68,23 @@ export const birds = sqliteTable("birds", {
   // How the career ended (null while egg/active).
   retiredBy: text("retired_by", { enum: ["manual", "age", "hardcore"] }),
   retiredWeek: integer("retired_week"),
+  // The breeding barn: a retired rooster LISTED here is open for covers
+  // from any farm's hens (14/week public + 2 owner-reserved).
+  listedStud: integer("listed_stud").notNull().default(0),
   motherId: text("mother_id"),
   fatherId: text("father_id"),
 });
 
 // The WORLD clock — one row, shared by every farm. Wallets live on farms.
+// Also carries the world POOLS (centi-GP, integer-exact): the staker pool
+// (breed-fee cut, distributed daily pro-rata to staked land — undistributed
+// dust carries) and the juice pool (future tournament/fight subsidy — only
+// accrues for now).
 export const gameState = sqliteTable("game_state", {
   id: integer("id").primaryKey(), // single row, id = 1
   dayIndex: integer("day_index").notNull().default(0),
+  stakerPoolCents: integer("staker_pool_cents").notNull().default(0),
+  juicePoolCents: integer("juice_pool_cents").notNull().default(0),
 });
 
 export const gachaTokens = sqliteTable("gacha_tokens", {
