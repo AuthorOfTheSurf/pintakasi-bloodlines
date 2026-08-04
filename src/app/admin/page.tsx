@@ -505,6 +505,14 @@ export default function Admin() {
         <p className="dbpath">
           database: <b>{path.basename(dbPath)}</b> <span className="dim">({dbPath})</span>
         </p>
+        {/* The player-facing handbook (round 22) — the rules, in one place, so
+            nobody has to read the engine to learn how the game works. */}
+        <p className="dbpath">
+          <a className="handbook" href="/wiki">
+            📖 The Pintakasi Handbook
+          </a>{" "}
+          <span className="dim">— the rules, the odds, the money</span>
+        </p>
         <TickControls />
       </header>
 
@@ -766,6 +774,9 @@ const CSS = `
   .office .dbpath { color: #9a8f78; margin: .2rem 0 0; }
   .office .dbpath b { color: #e8b64c; }
   .office .dim { color: #6a6252; font-size: .85em; }
+  .handbook { color: #e8b64c; text-decoration: none; border: 1px solid #3a342a;
+    border-radius: 4px; padding: .15rem .5rem; }
+  .handbook:hover { background: #1c1914; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; margin-top: 1.25rem; }
   .card { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px; padding: .75rem .9rem; }
   .card .big { font-size: 1.35rem; color: #f4e9d0; }

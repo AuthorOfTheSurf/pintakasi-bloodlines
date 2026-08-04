@@ -1,0 +1,318 @@
+import Link from "next/link";
+import {
+  BREED_SPLIT,
+  CLAIMER,
+  ECONOMY,
+  LAND,
+  PINTAKASI,
+  STAKER_FLOWS,
+  landForFight,
+  landForTournamentFight,
+} from "@/engine/config";
+import { fmtGp } from "@/engine/events";
+
+export const dynamic = "force-dynamic";
+
+/** Daily-card land, per fighter — read live so the curve can't go stale. */
+const FIGHT_MODES: { label: string; fee: number }[] = [
+  { label: "Juvenile", fee: ECONOMY.JUVENILE_ENTRY_FEE },
+  { label: "Real / Claimer", fee: ECONOMY.REAL_ENTRY_FEE },
+  { label: "Hardcore", fee: ECONOMY.HARDCORE_ENTRY_FEE },
+];
+
+/** Elimination grants, EARLIEST exit first — the fallen-weighted inversion. */
+const ELIMINATION_STAGES: { label: string; grant: number }[] = [
+  { label: "Round of 64 loser (earliest possible exit)", grant: PINTAKASI.LAND_GRANTS.r64 },
+  { label: "Round of 32 loser", grant: PINTAKASI.LAND_GRANTS.r32 },
+  { label: "Round of 16 loser", grant: PINTAKASI.LAND_GRANTS.r16 },
+  { label: "Quarterfinal loser", grant: PINTAKASI.LAND_GRANTS.qf },
+  { label: "Semifinal loser", grant: PINTAKASI.LAND_GRANTS.sf },
+  { label: "Runner-up", grant: PINTAKASI.LAND_GRANTS.runnerUp },
+  { label: "Champion", grant: PINTAKASI.LAND_GRANTS.champion },
+];
+
+export default function LandPage() {
+  const realLandPerGp = landForFight(ECONOMY.REAL_ENTRY_FEE) / ECONOMY.REAL_ENTRY_FEE;
+  const hardcoreLandPerGp = landForFight(ECONOMY.HARDCORE_ENTRY_FEE) / ECONOMY.HARDCORE_ENTRY_FEE;
+  const upFightingBonus = Math.round((hardcoreLandPerGp / realLandPerGp - 1) * 100);
+  const crownLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
+
+  // Every worked number below is computed from the live config, not typed —
+  // so this page can never quietly go stale.
+  const examplePotCents = ECONOMY.REAL_ENTRY_FEE * 2 * 100;
+  const exampleFightRakeCents = Math.round(examplePotCents * STAKER_FLOWS.FIGHT_RAKE);
+  const exampleClaimTag = CLAIMER.PRICES[2];
+  const exampleClaimRakeCents = Math.round(exampleClaimTag * 100 * STAKER_FLOWS.CLAIM_RAKE);
+  const exampleGachaCents = Math.round(ECONOMY.GACHA_ROLL_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE);
+  const exampleBreedCents = Math.round(ECONOMY.BREED_FEE * 100 * BREED_SPLIT.STAKER_SHARE);
+  const exampleLandPurchaseGp = Math.ceil((LAND.DAILY_BUY_CAP * LAND.GP_PER_100_TOKENS) / 100);
+  const exampleLandPurchaseCents = Math.round(
+    exampleLandPurchaseGp * 100 * STAKER_FLOWS.LAND_PURCHASE_SHARE
+  );
+
+  // The worked pro-rata example — a clean pool and a clean stake, so the
+  // arithmetic is easy to follow by hand.
+  const poolGp = 500;
+  const yourShareOfPool = 0.1;
+  const yourPayoutGp = poolGp * yourShareOfPool;
+
+  return (
+    <>
+      <h1>Land Tokens</h1>
+      <p className="lede">
+        Land Tokens (LT) are the second currency. You can earn LT and you can buy LT — but you can{" "}
+        <strong>never sell it back</strong>. That is not a bug. Land only ever accumulates, so it
+        behaves like a store of value instead of a trading chip. Nobody can dump it and crash it.
+        The dream is that a stockpile of LT is worth real money one day. Whether that happens
+        depends on the world staying busy — see &ldquo;Is it worth it?&rdquo; below.
+      </p>
+
+      <div className="callout warn">
+        <b>One-way, permanently.</b> There is no sell button, no marketplace for LT, and no plan to
+        add one. Every LT you ever hold, you keep. Buying it is a one-way door too — GP spent on
+        land does not come back.
+      </div>
+
+      <h2>Every way to get land</h2>
+      <p>
+        Land is unconditional on the result — you get paid whether you win or lose — but it scales
+        with the stakes, and it scales <strong>more than proportionally</strong>. Fighting &ldquo;up&rdquo;
+        into dearer company pays disproportionately more land, not just more money.
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th className="num">Entry fee</th>
+              <th className="num">LT, per fighter (win or lose)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FIGHT_MODES.map((m) => (
+              <tr key={m.label}>
+                <td>{m.label}</td>
+                <td className="num">{m.fee} GP</td>
+                <td className="num">{landForFight(m.fee)} LT</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="dim">
+        Hardcore costs {Math.round(ECONOMY.HARDCORE_ENTRY_FEE / ECONOMY.REAL_ENTRY_FEE)}× a real
+        entry&apos;s fee, but it pays about {upFightingBonus}% more land per GP staked than a real
+        fight does. The curve rewards the risk, not just the buy-in.
+      </p>
+
+      <h3>Championship fights pay even steeper</h3>
+      <p>
+        Every round of a Pintakasi championship mints land on a steeper curve than the daily card —
+        {" "}{crownLand} LT to each fighter, per fight, measured against the {PINTAKASI.LAND_BASIS} GP
+        stake the crowns represent. A bird that survives several rounds banks that amount again and
+        again before it ever gets to the elimination grants below.
+      </p>
+      <p>
+        On top of the per-fight land, every eliminated bird collects a one-time grant the moment it
+        falls — and the grants run <strong>backwards</strong>. The earliest exit pays the most:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th className="num">One-time land grant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ELIMINATION_STAGES.map((s) => (
+              <tr key={s.label}>
+                <td>{s.label}</td>
+                <td className="num">{s.grant} LT</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="dim">
+        Every crown bout is hardcore — the loser&apos;s career ends there. The grant is the
+        game&apos;s way of saying a first-round hardcore death is never a pure loss: the money goes
+        to the champion, but the land goes to the fallen. See{" "}
+        <Link href="/wiki/pintakasi">The Pintakasi</Link> for the full bracket and purse.
+      </p>
+
+      <h3>Gacha and buying outright</h3>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th className="num">LT</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Every gacha roll</td>
+              <td className="num">{LAND.PER_GACHA_ROLL} LT</td>
+              <td>Free or paid — every roll pays land, whatever else drops.</td>
+            </tr>
+            <tr>
+              <td>Buying land outright</td>
+              <td className="num">{LAND.GP_PER_100_TOKENS} GP per 100 LT</td>
+              <td>
+                Capped at {LAND.DAILY_BUY_CAP.toLocaleString()} LT per farm per game-day (
+                {Math.ceil((LAND.DAILY_BUY_CAP * LAND.GP_PER_100_TOKENS) / 100).toLocaleString()} GP
+                to buy the whole cap).
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        See <Link href="/wiki/gacha">The gacha</Link> for the roll odds and{" "}
+        <Link href="/wiki/money">Golden Pesos</Link> for where GP itself comes from.
+      </p>
+
+      <div className="callout warn">
+        <b>The one exception: an unmatched bird earns nothing.</b> If your lobby closes odd and your
+        bird is the one left without an opponent, its entry fee is refunded — but it earns zero
+        land. Land is for fighting, not queueing.
+      </div>
+
+      <h2>Staking — the heart of the page</h2>
+      <p>
+        Liquid LT just sits in your barn. <strong>Staked</strong> LT earns a pro-rata share of a
+        shared pool, paid out to every staker every single game-day at the tick. &ldquo;Pro-rata&rdquo;
+        means simply this: your share of today&apos;s payout equals your share of all the land
+        currently staked, by anyone, in the whole game. Own 10% of the staked land in the world and
+        you take home 10% of whatever the pool holds today. Nothing more complicated than that.
+      </p>
+      <p>Nearly every GP that changes hands in the game feeds that pool. Here is every inflow, computed live:</p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>What feeds the pool</th>
+              <th className="num">Share</th>
+              <th>Worked today</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Every daily-card fight&apos;s pot</td>
+              <td className="num">{(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%</td>
+              <td>
+                A real card&apos;s {fmtGp(examplePotCents)} GP pot sends {fmtGp(exampleFightRakeCents)}{" "}
+                GP to the pool.
+              </td>
+            </tr>
+            <tr>
+              <td>Every claiming tag</td>
+              <td className="num">{(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}%</td>
+              <td>
+                A {exampleClaimTag} GP tag sends {fmtGp(exampleClaimRakeCents)} GP to the pool; the
+                seller banks the rest. See <Link href="/wiki/claiming">Claiming</Link>.
+              </td>
+            </tr>
+            <tr>
+              <td>Every paid gacha roll</td>
+              <td className="num">{(STAKER_FLOWS.GACHA_SHARE * 100).toFixed(0)}%</td>
+              <td>
+                A {ECONOMY.GACHA_ROLL_PRICE} GP roll sends {fmtGp(exampleGachaCents)} GP to the pool
+                (free rolls send nothing — there&apos;s no GP to share).
+              </td>
+            </tr>
+            <tr>
+              <td>Every breed cover</td>
+              <td className="num">{(BREED_SPLIT.STAKER_SHARE * 100).toFixed(0)}%</td>
+              <td>
+                The {ECONOMY.BREED_FEE} GP cover fee sends {fmtGp(exampleBreedCents)} GP to the pool
+                before the stud owner and the fight-juice pool split the rest.
+              </td>
+            </tr>
+            <tr>
+              <td>Every land purchase</td>
+              <td className="num">{(STAKER_FLOWS.LAND_PURCHASE_SHARE * 100).toFixed(0)}%</td>
+              <td>
+                Buying the full {LAND.DAILY_BUY_CAP.toLocaleString()} LT daily cap costs{" "}
+                {exampleLandPurchaseGp} GP — all {fmtGp(exampleLandPurchaseCents)} GP of it goes
+                straight to the pool. When someone buys land, the people already holding it get
+                paid for the dilution.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="callout tip">
+        <b>A worked example.</b> Say the pool holds {poolGp} GP today, and your staked land is{" "}
+        {(yourShareOfPool * 100).toFixed(0)}% of all the LT staked in the game. At tonight&apos;s
+        tick you get {(yourShareOfPool * 100).toFixed(0)}% of {poolGp} GP — {yourPayoutGp.toFixed(2)}{" "}
+        GP, credited straight to your wallet. Every other staker gets paid the exact same way, off
+        the exact same pool, at the exact same moment.
+      </div>
+      <p className="dim">
+        Payouts are floored to the whole cent per farm. Whatever fraction of a cent is left over
+        after everyone is paid stays in the pool for tomorrow — it is never lost, and it is never
+        somebody&apos;s to keep. If nobody is staking on a given day, the whole pool just waits.
+      </p>
+
+      <h2>Stake it immediately</h2>
+      <div className="callout warn">
+        <b>Liquid land earns nothing. None. Zero.</b> Staking costs nothing to do, and you can
+        unstake any time you want your land back to spend or hold liquid. There is no reason —
+        ever — to leave LT sitting unstaked in your barn. Every game-day it sits idle is a payout
+        you didn&apos;t collect and can never get back. Stake it the moment you earn it.
+      </div>
+
+      <h2>Why the flows got wider</h2>
+      <p>
+        This used to be a thin loop. Staking once paid out of breed-cover fees only, and nothing
+        else — and when the designer actually measured it, ten farms staking over 10,000 LT between
+        them earned about 56 GP <em>combined</em>, across 35 game-days. That is not a reason to
+        hold land. It is a reason to ignore it.
+      </p>
+      <p>
+        The fix was not a bigger number on one flow — it was more flows. Now the fight pot, the
+        claiming tag, the gacha spend, the breed cover, and every land purchase all pay the pool.
+        The intent is plain: make land worth holding, so that players play <strong>for</strong> it,
+        not just around it.
+      </p>
+
+      <h2>Is it worth it?</h2>
+      <p>
+        Honestly: land&apos;s value today comes entirely from the yield stream above — nothing
+        else backs it yet. That means a few things worth saying straight, not sold:
+      </p>
+      <ul>
+        <li>
+          The pool only grows if the world is busy. Empty lobbies and no claims and no covers mean
+          an empty pool, and an empty pool pays nothing, however much you have staked.
+        </li>
+        <li>
+          Every new LT minted — by fighting, by the gacha, by anyone buying land — dilutes
+          everybody else&apos;s share of the same pool. Your 10% today can become 9% tomorrow if
+          the total staked grows faster than your own stake does.
+        </li>
+        <li>
+          There is no floor and no guarantee. The pool has been thin before (see above) and could
+          be again if activity drops. What changed round 22 is how many taps feed it, not a promise
+          about how full it stays.
+        </li>
+      </ul>
+      <p>
+        None of that changes the practical advice above — idle land still earns strictly less than
+        staked land, always. It just means land is a bet on the game staying alive and busy, not a
+        guaranteed annuity.
+      </p>
+
+      <div className="next">
+        <Link href="/wiki/money">Golden Pesos →</Link>
+        <Link href="/wiki/card">The card →</Link>
+        <Link href="/wiki/pintakasi">The Pintakasi →</Link>
+        <Link href="/wiki/gacha">The gacha →</Link>
+      </div>
+    </>
+  );
+}
