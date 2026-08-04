@@ -5,7 +5,7 @@ import { shopAllClaimers } from "./auto-play";
 import { Bots, type BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
-import { BARN } from "./config";
+import { BARN, weatherOfDay, type Element } from "./config";
 import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
@@ -17,6 +17,8 @@ export interface GameStateView {
   clock: ClockState; // the WORLD clock — shared by every farm
   farm: FarmView; // identity, GP, land, free pulls, check-in status
   barn: { count: number; capacity: number };
+  // The day's ascendant element + tomorrow's, so the client can plan (round 24).
+  weather: { today: Element; tomorrow: Element };
 }
 
 export interface TickView {
@@ -63,6 +65,7 @@ export class Game {
       clock: GameClock.stateOf(row.dayIndex),
       farm: this.farms.view(this.farms.rowById(this.farmId)),
       barn: { count: this.flock.barnCount(), capacity: BARN.CAPACITY },
+      weather: { today: weatherOfDay(row.dayIndex), tomorrow: weatherOfDay(row.dayIndex + 1) },
     };
   }
 

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { battleLog, farms, gameState, lobbyEntries, tournamentEntries } from "@/db/schema";
+import { battleLog, farms, gameState, lobbies, lobbyEntries, tournamentEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
-import { diagnose, formatReport } from "./doctor";
+import { ELEMENTS, weatherOfDay } from "./config";
+import { diagnose, formatReport, weatherTiming } from "./doctor";
+import { makeBird, world as testWorld } from "./testkit";
 import { Game } from "./game";
 
 /**
@@ -214,5 +216,90 @@ describe("the health report", () => {
     const report = diagnose(w.db, ":memory:");
     expect(report.health.some((h) => h.warn)).toBe(true);
     expect(report.ok).toBe(true); // warnings are loud, not fatal
+  });
+});
+
+/**
+ * THE WEATHER LINE (round 25). Weather is a MODIFIER, not a door, so it can't
+ * be a farm-count bar in the adoption block — one lucky bird on one lucky day
+ * would light up every barn. The measurement is the timing RATE against the
+ * 1-in-5 a stable gets for free by ignoring the weather entirely, which means
+ * these tests have to prove both directions: that ignoring it reads as chance,
+ * and that timing it reads as more.
+ */
+describe("the weather-timing line", () => {
+  /**
+   * Post `n` entries on one day, `matched` of them by birds whose element is
+   * that day's ascendant one. Raw rows on purpose: this is a measurement test,
+   * and going through Lobbies would put the bots' own appetite in the middle
+   * of the thing being measured.
+   */
+  function card(db: DB, day: number, n: number, matched: number) {
+    const ascendant = weatherOfDay(day);
+    const off = ELEMENTS.find((e) => e !== ascendant)!;
+    db.insert(lobbies)
+      .values({ mode: "real", classType: "open", format: "shortKnife", seed: 1, dayOpened: day })
+      .run();
+    const lobbyId = db.select().from(lobbies).all().at(-1)!.id;
+    for (let i = 0; i < n; i++) {
+      const bird = makeBird(db, { element: i < matched ? ascendant : off });
+      db.insert(lobbyEntries)
+        .values({ lobbyId, birdId: bird.id, farmId: bird.farmId, fee: 0, dayEntered: day })
+        .run();
+    }
+  }
+
+  test("a world that ignores the weather reads as chance, and says so", () => {
+    const w = testWorld({ rivalFlock: false });
+    // 1-in-5 exactly — what a stable gets for free by never looking.
+    for (let day = 0; day < 5; day++) card(w.db, day, 20, 4);
+    const timing = weatherTiming(w.db);
+    expect(timing.entries).toBe(100);
+    expect(timing.rate).toBeCloseTo(1 / ELEMENTS.length, 5);
+    expect(timing.ratio).toBeCloseTo(1, 5);
+
+    const section = diagnose(w.db, ":memory:").health.find((h) => h.title === "CARD HEALTH")!;
+    expect(section.lines.join("\n")).toContain("no better than chance");
+    expect(section.warn).toContain("nobody is playing the going");
+  });
+
+  test("a world that times its entries clears the floor and reads as timed", () => {
+    const w = testWorld({ rivalFlock: false });
+    for (let day = 0; day < 5; day++) card(w.db, day, 20, 8); // 40%
+    const timing = weatherTiming(w.db);
+    expect(timing.rate).toBeCloseTo(0.4, 5);
+    expect(timing.ratio).toBeCloseTo(2, 5);
+
+    const section = diagnose(w.db, ":memory:").health.find((h) => h.title === "CARD HEALTH")!;
+    expect(section.lines.join("\n")).toContain("entries are being timed");
+    expect(section.warn ?? "").not.toContain("playing the going");
+  });
+
+  test("a thin world says so rather than reporting noise as a verdict", () => {
+    // Under the sample floor a couple of entries either way swings the ratio
+    // past any threshold — the honest report is that there's nothing to read.
+    const w = testWorld({ rivalFlock: false });
+    card(w.db, 0, 10, 10); // 100% timed, and still not evidence
+    const section = diagnose(w.db, ":memory:").health.find((h) => h.title === "CARD HEALTH")!;
+    expect(section.lines.join("\n")).toContain("too few to read");
+    expect(section.warn ?? "").not.toContain("playing the going");
+  });
+
+  test("the unmatched warning and the weather warning share the line, not replace it", () => {
+    // One HealthSection carries one warn, and both of these can be true at
+    // once. Losing either to the other is how a real problem goes unread.
+    const w = world(9);
+    const section = diagnose(w.db, ":memory:").health.find((h) => h.title === "CARD HEALTH")!;
+    expect(section.lines.length).toBe(2); // the card line, then the weather line
+    expect(section.lines[1]).toContain("weather timing");
+  });
+
+  test("championship fights are excluded — nobody chooses the day of a crown", () => {
+    // A bracket runs on the day the calendar says. Counting those entries
+    // would credit (or blame) barns for a decision they never made.
+    const w = world(9);
+    const measured = weatherTiming(w.db).entries;
+    expect(measured).toBe(w.db.select().from(lobbyEntries).all().length);
+    expect(w.db.select().from(tournamentEntries).all().length).toBeGreaterThan(0);
   });
 });

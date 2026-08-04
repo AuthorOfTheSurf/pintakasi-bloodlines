@@ -6,6 +6,7 @@ import {
   PHASES,
   STARS,
   STATS,
+  WEATHER,
   type Element,
   type FightFormat,
 } from "./config";
@@ -78,7 +79,8 @@ export function simulatePair(
   bIn: Combatant,
   format: FightFormat,
   rng: Rng,
-  header: string
+  header: string,
+  weather?: Element
 ): SimResult {
   const fmt = FORMATS[format];
   const a = toFighter(aIn);
@@ -97,6 +99,21 @@ export function simulatePair(
     lines.push(`${a.element} overcomes ${b.element} — ${a.name} has the element edge.`);
   else if (ELEMENT_BEATS[b.element] === a.element)
     lines.push(`${b.element} overcomes ${a.element} — ${b.name} has the element edge.`);
+  if (weather) {
+    const aMatch = a.element === weather;
+    const bMatch = b.element === weather;
+    if (aMatch && bMatch) {
+      // Both matched cancels EXACTLY: damage is the roll MARGIN, so the same
+      // bonus on both sides drops out and the fight is bit-identical to a
+      // no-weather one. Say that, rather than implying the day did something.
+      lines.push(`Today's element is ${weather} — both birds call it home, so it settles nothing.`);
+    } else if (aMatch || bMatch) {
+      const who = aMatch ? a.name : b.name;
+      lines.push(`Today's element is ${weather} — ${who} carries the weather edge.`);
+    } else {
+      lines.push(`Today's element is ${weather} — neither bird calls it home.`);
+    }
+  }
   if (a.underdog) lines.push(`${a.name} is outmatched on paper — station will tell.`);
   if (b.underdog) lines.push(`${b.name} is outmatched on paper — station will tell.`);
 
@@ -109,8 +126,8 @@ export function simulatePair(
     const stat =
       turn <= PHASES.BREAK_THROUGH_TURN ? "agility" : turn <= PHASES.OPEN_THROUGH_TURN ? "sight" : "gameness";
 
-    const ra = turnRoll(a, b, stat, turn, rng);
-    const rb = turnRoll(b, a, stat, turn, rng);
+    const ra = turnRoll(a, b, stat, turn, rng, weather);
+    const rb = turnRoll(b, a, stat, turn, rng, weather);
 
     if (ra.total === rb.total) {
       lines.push(`T${turn} [${stat}] Both circle — ${ra.detail} vs ${rb.detail}. No blood.`);
@@ -208,7 +225,8 @@ function turnRoll(
   other: Fighter,
   stat: "agility" | "sight" | "gameness",
   turn: number,
-  rng: Rng
+  rng: Rng,
+  weather?: Element
 ): { total: number; dice: [number, number]; doubles: boolean; detail: string } {
   const dice = roll2d6(rng);
   const parts = [`${dice[0]}+${dice[1]}`];
@@ -230,6 +248,12 @@ function turnRoll(
   if (ELEMENT_BEATS[self.element] === other.element) {
     total += BATTLE.ELEMENT_EDGE;
     parts.push(`+${BATTLE.ELEMENT_EDGE}elem`);
+  }
+  // The day's ascendant element (round 24): a bird OF the weather's element
+  // gets the same flat +1, stacking with the head-to-head RPS edge above.
+  if (weather && self.element === weather) {
+    total += WEATHER.EDGE;
+    parts.push(`+${WEATHER.EDGE}wx`);
   }
   // Station — the rivalry modifier: the underdog fights above its book.
   if (self.underdog) {

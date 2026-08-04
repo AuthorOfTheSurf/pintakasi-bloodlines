@@ -69,6 +69,72 @@ export const ELEMENT_BEATS: Record<Element, Element> = {
   Water: "Fire",
 };
 
+// ── Daily Element weather (round 24 — the PFL "going" analog) ───────────────
+// One element is ASCENDANT each game-day, giving birds OF that element a
+// small edge in every fight on the card. This is the random, blade-
+// independent axis of fight selection: it's the same for every lobby that
+// day (so it never fragments the lobby keys — mode × class × format is
+// already plenty), and it rotates irregularly so a bird's "day" comes
+// around without being predictable to the week.
+//
+// The intent is SOFTER selection, not a second matchmaking dimension. A
+// bird rarely gets its ideal blade AND its ideal weather in the same fight,
+// so players constantly trade one for the other — and the matching birds
+// drawn in by a good-weather day pull their natural counters in after them,
+// then the counters' counters. Logical and foggy, by design.
+//
+// Deterministic from dayIndex (no schema change, no storage): reproducible
+// across reloads and sims, stable for any given day. The head-to-head
+// element RPS edge (ELEMENT_EDGE) is SEPARATE and stacks with this — a Fire
+// bird vs a Metal opponent on a Fire day gets both.
+export const WEATHER = {
+  // The flat bonus on a turn's roll when your element matches the day's
+  // ascendant element. Boost-only on purpose — no predator penalty — to keep
+  // it soft; a hindrance for the element that beats the ascendant is a
+  // tunable later.
+  //
+  // WHY 0.25 AND NOT 1 (re-ruled after round 24's review). This shipped at
+  // +1, matching ELEMENT_EDGE, on the reasoning that "+1 on 2d6 is half a
+  // die, so it only nudges." That reasoning is wrong, and the measurement
+  // says so: between two equal 350-stat birds a flat +1 takes the matched
+  // bird from 50% to 76%, and STACKED on the head-to-head RPS edge it
+  // reaches 92%. It was the single most decisive term in the fight.
+  //
+  // The reason is ROLL_DIVISOR (see BATTLE): a turn roll is 2d6 + stat/400,
+  // so a starter bird's ENTIRE stat block is worth about +0.875 on the roll.
+  // Anything flat and near 1.0 doesn't nudge the stat term, it outweighs it.
+  // Every flat modifier in this engine has to be read against 0.875, not
+  // against the dice.
+  //
+  // 0.25 is about a quarter of what a whole starter bird contributes.
+  // Measured on equal 350-stat birds over 4000 seeds, shortKnife:
+  //   weather alone   50% → 57%   (a felt edge; a coin-flip stays a coin-flip)
+  //   stacked on RPS  76% → 82%   (weather adds ~6 points, not ~16)
+  // It also keeps the Pit Figure honest: at +1 a weather-matched winner's
+  // average figure inflated by ~12 points — over two full FIGURE.BANDs, so
+  // the day leaked into the discovery signal and no form line could show it.
+  // At 0.25 the inflation is ~2.7, inside the ±FIGURE.NOISE fog that's
+  // already there. The weather colors a fight; it doesn't relabel the bird.
+  EDGE: 0.25,
+  // The salt that makes weatherOfDay irregular without cycling every 5 days.
+  SALT: 0x6c29a1d3,
+} as const;
+
+/** The ascendant element for a given game-day — deterministic, irregular. */
+export function weatherOfDay(dayIndex: number): Element {
+  // The engine's own mulberry32 generator, seeded per day, gives one well-
+  // mixed draw — so the rotation reads as irregular without clumping on any
+  // one element (a one-shot finalizer hash over sequential dayIndex values
+  // under-mixed and starved one element). Deterministic: a sim re-run lands
+  // on the same element for day N every time.
+  let a = (Math.imul(dayIndex, 0x9e3779b9) + WEATHER.SALT) >>> 0;
+  a = (a + 0x6d2b79f5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  const r = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  return ELEMENTS[Math.floor(r * ELEMENTS.length)];
+}
+
 // ── Element stars (typed 0–5 in half-steps; stored as half-stars 0–10) ──────
 export const STARS = {
   MAX_HALF_STARS: 10, // 10 half-stars = 5.0★, the max

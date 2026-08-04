@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createDb } from "@/db/client";
-import { birds } from "@/db/schema";
+import { battleLog, birds } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
+import { weatherOfDay, type Element } from "./config";
 import { Flock } from "./flock";
 import { GameClock } from "./game-clock";
 import {
@@ -139,5 +140,106 @@ describe("retirement", () => {
     }
     expect(lastEvents.hatched.length).toBe(1); // this week's egg
     expect(lastEvents.forceRetired.length).toBe(1); // Batong Buhay at 9
+  });
+});
+
+describe("the form book (weather on past fights)", () => {
+  /** A finished fight, reduced to the two columns the form book reads. */
+  function logFight(
+    db: ReturnType<typeof createDb>,
+    birdId: string,
+    farmId: string,
+    dayIndex: number,
+    pitFigure: number,
+    result: "win" | "loss" = "win"
+  ) {
+    db.insert(battleLog)
+      .values({
+        dayIndex,
+        lobbyId: 1,
+        farmId,
+        birdId,
+        mode: "real",
+        format: "shortKnife",
+        lobby: "open",
+        opponentBirdId: "rival-bird",
+        opponentFarmId: "farm-2",
+        opponentName: "Rival",
+        result,
+        pitFigure,
+        gpDeltaCents: 0,
+        seed: 1,
+        playByPlay: "[]",
+      })
+      .run();
+  }
+
+  /** The first `n` days on which `element` is the ascendant one, from day 0. */
+  function daysFavouring(element: Element, n: number, favour = true): number[] {
+    const out: number[] = [];
+    for (let d = 0; out.length < n; d++) if ((weatherOfDay(d) === element) === favour) out.push(d);
+    return out;
+  }
+
+  test("every line carries its day's element, flagged when the bird held it", () => {
+    const { db, farmId, flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!;
+    const [good] = daysFavouring(alab.element, 1);
+    const [bad] = daysFavouring(alab.element, 1, false);
+    logFight(db, alab.id, farmId, bad, 70);
+    logFight(db, alab.id, farmId, good, 84);
+
+    const book = flock.formBook(alab.id);
+    expect(book.element).toBe(alab.element);
+    // Oldest first regardless of insert order — a career reads forward.
+    expect(book.lines.map((l) => l.dayIndex)).toEqual([bad, good].sort((a, b) => a - b));
+    for (const line of book.lines) {
+      expect(line.ascendant).toBe(weatherOfDay(line.dayIndex));
+      expect(line.edge).toBe(line.ascendant === alab.element);
+    }
+  });
+
+  test("the on/off split is what decorrelates a good day from a good bird", () => {
+    const { db, farmId, flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!;
+    const [g1, g2] = daysFavouring(alab.element, 2);
+    const [b1, b2] = daysFavouring(alab.element, 2, false);
+    logFight(db, alab.id, farmId, g1, 88);
+    logFight(db, alab.id, farmId, g2, 92);
+    logFight(db, alab.id, farmId, b1, 60);
+    logFight(db, alab.id, farmId, b2, 64, "loss");
+
+    const book = flock.formBook(alab.id);
+    expect(book.onEdge).toEqual({ fights: 2, avgFigure: 90 });
+    expect(book.offEdge).toEqual({ fights: 2, avgFigure: 62 });
+  });
+
+  test("a bird that has never fought in its own weather reports no onEdge line", () => {
+    const { db, farmId, flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!;
+    for (const d of daysFavouring(alab.element, 3, false)) logFight(db, alab.id, farmId, d, 75);
+    const book = flock.formBook(alab.id);
+    expect(book.onEdge).toBeNull();
+    expect(book.offEdge?.fights).toBe(3);
+  });
+
+  test("the weather is RECOVERED, not stored — nothing but dayIndex is needed", () => {
+    // The whole reason this shipped without a schema change: a world seeded
+    // before the weather existed still reads back a full form book.
+    const { db, farmId, flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!;
+    logFight(db, alab.id, farmId, 41, 70);
+    expect(flock.formBook(alab.id).lines[0].ascendant).toBe(weatherOfDay(41));
+  });
+
+  test("the form book is not farm-scoped — claimer fields are read the same way", () => {
+    const { db, farmId, flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!;
+    logFight(db, alab.id, farmId, 3, 70);
+    // A rival barn's Flock reads the same bird: byId() would refuse it.
+    const rival = new Flock(db, "farm-2");
+    expect(rival.formBook(alab.id).lines.length).toBe(1);
+    expect(() => rival.byId(alab.id)).toThrow();
+    expect(() => rival.formBook("no-such-bird")).toThrow(/No bird/);
   });
 });

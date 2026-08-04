@@ -1,12 +1,14 @@
 import Link from "next/link";
 import {
   BATTLE,
+  ELEMENTS,
   FIGURE,
   FORMATS,
   FORMAT_NAMES,
   PHASES,
   STARS,
   STATS,
+  WEATHER,
   type FightFormat,
 } from "@/engine/config";
 
@@ -142,8 +144,13 @@ export default function FightingPage() {
         </li>
         <li>
           <strong>Element can tip a roll.</strong> If your element overcomes your opponent&apos;s
-          in the wuxing cycle, you get a flat +{BATTLE.ELEMENT_EDGE} on every roll — real, but
-          small enough that the wrong-element bird still usually wins on stats.
+          in the wuxing cycle, you get a flat +{BATTLE.ELEMENT_EDGE} on every roll. That is a
+          bigger deal than it looks. Read it against the line above: a starter bird&apos;s{" "}
+          <em>entire</em> stat block, divided by {BATTLE.ROLL_DIVISOR}, is worth about a point on
+          the roll. So a flat +{BATTLE.ELEMENT_EDGE} is roughly the weight of the whole bird. It
+          doesn&apos;t make anyone unbeatable — the two dice are still the loudest thing in the
+          fight — but between two evenly matched birds, the one with the matchup wins clearly more
+          often than it loses. Never treat the element wheel as decoration.
         </li>
         <li>
           <strong>Whoever rolls higher lands the hit.</strong> Damage is the roll&apos;s margin ×
@@ -172,6 +179,56 @@ export default function FightingPage() {
         <b>A bird can quit.</b> The morale check above is real — a low-gameness bird that gets hurt
         early can break and run, losing the fight outright even with wind still left in the tank.
         Gameness is the stat that keeps a bird in a fight it&apos;s losing.
+      </div>
+
+      <h2>The day&apos;s element — weather</h2>
+      <p>
+        Every game-day, one of the five elements is <strong>ascendant</strong> — the day&apos;s
+        &ldquo;weather.&rdquo; A bird whose element matches the day&apos;s weather gets a flat
+        +{WEATHER.EDGE} on every roll it makes, on top of the head-to-head element edge above. It
+        stacks: a Fire bird beating a Metal opponent on a Fire day gets both bonuses.
+      </p>
+      <p>
+        <strong>The weather is the weaker of the two element bonuses, on purpose.</strong> Beating
+        your opponent&apos;s element is worth +{BATTLE.ELEMENT_EDGE} — {BATTLE.ELEMENT_EDGE /
+        WEATHER.EDGE}× the weather bonus. Matching the day gives a real but modest lift: between
+        two birds that are otherwise dead even, it turns a coin flip into a little better than a
+        coin flip. The matchup is the thing that decides fights; the weather is the thing that
+        breaks ties. If you ever have to pick one, chase the matchup, not the forecast.
+      </p>
+      <div className="callout">
+        <b>Why so small?</b> Every flat bonus in this game has to be read against the stat term,
+        not against the dice. A turn roll is two dice plus your stat ÷ {BATTLE.ROLL_DIVISOR}, so a
+        starter bird&apos;s six stats together are only worth about a point on the roll. A flat
+        bonus anywhere near 1 doesn&apos;t nudge a bird&apos;s quality — it outweighs it. The
+        weather is kept to a fraction of that for two reasons: a better bird should still beat a
+        worse bird on the wrong day, and a lucky forecast shouldn&apos;t inflate the winner&apos;s
+        Pit Figure enough to lie about what the bird is. At this size the day colors a fight; it
+        doesn&apos;t relabel the bird.
+      </div>
+      <p>
+        The weather is the same for <em>every</em> fight on the card that day, no matter the blade.
+        It rotates irregularly from day to day across all five elements —{" "}
+        {ELEMENTS.join(", ")} — so a bird&apos;s good day comes around without being predictable to
+        the week. You can see today&apos;s element and tomorrow&apos;s in the game state (the{" "}
+        <code>get_state</code> tool) and in the Stewards&apos; Office header, so you can plan which
+        birds to run before the card goes off.
+      </p>
+      <p>
+        Old fights remember their weather too. Every past fight in a bird&apos;s form book is
+        stamped with that day&apos;s element, and the ones the bird ran on its <em>own</em> day are
+        flagged — with its average Pit Figure on those days shown next to its average on all the
+        others. That is there so you can tell a good day from a good bird. If a bird&apos;s two
+        averages are close, the figures are telling you about the bird. If its own-day figures are
+        much higher, some of what you were reading was the sky.
+      </p>
+      <div className="callout tip">
+        <b>Why it exists.</b> A bird rarely gets its ideal blade <em>and</em> its ideal weather in
+        the same fight. The weather is the random half of that tradeoff — the blade is the one you
+        choose. Run a wrong-weather bird because the blade is right, or hold it for its day and
+        run something else tonight. The birds drawn in by a good-weather day pull their natural
+        counters in after them, and the counters&apos; counters — the card stays logical and a
+        little foggy, which is the point.
       </div>
 
       <h2>The Pit Figure — a performance rating, not a strength rating</h2>

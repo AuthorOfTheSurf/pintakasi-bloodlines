@@ -1,7 +1,14 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
-import { bestFormat, chaseCrowns, chaseJuvenileCrowns, ladderClass } from "./bots";
+import {
+  bestFormat,
+  chaseCrowns,
+  chaseJuvenileCrowns,
+  ladderClass,
+  weatherCardsToday,
+  weatherOrder,
+} from "./bots";
 import { Breeding } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
@@ -100,9 +107,23 @@ export function playHonestDay(db: DB, farmId: string): void {
   // …and up the CLASS LADDER (round 19): the old auto-play carded every
   // bird in the open, so player-side stables never used maidens or the
   // conditions ladder at all. Now a bird climbs as it wins at stakes.
+  //
+  // …and by the GOING (round 25). An honest stable reads the weather board
+  // the same way a bot does: it cards its whole flock as before, except that
+  // a bird whose element is ascendant TOMORROW will sometimes wait a night
+  // for it. There is no boost to apply here — auto-play already cards every
+  // eligible bird, so HONEST_ENTRY_RATE is 1 and the matched branch of
+  // weatherCardsToday resolves to "yes" on its own. The ordering still
+  // matters: matched birds hit the board first, so when a lobby key ends up
+  // odd it is a mistimed bird left over, not a well-timed one.
   const cardRng = mulberry32(1100 + day);
   const lobbies = new Lobbies(db, farmId);
-  for (const bird of flockApi.all().filter((b) => b.status === "active")) {
+  const carding = weatherOrder(
+    flockApi.all().filter((b) => b.status === "active"),
+    day
+  );
+  for (const bird of carding) {
+    if (!weatherCardsToday(bird, day, cardRng, HONEST_ENTRY_RATE)) continue;
     const format = bestFormat(bird, cardRng);
     // The discovery-year ladder (round 23): a winless juvenile starts in a
     // maiden, a winner moves up to juvenile stakes, and now and then one goes
@@ -166,6 +187,13 @@ const AUTO_CLAIM_APPETITE = 0.35;
 const AUTO_RESERVE = 400; // GP never gambled into a tag
 /** How often a juvenile is carded with a tag on it (round 23). */
 const JUVENILE_SELL_RATE = 0.2;
+/**
+ * An honest stable cards everything it legally can — that has been true since
+ * round 17 and this is just that rule written down, so weatherCardsToday has a
+ * base rate to bend. Not a knob: lower it and auto-play starts benching birds
+ * for no stated reason.
+ */
+const HONEST_ENTRY_RATE = 1;
 
 /** Every player-owned (non-bot) stable plays its honest day. */
 export function playAllHonestDays(db: DB): void {

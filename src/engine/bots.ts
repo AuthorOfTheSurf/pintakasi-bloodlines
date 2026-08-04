@@ -2,13 +2,14 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
-import { BOT_FARMS, type BotProfile } from "./bot-config";
+import { BOT_FARMS, WEATHER_APPETITE, type BotProfile } from "./bot-config";
 import {
   CLAIMER,
   ECONOMY,
   JUVENILE_MAJOR,
   LAND,
   PINTAKASI,
+  weatherOfDay,
   type FightFormat,
   type Lobby,
 } from "./config";
@@ -227,7 +228,15 @@ export class Bots {
     //    odd count has a bird waiting with no opponent; join it. Fill
     //    counts are public (the fog hides who, never how many). One bird
     //    per lobby per bot — a bot's own birds can't fight each other.
-    const roster = () => shuffle(flock.all().filter((b) => b.status === "active" && b.age >= 1), rng);
+    //    Shuffled for spread, then re-ordered by the going (round 25): when
+    //    two of the barn's birds would both fill an odd lobby, the one whose
+    //    element is ascendant today goes. Costs the card nothing — it's the
+    //    same number of entries, just a better-chosen bird.
+    const roster = () =>
+      weatherOrder(
+        shuffle(flock.all().filter((b) => b.status === "active" && b.age >= 1), rng),
+        today
+      );
     for (const lobby of lobbies.board()) {
       if (lobby.status !== "open") continue; // closed = entries locked
       if (lobby.filled % 2 === 0) continue;
@@ -247,9 +256,11 @@ export class Bots {
       }
     }
 
-    // 5. Then card the rest of the flock by style.
+    // 5. Then card the rest of the flock by style — and by the going. A bird
+    //    runs a little more often on its own element's day, and sometimes
+    //    waits a night when tomorrow is its day (see WEATHER_APPETITE).
     for (const bird of roster()) {
-      if (rng() >= bot.entryRate) continue;
+      if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
       if (gp() <= ECONOMY.HARDCORE_ENTRY_FEE + RESERVE) break;
       const spec = Bots.pickSpec(bot, bird, rng);
       if (quietly(() => void lobbies.enter(bird.id, spec))) {
@@ -361,6 +372,77 @@ export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
   return (Object.entries(scores) as [FightFormat, number][]).reduce((best, cur) =>
     cur[1] + jitter() > best[1] + jitter() ? cur : best
   )[0];
+}
+
+/**
+ * READING THE GOING (round 25) — the weather half of "which bird, which day".
+ *
+ * Weather is blade-INDEPENDENT: the ascendant element is the same in every
+ * lobby on the card, so unlike bestFormat it says nothing about WHERE to card
+ * a bird. It only ever answers WHETHER to card it tonight. That's why these
+ * are separate functions and why pickSpec is untouched — a weather-matched
+ * bird still belongs at the distance its stats say, not somewhere else.
+ *
+ * Shared with auto-play so a player-side stable times its entries the same
+ * way a bot does; the knobs and the reasoning for their size live in
+ * bot-config's WEATHER_APPETITE.
+ */
+
+/** Is this bird's element the day's ascendant one? */
+export function weatherMatched(bird: BirdView, dayIndex: number): boolean {
+  return bird.element === weatherOfDay(dayIndex);
+}
+
+/**
+ * The roster in the order a conditioner would reach for it: today's birds
+ * first, tomorrow's birds LAST, everything else in between.
+ *
+ * The FREE lever, and — measured — the one that does most of the work. It
+ * changes WHICH bird goes, never how many, so it cannot cost the card a
+ * single entry. It matters most in the liquidity pass, which fills odd
+ * lobbies with whichever of the barn's birds the rules will take: instrumented
+ * over a 35-day sim, that pass ran 36% of its entries on the bird's own day
+ * purely from this ordering, against 20% by chance.
+ *
+ * That measurement is also why the third tier exists. The liquidity pass is
+ * deliberately NOT gated by weatherCardsToday — an odd lobby has a bird of
+ * somebody's waiting with no opponent, and no amount of clever timing is
+ * worth stranding it — so without this, the pass happily spent the very birds
+ * the entry gate had just decided to hold for tomorrow, and the hold measured
+ * as nothing. Sinking them to the bottom means they only get used when the
+ * card genuinely has nothing else, which is exactly the right exception.
+ *
+ * Stable within each tier, so a shuffled roster stays shuffled inside it —
+ * otherwise every barn would card its birds in the same seeded order and the
+ * matchmaker would see the flock in id order all week.
+ */
+export function weatherOrder(roster: BirdView[], dayIndex: number): BirdView[] {
+  const tier = (b: BirdView) =>
+    weatherMatched(b, dayIndex) ? 0 : weatherMatched(b, dayIndex + 1) ? 2 : 1;
+  return [0, 1, 2].flatMap((t) => roster.filter((b) => tier(b) === t));
+}
+
+/**
+ * Does this bird go on tonight's card at all?
+ *
+ * `baseRate` is the barn's ordinary appetite for carding a bird (auto-play
+ * passes 1 — it cards everything it can), and the weather bends it two ways:
+ * up on the bird's own day, and — once — down on the eve of it.
+ *
+ * The hold is checked BEFORE the boost and only when today is not already the
+ * bird's day, so the two can never fight over the same bird.
+ */
+export function weatherCardsToday(
+  bird: BirdView,
+  dayIndex: number,
+  rng: Rng,
+  baseRate: number
+): boolean {
+  if (weatherMatched(bird, dayIndex))
+    return rng() < baseRate + (1 - baseRate) * WEATHER_APPETITE.MATCH_BOOST;
+  // Tomorrow is its day — worth waiting a night for, sometimes.
+  if (weatherMatched(bird, dayIndex + 1) && rng() < WEATHER_APPETITE.HOLD_FOR_TOMORROW) return false;
+  return rng() < baseRate;
 }
 
 /**

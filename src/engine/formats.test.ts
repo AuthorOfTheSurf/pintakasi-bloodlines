@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createDb } from "@/db/client";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { FIGURE, FORMATS, type Element, type FightFormat } from "./config";
+import { BATTLE, ELEMENTS, FIGURE, FORMATS, WEATHER, weatherOfDay, type Element, type FightFormat } from "./config";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { Game } from "./game";
@@ -139,5 +139,164 @@ describe("format records (the past-performance lines)", () => {
       expect(rec.wins + rec.losses).toBe(rec.fights);
       expect(rec.bestFigure).toBeGreaterThanOrEqual(rec.avgFigure - FIGURE.BAND); // avg rounds
     }
+  });
+});
+
+describe("daily Element weather (round 24)", () => {
+  // Round 24's review found the original magnitude test was a FALSE PASS: it
+  // ran 200 seeds and asserted a 20-point band, and the true winrate at the
+  // shipped EDGE=1 (76.7%) sat ABOVE its own ceiling. It passed only because
+  // seeds 1..200 happen to read 73.0% — seeds 201..400 read 80.5%. A 200-seed
+  // sample carries ~3 points of noise, so any bound placed within ~3 points of
+  // the truth is decided by the seed window, not by the engine. Everything
+  // statistical below therefore runs SEEDS fights (noise ≈ 0.8 points) and
+  // asserts bands with several points of air on both sides; each was checked
+  // against three disjoint seed windows before it was written down.
+  const SEED_FROM = 1;
+  const SEEDS = 4000;
+
+  /** Side-0 winrate as a percentage over the standard seed window. */
+  function winRatePct(aEl: Element, bEl: Element, weather?: Element) {
+    let wins = 0;
+    for (let seed = SEED_FROM; seed < SEED_FROM + SEEDS; seed++) {
+      // Equal 350-stat birds on shortKnife: no stat gap, no star gap, so the
+      // only asymmetry left is whichever element rule is under test.
+      const sim = simulatePair(bird("A", 350, aEl), bird("B", 350, bEl), "shortKnife", mulberry32(seed), "T", weather);
+      if (sim.winner === 0) wins++;
+    }
+    return (wins / SEEDS) * 100;
+  }
+
+  test("weatherOfDay is deterministic and covers all five elements", () => {
+    expect(weatherOfDay(42)).toBe(weatherOfDay(42)); // stable across calls
+    const seen = new Set<Element>();
+    for (let d = 0; d < 200; d++) seen.add(weatherOfDay(d));
+    expect(seen.size).toBe(ELEMENTS.length); // every element shows up
+  });
+
+  test("the weather edge is felt but not decisive between two equal birds", () => {
+    // Wood is NEUTRAL to Fire in the wuxing cycle (Fire beats Metal, Water
+    // beats Fire), so on a Fire day the weather is the only term separating
+    // these two — this measures WEATHER.EDGE and nothing else.
+    const matched = winRatePct("Fire", "Wood", "Fire");
+    const neutral = winRatePct("Fire", "Wood"); // the same pairing, no weather
+    // The no-weather control is a coin flip, which is what makes the matched
+    // number attributable: side 0 rolls first each turn but that buys it
+    // nothing, so any lift above ~50 is the day and not the turn order.
+    expect(neutral).toBeGreaterThan(47);
+    expect(neutral).toBeLessThan(53);
+    // Measured 56.8 / 58.8 / 58.2 across seeds 1.., 4001.., 10001.. (n=4000).
+    // The floor says the edge is REAL — a matched bird is favoured, not just
+    // flattered. The ceiling says it is not the fight: at the old EDGE=1 this
+    // read 76.7%, so 70 fails loudly if anyone restores a near-1.0 modifier.
+    expect(matched).toBeGreaterThan(53);
+    expect(matched).toBeLessThan(65);
+  });
+
+  // ── THE CENTERPIECE ───────────────────────────────────────────────────────
+  // This is the assertion whose absence let EDGE=1 ship. Nobody compared the
+  // weather against the rule it was supposed to be SOFTER than. The design
+  // intent (see WEATHER in config) is "soft selection": the day colors a card,
+  // the head-to-head RPS matchup decides a fight. Measured on the same seeds
+  // and the same birds, the weather must stay a fraction of ELEMENT_EDGE — if
+  // someone tunes EDGE up until the day outweighs the matchup, this fails
+  // before the balance shows up in a sim.
+  test("the weather edge is materially WEAKER than the head-to-head element edge", () => {
+    const neutral = winRatePct("Fire", "Wood"); // ~49.7 — the shared control
+    const weather = winRatePct("Fire", "Wood", "Fire"); // ~56.8 — day only
+    const headToHead = winRatePct("Fire", "Metal"); // ~76.1 — RPS only
+
+    const weatherLift = weather - neutral; // ~7.1 points
+    const rpsLift = headToHead - neutral; // ~26.4 points
+    expect(weatherLift).toBeGreaterThan(3); // still worth chasing a good day
+    // Measured ratio 0.27 / 0.32 / 0.31 across three seed windows. Half is a
+    // deliberately loose line: it is nowhere near today's value, and it is the
+    // line the ruling actually cares about — the day must never rival the
+    // matchup, and at EDGE=1 this ratio was 1.03 (weather BEAT the matchup).
+    expect(weatherLift * 2).toBeLessThan(rpsLift);
+
+    // Stacked, the day should ADD a few points to a matchup that is already
+    // won, not compound into a certainty. Measured ~81.6 vs ~76.1 alone; at
+    // EDGE=1 the stack hit 92%, which is where a "small" knob stopped being
+    // small. Both bounds are ~5 points from the measurement.
+    const stacked = winRatePct("Fire", "Metal", "Fire");
+    expect(stacked).toBeGreaterThan(headToHead); // it does something
+    expect(stacked).toBeLessThan(headToHead + 12); // …but only a few points
+  });
+
+  test("both birds matching the weather is a bit-exact no-op", () => {
+    // Damage is the roll MARGIN, so a bonus paid to both sides subtracts out
+    // and the day cannot leak in through some rounding seam. Asserted over a
+    // window rather than one seed, because a single fight that happens to end
+    // the same way proves nothing about the arithmetic.
+    for (let seed = 1; seed <= 400; seed++) {
+      const a = bird("A", 350, "Fire");
+      const b = bird("B", 380, "Fire"); // unequal on purpose — a real contest
+      const withWx = simulatePair(a, b, "shortKnife", mulberry32(seed), "T", "Fire");
+      const without = simulatePair(a, b, "shortKnife", mulberry32(seed), "T");
+      expect(withWx.winner).toBe(without.winner);
+      expect(withWx.figures).toEqual(without.figures);
+    }
+    // …and the narration says so, instead of implying the day picked a side.
+    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Fire"), "shortKnife", mulberry32(9), "T", "Fire");
+    expect(sim.playByPlay).toContain("both birds call it home, so it settles nothing");
+  });
+
+  test("the weather edge is narrated, and stacks with the head-to-head element edge", () => {
+    // Fire beats Metal (RPS) AND the day is Fire — the Fire bird gets both.
+    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Metal"), "longGaff", mulberry32(1), "TEST", "Fire");
+    expect(sim.playByPlay).toContain("Today's element is Fire");
+    expect(sim.playByPlay).toContain("carries the weather edge");
+    // The roll detail interpolates the knob, so this tag follows a re-tune
+    // instead of pinning the value the sim shipped with.
+    expect(sim.playByPlay).toContain(`+${WEATHER.EDGE}wx`);
+    expect(sim.playByPlay).toContain(`+${BATTLE.ELEMENT_EDGE}elem`);
+  });
+
+  test("a no-match day narrates honestly and figures stay banded", () => {
+    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Water"), "shortKnife", mulberry32(3), "TEST", "Wood");
+    expect(sim.playByPlay).toContain("neither bird calls it home");
+    for (const f of sim.figures) {
+      expect(f % FIGURE.BAND).toBe(0);
+      expect(f).toBeGreaterThanOrEqual(0);
+      expect(f).toBeLessThanOrEqual(FIGURE.MAX);
+    }
+  });
+
+  test("the weather does not relabel the bird — figure inflation stays inside the fog", () => {
+    // The Pit Figure is the discovery signal: it is supposed to tell a player
+    // what a bird IS, so anything that shifts it by more than the display band
+    // is teaching the player about the calendar instead. At EDGE=1 a matched
+    // bird's average figure inflated by ~12 — over two full FIGURE.BANDs, and
+    // no form line could show that, because the day isn't on the card.
+    const meanFigure = (weather?: Element) => {
+      let sum = 0;
+      for (let seed = SEED_FROM; seed < SEED_FROM + SEEDS; seed++) {
+        const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Wood"), "shortKnife", mulberry32(seed), "T", weather);
+        sum += sim.figures[0]; // the matched bird's own figure, wins and losses
+      }
+      return sum / SEEDS;
+    };
+    const inflation = meanFigure("Fire") - meanFigure(); // ~47.8 vs ~45.1
+    expect(inflation).toBeGreaterThan(0); // winning more does show up, honestly
+    // Measured 2.69 / 3.00 / 2.80 across three seed windows. Both bounds are
+    // stated in the terms that make them READABLE: smaller than one displayed
+    // band means two form lines a day apart can print the same number, and
+    // inside the ± noise roll means the day is quieter than the fog already
+    // baked into every figure.
+    expect(inflation).toBeLessThan(FIGURE.BAND);
+    expect(inflation).toBeLessThan(FIGURE.NOISE);
+  });
+
+  test("the weather edge magnitude is WEATHER.EDGE (one knob, not a hardcoded 1)", () => {
+    // Pin the ruling; tune here, not in the sim. The scale to judge this
+    // against is NOT the 2d6 — it's BATTLE.ROLL_DIVISOR. A turn roll is
+    // 2d6 + stat/400, so a 350-stat starter's ENTIRE stat block is worth about
+    // +0.875. Anything flat and near 1.0 doesn't nudge the stat term, it
+    // replaces it, which is exactly how +1 became the most decisive number in
+    // the fight. 0.25 is about a quarter of a whole starter bird.
+    expect(WEATHER.EDGE).toBe(0.25);
+    const wholeStarterBird = 350 / BATTLE.ROLL_DIVISOR;
+    expect(WEATHER.EDGE).toBeLessThan(wholeStarterBird / 2);
   });
 });

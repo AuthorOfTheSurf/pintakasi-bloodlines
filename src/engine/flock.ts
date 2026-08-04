@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { birds, type BirdRow } from "@/db/schema";
+import { battleLog, birds, type BirdRow } from "@/db/schema";
+import { weatherOfDay, type Element, type FightFormat } from "./config";
 import { emit } from "./events";
 import { GameClock } from "./game-clock";
 import { nameTaken } from "./naming";
@@ -15,6 +16,42 @@ export interface BirdView extends Omit<BirdRow, "sex"> {
   // The nest timeline (round 13): a cover makes the hen pregnant NOW; the
   // egg is LAID on the nearest Friday and hatches the Friday after.
   eggStage: "gestating" | "laid" | null; // null once hatched
+}
+
+/**
+ * ── THE FORM BOOK — one past fight, with the day's weather on it ────────────
+ *
+ * The daily Element weather (round 24) leaks into the discovery signal: a
+ * bird fighting under its own ascendant element carries WEATHER.EDGE on every
+ * turn roll, which lifts its Pit Figure by a couple of points on average.
+ * That is deliberately small — inside the ±FIGURE.NOISE fog — but it is
+ * SYSTEMATIC and one-directional, so a form line read without it slowly
+ * over-types a bird that happened to draw good days.
+ *
+ * Nothing is stored: `battleLog.dayIndex` plus the pure `weatherOfDay` is
+ * enough to recover the ascendant element of any fight ever run, back to day
+ * 0 and for worlds that were seeded before the weather existed.
+ */
+export interface FormLine {
+  dayIndex: number;
+  format: FightFormat;
+  result: "win" | "loss";
+  pitFigure: number;
+  ascendant: Element; // the day's weather — the same for every fight on that card
+  edge: boolean; // the bird's OWN element was ascendant: read this figure down a touch
+}
+
+/**
+ * A bird's form lines plus the one comparison that decorrelates weather from
+ * ability: the same bird's average figure on its days versus everyone else's.
+ * A gap of roughly a band means "good days", not "good bird" — the split is
+ * the whole point of carrying the element on the line at all.
+ */
+export interface FormBook {
+  element: Element; // the bird's own element, so a line's `edge` reads without a lookup
+  lines: FormLine[]; // oldest first — a career reads forward
+  onEdge: { fights: number; avgFigure: number } | null; // null until it has fought one
+  offEdge: { fights: number; avgFigure: number } | null;
 }
 
 export interface HatchFridayEvents {
@@ -60,6 +97,48 @@ export class Flock {
     const row = this.database.select().from(birds).where(eq(birds.id, id)).get();
     if (!row || row.farmId !== this.farmId) throw new Error(`No bird with id ${id} in your barn`);
     return this.view(row);
+  }
+
+  /**
+   * The weather half of the discovery readout — see FormBook above. Pairs
+   * with Lobbies.formatRecords(), which answers "which blade suits it"; this
+   * answers "and how much of that was the day".
+   *
+   * Deliberately NOT farm-scoped, unlike byId(): claimer fields are the one
+   * un-fogged class, and a bird you are about to claim is exactly the one
+   * whose figures you most need to read honestly.
+   */
+  formBook(birdId: string): FormBook {
+    const bird = this.database.select().from(birds).where(eq(birds.id, birdId)).get();
+    if (!bird) throw new Error(`No bird with id ${birdId}`);
+    const lines: FormLine[] = this.database
+      .select()
+      .from(battleLog)
+      .where(eq(battleLog.birdId, birdId))
+      .all()
+      .map((row) => {
+        const ascendant = weatherOfDay(row.dayIndex);
+        return {
+          dayIndex: row.dayIndex,
+          format: row.format,
+          result: row.result,
+          pitFigure: row.pitFigure,
+          ascendant,
+          edge: ascendant === bird.element,
+        };
+      })
+      .sort((a, b) => a.dayIndex - b.dayIndex);
+
+    const mean = (of: FormLine[]) =>
+      of.length === 0
+        ? null
+        : { fights: of.length, avgFigure: Math.round(of.reduce((s, l) => s + l.pitFigure, 0) / of.length) };
+    return {
+      element: bird.element,
+      lines,
+      onEdge: mean(lines.filter((l) => l.edge)),
+      offEdge: mean(lines.filter((l) => !l.edge)),
+    };
   }
 
   /**

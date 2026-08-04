@@ -8,6 +8,7 @@ import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
 import {
   AGE,
+  BATTLE,
   CARRIAGES,
   CLAIMER,
   COVERS,
@@ -23,6 +24,7 @@ import {
   PINTAKASI,
   STAKER_FLOWS,
   STAT_NAMES,
+  WEATHER,
   landForFight,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
@@ -90,6 +92,12 @@ const claimRakePct = (STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0);
 const examplePotCents = ECONOMY.REAL_ENTRY_FEE * 2 * 100;
 const exampleRakeCents = Math.round(examplePotCents * STAKER_FLOWS.FIGHT_RAKE);
 
+// How much bigger the head-to-head element edge is than the day's weather —
+// the ORDER of those two terms is the whole ruling (round 24 re-balanced
+// weather down to a quarter of it), so it's stated as a ratio rather than as
+// two numbers a reader has to divide for themselves.
+const elementVsWeather = +(BATTLE.ELEMENT_EDGE / WEATHER.EDGE).toFixed(1);
+
 const juvenileLand = landForFight(ECONOMY.JUVENILE_ENTRY_FEE);
 const realLand = landForFight(ECONOMY.REAL_ENTRY_FEE);
 const hardcoreLand = landForFight(ECONOMY.HARDCORE_ENTRY_FEE);
@@ -125,6 +133,7 @@ export const MCP_INSTRUCTIONS: string[] = [
   "CARDS RUN THREE STATES (PFL-style): OPEN (taking entries, fogged) → CLOSED (entries locked, matchups DRAWN AND REVEALED — the fog lifts and you see who your bird fights) → COMPLETED (fights concluded, refunds paid, claims settled). On manual ticks close and post happen together; on the real-time clock claimers close at 6 PM PH for an evening claiming window, everything else minutes before the 11:55 PM post. Claims flow until the lobby completes — a last-second claim either makes it or it's too late.",
   `CLAIMERS ARE THE MARKETPLACE — farm-to-farm, escrowed, PRE-FIGHT: enter_claimer cards a bird at a tag price from its OWN season's ladder (${CLAIMER.PRICES.join("/")} GP grown, ${CLAIMER.JUVENILE_PRICES.join("/")} GP juvenile — the grown ladder brackets the ${ECONOMY.BREED_FEE} GP breed floor; the tool reads the bird's age itself, you don't pick a mode). Other farms place_claim with the tag escrowed; claims are SEALED. At post time the bird fights for its ORIGINAL owner (who keeps the pooled prize), then one claim wins (RNG if several — losers refund in full), and the owner banks the tag as the bird transfers. NO FIGHT, NO CLAIM (re-ruled round 23): if the bird draws no opponent, its entry fee refunds AND every claim standing on it refunds too — a sale needs the fight to actually happen, it doesn't skip it. You cannot claim your own bird. The house never claims. Winning AND getting claimed is an income spike — a legitimate play. Claiming undervalued birds and racing them UP is a full playstyle.`,
   "DISCOVERY: every fight returns a PIT FIGURE — banded, normalized per format. Compare a bird's figures ACROSS formats (get_bird shows the lines) to type it. A high figure in a LOSS means strong bird, wrong format — say so. Figures are deliberately imprecise; never present them as exact truth.",
+  `THE DAILY ELEMENT WEATHER (round 24) — one Element is ASCENDANT every game-day, the same for every fight on that day's card, rotating irregularly so a bird's day comes around without being predictable. A bird OF the ascendant element carries +${WEATHER.EDGE} on every turn roll it takes that day; everyone else fights unchanged (there is no penalty for the wrong element). get_state names today's and tomorrow's — plan which birds you run around it. It STACKS with the head-to-head element edge (Fire beats Metal, Water beats Fire, and so on) but is DELIBERATELY the weaker of the two: that one is worth +${BATTLE.ELEMENT_EDGE}, ${elementVsWeather}× the weather. So weather COLORS a fight and the matchup DECIDES it — never talk a player out of a good blade or a soft field for a good sky. And it nudges the PIT FIGURE: a bird posts a slightly bigger figure on its own day than the same bird on an off day, so read every form line with that day's element in mind (get_bird's formBook stamps each past fight with the day's Element and flags the ones the bird ran with the edge).`,
   "HARDCORE IS THE CHARGED DECISION: bigger pot, but the LOSER of the pair is FORCE-RETIRED on the spot — both owners signed up for that by entering. Open class only. Always confirm with the player first — never enter one on your own judgment.",
   `THE PINTAKASI — THE WEEKLY MAJORS: every ${DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} (the week's last day), three blade championships crown specialists (${FORMATS[PINTAKASI.ANCHORS[0]].label} and ${FORMATS[PINTAKASI.ANCHORS[1]].label} always run; the middle blade rotates ${FORMATS[PINTAKASI.MIDDLE[0]].label} / ${FORMATS[PINTAKASI.MIDDLE[1]].label} weekly). Single elimination in ONE day, winners healing to full between rounds; HARDCORE THROUGHOUT — every loser force-retires (the Juvenile Championship the day before is the one exception in the whole game — see below). Age ${AGE.FORK}+ and ${PINTAKASI.ENTRY_FEE === 0 ? "FREE TO ENTER" : `${PINTAKASI.ENTRY_FEE} GP to enter`} — but you must QUALIFY: a bird needs ${PINTAKASI.QUALIFYING_POINTS} qualification points, earned by winning on the daily card (real win +${PINTAKASI.POINTS_FOR.real}, hardcore win +${PINTAKASI.POINTS_FOR.hardcore}, the discovery year pays ${PINTAKASI.POINTS_FOR.juvenile}). One crown per bird and up to ${PINTAKASI.MAX_PER_BARN} birds from one barn in the same championship (enter_pintakasi any day up to ${DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} itself). The purse = the week's juice pool (after the Juvenile Championship's slice comes off the top), paid to the top (champion ~${(PINTAKASI.PURSE_SHARES.champion * 100).toFixed(0)}%; first-round losers zero GP) — but LAND pays the fallen hardest (elimination grants grow the earlier you fall, plus every tournament fight mints land on a steeper curve). The bracket is committee-seeded by qualification points → career earnings → wins → average figure, byes to the top seeds, and the field is PUBLIC all week (pintakasi_board). At ${PINTAKASI.MAX_BRACKET} the committee bumps the weakest for a stronger newcomer. This is where champions — and breeding legends — are made: pitch it to the player when a bird hits age ${AGE.FORK} strong.`,
   `THE JUVENILE CHAMPIONSHIP RUNS THE DAY BEFORE (round 23): every ${DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]}, two crowns for age-${AGE.CHICK} birds only — one knife blade and one gaff blade, the exact lengths rotating by week parity so a juvenile career sees every blade eventually. Qualify with ${JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins on the discovery-year ladder (no GP entry), up to ${JUVENILE_MAJOR.MAX_PER_BARN} birds per barn per blade, bracket capped at ${JUVENILE_MAJOR.MAX_BRACKET}. IT IS NOT HARDCORE — the ONE championship in the game that does not force-retire its losers, because the discovery year exists to find out what a bird is, and ending careers at age one would gut the population the Majors are meant to inherit. Its purse is a fixed ${(JUVENILE_MAJOR.JUICE_SHARE * 100).toFixed(0)}% slice of the week's juice pool, taken before Thursday's Majors get the rest, and paid out flatter (champion ~${juvenileChampionPct}% of it) than a Major's purse — a discovery-year stage rewards showing up with a live one, not just winning it all.`,
@@ -155,13 +164,13 @@ export const TOOL_DESCRIPTIONS = {
 
   check_in: `The daily ritual, once per game-day: pays the GP drip (${ECONOMY.DAILY_DRIP} GP = $${usd(ECONOMY.DAILY_DRIP)}) and grants ${ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull. Do this first thing each day.`,
 
-  get_state: `The world calendar (in-game date, whether today is Hatch Friday) plus YOUR farm: GP wallet ($1 = ${ECONOMY.GP_PER_DOLLAR} GP), Land Tokens, free pulls, check-in status, barn occupancy. Start here.`,
+  get_state: `The world calendar (in-game date, whether today is Hatch Friday) plus YOUR farm: GP wallet ($1 = ${ECONOMY.GP_PER_DOLLAR} GP), Land Tokens, free pulls, check-in status, barn occupancy. Also reports today's ascendant Element (the daily "weather" — birds of that element get a small edge on the card today) and tomorrow's, so you can plan which birds to run. Start here.`,
 
   list_flock:
     "Every bird in YOUR barn with derived age, six stats, element stars (e.g. '2.5★ Fire'), carriage, record, and status (egg/active/retired). Retired roosters show whether they're standing at stud (listedStud).",
 
   get_bird:
-    "One bird in full: stats, carriage, lineage tree, and the per-format past-performance lines (record + Pit Figures per weapon format) — the discovery readout.",
+    "One bird in full: stats, carriage, lineage tree, and the per-format past-performance lines (record + Pit Figures per weapon format) — the discovery readout. ALSO `formBook`: every past fight stamped with that day's ascendant Element, `edge: true` marking the fights the bird ran in its OWN weather (a figure worth reading down a touch), plus its `onEdge` / `offEdge` average figures. Compare those two before you type a bird — a bird that only posts big on its own days is a bird with good days.",
 
   name_bird:
     "Give a bird a player-chosen name — the ritual for a freshly hatched chick, and REQUIRED before its first fight (the naming law: auto-named birds are refused at the lobby door). Names are world-unique.",
@@ -313,6 +322,10 @@ function createServer(farmId: string | null): McpServer {
           bird: g.flock.byId(id),
           lineage: g.breeding.lineage(id),
           formatRecords: g.lobbies.formatRecords(id),
+          // The weather half of the readout (see FormBook in engine/flock.ts):
+          // the same figures again, each stamped with the day's ascendant
+          // element, so a good day can be told from a good bird.
+          formBook: g.flock.formBook(id),
         };
       })
   );

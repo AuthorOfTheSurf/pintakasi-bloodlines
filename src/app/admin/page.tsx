@@ -8,6 +8,7 @@ import {
   PINTAKASI,
   landForFight,
   landForTournamentFight,
+  weatherOfDay,
   type FightFormat,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
@@ -41,6 +42,9 @@ export const dynamic = "force-dynamic";
 
 const LEDGER_LIMIT = 3000;
 const FIGHT_LIMIT = 1000;
+
+/** Who carried the day's ascendant element, in one character on the card label. */
+const EDGE_MARK = { winner: "→W", loser: "→L", both: "→both", none: "" } as const;
 
 function gpFmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -341,7 +345,25 @@ export default function Admin() {
   // tick — the place to spot gaps: thin lobbies, odd fields, farm clumps.
   const allLobbies = d.select().from(lobbies).all();
   const cardDay = allLobbies.length ? Math.max(...allLobbies.map((l) => l.dayOpened)) : null;
+  // One element for the whole card — every lobby below ran under it.
+  const cardWeather = cardDay === null ? null : weatherOfDay(cardDay);
   const bname = (id: string) => birdById.get(id)?.name ?? id;
+  /**
+   * Which side of a bout was fighting in its OWN weather. Recovered, never
+   * stored: battle_log carries the day and weatherOfDay is pure, so this
+   * works for every fight ever run — including the ones fought in worlds
+   * seeded before the weather existed.
+   */
+  const birdEdge = (
+    day: number,
+    winnerId: string,
+    loserId: string
+  ): "winner" | "loser" | "both" | null => {
+    const ascendant = weatherOfDay(day);
+    const w = birdById.get(winnerId)?.element === ascendant;
+    const l = birdById.get(loserId)?.element === ascendant;
+    return w && l ? "both" : w ? "winner" : l ? "loser" : null;
+  };
   const cardLobbies = allLobbies
     .filter((l) => l.dayOpened === cardDay)
     .map((l) => {
@@ -354,6 +376,11 @@ export default function Admin() {
           loser: w.opponentName,
           loserFarm: fname(w.opponentFarmId),
           figures: [w.pitFigure, log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0] as const,
+          // Which side (if either) was fighting in its own weather — the
+          // figures printed beside it are inflated for whoever carries it,
+          // and the steward reading this page is the one person who should
+          // never mistake a good day for a good bird.
+          edge: birdEdge(w.dayIndex, w.birdId, w.opponentBirdId),
         }));
       return {
         id: l.id,
@@ -448,9 +475,15 @@ export default function Admin() {
     );
     return {
       day: w.dayIndex,
+      // The weather rides on the card label rather than a column of its own:
+      // it is the same for every fight on a day, so it reads as context for
+      // the figures two columns over, not as data to sort on. "wx Fire→W"
+      // means Fire was ascendant and the WINNER was the Fire bird — its
+      // figure is a touch flattered.
       card:
         (w.tournamentId ? "🏆 PINTAKASI" : cardLabel(w.mode, w.lobby)) +
-        `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}`,
+        `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}` +
+        ` · wx ${weatherOfDay(w.dayIndex)}${EDGE_MARK[birdEdge(w.dayIndex, w.birdId, w.opponentBirdId) ?? "none"]}`,
       winner: birdById.get(w.birdId)?.name ?? w.birdId,
       winnerFarm: fname(w.farmId),
       winnerFarmP: fcolors(w.farmId).P ?? "",
@@ -666,6 +699,8 @@ export default function Admin() {
         <p className="clock">
           Day {state.dayIndex} · Week {week} · {clock.date}
           {clock.isHatchFriday ? " · HATCH FRIDAY" : ""}
+          {" · "}weather: <b>{weatherOfDay(state.dayIndex)}</b> today,{" "}
+          <span className="dim">{weatherOfDay(state.dayIndex + 1)} tomorrow</span>
         </p>
         <p className="dbpath">
           database: <b>{path.basename(dbPath)}</b> <span className="dim">({dbPath})</span>
@@ -818,6 +853,10 @@ export default function Admin() {
               <h2>
                 Day {cardDay}{" "}
                 <span className="cardsum">
+                  {/* The card's weather, stated once: it applied to every
+                      lobby below, so every figure on this page was posted
+                      under this element. */}
+                  <b>{cardWeather}</b> ascendant ·{" "}
                   {cardPending > 0
                     ? `${cardPending} awaiting post time`
                     : `went off at the last tick · ${cardFights} fights · ${cardCancelled} cancelled`}
@@ -839,6 +878,12 @@ export default function Admin() {
                         ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
                         <span className="figs">
                           figures {b.figures[0]}/{b.figures[1]}
+                          {/* Only worth saying when somebody actually held it:
+                              on most bouts the day's element belongs to
+                              neither bird and the figures stand as read. */}
+                          {b.edge
+                            ? ` · ${b.edge === "both" ? "both birds" : b.edge} carried the ${cardWeather} edge`
+                            : ""}
                           {l.hardcore ? " · loser force-retired" : ""}
                         </span>
                       </div>

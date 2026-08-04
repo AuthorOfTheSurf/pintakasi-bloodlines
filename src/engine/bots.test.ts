@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { farms, lobbyEntries } from "@/db/schema";
+import { birds, farms, lobbies, lobbyEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
-import { BOT_FARMS } from "./bot-config";
-import { Bots } from "./bots";
+import { BOT_FARMS, WEATHER_APPETITE } from "./bot-config";
+import { Bots, weatherCardsToday, weatherOrder } from "./bots";
+import { ELEMENTS, weatherOfDay, type Element } from "./config";
+import { Flock, type BirdView } from "./flock";
+import { mulberry32 } from "./rng";
+import { makeBird, world as testWorld } from "./testkit";
 import { Game } from "./game";
 
 function world(opts: { only?: string[] } = {}) {
@@ -86,6 +90,27 @@ describe("a bot day", () => {
     expect(totalGp(w.db)).toBeGreaterThan(before); // the drip landed
   });
 
+  test("the day's ascendant element is visible in what the stables card", () => {
+    // The end-to-end version of the two unit tests below: no assertion about
+    // any one bird, just the question the doctor asks — over a fortnight of
+    // real bot play, does the card lean toward birds whose element is
+    // ascendant? Chance is 1-in-5. Anything at or below that means the
+    // appetite got disconnected somewhere between here and lobbies.enter,
+    // which is exactly how claiming and paid gacha rolls shipped dead.
+    const w = world();
+    for (let d = 0; d < 14; d++) w.game.tickDay();
+    const element = new Map(
+      w.db.select().from(birds).all().map((b) => [b.id, b.element as Element])
+    );
+    const dayOf = new Map(w.db.select().from(lobbies).all().map((l) => [l.id, l.dayOpened]));
+    const entries = w.db.select().from(lobbyEntries).all();
+    const timed = entries.filter(
+      (e) => element.get(e.birdId) === weatherOfDay(dayOf.get(e.lobbyId)!)
+    );
+    expect(entries.length).toBeGreaterThan(100); // enough for the rate to mean anything
+    expect(timed.length / entries.length).toBeGreaterThan(1 / ELEMENTS.length);
+  });
+
   test("several days keep the world moving without a crash", () => {
     const w = world({ only: FAST_ROSTER });
     for (let d = 0; d < 5; d++) w.game.tickDay();
@@ -96,5 +121,95 @@ describe("a bot day", () => {
       .where(eq(lobbyEntries.status, "pending"))
       .all();
     expect(pending.length).toBe(0);
+  });
+});
+
+/**
+ * READING THE GOING (round 25). The two helpers the bots and auto-play share
+ * for the daily element weather. They are tested here rather than through a
+ * bot day because the whole point of the knobs is a distribution — one seeded
+ * day tells you nothing about a 0.9 probability.
+ */
+describe("the weather appetite", () => {
+  /** A day whose ascendant element differs from tomorrow's — most of them. */
+  function eveOfADifferentDay(): number {
+    for (let d = 0; d < 100; d++) if (weatherOfDay(d) !== weatherOfDay(d + 1)) return d;
+    throw new Error("weatherOfDay never changes — the salt is broken");
+  }
+
+  /** Three birds in one barn: today's, tomorrow's, and neither's. */
+  function trio(day: number) {
+    const w = testWorld({ rivalFlock: false });
+    const today = weatherOfDay(day);
+    const tomorrow = weatherOfDay(day + 1);
+    const neither = ELEMENTS.find((e) => e !== today && e !== tomorrow)!;
+    for (const [name, element] of [
+      ["Ascendant", today],
+      ["Eve", tomorrow],
+      ["Ordinary", neither],
+    ] as const)
+      makeBird(w.db, { name, element });
+    const flock = new Flock(w.db, w.devId).all();
+    const by = (name: string) => flock.find((b) => b.name === name)!;
+    return { w, ascendant: by("Ascendant"), eve: by("Eve"), ordinary: by("Ordinary") };
+  }
+
+  test("the roster puts today's birds first and tomorrow's last", () => {
+    const day = eveOfADifferentDay();
+    const { ascendant, eve, ordinary } = trio(day);
+    // Handed to it in the WORST order, so a pass can't be the input's doing.
+    const ordered = weatherOrder([eve, ordinary, ascendant], day).map((b) => b.name);
+    expect(ordered).toEqual(["Ascendant", "Ordinary", "Eve"]);
+  });
+
+  test("…and tomorrow's birds sink BELOW ordinary ones, not just below today's", () => {
+    // This tier is the whole fix for the round-25 first draft: the liquidity
+    // pass is ungated on purpose, so without it that pass spends the very
+    // birds the entry gate just decided to hold, and the hold measures zero.
+    const day = eveOfADifferentDay();
+    const { eve, ordinary } = trio(day);
+    expect(weatherOrder([eve, ordinary], day).map((b) => b.name)).toEqual(["Ordinary", "Eve"]);
+  });
+
+  test("reordering never adds or drops a bird — it is free by construction", () => {
+    const day = eveOfADifferentDay();
+    const { ascendant, eve, ordinary } = trio(day);
+    const roster = [eve, ordinary, ascendant];
+    expect(weatherOrder(roster, day).length).toBe(roster.length);
+    expect(new Set(weatherOrder(roster, day).map((b) => b.id))).toEqual(
+      new Set(roster.map((b) => b.id))
+    );
+  });
+
+  const rateOf = (bird: BirdView, day: number, base: number) => {
+    const rng = mulberry32(20250104);
+    const trials = 4000;
+    let carded = 0;
+    for (let i = 0; i < trials; i++) if (weatherCardsToday(bird, day, rng, base)) carded++;
+    return carded / trials;
+  };
+
+  test("a bird cards more often on its own day, and rarely on the eve of it", () => {
+    const day = eveOfADifferentDay();
+    const { ascendant, eve, ordinary } = trio(day);
+    const base = 0.5; // a broodfarm's appetite — plenty of headroom to boost
+    const boosted = base + (1 - base) * WEATHER_APPETITE.MATCH_BOOST;
+    const held = base * (1 - WEATHER_APPETITE.HOLD_FOR_TOMORROW);
+
+    expect(rateOf(ascendant, day, base)).toBeCloseTo(boosted, 1);
+    expect(rateOf(eve, day, base)).toBeCloseTo(held, 1);
+    // The bird with no stake either way is untouched — the appetite must not
+    // quietly re-rate the two thirds of the flock it has no opinion about.
+    expect(rateOf(ordinary, day, base)).toBeCloseTo(base, 1);
+  });
+
+  test("auto-play's every-bird stable still times: no headroom to boost, but it holds", () => {
+    // Auto-play passes a base rate of 1, so the boost is arithmetically a
+    // no-op there and the hold is the only lever it has. If that ever stopped
+    // being true the player-side stable would drift back to pure chance.
+    const day = eveOfADifferentDay();
+    const { ascendant, eve } = trio(day);
+    expect(rateOf(ascendant, day, 1)).toBe(1);
+    expect(rateOf(eve, day, 1)).toBeCloseTo(1 - WEATHER_APPETITE.HOLD_FOR_TOMORROW, 1);
   });
 });

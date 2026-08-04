@@ -7,7 +7,9 @@ import {
   PINTAKASI,
   landForFight,
   landForTournamentFight,
+  weatherOfDay,
   ECONOMY,
+  type Element,
   type FightFormat,
 } from "./config";
 import { emit, fmtGp } from "./events";
@@ -506,6 +508,9 @@ export class Tournaments {
   ): TournamentResolution {
     const week = Math.floor(dayIndex / 7);
     const rng = mulberry32(t.seed);
+    // The crown day's ascendant element (round 24) — every fight in the
+    // bracket runs under the same weather.
+    const weather = weatherOfDay(dayIndex);
     const field = Tournaments.pending(database, t.id);
     // Since round 22 the entries are free, so the purse IS this blade's cut
     // of the juice pool — which means gacha spend and breed fees are what
@@ -565,7 +570,7 @@ export class Tournaments {
           next.push(null);
           continue;
         }
-        const report = Tournaments.runFight(database, t, a, b, round, roundName, rng, week);
+        const report = Tournaments.runFight(database, t, a, b, round, roundName, rng, week, weather);
         fights.push(report);
         const winner = report.winner === nameOf.get(a.id) ? a : b;
         const loser = winner === a ? b : a;
@@ -681,7 +686,8 @@ export class Tournaments {
     round: number,
     roundName: string,
     rng: Rng,
-    week: number
+    week: number,
+    weather: Element
   ): TournamentFightReport {
     const divisionRules = DIVISION_RULES[(t.division ?? "major") as Division];
     const hardcore = divisionRules.hardcore;
@@ -689,7 +695,14 @@ export class Tournaments {
     const rowA = database.select().from(birds).where(eq(birds.id, ea.birdId)).get()!;
     const rowB = database.select().from(birds).where(eq(birds.id, eb.birdId)).get()!;
     const header = `${label(t.format)} · ${roundName}`;
-    const sim = simulatePair(toCombatant(rowA), toCombatant(rowB), t.format, mulberry32(simSeed), header);
+    const sim = simulatePair(
+      toCombatant(rowA),
+      toCombatant(rowB),
+      t.format,
+      mulberry32(simSeed),
+      header,
+      weather
+    );
 
     const sides = [
       { entry: ea, row: rowA, won: sim.winner === 0, figure: sim.figures[0] },

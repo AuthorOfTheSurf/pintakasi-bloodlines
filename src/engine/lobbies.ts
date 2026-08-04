@@ -11,6 +11,7 @@ import {
   PINTAKASI,
   STAKER_FLOWS,
   landForFight,
+  weatherOfDay,
   type Element,
   type FightFormat,
   type Lobby,
@@ -374,12 +375,15 @@ export class Lobbies {
 
       const label = labelOf(lobby);
       const event: LobbyResolution = { lobbyId: lobby.id, label, fights: [], unmatched: [], claims: [] };
+      // The card goes off under the day's ascendant element (round 24) —
+      // every lobby posted on the same day shares one weather.
+      const weather = weatherOfDay(lobby.dayOpened);
 
       // The drawn pairs fight, in draw order.
       for (const entry of entries) {
         const other = entries.find((e) => e.id === entry.opponentEntryId);
         if (!other || other.id < entry.id) continue; // fight once per pair
-        event.fights.push(Lobbies.runFight(database, lobby, entry, other, label, rng, week));
+        event.fights.push(Lobbies.runFight(database, lobby, entry, other, label, rng, week, weather));
       }
 
       // The drawless — the odd bird out, or barn-mates with nobody else
@@ -485,12 +489,20 @@ export class Lobbies {
     eb: typeof lobbyEntries.$inferSelect,
     label: string,
     rng: Rng,
-    week: number
+    week: number,
+    weather: Element
   ): FightReport {
     const simSeed = randInt(rng, 1, 2 ** 31 - 1);
     const rowA = database.select().from(birds).where(eq(birds.id, ea.birdId)).get()!;
     const rowB = database.select().from(birds).where(eq(birds.id, eb.birdId)).get()!;
-    const sim = simulatePair(toCombatant(rowA), toCombatant(rowB), lobby.format, mulberry32(simSeed), label);
+    const sim = simulatePair(
+      toCombatant(rowA),
+      toCombatant(rowB),
+      lobby.format,
+      mulberry32(simSeed),
+      label,
+      weather
+    );
 
     const sides = [
       { entry: ea, row: rowA, won: sim.winner === 0, figure: sim.figures[0] },

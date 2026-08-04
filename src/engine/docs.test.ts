@@ -6,6 +6,7 @@ import { splitBreedFee } from "./breeding";
 import { fmtGp } from "./events";
 import {
   AGE,
+  BATTLE,
   CLAIMER,
   COVERS,
   ECONOMY,
@@ -15,6 +16,7 @@ import {
   LAND,
   PINTAKASI,
   STAKER_FLOWS,
+  WEATHER,
 } from "./config";
 
 /**
@@ -203,6 +205,46 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
   test("breeding page mentions the stud-listing Land Token sink", () => {
     const src = readWikiPage("breeding/page.tsx");
     expect(src).toContain("COVERS.STUD_LISTING_LT");
+  });
+
+  // Drift, weather (round 24's re-rule). The daily-element section shipped
+  // describing WEATHER.EDGE as "the same as the element edge … the weather
+  // only nudges" — true of neither value it has ever held. At the original
+  // +1 it was the most decisive term in a fight (76% for the matched bird
+  // between two equal 350-stat starters); at 0.25 it is deliberately a
+  // FRACTION of the head-to-head element edge. Either way the sentence was a
+  // lie, and a computed {WEATHER.EDGE} in the middle of it didn't help,
+  // because the FRAMING is what was wrong. These tests pin the framing.
+  test("fighting page never claims the weather edge matches or beats the element edge", () => {
+    const src = readWikiPage("fighting/page.tsx");
+    // The ruling itself: weather is the weaker of the two element bonuses.
+    // If a future round reverses that, this fails first and the prose below
+    // ("chase the matchup, not the forecast") gets re-read rather than left.
+    expect(WEATHER.EDGE).toBeLessThan(BATTLE.ELEMENT_EDGE);
+    expect(src).not.toMatch(/same .{0,30}as the element edge/i);
+    expect(src).not.toMatch(/weather only nudges/i);
+    // Positively state the relationship, so the page can't go silent on it.
+    expect(src).toMatch(/weaker/i);
+  });
+
+  test("fighting page reads WEATHER.EDGE live instead of typing the number", () => {
+    const src = readWikiPage("fighting/page.tsx");
+    expect(src).toContain("WEATHER.EDGE");
+    // A hand-typed "+0.25" / "+1 on every roll" would opt the page out of
+    // config entirely — the exact failure the import rule exists to stop.
+    expect(src).not.toMatch(/\+\s*\d+(\.\d+)?\s*on every roll/i);
+    // Win rates have no config export to read, so per AGENTS.md they must be
+    // described in words. A typed percentage here would rot the day any of
+    // EDGE / ELEMENT_EDGE / ROLL_DIVISOR moves.
+    expect(src).not.toMatch(/\b(5[0-9]|[6-9][0-9])%/);
+  });
+
+  test("MCP get_state tells an agent about the daily ascendant element", () => {
+    // Deliberately loose: route.ts's exact sentence is free to be reworded,
+    // but an agent that can't learn the day's element from get_state can't
+    // plan around it at all.
+    expect(TOOL_DESCRIPTIONS.get_state).toMatch(/ascendant|weather/i);
+    expect(TOOL_DESCRIPTIONS.get_state).toContain("Element");
   });
 
   test("pintakasi page documents the Juvenile Championship as non-hardcore", () => {

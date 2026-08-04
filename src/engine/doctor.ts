@@ -13,7 +13,7 @@ import {
   tournamentEntries,
   tournaments,
 } from "@/db/schema";
-import { CADENCE } from "./config";
+import { CADENCE, ELEMENTS, weatherOfDay } from "./config";
 import { GameClock } from "./game-clock";
 import { ageOf } from "./lifecycle";
 import {
@@ -57,6 +57,15 @@ const DOCTOR = {
   // Half a division's crowns cancelling means the field isn't there.
   CANCELLED_CROWNS_WARN: 0.5,
   OFFENDER_SAMPLE: 5,
+  // How far above pure chance the weather-timing rate has to sit before we
+  // believe anyone is actually timing entries. 1.15 is loose on purpose: the
+  // appetite in bot-config is a deliberate nudge, so the honest expected
+  // reading is high-20s against a 20% floor, and a threshold tight enough to
+  // catch a 1.05× would fire on ordinary noise in a short world.
+  WEATHER_TIMING_WARN_RATIO: 1.15,
+  // Below this many entries the ratio is noise — a 30-entry world lands two
+  // percentage points either side of chance for no reason at all.
+  WEATHER_MIN_SAMPLE: 50,
 } as const;
 
 export interface Invariant {
@@ -304,6 +313,68 @@ export function cardHealth(db: DB): {
 }
 
 /**
+ * IS ANYONE READING THE GOING? (round 25)
+ *
+ * The daily element weather is a MODIFIER, not a door, so it does not belong
+ * in the adoption block below — a farm-count bar would read 15 of 15 the
+ * moment a single bird happened to be carded on its own element's day, which
+ * proves nothing. What matters is whether entries are being TIMED, and that
+ * question has a known null hypothesis: with five elements, a stable that
+ * ignores the weather entirely still lands 1-in-5 of its entries on the right
+ * day. So the honest measurement is the rate against that floor.
+ *
+ * Read off the lobby entries, not the battle log, for two reasons: an entry
+ * that went home unmatched was still a timing DECISION and should count, and
+ * tournament fights are excluded by construction — a crown runs on the day the
+ * calendar says, so no barn is choosing anything when it enters one.
+ *
+ * The day is the lobby's `dayOpened`, which is exactly the day the fight
+ * resolves under (see lobbies.ts) — not the entry's, in case those ever part.
+ */
+export function weatherTiming(db: DB): {
+  entries: number;
+  matched: number;
+  rate: number;
+  chance: number;
+  ratio: number;
+} {
+  const element = new Map(db.select().from(birds).all().map((b) => [b.id, b.element]));
+  const dayOf = new Map(db.select().from(lobbies).all().map((l) => [l.id, l.dayOpened]));
+  let entries = 0;
+  let matched = 0;
+  for (const e of db.select().from(lobbyEntries).all()) {
+    const day = dayOf.get(e.lobbyId);
+    const el = element.get(e.birdId);
+    if (day === undefined || el === undefined) continue; // a bird deleted out from under its entry
+    entries++;
+    if (el === weatherOfDay(day)) matched++;
+  }
+  const chance = 1 / ELEMENTS.length;
+  const rate = entries === 0 ? 0 : matched / entries;
+  return { entries, matched, rate, chance, ratio: rate / chance };
+}
+
+function weatherLine(db: DB): { line: string; warn?: string } {
+  const w = weatherTiming(db);
+  if (w.entries < DOCTOR.WEATHER_MIN_SAMPLE)
+    return { line: `weather timing  ${w.entries} entries — too few to read` };
+  const verdict =
+    w.ratio >= DOCTOR.WEATHER_TIMING_WARN_RATIO
+      ? "✓ entries are being timed"
+      : "⚠ no better than chance";
+  return {
+    line:
+      `weather timing  ${w.matched}/${w.entries} entries ran on the bird's own element day ` +
+      `(${pct(w.matched, w.entries)} vs ${(w.chance * 100).toFixed(1)}% by chance, ` +
+      `${w.ratio.toFixed(2)}×) ${verdict}`,
+    warn:
+      w.ratio >= DOCTOR.WEATHER_TIMING_WARN_RATIO
+        ? undefined
+        : `weather timing is ${w.ratio.toFixed(2)}× chance — nobody is playing the going`,
+  };
+}
+
+/**
  * Which lobby KEYS strand their birds. The key space is (mode × class ×
  * blade × tag) and it multiplies fast — round 23's claimer keys sent 30 of 42
  * entries home. When the population is thin, this is the number that explains
@@ -499,17 +570,26 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkFightCap(db),
   ];
 
+  const weather = weatherLine(db);
+  // Two things can be wrong with the card at once — too few opponents and
+  // nobody playing the going — and a section carries one warn, so they share
+  // it. Reading "A · B" beats losing one of them to the other.
+  const cardWarns = [
+    card.unmatchedRate > DOCTOR.UNMATCHED_WARN
+      ? `${pct(card.unmatched, card.fought + card.unmatched)} of entries never found an opponent`
+      : undefined,
+    weather.warn,
+  ].filter((w): w is string => !!w);
+
   const health: HealthSection[] = [
     {
       title: "CARD HEALTH",
       lines: [
         `${card.entries} entries · ${card.fought} fought · ${card.unmatched} unmatched ` +
           `(${pct(card.unmatched, card.fought + card.unmatched)}) · ${card.lobbies} lobbies`,
+        weather.line,
       ],
-      warn:
-        card.unmatchedRate > DOCTOR.UNMATCHED_WARN
-          ? `${pct(card.unmatched, card.fought + card.unmatched)} of entries never found an opponent`
-          : undefined,
+      warn: cardWarns.length ? cardWarns.join(" · ") : undefined,
     },
     fragmentation(db),
     population(db, topline),
