@@ -65,7 +65,6 @@ export default function BirdsPage() {
   const bands = gradeBands();
   const topGrade = GRADES[GRADES.length - 1];
   const secondTopGrade = GRADES[GRADES.length - 2];
-  const windPerHundredStamina = Math.round(100 * BATTLE.WIND_PER_STAMINA);
 
   return (
     <>
@@ -79,10 +78,11 @@ export default function BirdsPage() {
 
       <h2>The six stats</h2>
       <p>
-        Four stats are <strong>phase stats</strong> — which ones matter depends on how long the
-        fight runs (that&apos;s the blade&apos;s &ldquo;distance,&rdquo; see{" "}
-        <Link href="/wiki/fighting">Fighting</Link>). Two are <strong>anchor stats</strong> — they
-        matter in every fight, at every distance, but never take the wheel by themselves.
+        Four stats are <strong>distance stats</strong> — all four join every roll, but each blade
+        weighs them differently (that&apos;s the blade&apos;s &ldquo;distance,&rdquo; see{" "}
+        <Link href="/wiki/fighting">Fighting</Link>). Think Start, Speed, Stamina, Finish on a
+        race dial. Two are <strong>anchor stats</strong> — they matter in every fight, at every
+        distance, but never take the wheel by themselves.
       </p>
       <div className="tablewrap">
         <table>
@@ -96,40 +96,41 @@ export default function BirdsPage() {
           <tbody>
             <tr>
               <td>Agility</td>
-              <td>Phase 1 — the break</td>
+              <td>Distance — the Start</td>
               <td>
-                Drives turns 1–{PHASES.BREAK_THROUGH_TURN}, the opening fly-up. High agility means
-                your bird tends to strike first and set the pace before anything else has
-                mattered.
+                The burst off the break. Weighs heaviest on the short blades — B1 leans on it
+                harder than on anything else — and lightest, but never zero, on the deep-water
+                end.
               </td>
             </tr>
             <tr>
               <td>Sight</td>
-              <td>Phase 2 — open exchange</td>
+              <td>Distance — the Speed</td>
               <td>
-                Drives turns {PHASES.BREAK_THROUGH_TURN + 1}–{PHASES.OPEN_THROUGH_TURN}. This is
-                accuracy and placement once both birds are trading — the stat that decides most
-                short and medium fights.
+                Accuracy and placement in a real trade. The key stat of B2, and a solid share of
+                every other blade — sustained hitting is welcome everywhere.
               </td>
             </tr>
             <tr>
               <td>Stamina</td>
-              <td>Fuel</td>
+              <td>Distance — the fuel tank</td>
               <td>
-                Two jobs. It sets the wind pool — every {windPerHundredStamina} points of stamina
-                add roughly 1 point of wind on top of a small base pool, and wind is the fight&apos;s
-                health bar. It also slows how fast agility and sight fade as the fight goes long —
-                low-stamina birds are fighting on fumes by the deep rounds.
+                Sets how many turns the bird fights at full power: {BATTLE.FUEL.BASE_TURNS} turns
+                plus {BATTLE.FUEL.TURNS_PER_STAMINA} per point of stamina. When the tank empties
+                the bird hits the wall — agility and sight drop to{" "}
+                {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% for the rest of the fight. It also
+                carries its own weight on every roll, heaviest at B4. A sprint never empties a
+                tank; a marathon is decided by it.
               </td>
             </tr>
             <tr>
               <td>Gameness</td>
-              <td>Phase 3 — the deep fight</td>
+              <td>Distance — the Finish</td>
               <td>
-                Drives every turn past turn {PHASES.OPEN_THROUGH_TURN}, and unlike agility and
-                sight it never decays — grit doesn&apos;t get tired. It also decides whether a badly
-                hurt bird keeps fighting or runs: once per fight, a bird below a quarter of its
-                wind checks its nerve, and low gameness means a real chance it breaks and quits.
+                Grit in the deep water — the key stat of B5, and it never hits the wall: heart
+                doesn&apos;t get tired. It also decides whether a badly hurt bird keeps fighting
+                or runs: once per fight, a bird below a quarter of its wind checks its nerve, and
+                low gameness means a real chance it breaks and quits.
               </td>
             </tr>
             <tr>
@@ -155,9 +156,9 @@ export default function BirdsPage() {
         </table>
       </div>
       <div className="callout tip">
-        <b>Reading it in one line.</b> The short blades (B1, B2) live and die on agility and
-        sight. The long blades (B3, B4) burn deep into stamina and gameness. Station and
-        condition matter everywhere, all the time — see{" "}
+        <b>Reading it in one line.</b> One key stat per blade: B1 agility, B2 sight, B4 stamina,
+        B5 gameness — and B3, the exact middle, weighs all four the same, so the most balanced
+        bird wins there. Station and condition matter everywhere, all the time — see{" "}
         <Link href="/wiki/fighting">Fighting</Link> for how the five blades change the mix.
       </div>
 

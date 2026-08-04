@@ -1,6 +1,6 @@
 # RULINGS
 
-A ledger of WHAT was ruled and WHEN — rounds ~14 through 26. The *reasoning*
+A ledger of WHAT was ruled and WHEN — rounds ~14 through 27. The *reasoning*
 lives in the dated comment blocks in `src/engine/config.ts` (and, for a few
 items, in the test files that pin the behavior); this file exists so an
 agent can see a knob's history without reading that whole file first.
@@ -65,3 +65,16 @@ before assuming "current value = only value this ever was":
 - Figure fixes riding along: the loser is scored down from the winner's CLAMPED figure (a maiden flattened by a monster used to post 145), and floored at 0 (the round-25-recorded −5 bug).
 - Doctor's weather-timing metric counts STARRED entries only (a 0★ bird has no going to play), and `weatherMatched` in bots requires stars for the same reason.
 - Deferred, explicitly: the phase/blade-weight rework (waiting on the new blade lengths), Crowd Noise (station's parity role), logarithmic breeding speed, and any tuning of the 5★ stacked ceiling (95.8% on B4 with wheel + weather — watch it as the population's stars climb).
+
+**Round 27** (2026-08-05, two commits) — **the five-blade dial and the distance rework.** Zane's PFL distance theory made mechanical; every number verified by the lab, before and after (BALANCE.md rewritten).
+- **B5 added** (Needle Gaff, 45 turns, `damageMult` 2, `critMult` 1.05) — the fifth blade the round-26 enumeration was FOR. B3 (20 turns) becomes the dial's true middle.
+- **The crown schedules go FIXED**: the Majors run B1/B3/B5 every week (Sprint / Middle / Classic, PFL-style; the round-18 middle-blade rotation dies), and the Juvenile Championship runs B2/B4 every week (the round-23 parity rotation dies). Between the two stages, all five blades crown somebody every single week.
+- **The weight matrix replaces the absolute phase windows** (`FORMATS[].weights`). Every turn roll blends ALL FOUR distance stats, weighted per blade; one key stat per off-center blade (B1 agility=Start, B2 sight=Speed, B4 stamina, B5 gameness=Finish) and **B3 keys NOBODY** — measured even to 0.4 points, and no same-total specialist beats a flat bird there. The matrix is symmetric across the dial (agility's column mirrors gameness's, sight's mirrors stamina's) — PFL's distance symmetry as a config property, audited by the lab's `reach` case. `PHASES` survives as narration only (break/open/deep are chapters, not stat switches).
+- **Wind goes UNIFORM at 100** (`BATTLE.WIND`; `BASE_WIND`/`WIND_PER_STAMINA` deleted) — Zane: "I'd make HP uniform across all birds (e.g. 100 HP), and then build the stats from there." No stat buys hit points anymore; every `damageMult` rescaled (13/7/4.5/3/2) and `GHOST_PACE` recalibrated (starters figure ~52 everywhere).
+- **Stamina becomes the FUEL TANK** (`BATTLE.FUEL`: 8 base turns + 0.014/point, wall factor 0.5) — the hidden-gas theory. Past the tank the bird HITS THE WALL: agility/sight halve; stamina and gameness never fade (grit is mental). Old decay (`DECAY_PER_TURN`/`DECAY_FLOOR`) deleted — the lab had measured it decorative (≤0.3 points). Measured wall rates: 0% of B1/B2 fights, 37% B3, 85% B4, 99.5% B5. Honest split: stamina's direct weight carries most of its value; the wall adds 2–4 points on the middle blades and the "running on heart" story everywhere long.
+- **`statScale` — the per-blade loudness dial** (1.5/1.15/1.0/0.9/0.8): scales everything the bird brings (blend, clawback, deep-water gameness bonus, BOTH element edges) so one grade of breeding buys the same win rate at every distance. Closes round 26's ±10-point blade-end spread: +100 now pays 76–85% on every blade, +200 pays 92–98. The one accepted miss: B1's +200 (91.8 vs 98) is a variance floor — five turns of dice cannot deliver 98%, and the sprint stays the upset blade by identity. Side effect, free: the 5★ wheel+weather stack eases 95.8% → 94.9%.
+- Gameness KEEPS its morale job (the quit check and the low-wind bonus) — pure-distance-stat was considered and rejected; the run-or-die drama is sabong.
+- `intent.ts` re-ruled to the round-27 map (B3 gets an `even` intent judged on spread, not order); all five blades now MATCH intent — round 26's "targets to measure against, not tune to" stance deliberately reversed, because the middle exists now.
+- Bots' `formatScores` now reads the engine's own weight matrix (a weights retune re-teaches every bot for free). Figure guard: a winner never posts below one band.
+- Deferred, still: Crowd Noise (station's parity role), logarithmic breeding speed, and the 5★ stacked ceiling watch.
+

@@ -329,23 +329,45 @@ const shape: BalanceCase = {
   question: "Does building for the blade beat building flat, at equal stat total?",
   run(o) {
     const rows: Row[] = [];
+    const build = (up: StatName[], down: StatName[], name: string): Combatant =>
+      shaped(
+        {
+          ...Object.fromEntries(up.map((s) => [s, BASE + GRADE_STEP])),
+          ...Object.fromEntries(down.map((s) => [s, BASE - GRADE_STEP])),
+        },
+        { base: BASE, name }
+      );
+    const control = flat(BASE, { name: "Flat" });
+
     for (const f of blades(o)) {
-      const order = STAT_PRIORITY[f].order;
-      const best = order.slice(0, 2);
-      const worst = order.slice(-2);
+      const intent = STAT_PRIORITY[f];
 
-      const build = (up: StatName[], down: StatName[], name: string): Combatant =>
-        shaped(
-          {
-            ...Object.fromEntries(up.map((s) => [s, BASE + GRADE_STEP])),
-            ...Object.fromEntries(down.map((s) => [s, BASE - GRADE_STEP])),
-          },
-          { base: BASE, name }
-        );
+      // B3 makes the OPPOSITE claim (round 27): no shape beats flat at the
+      // middle blade — that is what "the exact middle of the dial" means.
+      // So instead of one specialist that must WIN, both end-of-dial
+      // specialists are thrown at the flat bird and neither may beat it.
+      if (intent.even) {
+        const sprintShape = build(["agility", "sight"], ["stamina", "gameness"], "Sprint");
+        const stayerShape = build(["stamina", "gameness"], ["agility", "sight"], "Stayer");
+        const rSprint = mirrored(sprintShape, control, runOpts(o, f));
+        const rStayer = mirrored(stayerShape, control, runOpts(o, f));
+        const beatsFlat = (r: DuelResult) => r.winRate - SYMMETRY_TARGET > r.ci95;
+        const flatHolds = !beatsFlat(rSprint) && !beatsFlat(rStayer);
+        rows.push({
+          label: bladeLabel(f),
+          cells: ["±100 both ways vs flat", rate(rSprint), rate(rStayer), "equal"],
+          verdict: flatHolds ? "ok" : "warn",
+          note: flatHolds
+            ? `no shape beats flat at the middle blade (${intent.notation})`
+            : "a specialist BEATS flat at B3 — the middle blade has a tilt",
+        });
+        continue;
+      }
 
+      const best = intent.order.slice(0, 2);
+      const worst = intent.order.slice(-2);
       const spec = build(best, worst, "Spec");
       const anti = build(worst, best, "Anti");
-      const control = flat(BASE, { name: "Flat" });
 
       const rSpec = mirrored(spec, control, runOpts(o, f));
       const rAnti = mirrored(anti, control, runOpts(o, f));
@@ -847,46 +869,36 @@ const weather: BalanceCase = {
   },
 };
 
-// ── 11. REACH ───────────────────────────────────────────────────────────────
+// ── 11. REACH — the weight matrix, audited ──────────────────────────────────
 
 /**
- * The structural case, and mostly ARITHMETIC rather than simulation.
+ * Round 27 replaced the absolute phase windows with a per-blade WEIGHT MATRIX
+ * (FORMATS[].weights): every distance stat contributes on every turn, blended
+ * by what the blade tests. That kills the old structural failure this case
+ * existed for (a blade whose ceiling sat below a phase's first turn could
+ * never read that phase's stat at all) — but it creates three NEW claims
+ * worth auditing, because the matrix makes them by construction and a config
+ * edit can silently break any of them:
  *
- * Turn phases are ABSOLUTE windows (PHASES: turns 1..BREAK drive on agility,
- * BREAK+1..OPEN on sight, OPEN+1.. on gameness) while every blade sets its own
- * turn ceiling. Those two facts were written independently and their product
- * was never checked: a blade whose ceiling sits below a phase's first turn can
- * NEVER read that phase's stat, at any stat value, for any bird. No divisor
- * can be tuned to fix that.
+ *   1. every weight is > 0 on every blade (EVERY_STAT_EVERYWHERE, now
+ *      enforceable rather than aspirational),
+ *   2. every row sums to 1 (or a +100-on-everything bird would be worth
+ *      different amounts of roll on different blades),
+ *   3. the matrix is symmetric — agility's column read B1→B5 mirrors
+ *      gameness's read B5→B1, sight's mirrors stamina's — which is the
+ *      "relative symmetry of the stats across distances" Zane asked for.
  *
- * So this case computes, per blade: which stats can drive a turn at all, how
- * many turns each one gets, and — from a real turn-length distribution, since
- * a fight can stop long before the ceiling — how often fights actually get
- * there. Every window is read from PHASES and FORMATS; nothing is typed.
+ * Plus the practical half the old case measured: how often fights actually
+ * reach the FUEL WALL, the one absolute-turn mechanic left standing.
  */
-
-/**
- * The ladder as fight-sim.ts:127 applies it. The mapping from a turn to a
- * driving stat lives in the engine rather than in config, so it is restated
- * here — the only restatement in this module, and the reason it is acceptable
- * is that the BOUNDARIES all come from PHASES. If a phase is added, this
- * breaks visibly rather than silently reporting three phases forever.
- */
-const PHASE_LADDER = [
-  { stat: "agility" as StatName, from: 1, through: PHASES.BREAK_THROUGH_TURN },
-  { stat: "sight" as StatName, from: PHASES.BREAK_THROUGH_TURN + 1, through: PHASES.OPEN_THROUGH_TURN },
-  { stat: "gameness" as StatName, from: PHASES.OPEN_THROUGH_TURN + 1, through: Infinity },
-];
 
 /**
  * Turn-length histogram for a blade.
  *
  * `duel` reports a MEAN turn count, and a mean cannot answer "how often does a
- * fight reach turn 11" — a 30-turn blade averaging 9 turns might reach the
- * deep phase in half its fights or in none of them. So this walks the same
- * seed window `duel` uses and keeps the distribution instead of collapsing it.
- * Local rather than in lab.ts because reach is the only question that has ever
- * needed it; if a second case wants it, it should move.
+ * fight reach the wall" — a 30-turn blade averaging 9 turns might blow tanks
+ * in half its fights or in none of them. So this walks the same seed window
+ * `duel` uses and keeps the distribution instead of collapsing it.
  */
 function turnLengths(a: Combatant, b: Combatant, f: FightFormat, o: CaseOptions): number[] {
   const out: number[] = [];
@@ -897,85 +909,94 @@ function turnLengths(a: Combatant, b: Combatant, f: FightFormat, o: CaseOptions)
   return out;
 }
 
+const WEIGHT_STATS = ["agility", "sight", "stamina", "gameness"] as const;
+
 const reach: BalanceCase = {
   name: "reach",
-  question: "Which stats can a blade physically reach, and how often do fights get there?",
+  question: "Does the weight matrix keep its three promises — and how often does the wall arrive?",
   run(o) {
     const bs = blades(o);
-    const lengths = new Map<FightFormat, number[]>(
-      bs.map((f) => [
-        f,
-        turnLengths(flat(BASE, { name: "A" }), flat(BASE, { name: "B" }), f, o),
-      ])
+
+    // Claim 1 + 2: every weight positive, every row sums to 1.
+    const matrixRows: Row[] = bs.map((f) => {
+      const w = FORMATS[f].weights;
+      const sum = WEIGHT_STATS.reduce((s, k) => s + w[k], 0);
+      const dead = WEIGHT_STATS.filter((k) => w[k] <= 0);
+      return {
+        label: bladeLabel(f),
+        cells: [...WEIGHT_STATS.map((k) => w[k].toFixed(2)), sum.toFixed(3)],
+        verdict: dead.length ? "warn" : Math.abs(sum - 1) > 0.001 ? "warn" : "ok",
+        note: dead.length
+          ? `zero weight: ${dead.join(", ")} — EVERY_STAT_EVERYWHERE violated by config`
+          : Math.abs(sum - 1) > 0.001
+            ? `row sums to ${sum.toFixed(3)} — a flat grade is worth different roll on this blade`
+            : undefined,
+      };
+    });
+
+    // Claim 3: symmetry. agility ↔ gameness and sight ↔ stamina, columns
+    // read from opposite ends of the dial.
+    const mirrored5 = [...bs].reverse();
+    const symRows: Row[] = (
+      [
+        ["agility", "gameness"],
+        ["sight", "stamina"],
+      ] as const
+    ).flatMap(([left, right]) =>
+      bs.map((f, i) => {
+        const a = FORMATS[f].weights[left];
+        const g = FORMATS[mirrored5[i]].weights[right];
+        const diff = Math.abs(a - g);
+        return {
+          label: `${left}@${bladeLabel(f)} vs ${right}@${bladeLabel(mirrored5[i])}`,
+          cells: [a.toFixed(2), g.toFixed(2), diff.toFixed(2)],
+          verdict: diff > 0.1 ? "warn" : "ok",
+          note: diff > 0.1 ? "the dial's ends have drifted apart — retune one side" : undefined,
+        } satisfies Row;
+      })
     );
 
-    const rows: Row[] = [];
-    for (const f of bs) {
-      const max = FORMATS[f].maxTurns;
-      const obs = lengths.get(f)!;
-      for (const p of PHASE_LADDER) {
-        const last = Math.min(p.through, max);
-        const available = Math.max(0, last - p.from + 1);
-        const reached = obs.filter((t) => t >= p.from).length / obs.length;
-        const window = available === 0 ? "unreachable" : `T${p.from}–T${last}`;
-        rows.push({
-          label: `${bladeLabel(f)} · ${p.stat}`,
-          cells: [
-            String(max),
-            window,
-            String(available),
-            pct((available / max) * 100),
-            pct(reached * 100),
-          ],
-          // A phase the blade cannot reach is the concrete violation of the
-          // one rule that spans all blades, so it is called out as a warn even
-          // though nothing is "broken" — the engine is behaving as written.
-          verdict: available === 0 ? "warn" : reached === 0 ? "warn" : "ok",
-          note:
-            available === 0
-              ? `${p.stat} can never drive a turn at this blade — the phase starts after the last turn`
-              : reached === 0
-                ? `${p.stat}'s phase exists but no fight in the sample lasted that long`
-                : undefined,
-        });
-      }
-    }
-
-    const driving = new Set(PHASE_LADDER.map((p) => p.stat));
-    const nonDriving = STAT_NAMES.filter((s) => !driving.has(s));
-
-    const pathRows: Row[] = nonDriving.map((s) => ({
-      label: s,
-      cells: [
-        "never",
-        s === "stamina"
-          ? `the wind pool (${BATTLE.BASE_WIND} + stamina × ${BATTLE.WIND_PER_STAMINA}) and decay resistance`
-          : s === "station"
-            ? `claws back up to ${BATTLE.UNDERDOG_CLAWBACK} of the stat gap's roll value when outmatched`
-            : `the per-turn form multiplier on every other stat`,
-      ],
-    }));
+    // The practical half: how often a STARTER's tank actually empties. The
+    // wall is the one absolute-turn mechanic left, so its reach is the only
+    // "does the fight get there" question remaining.
+    const starterFuel = BATTLE.FUEL.BASE_TURNS + BASE * BATTLE.FUEL.TURNS_PER_STAMINA;
+    const wallRows: Row[] = bs.map((f) => {
+      const obs = turnLengths(flat(BASE, { name: "A" }), flat(BASE, { name: "B" }), f, o);
+      const reached = obs.filter((t) => t > starterFuel).length / obs.length;
+      return {
+        label: bladeLabel(f),
+        cells: [
+          String(FORMATS[f].maxTurns),
+          starterFuel.toFixed(1),
+          pct(reached * 100),
+        ],
+      };
+    });
 
     return [
       {
-        title: "REACH — PHASE WINDOWS vs BLADE LENGTH",
-        question:
-          "Phases are absolute turn windows; blades set their own ceilings. This is the intersection, and how often fights actually get there.",
-        columns: ["blade · phase stat", "max turns", "window", "turns available", "% of ceiling", "% of fights reaching"],
-        rows,
+        title: "REACH — THE WEIGHT MATRIX",
+        question: "Per blade: the four weights, each > 0, each row summing to 1.",
+        columns: ["blade", ...WEIGHT_STATS.map(String), "Σ"],
+        rows: matrixRows,
+        findings: [EVERY_STAT_EVERYWHERE + " Since round 27 that is a config property, and this table is its tripwire."],
+      },
+      {
+        title: "REACH — DIAL SYMMETRY",
+        question: "agility read B1→B5 should mirror gameness read B5→B1; sight should mirror stamina.",
+        columns: ["pair", "left", "right", "|diff|"],
+        rows: symRows,
         findings: [
-          `Phase windows: agility T1–T${PHASES.BREAK_THROUGH_TURN}, sight T${PHASES.BREAK_THROUGH_TURN + 1}–T${PHASES.OPEN_THROUGH_TURN}, gameness T${PHASES.OPEN_THROUGH_TURN + 1}+. Blade ceilings: ${FORMAT_NAMES.map((f) => `${FORMATS[f].label} ${FORMATS[f].maxTurns}`).join(", ")}.`,
-          "'Turns available' is the structural ceiling; '% of fights reaching' is the practical one. A blade can have a phase on paper and never visit it.",
-          EVERY_STAT_EVERYWHERE,
+          "Symmetry is the design's tuning discipline (PFL's distance symmetry): fix one end of the dial and the mirror tells you the other. Station and condition stay out of the matrix — they are the behavioral anchors, in every fight and keyed to none.",
         ],
       },
       {
-        title: "REACH — THE STATS NO PHASE EVER DRIVES",
-        question: "Three of the six stats never drive a turn in ANY format. How does each one reach a fight instead?",
-        columns: ["stat", "drives a turn?", "route into the fight"],
-        rows: pathRows,
+        title: "REACH — THE FUEL WALL'S ARRIVAL",
+        question: `A ${BASE}-stamina starter carries ${(BATTLE.FUEL.BASE_TURNS + BASE * BATTLE.FUEL.TURNS_PER_STAMINA).toFixed(1)} turns of fuel. How often does a real fight outlast it?`,
+        columns: ["blade", "max turns", "starter fuel turns", "% of fights past the wall"],
+        rows: wallRows,
         findings: [
-          "STAMINA is the one worth staring at: the per-blade intent ranks it explicitly (2nd or 3rd on every blade) yet it is never a phase stat in any format. It reaches a fight only through the wind pool and decay resistance — indirectly, on a blade-length-dependent curve nobody has measured until this lab.",
+          "0% on the short blades is CORRECT — the sprint ends before any tank empties, which is exactly why stamina is a long-blade stat. If the long blades also read ~0%, the wall is decorative and stamina's key blade is a lie.",
         ],
       },
     ];
@@ -985,45 +1006,42 @@ const reach: BalanceCase = {
 // ── 12. FUEL — stamina's two routes, separated ──────────────────────────────
 
 /**
- * Stamina never drives a turn (see `reach`), so its entire measured lift
- * arrives through two side doors: the wind pool (BASE_WIND + stamina ×
- * WIND_PER_STAMINA — more HP) and decay resistance (physical stats fade
- * slower as wind burns). Nobody has ever known the split, and the split
- * matters: the intent ranks stamina 2nd or 3rd on every blade, so when the
- * phase weights get reworked, whoever does it needs to know how much of
- * stamina's value is already there and WHICH DOOR it comes through — a knob
- * turned on the wrong door doubles one route while leaving the deficit alone.
+ * Round 27 rebuilt stamina's plumbing: the wind pool is gone (uniform
+ * BATTLE.WIND for everyone) and stamina now reaches a fight through exactly
+ * two doors — its DIRECT WEIGHT in the blade's blend, and the FUEL WALL
+ * (fuelTurns = BASE_TURNS + stamina × TURNS_PER_STAMINA; past it, agility
+ * and sight deliver only WALL_FACTOR of themselves). The split still
+ * matters for the same reason it did before the rework: a knob turned on
+ * the wrong door doubles one route while leaving the deficit alone.
  *
  * Method: kill one route at a time with `withKnob` and re-measure the same
- * +SENS_DELTA stamina duel. DECAY_PER_TURN=0 removes decay entirely, so the
- * resistance route has nothing to resist — what remains is the pool route.
- * WIND_PER_STAMINA=0 equalises the pools — what remains is the decay route.
- * The two parts need not sum to the whole; the residual is the interaction,
- * and reporting it is honester than hiding it in either column.
+ * +SENS_DELTA stamina duel. WALL_FACTOR=1 makes the wall toothless — what
+ * remains is the direct weight. weights.stamina=0 (per blade) closes the
+ * direct door — what remains is the wall. The two parts need not sum to the
+ * whole; the residual is the interaction, and reporting it is honester than
+ * hiding it in either column.
  */
 const fuel: BalanceCase = {
   name: "fuel",
-  question: "Stamina never drives a turn — which of its two routes carries its value?",
+  question: "Stamina has two routes — the direct weight and the fuel wall. Which carries its value, per blade?",
   run(o) {
     const control = flat(BASE, { name: "Flat" });
     const rows: Row[] = blades(o).map((f) => {
-      // +SENS_DELTA on one stat is a 1.095x total — under the 1.1x gate, so
-      // these are clean stamina measurements, same as the sensitivity case.
       const bumped = bump(BASE, "stamina", BASE + SENS_DELTA, { name: "Stam" });
       const measure = () => mirrored(bumped, control, runOpts(o, f));
 
       const whole = measure();
-      const poolOnly = withKnob("BATTLE.DECAY_PER_TURN", 0, measure);
-      const decayOnly = withKnob("BATTLE.WIND_PER_STAMINA", 0, measure);
+      const weightOnly = withKnob("BATTLE.FUEL.WALL_FACTOR", 1, measure);
+      const wallOnly = withKnob(`FORMATS.${f}.weights.stamina`, 0, measure);
 
       const lift = (r: DuelResult) => r.winRate - 50;
-      const residual = lift(whole) - (lift(poolOnly) + lift(decayOnly));
+      const residual = lift(whole) - (lift(weightOnly) + lift(wallOnly));
       return {
         label: bladeLabel(f),
         cells: [
           rate(whole),
-          `+${pct(lift(poolOnly))}`,
-          `+${pct(lift(decayOnly))}`,
+          `+${pct(lift(weightOnly))}`,
+          `+${pct(lift(wallOnly))}`,
           `${residual >= 0 ? "+" : ""}${pct(residual)}`,
         ],
       };
@@ -1033,12 +1051,12 @@ const fuel: BalanceCase = {
       {
         title: "FUEL — WHERE STAMINA'S LIFT COMES FROM",
         question: `+${SENS_DELTA} stamina vs a flat ${BASE} bird, then the same duel with one route disabled at a time. Lifts are win-rate points over 50.`,
-        columns: ["blade", "win% ±95 (both routes)", "wind pool alone", "decay resistance alone", "interaction"],
+        columns: ["blade", "win% ±95 (both routes)", "direct weight alone", "fuel wall alone", "interaction"],
         rows,
         findings: [
-          `The pool route: maxWind = ${BATTLE.BASE_WIND} + stamina × ${BATTLE.WIND_PER_STAMINA}, so +${SENS_DELTA} stamina is +${SENS_DELTA * BATTLE.WIND_PER_STAMINA} wind — a fixed head start whose value the table shows growing with blade length, because long fights give the deeper pool more turns to matter.`,
-          "The decay route: physical stats fade by DECAY_PER_TURN × (1 − stamina/2000) per turn, so it can only matter in fights that go long — the opposite blade-length curve from the pool.",
-          "If either column reads ~0 on every blade, that route is decorative and the phase-weight rework can ignore it.",
+          `The direct route: stamina × the blade's weight joins every roll like any other stat — worth the most where the weight is biggest (${FORMAT_NAMES.map((f) => `${FORMATS[f].label} ${FORMATS[f].weights.stamina}`).join(", ")}).`,
+          `The wall route: +${SENS_DELTA} stamina is +${(SENS_DELTA * BATTLE.FUEL.TURNS_PER_STAMINA).toFixed(1)} turns of full output, which can only matter in fights long enough for a tank to empty — worth nothing on the sprint end, by construction.`,
+          "If the wall column reads ~0 on every blade, the wall is decorative and stamina is just a fourth weight — which would betray the fuel-first ruling.",
         ],
       },
     ];

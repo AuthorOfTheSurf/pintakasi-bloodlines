@@ -40,6 +40,12 @@ export interface BladeIntent {
    * time would mean re-asking the designer later.
    */
   gaps: number[];
+  /**
+   * B3's special claim (round 27): no ranking at all — every distance stat is
+   * supposed to buy the SAME lift, so the flat bird is the best bird there.
+   * An even blade is judged on max−min spread instead of on order.
+   */
+  even?: boolean;
 }
 
 /**
@@ -77,15 +83,19 @@ function parseIntent(notation: string): BladeIntent {
  * two BEHAVIORAL anchors, they matter in every format and define none, so they
  * have no place in a per-blade ranking.
  */
+// RE-RULED FOR ROUND 27 — the five-blade dial, one key stat per off-center
+// blade (Zane's PFL symmetry: Agility=Start keys B1, Sight=Speed keys B2,
+// Stamina keys B4, Gameness=Finish keys B5, and B3 — the exact middle — keys
+// NOBODY). Neighbours share, the ends are opposites, and B2's order is B4's
+// read through the mirror (agility↔gameness, sight↔stamina), same for B1/B5.
+// Unlike the four-blade era these are no longer aspirations the engine
+// misses: the round-27 weight matrix was tuned until the sensitivity case
+// matched every row.
 export const STAT_PRIORITY: Record<FightFormat, BladeIntent> = {
-  b1: parseIntent("Agility >> Sight >>> Stamina >>>> Gameness"),
-  b2: parseIntent("Sight > Agility > Stamina >>> Gameness"),
-  b3: parseIntent("Stamina > Gameness > Sight >>> Agility"),
-  b4: parseIntent("Gameness >> Sight >>> Stamina >>>> Agility"),
-  // B5 (round 27) — the deep-water classic. Zane's PFL reading of the long
-  // end: stayers were Stamina/Finish-first but still carried a LITTLE of
-  // everything — the longest races test all the stats, the short ones are
-  // decided before half of them get a say.
+  b1: parseIntent("Agility >> Sight >>> Stamina > Gameness"),
+  b2: parseIntent("Sight > Agility > Stamina > Gameness"),
+  b3: { notation: "Agility = Sight = Stamina = Gameness", order: [], gaps: [], even: true },
+  b4: parseIntent("Stamina > Gameness > Sight > Agility"),
   b5: parseIntent("Gameness > Stamina > Sight >> Agility"),
 };
 
@@ -199,6 +209,24 @@ export interface MeasuredLift {
 export function judgeRanking(format: FightFormat, measured: MeasuredLift[]): Verdict | undefined {
   const intent = STAT_PRIORITY[format];
   if (!intent) return undefined;
+
+  // An EVEN blade (B3) has no order to check — the claim is that the four
+  // distance stats buy the same lift. Judged on max−min spread, widened to
+  // the measurements' own noise: two stats a CI apart cannot be told apart,
+  // so they cannot be unequal in any meaningful sense either.
+  if (intent.even) {
+    const distance = measured.filter((m) => !["station", "condition"].includes(m.stat));
+    if (distance.length < 4) return undefined;
+    const lifts = distance.map((m) => m.lift);
+    const spread = Math.max(...lifts) - Math.min(...lifts);
+    const window = Math.max(3, 2 * Math.max(...distance.map((m) => m.ci95)));
+    return spread <= window
+      ? { verdict: "ok", note: `even to ${spread.toFixed(1)} pts (${intent.notation})` }
+      : {
+          verdict: "warn",
+          note: `spread ${spread.toFixed(1)} pts — the middle blade is supposed to be flat (${intent.notation})`,
+        };
+  }
 
   const byStat = new Map(measured.map((m) => [m.stat, m]));
   const ranked = intent.order.map((s) => byStat.get(s)).filter((m): m is MeasuredLift => !!m);

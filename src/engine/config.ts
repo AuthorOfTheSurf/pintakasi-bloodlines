@@ -23,16 +23,16 @@ export const AGE = {
 } as const;
 
 // ── Stats (the PFL-mapped 6-stat combat matrix, ruled 2026-08-02) ───────────
-// Four PHASE stats (which ones matter depends on how long the blade lets the
-// fight run — that's the "distance" dial) + two BEHAVIORAL anchors that
-// matter in every format but define none.
+// Four DISTANCE stats (all four join every roll, weighted per blade by
+// FORMATS[].weights — that's the "distance" dial, re-ruled round 27) + two
+// BEHAVIORAL anchors that matter in every format but define none.
 export const STAT_NAMES = [
-  "agility", //   [phase 1 · PFL Start]  the break — the opening fly-up; who strikes first
-  "sight", //     [phase 2 · PFL Speed]  accuracy and strike placement in open exchange
-  "stamina", //   [fuel    · PFL Stamina] the wind pool AND decay resistance — physical stats fade as wind burns
-  "gameness", //  [phase 3 · PFL Finish] deep-fight grit — drives the late turns; low gameness birds can RUN when hurt
-  "station", //   [anchor  · PFL Heart]  the rivalry modifier — clutch boost when outmatched; the underdog's path to upsets
-  "condition", // [anchor  · PFL Temper] the RNG stabilizer — high = fights at 95-100% of book; low = ugly off-days
+  "agility", //   [distance · PFL Start]   the break — keys B1; the burst that wins short fights
+  "sight", //     [distance · PFL Speed]   accuracy in a sustained trade — keys B2
+  "stamina", //   [distance · PFL Stamina] the FUEL TANK (BATTLE.FUEL) plus its own weight — keys B4
+  "gameness", //  [distance · PFL Finish]  deep-water grit — keys B5, never walls; low gameness birds can RUN when hurt
+  "station", //   [anchor   · PFL Heart]   the rivalry modifier — clutch boost when outmatched; the underdog's path to upsets
+  "condition", // [anchor   · PFL Temper]  the RNG stabilizer — high = fights at 95-100% of book; low = ugly off-days
 ] as const;
 export type StatName = (typeof STAT_NAMES)[number];
 
@@ -198,40 +198,80 @@ export const CARRIAGE_LABEL: Record<Carriage, string> = {
 // and the midpoint moves to B3. The sabong flavor survives in `flavor` — the
 // weapon is still a 4.5″ slasher, it just isn't the KEY anymore.
 //
-// Shorter fights only ever exercise the early phase stats (agility/sight);
-// long fights burn wind and hand the late turns to gameness. Knife-end blades
-// are SWINGY, gaff-end blades are true tests — though the crit lab case
-// showed that story is only half true: B2 flips the most fights (15%), and B3
-// at critMult 1.3 flips nearly as many, because turn count multiplies crit
-// exposure faster than the multiplier shrinks.
+// ROUND 27 — THE WEIGHT MATRIX replaces the absolute phase windows. Every
+// turn roll now blends ALL FOUR distance stats by the blade's `weights`
+// (each row sums to 1), instead of one phase stat owning a window of turns.
+// Zane's PFL model, translated: Agility=Start keys B1, Sight=Speed keys B2,
+// B3 weighs everything EQUALLY (the flat bird's home — the whole reason the
+// dial got an odd count), Stamina keys B4, Gameness=Finish keys B5. Every
+// stat carries SOME weight on EVERY blade — the old windows made gameness
+// structurally dead on B1 (its phase started at turn 11, the blade capped at
+// 5) and made agility 40% of a B1 but 7% of a B4, which is why three of four
+// blades missed their intent in the round-26 lab. The matrix is symmetric on
+// purpose: agility's column read B1→B5 mirrors gameness's read B5→B1, and
+// sight's mirrors stamina's — tune one end, the other end is the mirror.
+// Stamina ALSO owns the fuel wall (BATTLE.FUEL), which is why its direct
+// weights can stay modest and still key B4: the wall pays it extra on the
+// long blades and nothing on the short ones.
+//
+// `statScale` is the second half of the round-27 rework: the LOUDNESS dial.
+// A long fight samples the same stat gap dozens of times, so the better bird
+// converges — the identical +100 grade step measured 69% on B1 but 89% on B5
+// before this knob existed. statScale multiplies EVERYTHING the bird brings
+// to a roll (the weighted blend, the station clawback, the deep-water
+// gameness bonus, and both element edges) so that fewer rolls hear a louder
+// signal: one grade of breeding buys ROUGHLY THE SAME win rate at every
+// distance, per Zane's targets (~80% for +100, ~98% for +200), and a 5★
+// matchup is worth roughly the same fight-level edge everywhere too. Tuned
+// at B3 = 1.0 (the middle is the reference, by the round-27 philosophy:
+// tune the midpoint, work outward). The knives keep their swing — that
+// identity lives in damageMult/critMult, not here.
+//
+// Knife-end blades are SWINGY, gaff-end blades are true tests — though the
+// crit lab case showed that story is only half true: B2 flips the most
+// fights (15%), because turn count multiplies crit exposure faster than the
+// multiplier shrinks.
 export const FORMATS = {
   b1: {
     label: "B1",
     flavor: "Long Knife — 4.5″ Filipino Slasher, the sprint",
     maxTurns: 5, //          fights end in the opening frames
-    damageMult: 3.0, //      one clean hit takes a third of a wind pool
+    damageMult: 13, //       one clean hit takes a big bite of 100 wind
     critMult: 2.5, //        a Tari Strike here is usually the fight
+    weights: { agility: 0.5, sight: 0.3, stamina: 0.12, gameness: 0.08 },
+    statScale: 1.5, //       5 turns hear the least evidence — loudest stats
   },
   b2: {
     label: "B2",
     flavor: "Short Knife — 2.5″ Mexican Slasher, the hybrid",
     maxTurns: 12, //          tactical pacing; consistent hit output wins
-    damageMult: 1.6,
+    damageMult: 7,
     critMult: 2.0,
+    weights: { agility: 0.25, sight: 0.45, stamina: 0.18, gameness: 0.12 },
+    statScale: 1.15,
   },
   b3: {
     label: "B3",
     flavor: "Long Gaff — 2½″ Long Spur, the route",
-    maxTurns: 20, //        punctures wear a bird down; wind starts to rule
-    damageMult: 1.0,
+    maxTurns: 20, //        the dial's exact middle — every stat weighs the same
+    damageMult: 4.5,
     critMult: 1.3,
+    // Slightly under-weighting stamina/gameness is what MAKES B3 even: those
+    // two carry side routes (the fuel wall; the morale check and deep-water
+    // bonus), so equal weights measured them ~4 points louder than
+    // agility/sight. The lab's sensitivity case is the referee of "even",
+    // not this row's cosmetics.
+    weights: { agility: 0.29, sight: 0.29, stamina: 0.21, gameness: 0.21 },
+    statScale: 1.0, //       the reference point of the whole dial
   },
   b4: {
     label: "B4",
     flavor: "Short Gaff — 1″ Short Heel, the marathon",
-    maxTurns: 30, //         deep-round attrition; gameness dictates the end
-    damageMult: 0.7,
+    maxTurns: 30, //         attrition; the fuel wall starts deciding fights
+    damageMult: 3,
     critMult: 1.1,
+    weights: { agility: 0.15, sight: 0.2, stamina: 0.4, gameness: 0.25 },
+    statScale: 0.9,
   },
   // B5 (ruled 2026-08-04, round 27): the fifth blade the enumeration was FOR.
   // The dial now has a true middle — B3 — and the odd count Zane asked for.
@@ -243,17 +283,22 @@ export const FORMATS = {
     label: "B5",
     flavor: "Needle Gaff — ⅝″ heel, the deep-water classic",
     maxTurns: 45, //         the ultra-stayer's test; nobody sprints for 45 turns
-    damageMult: 0.5,
+    damageMult: 2,
     critMult: 1.05,
+    weights: { agility: 0.1, sight: 0.15, stamina: 0.25, gameness: 0.5 },
+    statScale: 0.8, //       45 turns of evidence — quietest stats, same verdict
   },
 } as const;
 export type FightFormat = keyof typeof FORMATS;
 export const FORMAT_NAMES = Object.keys(FORMATS) as FightFormat[];
 
-// ── Fight phases (absolute turn windows — the distance curve itself) ────────
-// Turn 1–2 = the break (agility drives). Turns 3–10 = open exchange (sight).
-// Turn 11+ = the deep fight (gameness). A 5-turn long-knife bout never
-// reaches the deep fight; a 30-turn short-gaff bout mostly lives there.
+// ── Fight phases — NARRATION ONLY since round 27 ────────────────────────────
+// These used to be the distance curve itself: absolute windows where one stat
+// owned the roll (agility 1–2, sight 3–10, gameness 11+). The weight matrix
+// (FORMATS[].weights) replaced that — every stat rolls on every turn now —
+// but the play-by-play still names the stretch of the fight it's narrating:
+// "the break", "the open", "deep water". Kept because the story of a fight
+// having chapters is true even when the math no longer switches stats.
 export const PHASES = {
   BREAK_THROUGH_TURN: 2,
   OPEN_THROUGH_TURN: 10,
@@ -261,10 +306,32 @@ export const PHASES = {
 
 // ── Battle (2d6) ────────────────────────────────────────────────────────────
 export const BATTLE = {
-  // "Wind" is the fight's HP pool. maxWind = BASE_WIND + stamina × WIND_PER_STAMINA
-  // (e.g. 300 stamina → 20 + 3 = 23 wind; a 2000-stamina monster → 40).
-  BASE_WIND: 20,
-  WIND_PER_STAMINA: 0.01,
+  // "Wind" is the fight's HP pool — UNIFORM at 100 for every bird since
+  // round 27 (Zane: "I'd make HP uniform across all birds (e.g. 100 HP), and
+  // then build the stats from there"). Stamina used to buy hit points here,
+  // which quietly made it a defense stat; now a bird's toughness is the same
+  // everywhere and stamina's whole job is the FUEL tank below. Uniform wind
+  // also makes "beaten lengths" (wind left at the end) mean the same thing
+  // in every fight, which the Pit Figure math leans on.
+  WIND: 100,
+  // THE FUEL TANK (round 27) — stamina's real job, Zane's PFL theory made
+  // mechanical: there is a hidden gas resource, and when it runs out the
+  // bird HITS THE WALL. A bird fights at full book for
+  //   FUEL.BASE_TURNS + stamina × FUEL.TURNS_PER_STAMINA
+  // turns; every turn after that, its agility and sight deliver only
+  // WALL_FACTOR of themselves. Gameness never walls — grit is mental, and
+  // the blown bird "running on heart" is the whole deep-water story.
+  // The dial does the rest for free: a B1 bout (5 turns) ends before ANY
+  // tank empties, so stamina is nearly decorative there by construction; at
+  // B4/B5 the wall decides who is still fighting at book when it matters.
+  // A starter (~350) carries ~13 turns of fuel; a 2000-stamina monster ~36 —
+  // which still blows before a 45-turn B5 ends, so the deep water tests
+  // heart in EVERY bout, by design.
+  FUEL: {
+    BASE_TURNS: 8,
+    TURNS_PER_STAMINA: 0.014,
+    WALL_FACTOR: 0.5,
+  },
   // Turn roll = 2d6 + stat/ROLL_DIVISOR.
   //
   // RE-RULED 400 → 85 (2026-08-04, the grade-target tuning). At 400 a whole
@@ -276,10 +343,13 @@ export const BATTLE = {
   //
   // 85 was picked AT THE MIDDLE OF THE BLADE DIAL, per Zane's tuning
   // philosophy (tune the midpoint, work outward): on B3, +100 measures
-  // 82.5% and +200 measures 97.2% — both inside a few points of target.
-  // The blade ends deviate because turn count amplifies stats (B1 68.8%,
-  // B4 87.3% at +100); that spread belongs to the phase-weight rework, not
-  // to this knob. Note the station clawback is DEFINED via ROLL_DIVISOR
+  // ~84% and +200 ~97% — both inside a few points of target. The blade-end
+  // deviation this note used to carry (±10 points, turn count amplifying
+  // stats) was CLOSED by round 27's per-blade statScale: the ends now sit
+  // within a point or two of the middle (B1 76 / B5 85 at +100), with only
+  // B1's +200 still short (92 vs 98 — five turns of dice have a variance
+  // floor no knob clears; the sprint stays the upset blade, recorded in
+  // BALANCE.md). Note the station clawback is DEFINED via ROLL_DIVISOR
   // (a fraction of the gap's roll value), so this retune could not
   // reintroduce the inversion it was measured against.
   ROLL_DIVISOR: 85,
@@ -296,6 +366,12 @@ export const BATTLE = {
   // every flat modifier must be judged against what a whole stat block adds
   // to a roll, which is a handful of tenths.
   //
+  // Since round 27 the delivered edge is ALSO scaled by the blade's
+  // statScale, like every other thing the bird brings — so a matchup is
+  // worth roughly the same fight-level edge at every distance instead of
+  // compounding on the long blades (the round-26 watch item where 5★ wheel
+  // + weather stacked to 95.8% on the marathon).
+  //
   // With stars scaling it, 1.0 is safe as the ceiling precisely BECAUSE it
   // is rare: only a 5.0★ bird at a favorable matchup ever sees the full +1
   // (~76% between equals — the "Maximum elemental advantage" Zane asked 5★
@@ -305,11 +381,6 @@ export const BATTLE = {
   // check that this stays true. Still exactly 2x WEATHER.EDGE — the
   // relationship the Handbook states and docs.test.ts pins.
   ELEMENT_EDGE: 1.0,
-  // Stat decay (stamina's second job): agility and sight fade each turn by
-  // PER_TURN × (1 − stamina/2000). A 300-stamina bird loses ~2.6%/turn — by
-  // turn 20 it's fighting at ~half book. FLOOR stops decay short of zero.
-  DECAY_PER_TURN: 0.03,
-  DECAY_FLOOR: 0.2,
   // Station — the rivalry stat, REBUILT from a gate into a slope (re-ruled
   // 2026-08-04, the balance lab's headline finding). It used to be binary:
   // opponent total ≥ 1.1× yours flipped a flag, and the flag paid your FULL
@@ -401,7 +472,9 @@ export const FIGURE = {
   // The pace a maxed-out ghost sets, per blade — tuned so an even fight
   // between STARTERS figures ~50 in every format (gaff fights run longer,
   // so their damage-per-turn is lower by nature; this is the normalizer).
-  GHOST_PACE: { b1: 5.6, b2: 5.2, b3: 4.0, b4: 3.6, b5: 3.4 },
+  // Recalibrated for round 27's engine (uniform 100 wind rescaled every
+  // damageMult, so pace-per-damageMult moved on every blade).
+  GHOST_PACE: { b1: 8.0, b2: 6.2, b3: 4.3, b4: 3.7, b5: 3.4 },
   GHOST_FIGURE: 100, //  what matching the ghost's pace scores
   CLASS_BASE: 320, //    the starter band's middle — class credit starts here
   CLASS_DIVISOR: 20, //  each 20 points of beaten-opponent average = +1 figure

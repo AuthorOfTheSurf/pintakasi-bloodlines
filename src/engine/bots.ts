@@ -6,6 +6,8 @@ import { BOT_FARMS, WEATHER_APPETITE, type BotProfile } from "./bot-config";
 import {
   CLAIMER,
   ECONOMY,
+  FORMATS,
+  FORMAT_NAMES,
   JUVENILE_MAJOR,
   LAND,
   PINTAKASI,
@@ -351,15 +353,24 @@ export function ladderClass(stakesWins: number): Lobby {
  * How well a bird reads at each distance — the owner's private study of its
  * own stats. One table, two uses: pick the blade for a bird (bestFormat),
  * or pick the bird for a blade (the Pintakasi, round 19).
+ *
+ * Since round 27 this reads the engine's OWN weight matrix instead of a
+ * hand-written guess — an owner studying its bird uses the same dial the
+ * pit does, and a weights retune re-teaches every bot for free.
  */
 export function formatScores(bird: BirdView): Record<FightFormat, number> {
-  return {
-    b1: bird.agility + bird.sight, // the sprint
-    b2: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid
-    b3: bird.stamina * 2, // the route
-    b4: bird.gameness * 2, // the marathon
-    b5: bird.gameness + bird.stamina, // the deep-water classic — the stayer's pair
-  };
+  return Object.fromEntries(
+    FORMAT_NAMES.map((f) => {
+      const w = FORMATS[f].weights;
+      return [
+        f,
+        bird.agility * w.agility +
+          bird.sight * w.sight +
+          bird.stamina * w.stamina +
+          bird.gameness * w.gameness,
+      ];
+    })
+  ) as Record<FightFormat, number>;
 }
 
 /**
@@ -459,7 +470,7 @@ export function weatherCardsToday(
  * championships cancelled for want of a second bird. The rule was never
  * one bird per STABLE, it's one bird per CROWN: so walk the week's three
  * blades and send the barn's best specialist to each, cheapest signal
- * first (a long-gaff crown wants the deepest wind, not the highest total).
+ * first (the Classic wants the stayer, not the highest total).
  *
  * `nerve` gates each blade for the bots (a breeder shows up less often than
  * a pit crew). Auto-play passes none — the Majors are the most +EV card on

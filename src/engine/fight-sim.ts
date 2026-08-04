@@ -10,6 +10,8 @@ import {
   type Element,
   type FightFormat,
 } from "./config";
+
+type BladeFormat = (typeof FORMATS)[FightFormat];
 import { randInt, roll2d6, type Rng } from "./rng";
 
 export type BirdStats = {
@@ -42,6 +44,8 @@ interface Fighter {
   halfStars: number;
   wind: number;
   maxWind: number;
+  fuelTurns: number; // how many turns of full output the tank holds (round 27)
+  walled: boolean; // has the wall been narrated yet
   clawPerRoll: number; // station's slope — set once at the scale, pre-form
   quitChecked: boolean; // the once-per-fight morale check
   ran: boolean;
@@ -53,14 +57,17 @@ function toFighter(c: Combatant): Fighter {
   // amplifier on the bird's ELEMENT, applied where the element applies — in
   // turnRoll. The old +20/star boost also inflated totals into the underdog
   // comparison, which is how a 5★ bird measured worse than its 0★ twin.
-  const maxWind = Math.round(BATTLE.BASE_WIND + c.stats.stamina * BATTLE.WIND_PER_STAMINA);
+  //
+  // Wind is UNIFORM since round 27 — stamina buys fuel turns, not hit points.
   return {
     name: c.name,
     stats: { ...c.stats },
     element: c.element,
     halfStars: c.halfStars,
-    wind: maxWind,
-    maxWind,
+    wind: BATTLE.WIND,
+    maxWind: BATTLE.WIND,
+    fuelTurns: BATTLE.FUEL.BASE_TURNS + c.stats.stamina * BATTLE.FUEL.TURNS_PER_STAMINA,
+    walled: false,
     clawPerRoll: 0,
     quitChecked: false,
     ran: false,
@@ -145,15 +152,25 @@ export function simulatePair(
     if (a.wind <= 0 || b.wind <= 0 || a.ran || b.ran) break;
     turnsFought = turn;
 
-    // The distance curve: whose stat drives depends on how deep we are.
-    const stat =
-      turn <= PHASES.BREAK_THROUGH_TURN ? "agility" : turn <= PHASES.OPEN_THROUGH_TURN ? "sight" : "gameness";
+    // Narration only since round 27 — the weight matrix rolls every stat on
+    // every turn, but the fight still has chapters worth naming.
+    const phase =
+      turn <= PHASES.BREAK_THROUGH_TURN ? "break" : turn <= PHASES.OPEN_THROUGH_TURN ? "open" : "deep";
 
-    const ra = turnRoll(a, b, stat, turn, rng, weather);
-    const rb = turnRoll(b, a, stat, turn, rng, weather);
+    // The fuel wall: a bird past its tank delivers only WALL_FACTOR of its
+    // agility and sight from here on. Narrated once, the turn it blows.
+    for (const f of [a, b]) {
+      if (!f.walled && turn > f.fuelTurns) {
+        f.walled = true;
+        lines.push(`${f.name} is blown — the tank is empty, running on heart now.`);
+      }
+    }
+
+    const ra = turnRoll(a, b, fmt, rng, weather);
+    const rb = turnRoll(b, a, fmt, rng, weather);
 
     if (ra.total === rb.total) {
-      lines.push(`T${turn} [${stat}] Both circle — ${ra.detail} vs ${rb.detail}. No blood.`);
+      lines.push(`T${turn} [${phase}] Both circle — ${ra.detail} vs ${rb.detail}. No blood.`);
       continue;
     }
     const [winner, loser, w, l] = ra.total > rb.total ? [a, b, ra, rb] : [b, a, rb, ra];
@@ -170,7 +187,7 @@ export function simulatePair(
           ? "quick feint"
           : "clean hit";
     lines.push(
-      `T${turn} [${stat}] ${winner.name} lands a ${move} — ${damage} wind. (${w.detail} vs ${l.detail}) ${loser.name}: ${Math.max(0, loser.wind)}`
+      `T${turn} [${phase}] ${winner.name} lands a ${move} — ${damage} wind. (${w.detail} vs ${l.detail}) ${loser.name}: ${Math.max(0, loser.wind)}`
     );
 
     // The morale check — gameness's teeth. Once per fight, when a bird is
@@ -233,7 +250,11 @@ export function simulatePair(
   const margin = lost.ran ? 1 : Math.min(1, Math.max(0, remaining(won) - remaining(lost)));
   const beaten = Math.max(FIGURE.MIN_BEATEN, margin * FIGURE.BEATEN_SCALE);
 
-  const winnerFigure = band(winnerRaw);
+  // The winner never posts below one band: a bell decision with almost no
+  // blood can band a WIN to 0 (commoner at uniform 100 wind), and a 0-figure
+  // winner would tie the loser's floor — the one inversion the ghost
+  // standard promises can't happen.
+  const winnerFigure = Math.max(FIGURE.BAND, band(winnerRaw));
   // The loser is scored down from the winner's CLAMPED performance, not the
   // raw one — at ROLL_DIVISOR 85 a blowout's raw pace can sail far past
   // FIGURE.MAX, and subtracting the beaten lengths from the unclamped number
@@ -256,8 +277,7 @@ export function simulatePair(
 function turnRoll(
   self: Fighter,
   other: Fighter,
-  stat: "agility" | "sight" | "gameness",
-  turn: number,
+  fmt: BladeFormat,
   rng: Rng,
   weather?: Element
 ): { total: number; dice: [number, number]; doubles: boolean; detail: string } {
@@ -269,39 +289,48 @@ function turnRoll(
   const formFloor = BATTLE.WORST_FORM + BATTLE.FORM_RANGE * (self.stats.condition / STATS.MAX);
   const form = formFloor + rng() * (1 - formFloor);
 
-  // Stamina's second job — physical stats (agility/sight) decay each turn;
-  // big wind slows the fade. Gameness doesn't decay: grit is mental.
-  const physical = stat !== "gameness";
-  const decay = physical
-    ? Math.max(BATTLE.DECAY_FLOOR, 1 - (turn - 1) * BATTLE.DECAY_PER_TURN * (1 - self.stats.stamina / STATS.MAX))
-    : 1;
+  // The blade's weight matrix (round 27): every distance stat contributes on
+  // every turn, blended by what THIS blade tests. Past the fuel wall the
+  // bird's speed stats (agility/sight) deliver only WALL_FACTOR of
+  // themselves; stamina and gameness never wall — the tank IS stamina's
+  // mechanic, and grit is mental.
+  const wall = self.walled ? BATTLE.FUEL.WALL_FACTOR : 1;
+  const { weights, statScale } = fmt;
+  const s = self.stats;
+  const blend =
+    (s.agility * weights.agility + s.sight * weights.sight) * wall +
+    s.stamina * weights.stamina +
+    s.gameness * weights.gameness;
 
-  let total = dice[0] + dice[1] + (self.stats[stat] * form * decay) / BATTLE.ROLL_DIVISOR;
+  // statScale — the loudness dial (round 27): every term the BIRD brings is
+  // scaled per blade so a stat gap buys roughly the same win rate whether
+  // the fight samples it 5 times or 45. Only the dice go unscaled.
+  let total = dice[0] + dice[1] + (blend * form * statScale) / BATTLE.ROLL_DIVISOR;
 
   // Stars are the element's VOLUME (2026-08-04): both edges scale by
   // halfStars/10, so 5.0★ delivers the full ceiling and 0★ mutes the
   // matchup entirely. Every half-step is a real rung.
   const starScale = self.halfStars / STARS.MAX_HALF_STARS;
   if (starScale > 0 && ELEMENT_BEATS[self.element] === other.element) {
-    total += BATTLE.ELEMENT_EDGE * starScale;
-    parts.push(`+${(BATTLE.ELEMENT_EDGE * starScale).toFixed(2)}elem`);
+    total += BATTLE.ELEMENT_EDGE * starScale * statScale;
+    parts.push(`+${(BATTLE.ELEMENT_EDGE * starScale * statScale).toFixed(2)}elem`);
   }
   // The day's ascendant element (round 24): a bird OF the weather's element
   // gets the weather edge at the same star volume, stacking with the
   // head-to-head RPS edge above.
   if (starScale > 0 && weather && self.element === weather) {
-    total += WEATHER.EDGE * starScale;
-    parts.push(`+${(WEATHER.EDGE * starScale).toFixed(2)}wx`);
+    total += WEATHER.EDGE * starScale * statScale;
+    parts.push(`+${(WEATHER.EDGE * starScale * statScale).toFixed(2)}wx`);
   }
   // Station — the rivalry stat: the outmatched bird claws back a station-
   // sized fraction of the gap on every roll (see the scale, above).
   if (self.clawPerRoll > 0) {
-    total += self.clawPerRoll * form;
+    total += self.clawPerRoll * form * statScale;
     parts.push("+station");
   }
   // Gameness holds a hurt bird's performance together late.
   if (self.wind < self.maxWind * BATTLE.QUIT_WIND_FRACTION) {
-    total += (self.stats.gameness * form) / BATTLE.GAMENESS_DIVISOR;
+    total += ((self.stats.gameness * form) / BATTLE.GAMENESS_DIVISOR) * statScale;
     parts.push("+gameness");
   }
   return { total, dice, doubles: dice[0] === dice[1], detail: parts.join("") };

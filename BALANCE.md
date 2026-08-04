@@ -1,178 +1,198 @@
 # BALANCE — the measured state of the fight engine
 
-Produced by `bun run balance`, at `--runs=4000` (±1.1 points at 95%) unless a
-row says otherwise. Every number here is reproducible: the lab is deterministic
-over a fixed seed window, and `--converge=5` re-measures across disjoint
-windows to prove a figure isn't an artifact of one.
+Produced by `bun run balance`, at `--runs=1000` (±2.2 points at 95%) with
+headline numbers re-measured at `--runs=4000` (±1.1) where noted. Every number
+here is reproducible: the lab is deterministic over a fixed seed window, and
+`--converge=5` re-measures across disjoint windows to prove a figure isn't an
+artifact of one.
 
-**Round 26 rewrote this file.** The previous edition was a gap report — eight
-ranked defects, nothing tuned. This edition is the state after the fix round
-that followed it: the station slope, the stars-as-element-amplifier rework,
-`ROLL_DIVISOR` 400 → 85, and condition re-ruled as intended. The old edition's
-numbers survive inline as "was" figures so the before/after stays readable.
+**Round 27 rewrote this file.** Round 26's edition recorded the fix round
+(station slope, stars-as-volume-knob, divisor 85) and left one big item open:
+"the phase/blade-weight rework, deferred until the new blade lengths land."
+Round 27 is that rework. The dial got its fifth blade and its true middle,
+the absolute phase windows died, wind went uniform, stamina became the fuel
+tank, and the whole thing was tuned at B3 and worked outward — exactly the
+tuning philosophy the odd blade count was designed to buy.
 
 ```
 bun run balance                       # all 14 cases
 bun run balance sensitivity --runs=4000
-bun run balance --sweep=BATTLE.ROLL_DIVISOR=100,85,75
+bun run balance --sweep=FORMATS.b3.statScale=0.9,1.0,1.1
 bun run balance --converge=5
 bun run balance --json | --csv
 ```
 
 Warnings are design gaps being catalogued, so the tool **exits 0** with them.
-Only tool errors exit non-zero.
+Only tool errors exit non-zero. The whole suite currently prints **one**
+warning (item 1 under "Still open").
 
 ---
 
+## The round-27 engine, in five sentences
+
+Every turn roll blends ALL FOUR distance stats by the blade's `weights`
+(B1 keys agility, B2 sight, B3 nobody — dead flat — B4 stamina, B5 gameness).
+Wind is a uniform 100 for every bird; no stat buys hit points. Stamina sets
+the FUEL TANK (`8 + stamina × 0.014` turns of full output; past it the bird
+hits the wall and its agility/sight halve). A per-blade `statScale` makes a
+stat gap worth roughly the same win rate whether the fight samples it 5 times
+or 45. Station, condition, stars, weather and the clawback all survived
+round 26 unchanged in mechanism — just scaled per blade like everything else.
+
 ## Fixed this round, with the after-numbers
 
-### 1. The grade ladder points forward (was: station INVERTED it)
+### 1. The grade ladder pays the same on every blade (was: ±10-point spread)
 
-The old binary underdog gate paid the weaker bird ~3.5× the stat lead that
-tripped it: a bird +100 better on every stat **lost** 59–67% of the time.
-Station is now a smooth clawback — the outmatched side recovers
-`station/2000 × UNDERDOG_CLAWBACK (0.5) × the gap's per-roll value`, capped
-below the gap by construction, with station itself excluded from the totals
-being compared (heart is not class). With `ROLL_DIVISOR` retuned 400 → 85,
-tuned at the middle of the blade dial per the design's own philosophy:
+Round 26 hit the 80/98 targets only at B3 — the ends deviated because turn
+count amplifies stats, and one divisor can't fix five blades. `statScale`
+(1.5 / 1.15 / 1.0 / 0.9 / 0.8 across B1–B5) is that fix. At 4,000 runs:
 
-| blade | +100 wins (was) | +200 wins (was) | station cost | target |
-|---|---|---|---|---|
-| B1 | 69.1% (40.9) | 84.9% (46.9) | +1.3 | 80 / 98 |
-| B2 | 74.8% (38.2) | 91.6% (46.6) | +1.4 | 80 / 98 |
-| **B3** | **82.9%** (34.4) | **97.4%** (47.9) | +1.6 | **80 / 98 ✓** |
-| B4 | 87.5% (33.0) | 98.8% (46.5) | +1.2 | 80 / 98 |
+| blade | +100 wins (was, r26) | +200 wins (was, r26) | target |
+|---|---|---|---|
+| B1 | 76.3% (69.1) | 91.8% (84.9) | 80 / 98 — the one remaining ⚠ |
+| B2 | 77.2% (74.8) | 93.1% (91.6) | ✓ |
+| **B3** | **83.7%** (82.9) | **97.0%** (97.4) | **✓ the reference point** |
+| B4 | 84.9% (87.5) | 97.6% (98.8) | ✓ |
+| B5 | 84.6% (—) | 98.0% (—) | ✓ |
 
-B3 — the future midpoint once B5 exists — sits on both targets. The ±10-point
-spread toward the ends is turn count amplifying stats, and belongs to the
-deferred phase-weight rework, not to this knob. The lab pins the anti-inversion
-as a permanent regression test (`lab.test.ts`: flat 450/550/750 must all beat
-flat 350).
+B1's +200 miss (91.8 vs 98) is a variance floor, not a tuning error: five
+turns of 2d6 plus a 2.5× Tari Strike simply cannot deliver 98% — pushing
+statScale high enough to force it would overshoot the +100 target badly. The
+sprint stays the game's upset blade, on purpose, and this file is where that
+is written down.
 
-### 2. The station cliffs are gone
+### 2. Every blade rewards its intended stats (was: 3 of 4 inverted)
 
-The old gate's 159→160 cliff (−16 points for one stat point) and the 560 flip
-(handing the *opponent* its station): both now measure exactly 50.0% on every
-row — station at parity is a flat line, and buying more of it is never worse.
-When genuinely outmatched (one grade down), the payout is strictly monotone:
-station 0 → 2000 lifts 11–30% up to 22–37%, always short of 50%. An underdog
-with maximum heart makes a real fight of it and remains the underdog — that is
-the whole ruling. (Station still does nothing between even birds; that stays
-true until Crowd Noise gives it a per-fight stage role.)
+The sensitivity matrix (+200 on one stat vs flat, 4,000 runs):
 
-### 3. Stars are the element's volume knob (was: nearly inert, half the ladder dead)
+| stat | B1 | B2 | B3 | B4 | B5 |
+|---|---|---|---|---|---|
+| agility | **75.5** | 63.8 | 68.2 | 57.6 | 54.6 |
+| sight | 65.9 | **74.2** | 68.2 | 60.8 | 57.5 |
+| stamina | 56.1 | 59.6 | 68.2 | **80.9** | 71.2 |
+| gameness | 55.1 | 58.7 | 67.8 | 71.9 | **86.8** |
+| station | 50.0 | 50.0 | 50.0 | 50.0 | 50.0 |
+| condition | 51.6 | 51.8 | 52.4 | 51.7 | 52.3 |
 
-Both edges now scale by `halfStars/10`; the flat stat boost is gone, and with
-it the confound where a 5★ bird measured *worse* than its 0★ twin. Every
-half-step is a real rung, measured at a favorable matchup:
+One key stat per off-center blade, every stat live on every blade (the old
+engine had gameness structurally DEAD on B1 — its phase started at turn 11 of
+a 5-turn blade), and **B3 even to 0.4 points** — the flat bird's home. All
+five rows match `intent.ts`, which was re-ruled to the round-27 map in the
+same commit. The lab's `reach` case now audits the matrix itself: weights all
+positive, rows summing to 1, and the dial symmetric (agility's column read
+B1→B5 mirrors gameness's read B5→B1; sight mirrors stamina; max |diff| 0.08).
 
-| stars | B1 | B2 | B3 | B4 |
-|---|---|---|---|---|
-| 0★ | 50.0 | 50.0 | 50.0 | 50.0 |
-| 0.5★ | 51.9 | 52.9 | 54.4 | 54.6 |
-| 2.5★ | 60.3 | 64.0 | 69.2 | 72.3 |
-| 5★ | 69.9 | 76.2 | 83.2 | 87.9 |
+### 3. Shape pays — except at the middle, where it correctly doesn't
 
-And the leak detector holds: same-element duels read 50.0% at **every** star
-level — stars without a matchup are worth nothing, by construction and now by
-measurement. `ELEMENT_EDGE` was raised to 1.0 and `WEATHER.EDGE` to 0.5 as
-**ceilings** (delivered value scales with stars; a 2.5★ bird gets exactly
-round 24's ruled values).
+Same-total builds (+100 top two stats, −100 bottom two): specialists win
+66.5 / 61.1 / — / 67.8 / 75.8 on B1/B2/B4/B5, anti-specialists lose the
+mirror image. At B3 both directions of specialist fail to beat flat
+(48.8 / 50.7) — "no shape beats flat at the middle blade" is now a lab
+verdict, not a slogan. Getting it took under-weighting stamina/gameness at B3
+(0.29/0.29/0.21/0.21) because those two carry side routes (the wall; the
+morale check) that equal weights had left ~4 points loud.
 
-### 4. The figure now tracks the bird (was: a breeding step invisible on the knives)
+### 4. Stamina is a real distance stat (was: a decorative decay knob + secret HP)
 
-A side effect of `ROLL_DIVISOR` 85 — roll margins now scale with real stat
-gaps, so the discovery signal sharpened enormously:
+The old plumbing — wind pool per stamina point, per-turn decay — is gone.
+Uniform 100 wind, and stamina's two new routes measured separately (`fuel`):
 
-| true gap | B1 (was) | B4 (was) |
-|---|---|---|
-| +50 | +7.3 (1.8) | +13.3 (4.7) |
-| +100 | +14.8 (3.7) | +24.7 (9.4) |
+| blade | whole lift | direct weight alone | fuel wall alone |
+|---|---|---|---|
+| B1 | +5.9 | +5.9 | −0.6 |
+| B2 | +10.3 | +10.3 | −0.7 |
+| B3 | +17.5 | +14.0 | +3.9 |
+| B4 | +30.3 | +27.8 | +2.3 |
+| B5 | +20.9 | +19.0 | −0.2 |
 
-One generation of breeding is now 3–5 fog-widths of figure on every blade.
-Two related fixes landed in `fight-sim.ts`: the loser is scored down from the
-winner's *clamped* figure (a maiden crushed by a monster used to post 145),
-and the loser figure is floored at 0 (the recorded −5 bug).
+Honest verdict: the **weight** carries stamina's value; the **wall** adds
+2–4 points on the middle blades and ~nothing at the ends — at B1/B2 no tank
+ever empties (0% of fights reach the wall), and at B5 *everyone* is blown by
+the end (99.5% of fights pass a starter's 12.9 fuel turns), so marginal fuel
+turns matter most at B3/B4 (37% / 85% wall rates). The wall's real product is
+structure: the "X is blown — running on heart" beat, and the guarantee that
+the deep water tests heart in every long fight.
 
-### 5. Condition re-ruled: the wildcard is intended (was: "contradicts its comment")
+### 5. Figures survived the surgery
 
-Zane's ruling: condition is the Temper analog — it targets no blade and no
-phase, it makes everything the bird already is arrive more reliably, and the
-boost is intended, not a bug. The config comment now says so. At divisor 85 it
-is genuinely powerful: a +100 favourite converts at 66% (condition 0) up to
-83–98% (condition 2000) depending on blade. The ~13-point figure lift across
-the condition range is accepted — the figure reports performance, and a
-consistent bird genuinely performs better.
+Recalibrated `GHOST_PACE` puts an even starter fight at ~52 on every blade
+(winner mean; the target band). Fidelity improved again: +50 per stat moves
+the figure +9.8 to +12.7 (2–3 fog widths), +100 moves it +19 to +23, on every
+blade, and the figure inversion guard now floors a winner at one band (a
+bell decision with almost no blood could band a WIN to 0 at uniform wind and
+tie the loser's floor).
+
+### 6. The stars/weather spread across blades tightened for free
+
+Because `statScale` scales the element edges too, a 5★ matchup is worth
+77–87% across the dial instead of round 26's 70–88, and the stacked worst
+case (5★ wheel + weather day) peaks at **94.9%** on B5 — was 95.8 on B4.
+Still verdict-shaped, still the rarest configuration in the game, still item
+2 under watch.
 
 ---
 
 ## Still open, ranked
 
-### 1. The blade ends miss the grade targets (deferred by design)
+### 1. B1 cannot reach the +200 target (accepted, documented)
 
-B1 is 11 under at +100 and B4 is 7.5 over; only B3 sits on target. One divisor
-cannot fix this — turn count amplifies stats. This is the phase/blade-weight
-rework, explicitly deferred until the new blade lengths land (tune the middle,
-work outward).
+91.8% vs 98. Five turns of dice with 2.5× crits has a floor on how sure any
+outcome can be. Accepted as blade identity: the sprint is where a maiden can
+shock a monster. Revisit only if breeding depth makes B1 feel like a coin
+flip between real classes — the lever is `FORMATS.b1.statScale` and the lab
+sweeps it in one line.
 
-### 2. Stat rankings still miss intent on 3 of 4 blades
+### 2. The 5★ ceiling still stacks loud on the long blades
 
-B2 now **matches** its intended order (a divisor-85 side effect — it was
-inverted before). Still wrong: B1's gameness is structurally dead (its phase
-starts at turn 11, the blade caps at 5); B3 runs sight over stamina/gameness;
-B4 has agility over stamina. Stamina is ranked 2nd–3rd in the intent on every
-blade but never drives a turn anywhere — and the `fuel` case shows its entire
-lift is the wind pool (+1.8 to +3.9), with decay resistance decorative (≤0.3).
-All of it is the same deferred rework.
+5★ wheel + weather on B5 = 94.9% between otherwise equal birds. Rarest
+possible setup (both 5★, favorable wheel, ascendant day, deepest blade) and
+better than last round, but watch it as bred stock climbs the star ladder.
 
-### 3. The 5★ ceiling stacks loud on the long blades
+### 3. Weather figure inflation at the star ceiling still clears the fog
 
-At full stars, wheel edge + weather day on B4 measures **95.8%** between
-otherwise equal birds (wheel alone 87.9%). That is the rarest possible
-configuration — both birds 5★, favorable matchup, ascendant day, marathon
-blade — but it is verdict-shaped. Watch it as bred stock climbs the star
-ladder; the lever is the ceilings, and the lab sweeps them in one line.
+At 5★ the day inflates figures +6.0 to +7.4 — above `FIGURE.NOISE` (4) and
+over one band. At 2.5★ and below it stays inside the fog (where round 24's
+ruling was made and `formats.test.ts` pins it). Stance unchanged: the rarest
+bird's best day is allowed to be loud.
 
-### 4. Weather figure inflation at the star ceiling clears the fog
+### 4. B5's key stat is louder than B1's
 
-At 5★ the weather day inflates figures +4.4 to +5.6 — above `FIGURE.NOISE`
-(4) and around one band. At 2.5★ and below it stays inside the fog, which is
-where round 24's ruling was made and where `formats.test.ts` pins it. Stance:
-the rarest bird's best day is allowed to be loud; the ordinary bird's day is
-not.
+Gameness at B5 buys 86.8; agility at B1 buys 75.5. The residue of the same
+variance floor as open item 1, plus gameness's two side routes (morale check,
+deep-water bonus) which no weight tune removes. The dial-symmetry ideal says
+these should match; they are ~11 points apart. Cosmetic until someone builds
+a cross-blade tier list.
 
-### 5. B3's shape case reads backwards
+### 5. Crowd Noise is still unbuilt
 
-A stamina/gameness specialist (B3's intended top stats) *loses* 43.4% to its
-own anti-specialist — the blade rewards sight, per the sensitivity matrix.
-Same deferred rework as open item 2; the shape case just makes it vivid.
+Station at parity still does nothing (50.0 across the board — correct under
+the ruling, boring by design). The planned per-fight-type stage level
+(Championship 100, cheap claimers 0) is the mechanic that gives station a
+job between even birds. Unblocked; needs its own round.
 
-### 6. Nobody is playing the going — probably correctly
+### 6. Breeding speed (logarithmic) — explicitly deferred by Zane
 
-Doctor: weather timing 1.13× chance over **starred** entries (0★ entries are
-excluded now — they have no going to play). But a day-one flock tops out at
-1.5★, where the delivered weather edge is 0.15 of a roll; mild bot appetite
-may simply be right. Revisit when the population's stars climb.
+Separate unit of work: larger grade jumps at the low end, tapering toward
+2000, plus a years-to-max analysis against the weekly breeding cycle.
 
 ## Comment/code discrepancies
 
-1. ~~`fight-sim.ts` underdog "total base stats" vs star-boosted~~ — moot: the
-   stars rework removed the boost entirely; totals are base (minus station).
-2. `config.ts` worked example says 300 stamina → 23 wind; `Math.round` makes a
-   350-stamina bird 24, not 23.5. (Still unfixed, still cosmetic.)
-3. ~~The −5 loser figure~~ — fixed this round (floored at 0, and scored down
-   from the clamped winner).
+1. ~~`config.ts` worked example: 300 stamina → 23 wind~~ — moot: the wind
+   pool no longer exists (round 27).
+2. None currently known. The doctor's `docs.test.ts` and the lab's `reach`
+   matrix audit are the standing tripwires.
 
 ## Not yet measured
 
-The lab covers the six stats, elements, stars, weather, blade reach, the grade
-ladder, stamina's two routes (`fuel`), crits (`crit`) and figure fidelity
-(`figure`). Still dark: the gacha/breeding stat distributions the engine is
-actually fed, and anything about the live population — that stays the
-doctor's job. Crit identity note survives the retune: B2 is still the
-swingiest blade (15.0% of outcomes flip without crits) and B3 at critMult 1.3
-still flips 12.0% — the "knives swingy, gaffs true" story remains half false.
+The lab covers the six stats, elements, stars, weather, the weight matrix,
+the fuel wall, the grade ladder, crits and figure fidelity. Still dark: the
+gacha/breeding stat distributions the engine is actually fed, and anything
+about the live population — that stays the doctor's job. Crit identity after
+the rework: B2 is still the swingiest blade (15.9% of outcomes flip without
+crits) and B1's crit tax on a favourite is 3.5 points — "knives swingy,
+gaffs true" is finally the right story at the gaff end (B4 0.3, B5 0.1).
 
-The blade intent is deliberately **not** tuned to. More blade lengths are
-coming (an odd count, so the middle blade can weigh every stat evenly), and
-fitting the curve to four points now would be premature.
+The blade intent IS now tuned to — round 27 reversed round 26's "measure,
+don't tune" stance deliberately, because the dial now has its middle and the
+odd count the tuning philosophy required. A future B6/B7 pair (if ever)
+re-opens the outer ends, not the middle.

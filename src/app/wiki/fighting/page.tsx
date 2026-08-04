@@ -45,11 +45,16 @@ const starterRollTerm = (
   BATTLE.ROLL_DIVISOR
 ).toFixed(2);
 
-function phasesReached(maxTurns: number): string {
-  const phases = ["agility"];
-  if (maxTurns > PHASES.BREAK_THROUGH_TURN) phases.push("sight");
-  if (maxTurns > PHASES.OPEN_THROUGH_TURN) phases.push("gameness");
-  return phases.join(" → ");
+/**
+ * Render a blade's weight row, biggest stat first, so the "stats that decide
+ * it" column reads straight off the engine's own matrix and reorders itself
+ * if a balance pass retunes a blade.
+ */
+function weightLine(weights: Record<string, number>): string {
+  return Object.entries(weights)
+    .sort((a, b) => b[1] - a[1])
+    .map(([stat, w]) => `${stat} ${Math.round(w * 100)}%`)
+    .join(" · ");
 }
 
 export default function FightingPage() {
@@ -100,7 +105,7 @@ export default function FightingPage() {
                       ? "Swingy — a Tari Strike (doubles on the dice) can decide it in one hit."
                       : "A true test — a lucky roll barely moves the needle."}
                   </td>
-                  <td>{phasesReached(fmt.maxTurns)}</td>
+                  <td>{weightLine(fmt.weights)}</td>
                   <td className="num">up to {fmt.maxTurns} turns</td>
                 </tr>
               );
@@ -109,13 +114,14 @@ export default function FightingPage() {
         </table>
       </div>
       <p>
-        Reading the &ldquo;stats that decide it&rdquo; column: turns 1 through{" "}
-        {PHASES.BREAK_THROUGH_TURN} are <strong>the break</strong> — agility, who strikes first.
-        Turns up to {PHASES.OPEN_THROUGH_TURN} are the <strong>open exchange</strong> — sight,
-        accuracy in a real trade. Past that it&apos;s the <strong>deep fight</strong> —{" "}
-        <strong>gameness</strong>, grit under punishment. A {FORMATS.b1.maxTurns}-turn B1 bout
-        is over before gameness ever gets a say. A {FORMATS.b5.maxTurns}-turn B5 bout lives
-        almost entirely in the deep fight.
+        Reading the &ldquo;stats that decide it&rdquo; column: those are the blade&apos;s{" "}
+        <strong>weights</strong> — how much of each stat joins every single roll on that blade.
+        Every stat counts a little everywhere; the weights decide how much. B1 is agility country
+        (the burst off the break), B2 leans on sight (accuracy in a real trade), B3 weighs all
+        four <em>exactly equally</em> — the one blade where a perfectly flat bird is the best
+        bird — B4 leans on stamina (the fuel tank, below), and B5 belongs to gameness (grit in
+        the deep water). Think of the four stats as Start, Speed, Stamina and Finish on a race
+        dial: neighbors share, and the ends are opposites.
       </p>
       <p className="dim">
         Star rating never touches these stats. Stars set how loudly a bird&apos;s{" "}
@@ -150,21 +156,24 @@ export default function FightingPage() {
       <h2>How a fight resolves, turn by turn</h2>
       <ol>
         <li>
-          <strong>Wind is the health bar.</strong> Each bird&apos;s max wind is{" "}
-          {BATTLE.BASE_WIND} plus its stamina × {BATTLE.WIND_PER_STAMINA}, rounded to a whole
-          number. It only ever goes down once the fight starts.
+          <strong>Wind is the health bar — and it&apos;s the same for everyone.</strong> Every bird
+          starts every fight with exactly {BATTLE.WIND} wind. No stat buys hit points. It only
+          ever goes down once the fight starts.
         </li>
         <li>
           <strong>Both birds roll every turn.</strong> Two six-sided dice, plus a sliver of the
-          stat this phase calls for (agility, sight, or gameness — see the table above), scaled
-          down by dividing by {BATTLE.ROLL_DIVISOR} so a huge stat edge still can&apos;t out-muscle
-          the dice entirely.
+          bird&apos;s stats — all four distance stats, blended by the blade&apos;s weights from
+          the table above — scaled down by dividing by {BATTLE.ROLL_DIVISOR} so a huge stat edge
+          still can&apos;t out-muscle the dice entirely.
         </li>
         <li>
-          <strong>Two stats fade as the fight goes.</strong> Agility and sight are physical — they
-          decay {Math.round(BATTLE.DECAY_PER_TURN * 100)}% per turn, cushioned by how much stamina
-          the bird carries, and never drop below {Math.round(BATTLE.DECAY_FLOOR * 100)}% of their
-          starting value. Gameness never decays — grit doesn&apos;t get tired.
+          <strong>The fuel tank — stamina&apos;s real job.</strong> A bird fights at full power
+          for {BATTLE.FUEL.BASE_TURNS} turns, plus {BATTLE.FUEL.TURNS_PER_STAMINA} more per point
+          of stamina. When the tank empties, the bird <strong>hits the wall</strong>: its agility
+          and sight deliver only {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% of themselves for
+          the rest of the fight. Stamina and gameness never fade — the tank <em>is</em>{" "}
+          stamina&apos;s mechanic, and grit is mental. A sprint ends before any tank empties; the
+          deep-water blades are decided by who is still fighting at full book when it matters.
         </li>
         <li>
           <strong>Element can tip a roll.</strong> If your element overcomes your opponent&apos;s
