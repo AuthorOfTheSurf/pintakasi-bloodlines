@@ -140,7 +140,7 @@ export const battleLog = sqliteTable("battle_log", {
   birdId: text("bird_id").notNull(),
   mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
   // The weapon format — the "distance" this fight was run at.
-  format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  format: text("format", { enum: ["b1", "b2", "b3", "b4"] }).notNull(),
   // The lobby class — open / maiden / nw2 / nw3 / claimer.
   lobby: text("lobby", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] })
     .notNull()
@@ -177,7 +177,7 @@ export const lobbies = sqliteTable("lobbies", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
   classType: text("class_type", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] }).notNull(),
-  format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  format: text("format", { enum: ["b1", "b2", "b3", "b4"] }).notNull(),
   price: integer("price"), // claimer tag — null for every other class
   capacity: integer("capacity").notNull().default(8), // 16/32/64 = future tournament brackets
   seed: integer("seed").notNull(), // drives the pairing shuffle + fight seeds
@@ -223,7 +223,7 @@ export const claims = sqliteTable("claims", {
 export const tournaments = sqliteTable("tournaments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   weekIndex: integer("week_index").notNull(),
-  format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  format: text("format", { enum: ["b1", "b2", "b3", "b4"] }).notNull(),
   // Which championship this is (round 23): the Thursday Majors, or the
   // Wednesday Juvenile Championship — same bracket machinery, different
   // stakes (the juvenile division is NOT hardcore).

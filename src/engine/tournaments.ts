@@ -179,8 +179,9 @@ export class Tournaments {
   }
 
   /**
-   * The Juvenile Championship's two blades (round 23) — one knife, one gaff,
-   * with the lengths rotating week by week so a discovery year sees both.
+   * The Juvenile Championship's two blades (round 23) — one from the short
+   * end of the dial, one from the long end, rotating week by week so a
+   * discovery year sees both halves of the spectrum.
    */
   static juvenileBladesOfWeek(weekIndex: number): FightFormat[] {
     return [...JUVENILE_MAJOR.BLADES[weekIndex % JUVENILE_MAJOR.BLADES.length]] as FightFormat[];

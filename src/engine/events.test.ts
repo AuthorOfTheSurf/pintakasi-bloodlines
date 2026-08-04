@@ -75,7 +75,7 @@ describe("the unified ledger", () => {
 
   test("a fight day: entries escrow, the fight is one world row, the odd bird refunds", () => {
     const w = world();
-    const spec = { mode: "real", classType: "open", format: "shortKnife" } as const;
+    const spec = { mode: "real", classType: "open", format: "b2" } as const;
     w.game.lobbies.enter("starter-6", spec, 77); // Alab
     w.game.lobbies.enter("starter-7", spec); // Sinag — barn-mate, will go unmatched
     const rivalLobbies = new Game(w.db, w.rivalId).lobbies;

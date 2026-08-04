@@ -64,11 +64,13 @@ export default function FightingPage() {
 
       <h2>The four blades</h2>
       <p>
-        The blade is the game&apos;s version of race distance. It decides how many turns a fight
-        can run, how hard each hit lands, and — because of that — which of a bird&apos;s stats
-        actually get to matter. Knives are short and swingy: a lucky double can end it in one
-        blow, so upsets happen. Gaffs run long and true: crits barely move the needle, and the
-        bird with the better engine usually shows it by the end.
+        The blade is the game&apos;s version of race distance. The four blades are numbered{" "}
+        <strong>B1 through B4</strong>, from the shortest fights to the longest — think of them
+        as points on one dial, not four separate weapons. The number decides how many turns a
+        fight can run, how hard each hit lands, and — because of that — which of a bird&apos;s
+        stats actually get to matter. The low end (B1, B2 — the knives) is short and swingy: a
+        lucky double can end it in one blow, so upsets happen. The high end (B3, B4 — the
+        gaffs) runs long and true: the bird with the better engine usually shows it by the end.
       </p>
       <div className="tablewrap">
         <table>
@@ -88,7 +90,9 @@ export default function FightingPage() {
                   <td>
                     <strong>{fmt.label}</strong>
                     <br />
-                    <span className="dim">{distanceNickname.get(name)}</span>
+                    <span className="dim">
+                      {fmt.flavor} · {distanceNickname.get(name)}
+                    </span>
                   </td>
                   <td>
                     {swingy.has(name)
@@ -108,16 +112,16 @@ export default function FightingPage() {
         {PHASES.BREAK_THROUGH_TURN} are <strong>the break</strong> — agility, who strikes first.
         Turns up to {PHASES.OPEN_THROUGH_TURN} are the <strong>open exchange</strong> — sight,
         accuracy in a real trade. Past that it&apos;s the <strong>deep fight</strong> —{" "}
-        <strong>gameness</strong>, grit under punishment. A {FORMATS.longKnife.maxTurns}-turn Long
-        Knife bout is over before gameness ever gets a say. A {FORMATS.shortGaff.maxTurns}-turn
-        Short Gaff bout lives almost entirely in the deep fight.
+        <strong>gameness</strong>, grit under punishment. A {FORMATS.b1.maxTurns}-turn B1 bout
+        is over before gameness ever gets a say. A {FORMATS.b4.maxTurns}-turn B4 bout lives
+        almost entirely in the deep fight.
       </p>
       <p className="dim">
         Star rating matters equally everywhere: each full star adds{" "}
         {STARS.BOOST_PER_FULL_STAR} points to all six stats before any of this math runs (see{" "}
         <Link href="/wiki/birds">Birds &amp; stats</Link>) — the same boost whether the fight lasts
         {" "}
-        {FORMATS.longKnife.maxTurns} turns or {FORMATS.shortGaff.maxTurns}.
+        {FORMATS.b1.maxTurns} turns or {FORMATS.b4.maxTurns}.
       </p>
 
       <div className="cards-2">
@@ -171,7 +175,7 @@ export default function FightingPage() {
           the blade&apos;s damage multiplier. Rolling doubles is a{" "}
           <strong>Tari Strike</strong> — a critical hit that multiplies the damage again by the
           blade&apos;s crit multiplier. This is where knives do their swingy work: a big Tari
-          Strike in a {FORMATS.longKnife.maxTurns}-turn fight can be the whole story.
+          Strike in a {FORMATS.b1.maxTurns}-turn fight can be the whole story.
         </li>
         <li>
           <strong>The morale check — once per fight.</strong> The instant a bird&apos;s wind first
@@ -277,9 +281,9 @@ export default function FightingPage() {
         </table>
       </div>
       <p>
-        Gaff fights run long, so their damage-per-turn is naturally lower than a knife&apos;s — the
-        ghost pace is tuned per blade so figures still mean the same thing across all four, and you
-        can compare one bird&apos;s Long Knife figure to its Short Gaff figure honestly.
+        Long-end fights (B3, B4) run more turns, so their damage-per-turn is naturally lower —
+        the ghost pace is tuned per blade so figures still mean the same thing across all four,
+        and you can compare one bird&apos;s B1 figure to its B4 figure honestly.
       </p>
       <p>
         <strong>The loser is scored down from the winner.</strong> It doesn&apos;t get an

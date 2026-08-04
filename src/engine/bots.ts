@@ -354,10 +354,10 @@ export function ladderClass(stakesWins: number): Lobby {
  */
 export function formatScores(bird: BirdView): Record<FightFormat, number> {
   return {
-    longKnife: bird.agility + bird.sight, // the sprint
-    shortKnife: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid
-    longGaff: bird.stamina * 2, // the route
-    shortGaff: bird.gameness * 2, // the marathon
+    b1: bird.agility + bird.sight, // the sprint
+    b2: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid
+    b3: bird.stamina * 2, // the route
+    b4: bird.gameness * 2, // the marathon
   };
 }
 

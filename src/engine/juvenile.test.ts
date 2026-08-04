@@ -93,9 +93,9 @@ function tickThroughCrownDay(game: Game) {
 
 describe("the discovery-year calendar & blade rotation", () => {
   test("one knife and one gaff, lengths alternating by week", () => {
-    expect(Tournaments.juvenileBladesOfWeek(0)).toEqual(["longKnife", "longGaff"]);
-    expect(Tournaments.juvenileBladesOfWeek(1)).toEqual(["shortKnife", "shortGaff"]);
-    expect(Tournaments.juvenileBladesOfWeek(2)).toEqual(["longKnife", "longGaff"]); // back to long
+    expect(Tournaments.juvenileBladesOfWeek(0)).toEqual(["b1", "b3"]);
+    expect(Tournaments.juvenileBladesOfWeek(1)).toEqual(["b2", "b4"]);
+    expect(Tournaments.juvenileBladesOfWeek(2)).toEqual(["b1", "b3"]); // back to long
   });
 
   test("the Juvenile Championship falls the day before the Majors", () => {
@@ -111,24 +111,24 @@ describe("registration gates", () => {
   test("the age gate: only the discovery year (age 1) may stand", () => {
     const w = world();
     const alab = byName(w.devFlock, "Alab"); // age 2 — real stakes, not the discovery year
-    expect(() => w.dev.enter(alab.id, "longKnife", "juvenile")).toThrow(/age 1/);
+    expect(() => w.dev.enter(alab.id, "b1", "juvenile")).toThrow(/age 1/);
     const kidlat = byName(w.devFlock, "Kidlat"); // age 1
     qualifyJuvenile(w.db, kidlat.id);
-    expect(() => w.dev.enter(kidlat.id, "longKnife", "juvenile")).not.toThrow();
+    expect(() => w.dev.enter(kidlat.id, "b1", "juvenile")).not.toThrow();
   });
 
   test("the qualification ladder: under QUALIFYING_WINS refused, at threshold accepted — and free", () => {
     const w = world();
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins).toBe(0); // a fresh legacy chick has no discovery-year record yet
-    expect(() => w.dev.enter(kidlat.id, "longKnife", "juvenile")).toThrow(/discovery ladder/);
+    expect(() => w.dev.enter(kidlat.id, "b1", "juvenile")).toThrow(/discovery ladder/);
     // One win short still isn't enough…
     qualifyJuvenile(w.db, kidlat.id, JUVENILE_MAJOR.QUALIFYING_WINS - 1);
-    expect(() => w.dev.enter(kidlat.id, "longKnife", "juvenile")).toThrow(/discovery ladder/);
+    expect(() => w.dev.enter(kidlat.id, "b1", "juvenile")).toThrow(/discovery ladder/);
     // …and the wallet is untouched either way, because the crown is free.
     const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
     qualifyJuvenile(w.db, kidlat.id); // exactly at the threshold
-    w.dev.enter(kidlat.id, "longKnife", "juvenile");
+    w.dev.enter(kidlat.id, "b1", "juvenile");
     expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(before);
   });
 });
@@ -140,8 +140,8 @@ describe("purse & record accounting", () => {
     const kidlat = byName(w.devFlock, "Kidlat");
     qualifyJuvenile(w.db, kidlat.id);
     qualifyJuvenile(w.db, "rival-5"); // the rival's own Kidlat-slot chick
-    w.dev.enter(kidlat.id, "longKnife", "juvenile");
-    w.rival.enter("rival-5", "longKnife", "juvenile");
+    w.dev.enter(kidlat.id, "b1", "juvenile");
+    w.rival.enter("rival-5", "b1", "juvenile");
     // No qualified Major entrants this week, so the Majors' own crowns
     // cancel for want of a field — the juvenile slice is the only spend.
     const tick = tickThroughCrownDay(w.game);
@@ -159,8 +159,8 @@ describe("purse & record accounting", () => {
     qualifyJuvenile(w.db, kidlat.id);
     qualifyJuvenile(w.db, "rival-5");
     expect(w.db.select().from(birds).where(eq(birds.id, kidlat.id)).get()!.stakesWins).toBe(0);
-    w.dev.enter(kidlat.id, "longKnife", "juvenile");
-    w.rival.enter("rival-5", "longKnife", "juvenile");
+    w.dev.enter(kidlat.id, "b1", "juvenile");
+    w.rival.enter("rival-5", "b1", "juvenile");
     tickThroughCrownDay(w.game);
     // Whether Kidlat won or lost the single fight, its stakesWins column
     // must not have moved — only a hardcore (real/Major) win banks one.
@@ -174,8 +174,8 @@ describe("purse & record accounting", () => {
     const kidlat = byName(w.devFlock, "Kidlat");
     qualifyJuvenile(w.db, kidlat.id);
     qualifyJuvenile(w.db, "rival-5");
-    w.dev.enter(kidlat.id, "longKnife", "juvenile");
-    w.rival.enter("rival-5", "longKnife", "juvenile");
+    w.dev.enter(kidlat.id, "b1", "juvenile");
+    w.rival.enter("rival-5", "b1", "juvenile");
     const before = totalCents(w.db);
     tickThroughCrownDay(w.game);
     expect(totalCents(w.db)).toBe(before); // redistribution, never printing
@@ -189,13 +189,13 @@ describe("it is NOT hardcore — the discovery-year contrast with the Majors", (
     const kidlat = byName(w.devFlock, "Kidlat");
     qualifyJuvenile(w.db, kidlat.id);
     qualifyJuvenile(w.db, "rival-5");
-    w.dev.enter(kidlat.id, "longKnife", "juvenile");
-    w.rival.enter("rival-5", "longKnife", "juvenile");
+    w.dev.enter(kidlat.id, "b1", "juvenile");
+    w.rival.enter("rival-5", "b1", "juvenile");
     // The Major bracket: one qualified veteran per farm (already stamped
     // crownPoints in world()).
     const sinag = byName(w.devFlock, "Sinag");
-    w.dev.enter(sinag.id, "longKnife");
-    w.rival.enter("rival-8", "longKnife");
+    w.dev.enter(sinag.id, "b1");
+    w.rival.enter("rival-8", "b1");
 
     const tick = tickThroughCrownDay(w.game);
     expect(tick.pintakasi.length).toBe(2); // one juvenile crown, one Major crown

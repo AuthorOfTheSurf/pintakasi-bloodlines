@@ -5,7 +5,7 @@
  * strength in consecutive rounds (WEATHER.EDGE at 4x, BATTLE.ELEMENT_EDGE at
  * 2x), and both were caught by hand. They survived because the only fight
  * measurement in the repo was one closure inside one `describe` block, wired
- * to two identical 350-stat birds on shortKnife — it could vary the element
+ * to two identical 350-stat birds on b2 — it could vary the element
  * and nothing else. Every number written into a config comment was produced
  * by editing the constant, running a throwaway script, copying the number out
  * and editing the constant back.
@@ -364,7 +364,7 @@ const SWEEP_ROOTS: Record<string, object> = {
   FORMATS,
 };
 
-/** Walk a root recursively so nested numbers (FORMATS.longKnife.critMult) count too. */
+/** Walk a root recursively so nested numbers (FORMATS.b1.critMult) count too. */
 const knobsUnder = (obj: object, prefix: string): string[] =>
   Object.entries(obj).flatMap(([k, v]) => {
     if (typeof v === "number") return [`${prefix}.${k}`];
@@ -391,7 +391,7 @@ export function sweepableKnobs(): string[] {
  */
 export function withKnob<T>(knob: string, value: number, fn: () => T): T {
   // Dotted path of any depth: the last segment is the key, everything before
-  // it is a walk (FORMATS.longKnife.critMult descends two levels). Depth was
+  // it is a walk (FORMATS.b1.critMult descends two levels). Depth was
   // added for the crit case — per-blade knobs live inside FORMATS entries.
   const segs = knob.split(".");
   const key = segs.pop() as string;

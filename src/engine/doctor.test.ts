@@ -238,7 +238,7 @@ describe("the weather-timing line", () => {
     const ascendant = weatherOfDay(day);
     const off = ELEMENTS.find((e) => e !== ascendant)!;
     db.insert(lobbies)
-      .values({ mode: "real", classType: "open", format: "shortKnife", seed: 1, dayOpened: day })
+      .values({ mode: "real", classType: "open", format: "b2", seed: 1, dayOpened: day })
       .run();
     const lobbyId = db.select().from(lobbies).all().at(-1)!.id;
     for (let i = 0; i < n; i++) {

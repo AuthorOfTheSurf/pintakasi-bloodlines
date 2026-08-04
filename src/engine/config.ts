@@ -109,7 +109,7 @@ export const WEATHER = {
   // against the dice.
   //
   // 0.25 is about a quarter of what a whole starter bird contributes.
-  // Measured on equal 350-stat birds over 4000 seeds, shortKnife:
+  // Measured on equal 350-stat birds over 4000 seeds, b2:
   //   weather alone   50% → 57%   (a felt edge; a coin-flip stays a coin-flip)
   //   stacked on RPS  76% → 82%   (weather adds ~6 points, not ~16)
   // It also keeps the Pit Figure honest: at +1 a weather-matched winner's
@@ -189,31 +189,45 @@ export const CARRIAGE_LABEL: Record<Carriage, string> = {
 };
 
 // ── Weapon formats — the "distance" dial (blade style & length) ─────────────
-// The four buckets, sprint → marathon. Shorter fights only ever exercise the
-// early phase stats (agility/sight); long fights burn wind and hand the late
-// turns to gameness. Knife formats are SWINGY (big crits — upsets happen);
-// gaff formats are true tests (crits barely matter).
+// ENUMERATED B1..B4 (re-ruled 2026-08-04). Zane: rather than knife/gaff names
+// as identity, blades are an ordered SPECTRUM, like PFL's nine race distances
+// — because the plan is an ODD count (5, maybe 7) where the MIDDLE blade
+// weighs every stat evenly and tuning works outward from that midpoint. B1 is
+// the sprint end (shortest fights), B4 the marathon end; a future B5 slots in
+// and the midpoint moves to B3. The sabong flavor survives in `flavor` — the
+// weapon is still a 4.5″ slasher, it just isn't the KEY anymore.
+//
+// Shorter fights only ever exercise the early phase stats (agility/sight);
+// long fights burn wind and hand the late turns to gameness. Knife-end blades
+// are SWINGY, gaff-end blades are true tests — though the crit lab case
+// showed that story is only half true: B2 flips the most fights (15%), and B3
+// at critMult 1.3 flips nearly as many, because turn count multiplies crit
+// exposure faster than the multiplier shrinks.
 export const FORMATS = {
-  longKnife: {
-    label: "Long Knife", // 4.5″ Filipino Slasher — the sprint
+  b1: {
+    label: "B1",
+    flavor: "Long Knife — 4.5″ Filipino Slasher, the sprint",
     maxTurns: 5, //          fights end in the opening frames
     damageMult: 3.0, //      one clean hit takes a third of a wind pool
     critMult: 2.5, //        a Tari Strike here is usually the fight
   },
-  shortKnife: {
-    label: "Short Knife", // 2.5″ Mexican Slasher — the hybrid
+  b2: {
+    label: "B2",
+    flavor: "Short Knife — 2.5″ Mexican Slasher, the hybrid",
     maxTurns: 12, //          tactical pacing; consistent hit output wins
     damageMult: 1.6,
     critMult: 2.0,
   },
-  longGaff: {
-    label: "Long Gaff", // 2½″ Long Spur — the route
+  b3: {
+    label: "B3",
+    flavor: "Long Gaff — 2½″ Long Spur, the route",
     maxTurns: 20, //        punctures wear a bird down; wind starts to rule
     damageMult: 1.0,
     critMult: 1.3,
   },
-  shortGaff: {
-    label: "Short Gaff", // 1″ Short Heel — the marathon
+  b4: {
+    label: "B4",
+    flavor: "Short Gaff — 1″ Short Heel, the marathon",
     maxTurns: 30, //         deep-round attrition; gameness dictates the end
     damageMult: 0.7,
     critMult: 1.1,
@@ -258,7 +272,7 @@ export const BATTLE = {
   // biggest single term in the fight — and it made BREEDING FOR STATS, the
   // game's whole progression, lose to a coin-flip of birth element.
   //
-  // At 0.5 (measured, equal 350-stat birds, shortKnife, 4000 seeds) the
+  // At 0.5 (measured, equal 350-stat birds, b2, 4000 seeds) the
   // matchup wins 64% — plainly worth playing for, plainly not a verdict —
   // and it stays exactly 2x WEATHER.EDGE, which is the relationship the
   // Handbook states and docs.test.ts pins. Note the two edges are near
@@ -323,7 +337,7 @@ export const FIGURE = {
   // The pace a maxed-out ghost sets, per blade — tuned so an even fight
   // between STARTERS figures ~50 in every format (gaff fights run longer,
   // so their damage-per-turn is lower by nature; this is the normalizer).
-  GHOST_PACE: { longKnife: 5.6, shortKnife: 5.2, longGaff: 4.0, shortGaff: 3.6 },
+  GHOST_PACE: { b1: 5.6, b2: 5.2, b3: 4.0, b4: 3.6 },
   GHOST_FIGURE: 100, //  what matching the ghost's pace scores
   CLASS_BASE: 320, //    the starter band's middle — class credit starts here
   CLASS_DIVISOR: 20, //  each 20 points of beaten-opponent average = +1 figure
@@ -576,8 +590,8 @@ export const JUVENILE_MAJOR = {
   // The rotation: even weeks run the long blades, odd weeks the short ones.
   // One knife and one gaff either way.
   BLADES: [
-    ["longKnife", "longGaff"],
-    ["shortKnife", "shortGaff"],
+    ["b1", "b3"],
+    ["b2", "b4"],
   ],
   // Purse shares — flatter than the Majors on purpose. This is a discovery
   // stage, so spreading the money rewards showing up with a live one.
@@ -670,8 +684,8 @@ export const PINTAKASI = {
     r64: 70,
   },
   // The week's three blades: the anchors always run, MIDDLE[week % 2] joins.
-  ANCHORS: ["longKnife", "shortGaff"],
-  MIDDLE: ["shortKnife", "longGaff"],
+  ANCHORS: ["b1", "b4"],
+  MIDDLE: ["b2", "b3"],
 } as const;
 
 // The Majors' land curve — same shape as landForFight, steeper exponent.

@@ -155,9 +155,9 @@ export default function BirdsPage() {
         </table>
       </div>
       <div className="callout tip">
-        <b>Reading it in one line.</b> Short blades (Long Knife, Short Knife) live and die on
-        agility and sight. Long blades (Long Gaff, Short Gaff) burn deep into stamina and gameness.
-        Station and condition matter everywhere, all the time — see{" "}
+        <b>Reading it in one line.</b> The short blades (B1, B2) live and die on agility and
+        sight. The long blades (B3, B4) burn deep into stamina and gameness. Station and
+        condition matter everywhere, all the time — see{" "}
         <Link href="/wiki/fighting">Fighting</Link> for how the four blades change the mix.
       </div>
 
@@ -303,8 +303,8 @@ export default function BirdsPage() {
         stars alone. The intended hook: the sim already runs in phases (see below), and Air is
         meant to pay early — over the top of a low fighter before anyone&apos;s wind is gone —
         while Ground pays late, once the flyer is blown and the shuffler grinds it down. That would
-        tie carriage straight to blade choice, since a short knife lives almost entirely in the
-        early phase and a long gaff spends most of its turns in the late one. Until that lands,
+        tie carriage straight to blade choice, since a B1 bout lives almost entirely in the
+        early phase and a B4 bout spends most of its turns in the late one. Until that lands,
         treat carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s
         card.
       </div>

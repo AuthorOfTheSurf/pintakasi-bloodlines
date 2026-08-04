@@ -71,14 +71,14 @@ export default function PintakasiPage() {
 
       <h2>What it is</h2>
       <p>
-        Long Knife and Short Gaff — the sprint and the marathon — run <strong>every</strong> week.
-        The third blade rotates: Short Knife one week, Long Gaff the next, so the middle distance
-        gets its own crown too, in turn. Over time every blade gets crowned.
+        B1 and B4 — the sprint and the marathon — run <strong>every</strong> week. The third
+        blade rotates: B2 one week, B3 the next, so the middle distances get their own crown
+        too, in turn. Over time every blade gets crowned.
       </p>
       <p>
         The rotation is deliberate. Nothing rewards a bird built to be good at everything. A blade
-        favors different stats — a {FORMATS.longKnife.label} bird lives on agility and the opening
-        break, a {FORMATS.shortGaff.label} bird lives on gameness and grinding out a long fight —
+        favors different stats — a {FORMATS.b1.label} bird lives on agility and the opening
+        break, a {FORMATS.b4.label} bird lives on gameness and grinding out a long fight —
         and the Pintakasi is built to find and crown the bird that mastered ONE of those, not the
         bird that&apos;s merely fine at all four. Read <Link href="/wiki/fighting">Fighting</Link>{" "}
         for how the four blades differ.
@@ -303,8 +303,9 @@ export default function PintakasiPage() {
       <p>
         Round 23 gave the discovery year its own stage. Every{" "}
         {DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]} — the day before the Majors — two championships run
-        for age-{AGE.CHICK} birds only: one knife crown and one gaff crown, with the exact lengths
-        rotating by week so a juvenile career sees every blade eventually.
+        for age-{AGE.CHICK} birds only: one crown from the short end of the blade dial and one
+        from the long end, with the exact blades rotating by week so a juvenile career sees
+        every blade eventually.
       </p>
       <div className="tablewrap">
         <table>

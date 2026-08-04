@@ -72,16 +72,16 @@ describe("the weapon dial (blade = distance)", () => {
     // weather tests below were built to stop repeating.
     const meanTurns = (format: (typeof FORMAT_NAMES)[number]) => (seedFrom: number) =>
       duel(bird("A", 350), bird("B", 350, "Water"), { format, seedFrom }).meanTurns;
-    const sprint = converge(meanTurns("longKnife")); // 3.35 / 3.29 / 3.35
-    const marathon = converge(meanTurns("shortGaff")); // 16.80 / 16.87 / 16.68
+    const sprint = converge(meanTurns("b1")); // 3.35 / 3.29 / 3.35
+    const marathon = converge(meanTurns("b4")); // 16.80 / 16.87 / 16.68
     expect(Math.max(...sprint.values)).toBeLessThan(Math.min(...marathon.values));
   });
 
   test("same seed + same format → identical fight (replayable)", () => {
     // A single fight compared bit-for-bit — the lab reports aggregates, so
     // replayability is asserted against `simulatePair` directly.
-    const r1 = simulatePair(bird("A", 350), bird("B", 400, "Water"), "longGaff", mulberry32(777), "TEST");
-    const r2 = simulatePair(bird("A", 350), bird("B", 400, "Water"), "longGaff", mulberry32(777), "TEST");
+    const r1 = simulatePair(bird("A", 350), bird("B", 400, "Water"), "b3", mulberry32(777), "TEST");
+    const r2 = simulatePair(bird("A", 350), bird("B", 400, "Water"), "b3", mulberry32(777), "TEST");
     expect(r1.playByPlay).toBe(r2.playByPlay);
     expect(r1.winner).toBe(r2.winner);
     expect(r1.figures).toEqual(r2.figures);
@@ -94,7 +94,7 @@ describe("the Pit Figures (discovery signal)", () => {
   // means. These loops stay hand-rolled on purpose.
   test("banded to 5s, clamped, per side — and losses still carry one", () => {
     for (let seed = 1; seed <= 25; seed++) {
-      const sim = simulatePair(bird("A", 300), bird("B", 450, "Water"), "shortKnife", mulberry32(seed), "TEST");
+      const sim = simulatePair(bird("A", 300), bird("B", 450, "Water"), "b2", mulberry32(seed), "TEST");
       for (const f of sim.figures) {
         expect(f % FIGURE.BAND).toBe(0);
         expect(f).toBeGreaterThanOrEqual(0);
@@ -130,7 +130,7 @@ describe("the Pit Figures (discovery signal)", () => {
       let sum = 0;
       const RUNS = 60;
       for (let seed = 1; seed <= RUNS; seed++) {
-        const sim = simulatePair(bird("A", level), bird("B", level, "Water"), "shortKnife", mulberry32(seed), "T");
+        const sim = simulatePair(bird("A", level), bird("B", level, "Water"), "b2", mulberry32(seed), "T");
         sum += Math.max(...sim.figures);
       }
       return sum / RUNS;
@@ -149,7 +149,7 @@ describe("the Pit Figures (discovery signal)", () => {
     // over a threshold: a tail question, which no mean can answer.
     let closeLosses = 0;
     for (let seed = 1; seed <= 60; seed++) {
-      const sim = simulatePair(bird("A", 1200), bird("B", 1200, "Water"), "longGaff", mulberry32(seed), "T");
+      const sim = simulatePair(bird("A", 1200), bird("B", 1200, "Water"), "b3", mulberry32(seed), "T");
       const loser = Math.min(...sim.figures);
       if (loser > 55) closeLosses++;
     }
@@ -173,16 +173,16 @@ describe("format records (the past-performance lines)", () => {
     const alab = game.flock.all().find((b) => b.name === "Alab")!;
     const rivalAlab = rivalFlock.byId("rival-6"); // the Alab slot — names are world-unique now
 
-    const nights = ["longKnife", "longKnife", "shortGaff"] as const;
+    const nights = ["b1", "b1", "b4"] as const;
     for (const [i, format] of nights.entries()) {
       game.lobbies.enter(alab.id, { mode: "real", classType: "open", format }, 100 + i);
       rival.enter(rivalAlab.id, { mode: "real", classType: "open", format });
       game.tickDay();
     }
     const records = game.lobbies.formatRecords(alab.id);
-    expect(records.longKnife?.fights).toBe(2);
-    expect(records.shortGaff?.fights).toBe(1);
-    expect(records.longGaff).toBeUndefined();
+    expect(records.b1?.fights).toBe(2);
+    expect(records.b4?.fights).toBe(1);
+    expect(records.b3).toBeUndefined();
     for (const rec of Object.values(records)) {
       expect(rec.wins + rec.losses).toBe(rec.fights);
       expect(rec.bestFigure).toBeGreaterThanOrEqual(rec.avgFigure - FIGURE.BAND); // avg rounds
@@ -223,10 +223,10 @@ describe("daily Element weather (round 24)", () => {
     // different tests, and re-fighting 4000 bouts to learn the same number is
     // pure wall clock.
     const key = `${aEl}|${bEl}|${weather ?? "-"}|${seedFrom}`;
-    // Equal 350-stat birds on shortKnife: no stat gap, no star gap, so the
+    // Equal 350-stat birds on b2: no stat gap, no star gap, so the
     // only asymmetry left is whichever element rule is under test.
     if (!wrCache.has(key)) {
-      const opts = { format: "shortKnife", weather, runs: SEEDS, seedFrom } as const;
+      const opts = { format: "b2", weather, runs: SEEDS, seedFrom } as const;
       wrCache.set(key, duel(bird("A", 350, aEl), bird("B", 350, bEl), opts).winRate);
     }
     return wrCache.get(key)!;
@@ -327,13 +327,13 @@ describe("daily Element weather (round 24)", () => {
     for (let seed = 1; seed <= 400; seed++) {
       const a = bird("A", 350, "Fire");
       const b = bird("B", 380, "Fire"); // unequal on purpose — a real contest
-      const withWx = simulatePair(a, b, "shortKnife", mulberry32(seed), "T", "Fire");
-      const without = simulatePair(a, b, "shortKnife", mulberry32(seed), "T");
+      const withWx = simulatePair(a, b, "b2", mulberry32(seed), "T", "Fire");
+      const without = simulatePair(a, b, "b2", mulberry32(seed), "T");
       expect(withWx.winner).toBe(without.winner);
       expect(withWx.figures).toEqual(without.figures);
     }
     // …and the narration says so, instead of implying the day picked a side.
-    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Fire"), "shortKnife", mulberry32(9), "T", "Fire");
+    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Fire"), "b2", mulberry32(9), "T", "Fire");
     expect(sim.playByPlay).toContain("both birds call it home, so it settles nothing");
   });
 
@@ -341,7 +341,7 @@ describe("daily Element weather (round 24)", () => {
     // One fight's play-by-play: the lab reports no narration, so this reads a
     // single sim directly. Fire beats Metal (RPS) AND the day is Fire — the
     // Fire bird gets both.
-    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Metal"), "longGaff", mulberry32(1), "TEST", "Fire");
+    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Metal"), "b3", mulberry32(1), "TEST", "Fire");
     expect(sim.playByPlay).toContain("Today's element is Fire");
     expect(sim.playByPlay).toContain("carries the weather edge");
     // The roll detail interpolates the knob, so this tag follows a re-tune
@@ -351,7 +351,7 @@ describe("daily Element weather (round 24)", () => {
   });
 
   test("a no-match day narrates honestly and figures stay banded", () => {
-    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Water"), "shortKnife", mulberry32(3), "TEST", "Wood");
+    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Water"), "b2", mulberry32(3), "TEST", "Wood");
     expect(sim.playByPlay).toContain("neither bird calls it home");
     for (const f of sim.figures) {
       expect(f % FIGURE.BAND).toBe(0);
@@ -371,7 +371,7 @@ describe("daily Element weather (round 24)", () => {
     // the same quantity the hand-rolled loop used to sum.
     const meanFigure = (weather: Element | undefined, seedFrom: number) =>
       duel(bird("A", 350, "Fire"), bird("B", 350, "Wood"), {
-        format: "shortKnife",
+        format: "b2",
         weather,
         runs: SEEDS,
         seedFrom,

@@ -10,7 +10,7 @@
  *   bun run balance --list                           names + questions, run nothing
  *   bun run balance --runs=4000                      sample size (default 1000)
  *   bun run balance --seed=100000                    start of the seed window
- *   bun run balance --format=shortKnife              one blade, for a fast loop
+ *   bun run balance --format=b2              one blade, for a fast loop
  *   bun run balance --converge=5                     re-measure over 5 disjoint
  *                                                    seed windows, report spread
  *   bun run balance --sweep=BATTLE.ELEMENT_EDGE=0.25,0.5,1

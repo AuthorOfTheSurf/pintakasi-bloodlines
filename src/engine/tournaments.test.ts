@@ -70,9 +70,9 @@ function tickThroughCrownDay(game: Game) {
 
 describe("the week's blades & the calendar", () => {
   test("anchors always run; the middle blade rotates by week parity", () => {
-    expect(Tournaments.bladesOfWeek(0)).toEqual(["longKnife", "shortGaff", "shortKnife"]);
-    expect(Tournaments.bladesOfWeek(1)).toEqual(["longKnife", "shortGaff", "longGaff"]);
-    expect(Tournaments.bladesOfWeek(2)).toEqual(["longKnife", "shortGaff", "shortKnife"]);
+    expect(Tournaments.bladesOfWeek(0)).toEqual(["b1", "b4", "b2"]);
+    expect(Tournaments.bladesOfWeek(1)).toEqual(["b1", "b4", "b3"]);
+    expect(Tournaments.bladesOfWeek(2)).toEqual(["b1", "b4", "b2"]);
   });
 
   test("crown day is the week's last day — every entry belongs to its own week", () => {
@@ -90,11 +90,11 @@ describe("registration & the Selection Committee", () => {
   test("the gates hold: age 3+, this week's blades only, one bird per week", () => {
     const w = world();
     const kidlat = byName(w.db, w.devFlock, "Kidlat"); // age 1
-    expect(() => w.dev.enter(kidlat.id, "longKnife")).toThrow(/age 3/);
+    expect(() => w.dev.enter(kidlat.id, "b1")).toThrow(/age 3/);
     const sinag = byName(w.db, w.devFlock, "Sinag"); // age 3
-    expect(() => w.dev.enter(sinag.id, "longGaff")).toThrow(/doesn't run week 0/);
-    w.dev.enter(sinag.id, "longKnife");
-    expect(() => w.dev.enter(sinag.id, "shortGaff")).toThrow(/already registered/);
+    expect(() => w.dev.enter(sinag.id, "b3")).toThrow(/doesn't run week 0/);
+    w.dev.enter(sinag.id, "b1");
+    expect(() => w.dev.enter(sinag.id, "b4")).toThrow(/already registered/);
   });
 
   // ── Round 22: the crowns are FREE, and you qualify by fighting ───────────
@@ -104,14 +104,14 @@ describe("registration & the Selection Committee", () => {
     const sinag = byName(w.db, w.devFlock, "Sinag");
     // Strip its campaign: a veteran that never won a real fight can't stand.
     w.db.update(birds).set({ crownPoints: 0 }).where(eq(birds.id, sinag.id)).run();
-    expect(() => w.dev.enter(sinag.id, "longKnife")).toThrow(/qualification points/);
+    expect(() => w.dev.enter(sinag.id, "b1")).toThrow(/qualification points/);
     // One point short still isn't enough…
     w.db
       .update(birds)
       .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS - 1 })
       .where(eq(birds.id, sinag.id))
       .run();
-    expect(() => w.dev.enter(sinag.id, "longKnife")).toThrow(/qualification points/);
+    expect(() => w.dev.enter(sinag.id, "b1")).toThrow(/qualification points/);
     // …and the wallet is untouched either way, because entry is free.
     const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
     w.db
@@ -119,7 +119,7 @@ describe("registration & the Selection Committee", () => {
       .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS })
       .where(eq(birds.id, sinag.id))
       .run();
-    w.dev.enter(sinag.id, "longKnife");
+    w.dev.enter(sinag.id, "b1");
     expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(before);
   });
 
@@ -127,20 +127,20 @@ describe("registration & the Selection Committee", () => {
     const w = world();
     const sinag = byName(w.db, w.devFlock, "Sinag");
     w.db.update(birds).set({ crownPoints: 99 }).where(eq(birds.id, sinag.id)).run();
-    w.dev.enter(sinag.id, "longKnife");
-    w.rival.enter("rival-8", "longKnife"); // more career wins, fewer points
-    const lk = w.dev.board().find((c) => c.format === "longKnife")!;
+    w.dev.enter(sinag.id, "b1");
+    w.rival.enter("rival-8", "b1"); // more career wins, fewer points
+    const lk = w.dev.board().find((c) => c.format === "b1")!;
     expect(lk.field[0].bird).toBe("Sinag"); // points lead the ranking now
     expect(lk.field[0].rank).toBe(1);
   });
 
   test("the purse is pure JUICE now that entries are free", () => {
     const w = world();
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
-    w.rival.enter("rival-8", "longKnife");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
+    w.rival.enter("rival-8", "b1");
     const before = totalCents(w.db);
     const tick = tickThroughCrownDay(w.game);
-    const lk = tick.pintakasi.find((t) => t.format === "longKnife")!;
+    const lk = tick.pintakasi.find((t) => t.format === "b1")!;
     expect(lk.cancelled).toBe(false);
     // No entry money in the pot at all — the champion is paid by the juice
     // pool, which gacha spend and breed fees fill.
@@ -184,22 +184,22 @@ describe("registration & the Selection Committee", () => {
     w.db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run(); // campaigned veterans
     const eligible = w.devFlock.all().filter((b) => b.status === "active" && b.age >= 3);
     expect(eligible.length).toBe(4);
-    for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "longKnife");
-    expect(() => w.dev.enter(eligible[3].id, "longKnife")).toThrow(/limit per championship/);
+    for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "b1");
+    expect(() => w.dev.enter(eligible[3].id, "b1")).toThrow(/limit per championship/);
     // The fourth bird is welcome in a DIFFERENT crown.
-    expect(() => w.dev.enter(eligible[3].id, "shortGaff")).not.toThrow();
+    expect(() => w.dev.enter(eligible[3].id, "b4")).not.toThrow();
   });
 
   test("the fee escrows at entry; the board ranks the public field", () => {
     const w = world();
     const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
     expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(
       before - PINTAKASI.ENTRY_FEE
     );
-    w.rival.enter("rival-8", "longKnife"); // rival Batong Buhay, 7 career wins
+    w.rival.enter("rival-8", "b1"); // rival Batong Buhay, 7 career wins
     const board = w.dev.board();
-    const lk = board.find((c) => c.format === "longKnife")!;
+    const lk = board.find((c) => c.format === "b1")!;
     expect(lk.field.length).toBe(2);
     expect(lk.field[0].rank).toBe(1); // BB outranks Sinag on wins
     expect(lk.field[0].farm).toBe("Rival Gamefarm");
@@ -210,7 +210,7 @@ describe("registration & the Selection Committee", () => {
     const w = world();
     const t = w.db
       .insert(tournaments)
-      .values({ weekIndex: 0, format: "longKnife", seed: 7, entryFee: PINTAKASI.ENTRY_FEE })
+      .values({ weekIndex: 0, format: "b1", seed: 7, entryFee: PINTAKASI.ENTRY_FEE })
       .returning()
       .get();
     // A full 64-bird field of zero-record dummies under the rival's banner.
@@ -255,7 +255,7 @@ describe("registration & the Selection Committee", () => {
       .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS + 5 })
       .where(eq(birds.id, sinagId))
       .run();
-    w.dev.enter(sinagId, "longKnife");
+    w.dev.enter(sinagId, "b1");
     const entries = w.db
       .select()
       .from(tournamentEntries)
@@ -278,17 +278,17 @@ describe("registration & the Selection Committee", () => {
         crownPoints: PINTAKASI.QUALIFYING_POINTS,
       })
       .run();
-    expect(() => w.dev.enter("zzz-weak", "longKnife")).toThrow(/weakest/);
+    expect(() => w.dev.enter("zzz-weak", "b1")).toThrow(/weakest/);
   });
 });
 
 describe("the crown-day resolution", () => {
   test("a 4-bird bracket runs start to finish: crowns, retirements, purse, land — GP exact", () => {
     const w = world();
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
-    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "longKnife");
-    w.rival.enter("rival-7", "longKnife");
-    w.rival.enter("rival-8", "longKnife");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
+    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "b1");
+    w.rival.enter("rival-7", "b1");
+    w.rival.enter("rival-8", "b1");
     const before = totalCents(w.db);
 
     const tick = tickThroughCrownDay(w.game);
@@ -341,9 +341,9 @@ describe("the crown-day resolution", () => {
 
   test("byes go to the top seeds; a 3-bird field fights twice", () => {
     const w = world();
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "shortGaff");
-    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "shortGaff");
-    w.rival.enter("rival-7", "shortGaff");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b4");
+    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "b4");
+    w.rival.enter("rival-7", "b4");
     const result = tickThroughCrownDay(w.game).pintakasi[0];
     expect(result.bracketSize).toBe(4);
     expect(result.rounds[0].byes.length).toBe(1);
@@ -357,22 +357,22 @@ describe("the crown-day resolution", () => {
     const w = world();
     const sinag = byName(w.db, w.devFlock, "Sinag");
     const before = totalCents(w.db);
-    w.dev.enter(sinag.id, "longKnife");
+    w.dev.enter(sinag.id, "b1");
     const tick = tickThroughCrownDay(w.game);
     const result = tick.pintakasi[0];
     expect(result.cancelled).toBe(true);
     expect(totalCents(w.db)).toBe(before);
     expect(w.db.select().from(birds).where(eq(birds.id, sinag.id)).get()!.status).toBe("active");
     expect(
-      w.db.select().from(tournaments).all().find((t) => t.format === "longKnife")!.status
+      w.db.select().from(tournaments).all().find((t) => t.format === "b1")!.status
     ).toBe("cancelled");
   });
 
   test("the juice pool drains into the purse — champion takes all in a straight final", () => {
     const w = world();
     w.db.update(gameState).set({ juicePoolCents: 30_000 }).where(eq(gameState.id, 1)).run();
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
-    w.rival.enter("rival-7", "longKnife");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
+    w.rival.enter("rival-7", "b1");
     const before = totalCents(w.db);
     const result = tickThroughCrownDay(w.game).pintakasi[0];
     // One championship ran — it takes the WHOLE week's juice.
@@ -389,9 +389,9 @@ describe("the crown-day resolution", () => {
   test("a registrant that died before crown day is refunded at close", () => {
     const w = world();
     const sinag = byName(w.db, w.devFlock, "Sinag");
-    w.dev.enter(sinag.id, "longKnife");
-    w.rival.enter("rival-7", "longKnife");
-    w.rival.enter("rival-8", "longKnife");
+    w.dev.enter(sinag.id, "b1");
+    w.rival.enter("rival-7", "b1");
+    w.rival.enter("rival-8", "b1");
     // Sinag falls in a Monday hardcore — the crown never comes.
     w.db
       .update(birds)
@@ -410,8 +410,8 @@ describe("the crown-day resolution", () => {
 
   test("a week jump (Fri → Fri) crosses crown day and resolves exactly once", () => {
     const w = world();
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
-    w.rival.enter("rival-7", "longKnife");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
+    w.rival.enter("rival-7", "b1");
     const tick = w.game.tickWeek();
     expect(tick.pintakasi.length).toBe(1);
     expect(tick.pintakasi[0].champion).not.toBeNull();
@@ -423,14 +423,14 @@ describe("the crown-day resolution", () => {
   test("crown day's lobby door refuses a Pintakasi registrant — its crown is its card", () => {
     const w = world();
     const bb = byName(w.db, w.devFlock, "Batong Buhay");
-    w.dev.enter(bb.id, "longKnife");
+    w.dev.enter(bb.id, "b1");
     const lobbies = new Lobbies(w.db, w.devId);
     // Monday: the registrant fights normal cards freely (entry succeeds).
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3 (Monday)
-    lobbies.enter(bb.id, { mode: "real", classType: "open", format: "shortKnife" });
+    lobbies.enter(bb.id, { mode: "real", classType: "open", format: "b2" });
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 6 (Thursday, crown day)
     expect(() =>
-      lobbies.enter(bb.id, { mode: "real", classType: "open", format: "shortKnife" })
+      lobbies.enter(bb.id, { mode: "real", classType: "open", format: "b2" })
     ).toThrow(/Pintakasi/);
   });
 });

@@ -8,7 +8,7 @@ import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
 
-const REAL: LobbySpec = { mode: "real", classType: "open", format: "shortKnife" };
+const REAL: LobbySpec = { mode: "real", classType: "open", format: "b2" };
 
 function world() {
   const db = createDb(":memory:");
@@ -90,15 +90,15 @@ describe("entry rules (the door)", () => {
     expect(() => w.dev.enter(sinag.id, { ...REAL, classType: "nw2" })).toThrow(/fewer than 2/);
     expect(() => w.dev.enter(sinag.id, { ...REAL, classType: "nw3" })).toThrow(/fewer than 3/);
     expect(() => w.dev.enter(alab.id, { ...REAL, classType: "nw2" })).not.toThrow(); // 1 win < 2
-    expect(() => w.dev.enter(sinag.id, { mode: "hardcore", classType: "maiden", format: "shortKnife" })).toThrow(
+    expect(() => w.dev.enter(sinag.id, { mode: "hardcore", classType: "maiden", format: "b2" })).toThrow(
       /open only/
     );
     // The discovery year runs maidens, stakes and claimers (round 23) — but
     // NOT the conditions classes: a one-year-old has no record to sort by.
-    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "nw2", format: "shortKnife" })).toThrow(
+    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "nw2", format: "b2" })).toThrow(
       /open, maiden or claimer/
     );
-    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "shortKnife", price: 200 })).toThrow(
+    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b2", price: 200 })).toThrow(
       /only means something in a claimer/
     );
   });
@@ -136,10 +136,10 @@ describe("entry rules (the door)", () => {
     // juvenile ladder reads juvenile wins, since there is no stakes record
     // to read at age one.
     expect(() =>
-      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "maiden", format: "shortKnife" })
+      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "maiden", format: "b2" })
     ).toThrow(/already won in the discovery year/);
     expect(() =>
-      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "shortKnife" })
+      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b2" })
     ).not.toThrow();
 
     // A seeded stakes record DOES graduate a bird: Sinag (age 3, 4W) is past
@@ -161,7 +161,7 @@ describe("the 8-cap (lock the lobby even)", () => {
     seedStarterFlock(w.db, third.id, { seed: 9, idPrefix: "third", shape: "legacy" });
     const thirdLobbies = new Lobbies(w.db, third.id);
     const thirdFlock = new Flock(w.db, third.id);
-    const spec: LobbySpec = { mode: "real", classType: "open", format: "shortKnife" };
+    const spec: LobbySpec = { mode: "real", classType: "open", format: "b2" };
 
     // Round 20: the juvenile division is age 1 only, so the pile-up test
     // runs at real stakes — 3 age-2+ birds per farm, 9 total.
@@ -190,7 +190,7 @@ describe("the 8-cap (lock the lobby even)", () => {
     // A second wave of starters: 8 active birds in the dev barn. Before the
     // seating rule these all sat in ONE lobby and most went home unmatched.
     seedStarterFlock(w.db, w.devId, { seed: 77, idPrefix: "dev2", shape: "legacy" });
-    const spec: LobbySpec = { mode: "real", classType: "open", format: "shortKnife" };
+    const spec: LobbySpec = { mode: "real", classType: "open", format: "b2" };
     const stakesBirds = (flock: Flock) =>
       flock.all().filter((b) => b.status === "active" && b.age >= 2);
     for (const bird of stakesBirds(w.devFlock)) w.dev.enter(bird.id, spec);
@@ -250,7 +250,7 @@ describe("the card goes off (pure PvP)", () => {
     // Stamped on both farms at fight time — one won, one lost.
     expect([dev.wins + dev.losses, rival.wins + rival.losses]).toEqual([1, 1]);
     expect([dev.wins + rival.wins, dev.losses + rival.losses]).toEqual([1, 1]);
-    duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 31);
+    duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "b2" }, 31);
     const after = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
     expect(after.wins + after.losses).toBe(2); // juvenile counts — ONE record (round 15)
   });
@@ -308,7 +308,7 @@ describe("the card goes off (pure PvP)", () => {
 
   test("juvenile cards count toward the ONE lifetime record, at juvenile stakes", () => {
     const w = world();
-    const { fight } = duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 31);
+    const { fight } = duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "b2" }, 31);
     expect(fight.landEach).toBe(landForFight(ECONOMY.JUVENILE_ENTRY_FEE));
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins + kidlat.losses).toBe(1); // one record, ruled round 15
@@ -316,7 +316,7 @@ describe("the card goes off (pure PvP)", () => {
 
   test("hardcore PvP: the losing side force-retires, the winner fights on", () => {
     const w = world();
-    const { fight } = duel(w, "Sinag", { mode: "hardcore", classType: "open", format: "shortKnife" }, 99);
+    const { fight } = duel(w, "Sinag", { mode: "hardcore", classType: "open", format: "b2" }, 99);
     expect(fight.forcedRetirements.length).toBe(1);
     const devSinag = byName(w.devFlock, "Sinag");
     const rivalSinag = w.rivalFlock.byId(rivalId("Sinag"));
@@ -362,7 +362,7 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
     w.dev.enter(byName(w.devFlock, "Alab").id, {
       mode: "real",
       classType: "claimer",
-      format: "shortKnife",
+      format: "b2",
       price: 100,
     });
     const theirView = w.rival.board()[0];
@@ -436,7 +436,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
 
   test("the claiming window: claims land AFTER close, before the fight completes", () => {
     const w = world();
-    const spec: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: 100 };
+    const spec: LobbySpec = { mode: "real", classType: "claimer", format: "b2", price: 100 };
     const devAlab = byName(w.devFlock, "Alab");
     const { lobby } = w.dev.enter(devAlab.id, spec, 606);
     w.rival.enter(rivalId("Alab"), spec);
@@ -460,7 +460,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
 
   test("a completed card takes no more claims", () => {
     const w = world();
-    const spec: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: 100 };
+    const spec: LobbySpec = { mode: "real", classType: "claimer", format: "b2", price: 100 };
     const { lobby } = w.dev.enter(byName(w.devFlock, "Alab").id, spec, 77);
     Lobbies.close(w.db, "all");
     Lobbies.complete(w.db);

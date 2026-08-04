@@ -78,7 +78,7 @@ const maiden = () => flat(300, { name: "Maiden" });
  * lab.ts's reimplementation would prove only that two copies agree.
  */
 function engineUnderdog(a: Combatant, b: Combatant): "A" | "B" | "neither" {
-  const pbp = simulatePair(a, b, "shortKnife", mulberry32(1), "TEST").playByPlay;
+  const pbp = simulatePair(a, b, "b2", mulberry32(1), "TEST").playByPlay;
   const aFlag = pbp.includes(`${a.name} is outmatched on paper`);
   const bFlag = pbp.includes(`${b.name} is outmatched on paper`);
   // Both sides can't be the underdog: the gate is a ratio against each other.
@@ -89,25 +89,25 @@ function engineUnderdog(a: Combatant, b: Combatant): "A" | "B" | "neither" {
 describe("determinism — the property everything else rests on", () => {
   test("the same birds over the same seed window give a bit-identical result", () => {
     const [a, b] = twins();
-    const opts = { format: "shortKnife" as const, runs: QUICK, seedFrom: 4242 };
+    const opts = { format: "b2" as const, runs: QUICK, seedFrom: 4242 };
     // toEqual on the whole struct, not just winRate: a mean that drifted while
     // the win rate held still would still make the lab's tables unreadable.
     expect(duel(a, b, opts)).toEqual(duel(a, b, opts));
   });
 
   test("…and so does mirrored, which runs the fight twice more", () => {
-    const opts = { format: "longGaff" as const, runs: QUICK, seedFrom: 77 };
+    const opts = { format: "b3" as const, runs: QUICK, seedFrom: 77 };
     expect(mirrored(monster(), maiden(), opts)).toEqual(mirrored(monster(), maiden(), opts));
   });
 
   test("a duel is a pure function of its inputs — running others first changes nothing", () => {
     const [a, b] = twins();
-    const opts = { format: "shortKnife" as const, runs: QUICK, seedFrom: 9 };
+    const opts = { format: "b2" as const, runs: QUICK, seedFrom: 9 };
     const first = duel(a, b, opts);
     // Deliberately churn the module in between. If `duel` ever grew shared
     // state — a memo, a reused rng, a cached fighter — this is where it shows.
-    duel(monster(), maiden(), { format: "shortGaff", runs: QUICK });
-    mirrored(a, b, { format: "longKnife", runs: 50 });
+    duel(monster(), maiden(), { format: "b4", runs: QUICK });
+    mirrored(a, b, { format: "b1", runs: 50 });
     expect(duel(a, b, opts)).toEqual(first);
   });
 
@@ -116,7 +116,7 @@ describe("determinism — the property everything else rests on", () => {
     // stream. If runs shared a stream, fight i would depend on fight i-1 and
     // the halves of a window would not reassemble into the whole.
     const [a, b] = twins();
-    const fmt = { format: "shortKnife" as const };
+    const fmt = { format: "b2" as const };
     const whole = duel(a, b, { ...fmt, runs: 200, seedFrom: 1 });
     const lower = duel(a, b, { ...fmt, runs: 100, seedFrom: 1 });
     const upper = duel(a, b, { ...fmt, runs: 100, seedFrom: 101 });
@@ -132,7 +132,7 @@ describe("seed window independence", () => {
     // here are HEADLINE_RUNS wide, and the tolerance is the measurement's own
     // stated precision rather than a number picked to make the test green.
     const [a, b] = twins();
-    const fmt = { format: "shortKnife" as const, runs: LAB.HEADLINE_RUNS };
+    const fmt = { format: "b2" as const, runs: LAB.HEADLINE_RUNS };
     const w1 = duel(a, b, { ...fmt, seedFrom: LAB.SEED_FROM });
     const w2 = duel(a, b, { ...fmt, seedFrom: LAB.SEED_FROM + LAB.WINDOW_STRIDE });
 
@@ -147,15 +147,15 @@ describe("seed window independence", () => {
     // Not decoration: the lab's tables are read as "a difference smaller than
     // this is not a result", so the interval has to actually track n.
     const [a, b] = twins();
-    const small = duel(a, b, { format: "shortKnife", runs: 1000 });
-    const big = duel(a, b, { format: "shortKnife", runs: 4000 });
+    const small = duel(a, b, { format: "b2", runs: 1000 });
+    const big = duel(a, b, { format: "b2", runs: 4000 });
     expect(small.ci95 / big.ci95).toBeCloseTo(2, 1);
   });
 });
 
 describe("duel, under conditions where the answer is known in advance", () => {
   test("a monster beats a maiden essentially always", () => {
-    const d = duel(monster(), maiden(), { format: "shortKnife", runs: QUICK });
+    const d = duel(monster(), maiden(), { format: "b2", runs: QUICK });
     expect(d.winRate).toBeGreaterThan(95);
     // …and the lab notices the gate it tripped on the way. A star or stat
     // measurement that ignores this reports the WEAKER bird's station bonus
@@ -164,14 +164,14 @@ describe("duel, under conditions where the answer is known in advance", () => {
   });
 
   test("…and the same monster on the other side loses essentially always", () => {
-    const d = duel(maiden(), monster(), { format: "shortKnife", runs: QUICK });
+    const d = duel(maiden(), monster(), { format: "b2", runs: QUICK });
     expect(d.winRate).toBeLessThan(5);
     expect(d.underdog).toBe("A");
   });
 
   test("two identical birds sit on a coin flip", () => {
     const [a, b] = twins();
-    const d = duel(a, b, { format: "shortKnife", runs: LAB.HEADLINE_RUNS });
+    const d = duel(a, b, { format: "b2", runs: LAB.HEADLINE_RUNS });
     // The tolerance is the measurement's own interval, doubled — this is the
     // one place a "near 50%" claim is allowed, because symmetry guarantees it.
     expect(Math.abs(d.winRate - 50)).toBeLessThan(2 * d.ci95);
@@ -194,7 +194,7 @@ describe("duel, under conditions where the answer is known in advance", () => {
     // make every weather table in the report a table about nothing.
     const fire = flat(350, { name: "Fire", element: "Fire" });
     const water = flat(350, { name: "Water", element: "Water" });
-    const opts = { format: "shortKnife" as const, runs: LAB.HEADLINE_RUNS };
+    const opts = { format: "b2" as const, runs: LAB.HEADLINE_RUNS };
     // Water overcomes Fire, so the neutral day belongs to Water; a Fire day
     // hands Fire WEATHER.EDGE back and must move the number toward Fire.
     const neutral = duel(fire, water, opts);
@@ -224,7 +224,7 @@ describe("duel's bookkeeping is self-consistent", () => {
     // engine output is visible through the lab's averaging.
     for (let seed = 1; seed <= 40; seed++) {
       const d = duel(flat(350, { name: "A" }), flat(480, { name: "B" }), {
-        format: "shortKnife",
+        format: "b2",
         runs: 1,
         seedFrom: seed,
       });
@@ -237,7 +237,7 @@ describe("duel's bookkeeping is self-consistent", () => {
   });
 
   test("the mean figure follows the better bird", () => {
-    const d = duel(monster(), maiden(), { format: "shortKnife", runs: QUICK });
+    const d = duel(monster(), maiden(), { format: "b2", runs: QUICK });
     // Not a balance claim — the loser is scored DOWN from the winner by
     // construction (fight-sim's beaten lengths), so a lab that mixed the two
     // indexes up would invert this in a matchup this lopsided.
@@ -247,12 +247,12 @@ describe("duel's bookkeeping is self-consistent", () => {
   });
 
   test("meanTurns tracks the blade's length", () => {
-    // longKnife caps at 5 turns, shortGaff at 30. A meanTurns that ignored the
+    // b1 caps at 5 turns, b4 at 30. A meanTurns that ignored the
     // T<n> markers (or read the last line instead of the max) would flatten
     // these into each other.
     const [a, b] = twins();
-    const sprint = duel(a, b, { format: "longKnife", runs: QUICK }).meanTurns;
-    const marathon = duel(a, b, { format: "shortGaff", runs: QUICK }).meanTurns;
+    const sprint = duel(a, b, { format: "b1", runs: QUICK }).meanTurns;
+    const marathon = duel(a, b, { format: "b4", runs: QUICK }).meanTurns;
     expect(sprint).toBeLessThan(marathon);
   });
 
@@ -260,7 +260,7 @@ describe("duel's bookkeeping is self-consistent", () => {
     // The endings and run rates are parsed out of name-keyed narration, so
     // identical names would credit both birds' runs to one side and the lab
     // would report a fabricated gameness asymmetry with no error anywhere.
-    const same = { format: "shortKnife" as const, runs: 10 };
+    const same = { format: "b2" as const, runs: 10 };
     expect(() => duel(flat(350, { name: "Dup" }), flat(400, { name: "Dup" }), same)).toThrow(
       /both birds are named "Dup"/
     );
@@ -273,11 +273,11 @@ describe("duel's bookkeeping is self-consistent", () => {
 });
 
 describe("mirrored cancels side bias", () => {
-  const opts = { format: "shortKnife" as const, runs: 1000, seedFrom: 31 };
+  const opts = { format: "b2" as const, runs: 1000, seedFrom: 31 };
 
   test("a symmetric matchup lands on 50%", () => {
     const [a, b] = twins();
-    const m = mirrored(a, b, { format: "shortKnife", runs: LAB.HEADLINE_RUNS });
+    const m = mirrored(a, b, { format: "b2", runs: LAB.HEADLINE_RUNS });
     expect(Math.abs(m.winRate - 50)).toBeLessThan(2 * m.ci95);
   });
 
@@ -345,7 +345,7 @@ describe("mirrored cancels side bias", () => {
     // suspect. Worth knowing either way, which is why it is measured rather
     // than assumed.
     const [a, b] = twins();
-    const fmt = { format: "shortKnife" as const, runs: LAB.HEADLINE_RUNS };
+    const fmt = { format: "b2" as const, runs: LAB.HEADLINE_RUNS };
     const forward = duel(a, b, fmt);
     const reverse = duel(b, a, fmt);
     expect(Math.abs(forward.winRate - (100 - reverse.winRate))).toBeLessThan(
@@ -396,7 +396,7 @@ describe("withKnob puts the config back", () => {
     // onto the same coin flip two identical birds get.
     const fire = flat(350, { name: "Fire", element: "Fire" });
     const metal = flat(350, { name: "Metal", element: "Metal" });
-    const opts = { format: "shortKnife" as const, runs: LAB.HEADLINE_RUNS };
+    const opts = { format: "b2" as const, runs: LAB.HEADLINE_RUNS };
     const live = duel(fire, metal, opts);
     const off = withKnob("BATTLE.ELEMENT_EDGE", 0, () => duel(fire, metal, opts));
     expect(live.winRate).toBeGreaterThan(50 + live.ci95);
@@ -419,19 +419,19 @@ describe("withKnob puts the config back", () => {
   test("a DEEP knob (three segments) is set inside and restored outside", () => {
     // Added with the crit case: per-blade knobs live INSIDE FORMATS entries,
     // so the resolver has to walk, not just index a root once.
-    const before = FORMATS.longKnife.critMult;
-    const seen = withKnob("FORMATS.longKnife.critMult", 1, () =>
-      knobValue(FORMATS.longKnife.critMult)
+    const before = FORMATS.b1.critMult;
+    const seen = withKnob("FORMATS.b1.critMult", 1, () =>
+      knobValue(FORMATS.b1.critMult)
     );
     expect(seen).toBe(1);
-    expect(FORMATS.longKnife.critMult).toBe(before);
+    expect(FORMATS.b1.critMult).toBe(before);
     // Sibling blades must be untouched — the walk lands on ONE entry.
-    expect(FORMATS.shortGaff.critMult).not.toBe(1);
+    expect(FORMATS.b4.critMult).not.toBe(1);
   });
 
   test("a deep path that dead-ends is refused at any depth", () => {
     let ran = false;
-    for (const bad of ["FORMATS.longKnife.NOPE", "FORMATS.NOPE.critMult", "FORMATS.longKnife"]) {
+    for (const bad of ["FORMATS.b1.NOPE", "FORMATS.NOPE.critMult", "FORMATS.b1"]) {
       expect(() => withKnob(bad, 1, () => (ran = true))).toThrow(/Unknown knob/);
     }
     expect(ran).toBe(false);
@@ -443,9 +443,9 @@ describe("withKnob puts the config back", () => {
     expect(knobs).toContain("WEATHER.EDGE");
     expect(knobs).toContain("STARS.BOOST_PER_FULL_STAR");
     // Nested numbers are advertised by their FULL path…
-    expect(knobs).toContain("FORMATS.longKnife.critMult");
+    expect(knobs).toContain("FORMATS.b1.critMult");
     // …and an intermediate object is never advertised as if it were a knob.
-    expect(knobs).not.toContain("FORMATS.longKnife");
+    expect(knobs).not.toContain("FORMATS.b1");
     // FIGURE.GHOST_PACE is a per-format object; a sweep can't set it to a
     // single number, so it must not be advertised as though it could.
     expect(knobs).not.toContain("FIGURE.GHOST_PACE");
@@ -479,7 +479,7 @@ describe("sweep", () => {
     const fire = flat(350, { name: "Fire", element: "Fire" });
     const metal = flat(350, { name: "Metal", element: "Metal" });
     const rows = sweep("BATTLE.ELEMENT_EDGE", [0, 2], () =>
-      duel(fire, metal, { format: "shortKnife", runs: LAB.HEADLINE_RUNS }).winRate
+      duel(fire, metal, { format: "b2", runs: LAB.HEADLINE_RUNS }).winRate
     );
     const [off, loud] = rows.map((r) => r.result);
     expect(loud - off).toBeGreaterThan(20);
@@ -611,7 +611,7 @@ describe("underdogOf agrees with the engine", () => {
   });
 
   test("duel surfaces the same verdict it would compute standing alone", () => {
-    const d = duel(monster(), maiden(), { format: "shortKnife", runs: 10 });
+    const d = duel(monster(), maiden(), { format: "b2", runs: 10 });
     expect(d.underdog).toBe(underdogOf(monster(), maiden()));
   });
 });
@@ -647,7 +647,7 @@ describe("converge", () => {
     // The rig is a blowout, whose true value sits at ~100% — so any spread it
     // shows is the lab's, not the matchup's.
     const out = converge((seedFrom) =>
-      duel(monster(), maiden(), { format: "shortKnife", runs: 1000, seedFrom }).winRate
+      duel(monster(), maiden(), { format: "b2", runs: 1000, seedFrom }).winRate
     );
     expect(out.spread).toBeLessThan(2);
     expect(out.mean).toBeGreaterThan(95);
@@ -659,7 +659,7 @@ describe("converge", () => {
     // whole convergence check would be theatre.
     const out = converge((seedFrom) =>
       duel(flat(350, { name: "A" }), flat(350, { name: "B" }), {
-        format: "shortKnife",
+        format: "b2",
         runs: 25,
         seedFrom,
       }).winRate

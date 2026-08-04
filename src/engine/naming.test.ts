@@ -54,7 +54,7 @@ describe("the naming law (round 14)", () => {
     const flock = new Flock(db, farmId);
     expect(flock.byId(egg.id).status).toBe("active");
 
-    const spec = { mode: "juvenile", classType: "open", format: "shortKnife" } as const;
+    const spec = { mode: "juvenile", classType: "open", format: "b2" } as const;
     expect(() => game.lobbies.enter(egg.id, spec)).toThrow(/name a bird before its first fight/);
 
     flock.rename(egg.id, "Maelstrom");

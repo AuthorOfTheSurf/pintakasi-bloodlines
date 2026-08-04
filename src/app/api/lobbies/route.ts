@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     game(req).lobbies.enter(body.birdId, {
       mode: body.mode ?? "real",
       classType: body.classType ?? "open",
-      format: body.format ?? "shortKnife",
+      format: body.format ?? "b2",
       price: body.price,
     })
   );

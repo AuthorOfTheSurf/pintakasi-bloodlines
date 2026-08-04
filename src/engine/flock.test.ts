@@ -160,7 +160,7 @@ describe("the form book (weather on past fights)", () => {
         farmId,
         birdId,
         mode: "real",
-        format: "shortKnife",
+        format: "b2",
         lobby: "open",
         opponentBirdId: "rival-bird",
         opponentFarmId: "farm-2",

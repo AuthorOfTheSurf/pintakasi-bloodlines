@@ -78,10 +78,10 @@ function parseIntent(notation: string): BladeIntent {
  * have no place in a per-blade ranking.
  */
 export const STAT_PRIORITY: Record<FightFormat, BladeIntent> = {
-  longKnife: parseIntent("Agility >> Sight >>> Stamina >>>> Gameness"),
-  shortKnife: parseIntent("Sight > Agility > Stamina >>> Gameness"),
-  longGaff: parseIntent("Stamina > Gameness > Sight >>> Agility"),
-  shortGaff: parseIntent("Gameness >> Sight >>> Stamina >>>> Agility"),
+  b1: parseIntent("Agility >> Sight >>> Stamina >>>> Gameness"),
+  b2: parseIntent("Sight > Agility > Stamina >>> Gameness"),
+  b3: parseIntent("Stamina > Gameness > Sight >>> Agility"),
+  b4: parseIntent("Gameness >> Sight >>> Stamina >>>> Agility"),
 };
 
 /**

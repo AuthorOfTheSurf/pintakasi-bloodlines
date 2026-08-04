@@ -10,7 +10,7 @@ import { Lobbies, type LobbySpec } from "./lobbies";
 
 const FEE = ECONOMY.REAL_ENTRY_FEE;
 const TAG = CLAIMER.PRICES[2]; // 200 GP — $2.50, first rung above the breed floor
-const SPEC: LobbySpec = { mode: "real", classType: "claimer", format: "shortKnife", price: TAG };
+const SPEC: LobbySpec = { mode: "real", classType: "claimer", format: "b2", price: TAG };
 
 function world() {
   const db = createDb(":memory:");
@@ -66,7 +66,7 @@ describe("carding a claimer", () => {
       })
     ).not.toThrow();
     // An open entry takes no claims.
-    const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "shortKnife" });
+    const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "b2" });
     const openEntry = open.lobby.entries[0].entryId;
     expect(() => w.rival.claim(openEntry)).toThrow(/Only claimer entries/);
   });
