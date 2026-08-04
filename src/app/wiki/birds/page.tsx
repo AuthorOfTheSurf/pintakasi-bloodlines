@@ -238,10 +238,12 @@ export default function BirdsPage() {
       </div>
       <p>
         It&apos;s an edge, not a hard counter: overcoming the opponent&apos;s element adds a flat
-        bonus to every one of your rolls. Don&apos;t underrate it — that bonus is about what a
-        starter bird&apos;s whole stat block is worth on a roll, which makes the matchup one of the
-        strongest single things in a bout. It still can&apos;t make a Fire bird unbeatable against
-        Water, because the dice are louder than any bonus. On top of this, one element is{" "}
+        +{BATTLE.ELEMENT_EDGE} to every one of your rolls. Don&apos;t underrate it — a starter
+        bird&apos;s whole stat block is only worth about{" "}
+        {(((STATS.STARTER_MIN + STATS.STARTER_MAX) / 2 / BATTLE.ROLL_DIVISOR)).toFixed(2)} on a
+        roll, so the matchup is worth a good part of the bird itself. It still can&apos;t make a
+        Fire bird unbeatable against Water, because the dice are louder than any bonus and a
+        genuinely better bird outgrows the wheel. On top of this, one element is{" "}
         <strong>ascendant</strong> each day — the day&apos;s weather — worth a much smaller lift to
         birds of that element. Both are explained in{" "}
         <Link href="/wiki/fighting">Fighting</Link>.

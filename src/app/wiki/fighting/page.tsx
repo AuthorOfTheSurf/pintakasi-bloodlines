@@ -31,6 +31,20 @@ const distanceNickname = new Map<FightFormat, string>(
 const byCrit = [...FORMAT_NAMES].sort((a, b) => FORMATS[b].critMult - FORMATS[a].critMult);
 const swingy = new Set(byCrit.slice(0, Math.ceil(byCrit.length / 2)));
 
+/**
+ * What a TYPICAL STARTER's whole stat block is worth on a single turn roll.
+ * This is the only honest yardstick for every flat bonus in the game, and it
+ * exists as a derived value rather than a sentence because getting it wrong
+ * is exactly how the element edge shipped at double its intended strength:
+ * "+1 on 2d6 is half a die" reads as nothing, while "+1 against 0.80" reads
+ * as what it is. Moves by itself if the starter band or ROLL_DIVISOR moves.
+ */
+const starterRollTerm = (
+  (STATS.STARTER_MIN + STATS.STARTER_MAX) /
+  2 /
+  BATTLE.ROLL_DIVISOR
+).toFixed(2);
+
 function phasesReached(maxTurns: number): string {
   const phases = ["agility"];
   if (maxTurns > PHASES.BREAK_THROUGH_TURN) phases.push("sight");
@@ -144,13 +158,13 @@ export default function FightingPage() {
         </li>
         <li>
           <strong>Element can tip a roll.</strong> If your element overcomes your opponent&apos;s
-          in the wuxing cycle, you get a flat +{BATTLE.ELEMENT_EDGE} on every roll. That is a
-          bigger deal than it looks. Read it against the line above: a starter bird&apos;s{" "}
-          <em>entire</em> stat block, divided by {BATTLE.ROLL_DIVISOR}, is worth about a point on
-          the roll. So a flat +{BATTLE.ELEMENT_EDGE} is roughly the weight of the whole bird. It
-          doesn&apos;t make anyone unbeatable — the two dice are still the loudest thing in the
-          fight — but between two evenly matched birds, the one with the matchup wins clearly more
-          often than it loses. Never treat the element wheel as decoration.
+          in the wuxing cycle, you get a flat +{BATTLE.ELEMENT_EDGE} on every roll. To know whether
+          that is a lot, read it against the line above — never against the dice. A starter
+          bird&apos;s <em>entire</em> stat block, divided by {BATTLE.ROLL_DIVISOR}, is worth about{" "}
+          {starterRollTerm} on a roll. So the matchup is worth a good part of everything the bird
+          itself brings, which is why the element wheel is not decoration. But it is smaller than
+          the bird, and much smaller than the dice: between two evenly matched birds, the one with
+          the matchup wins clearly more often than it loses, and still loses plenty.
         </li>
         <li>
           <strong>Whoever rolls higher lands the hit.</strong> Damage is the roll&apos;s margin ×

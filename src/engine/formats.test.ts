@@ -207,13 +207,22 @@ describe("daily Element weather (round 24)", () => {
     const headToHead = winRatePct("Fire", "Metal"); // ~76.1 — RPS only
 
     const weatherLift = weather - neutral; // ~7.1 points
-    const rpsLift = headToHead - neutral; // ~26.4 points
+    const rpsLift = headToHead - neutral; // ~14.1 points
     expect(weatherLift).toBeGreaterThan(3); // still worth chasing a good day
-    // Measured ratio 0.27 / 0.32 / 0.31 across three seed windows. Half is a
-    // deliberately loose line: it is nowhere near today's value, and it is the
-    // line the ruling actually cares about — the day must never rival the
-    // matchup, and at EDGE=1 this ratio was 1.03 (weather BEAT the matchup).
-    expect(weatherLift * 2).toBeLessThan(rpsLift);
+    // The ruling: the day must never rival the matchup. At the old EDGE=1
+    // this ratio was 1.03 — the day BEAT the matchup — which is the bug this
+    // test exists for. The margin below is what "junior partner" means.
+    expect(weatherLift).toBeLessThan(rpsLift * 0.75);
+
+    // …and the felt ratio should TRACK the config ratio. Both edges respond
+    // near-linearly in this band (0.25 -> ~+7 points of winrate, 0.5 -> ~+14),
+    // which is the property that makes the two knobs readable at all: you can
+    // reason about "half as strong" in config and get half as strong in the
+    // pit. If this ever drifts, the knobs have entered a non-linear regime
+    // and every comment in config.ts quoting a winrate needs re-measuring.
+    const configRatio = WEATHER.EDGE / BATTLE.ELEMENT_EDGE; // 0.5 today
+    expect(weatherLift / rpsLift).toBeGreaterThan(configRatio - 0.15);
+    expect(weatherLift / rpsLift).toBeLessThan(configRatio + 0.15);
 
     // Stacked, the day should ADD a few points to a matchup that is already
     // won, not compound into a certainty. Measured ~81.6 vs ~76.1 alone; at

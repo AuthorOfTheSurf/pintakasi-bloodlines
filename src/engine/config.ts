@@ -57,7 +57,9 @@ export const STATS = {
 
 // ── Elements (BaZi wuxing 克 kè "overcoming" cycle) ─────────────────────────
 // Fire beats Metal, Metal beats Wood, Wood beats Earth, Earth beats Water,
-// Water beats Fire. A slight edge only — a Fire bird can still lose to Water.
+// Water beats Fire. Worth a real but beatable edge (BATTLE.ELEMENT_EDGE —
+// about 64% between two otherwise equal birds), so the matchup is something
+// you play for and not something you lose to.
 export const ELEMENTS = ["Fire", "Metal", "Wood", "Earth", "Water"] as const;
 export type Element = (typeof ELEMENTS)[number];
 
@@ -239,8 +241,30 @@ export const BATTLE = {
   // pips); a 300 starter adds +0.75. Dice stay loud, stats stay real.
   ROLL_DIVISOR: 400,
   // The element edge: flat bonus on a turn's roll when your element overcomes
-  // the opponent's (2d6 scale, so +1 ≈ half a die).
-  ELEMENT_EDGE: 1,
+  // the opponent's.
+  //
+  // WHY 0.5 AND NOT 1 (re-ruled after round 24's review, same measurement
+  // that re-ruled WEATHER.EDGE — read that comment first). This sat at +1
+  // from the beginning under the comment "a slight edge only — a Fire bird
+  // can still lose to Water." It was never slight. Between two equal
+  // 350-stat birds, +1 won 76% of the time; against a bird carrying a
+  // genuine +100 stats in every category it still won 85%. Losing the
+  // matchup was closer to a verdict than a handicap.
+  //
+  // The trap is reading a flat bonus against the DICE (+1 on 2d6 sounds
+  // like half a die, i.e. nothing) instead of against ROLL_DIVISOR. A whole
+  // starter stat block is worth ~+0.875 on the roll; +100 stats is worth
+  // +0.25. Judged on that scale a flat +1 wasn't a tiebreaker, it was the
+  // biggest single term in the fight — and it made BREEDING FOR STATS, the
+  // game's whole progression, lose to a coin-flip of birth element.
+  //
+  // At 0.5 (measured, equal 350-stat birds, shortKnife, 4000 seeds) the
+  // matchup wins 64% — plainly worth playing for, plainly not a verdict —
+  // and it stays exactly 2x WEATHER.EDGE, which is the relationship the
+  // Handbook states and docs.test.ts pins. Note the two edges are near
+  // LINEAR in this band (0.25 -> ~+7 points of winrate, 0.5 -> ~+14), so
+  // that config ratio really is the felt ratio.
+  ELEMENT_EDGE: 0.5,
   // Stat decay (stamina's second job): agility and sight fade each turn by
   // PER_TURN × (1 − stamina/2000). A 300-stamina bird loses ~2.6%/turn — by
   // turn 20 it's fighting at ~half book. FLOOR stops decay short of zero.
