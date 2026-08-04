@@ -37,33 +37,31 @@ export interface SimResult {
 
 interface Fighter {
   name: string;
-  stats: BirdStats; // star-boosted base
+  stats: BirdStats; // base stats, untouched — stars stopped boosting them (2026-08-04)
   element: Element;
   halfStars: number;
   wind: number;
   maxWind: number;
-  underdog: boolean; // station's trigger — set once at the scale
+  clawPerRoll: number; // station's slope — set once at the scale, pre-form
   quitChecked: boolean; // the once-per-fight morale check
   ran: boolean;
   dealt: number; // damage bookkeeping for the Pit Figures
 }
 
 function toFighter(c: Combatant): Fighter {
-  // Star baseline boost: +BOOST_PER_FULL_STAR effective points on every
-  // stat — format-agnostic, which is the whole point of stars.
-  const boost = Math.floor(c.halfStars / 2) * STARS.BOOST_PER_FULL_STAR;
-  const boosted = Object.fromEntries(
-    Object.entries(c.stats).map(([k, v]) => [k, Math.min(STATS.MAX, v + boost)])
-  ) as BirdStats;
-  const maxWind = Math.round(BATTLE.BASE_WIND + boosted.stamina * BATTLE.WIND_PER_STAMINA);
+  // Stars no longer touch the stat block (2026-08-04 rework): a star is an
+  // amplifier on the bird's ELEMENT, applied where the element applies — in
+  // turnRoll. The old +20/star boost also inflated totals into the underdog
+  // comparison, which is how a 5★ bird measured worse than its 0★ twin.
+  const maxWind = Math.round(BATTLE.BASE_WIND + c.stats.stamina * BATTLE.WIND_PER_STAMINA);
   return {
     name: c.name,
-    stats: boosted,
+    stats: { ...c.stats },
     element: c.element,
     halfStars: c.halfStars,
     wind: maxWind,
     maxWind,
-    underdog: false,
+    clawPerRoll: 0,
     quitChecked: false,
     ran: false,
     dealt: 0,
@@ -86,19 +84,42 @@ export function simulatePair(
   const a = toFighter(aIn);
   const b = toFighter(bIn);
 
-  // Station's trigger, judged once at the scale: total base stats.
-  const total = (f: Fighter) => Object.values(f.stats).reduce((x, y) => x + y, 0);
-  a.underdog = total(b) >= total(a) * BATTLE.UNDERDOG_RATIO;
-  b.underdog = total(a) >= total(b) * BATTLE.UNDERDOG_RATIO;
+  // Station's slope, judged once at the scale (rebuilt 2026-08-04 — see the
+  // UNDERDOG_CLAWBACK ruling in config). The outmatched bird claws back a
+  // fraction of the GAP ITSELF: deficit/6/ROLL_DIVISOR is the per-roll value
+  // of the stat lead it is facing, and station decides how much of that —
+  // up to UNDERDOG_CLAWBACK at 2000 station — it takes back on every roll.
+  // Smooth from zero (no gate, no cliffs) and capped below the gap, so the
+  // better bird of two same-shaped ones is always still favored.
+  //
+  // Station itself is EXCLUDED from both totals: it is heart, not class.
+  // Counted in (as the old gate did), buying station inflated a bird's own
+  // total, shrank its own deficit, and cancelled itself — the lab measured
+  // a station-2000 build at 45% AT PARITY because its big total handed the
+  // flat opponent a clawback against fighting stats it didn't have.
+  const total = (f: Fighter) =>
+    Object.values(f.stats).reduce((x, y) => x + y, 0) - f.stats.station;
+  const claw = (self: Fighter, other: Fighter) => {
+    const deficit = Math.max(0, total(other) - total(self));
+    const gapPerRoll = deficit / 6 / BATTLE.ROLL_DIVISOR;
+    return (self.stats.station / STATS.MAX) * BATTLE.UNDERDOG_CLAWBACK * gapPerRoll;
+  };
+  a.clawPerRoll = claw(a, b);
+  b.clawPerRoll = claw(b, a);
 
   const lines: string[] = [
     `⚔ ${header} · ${fmt.label} — ${a.name} (${a.halfStars / 2}★ ${a.element}) vs ${b.name} (${b.halfStars / 2}★ ${b.element})`,
     `Wind: ${a.name} ${a.wind} · ${b.name} ${b.wind}`,
   ];
-  if (ELEMENT_BEATS[a.element] === b.element)
-    lines.push(`${a.element} overcomes ${b.element} — ${a.name} has the element edge.`);
-  else if (ELEMENT_BEATS[b.element] === a.element)
-    lines.push(`${b.element} overcomes ${a.element} — ${b.name} has the element edge.`);
+  // The wheel only matters as loudly as the advantaged bird's stars say
+  // (2026-08-04): a 0★ bird's matchup is decorative, and the narration must
+  // not imply an edge the roll never sees.
+  const wheelLine = (adv: Fighter, prey: Fighter) =>
+    adv.halfStars === 0
+      ? `${adv.element} overcomes ${prey.element} on the wheel — but ${adv.name} carries no stars, so it counts for nothing.`
+      : `${adv.element} overcomes ${prey.element} — ${adv.name} presses a ${adv.halfStars / 2}★ element edge.`;
+  if (ELEMENT_BEATS[a.element] === b.element) lines.push(wheelLine(a, b));
+  else if (ELEMENT_BEATS[b.element] === a.element) lines.push(wheelLine(b, a));
   if (weather) {
     const aMatch = a.element === weather;
     const bMatch = b.element === weather;
@@ -114,8 +135,10 @@ export function simulatePair(
       lines.push(`Today's element is ${weather} — neither bird calls it home.`);
     }
   }
-  if (a.underdog) lines.push(`${a.name} is outmatched on paper — station will tell.`);
-  if (b.underdog) lines.push(`${b.name} is outmatched on paper — station will tell.`);
+  // Narration only — the slope itself has no threshold. 0.05 per roll is
+  // where the clawback stops being rounding error and starts being a story.
+  if (a.clawPerRoll >= 0.05) lines.push(`${a.name} is outmatched on paper — station will tell.`);
+  if (b.clawPerRoll >= 0.05) lines.push(`${b.name} is outmatched on paper — station will tell.`);
 
   let turnsFought = 0;
   for (let turn = 1; turn <= fmt.maxTurns; turn++) {
@@ -211,7 +234,17 @@ export function simulatePair(
   const beaten = Math.max(FIGURE.MIN_BEATEN, margin * FIGURE.BEATEN_SCALE);
 
   const winnerFigure = band(winnerRaw);
-  const loserFigure = Math.min(winnerFigure - FIGURE.BAND, band(winnerRaw - beaten));
+  // The loser is scored down from the winner's CLAMPED performance, not the
+  // raw one — at ROLL_DIVISOR 85 a blowout's raw pace can sail far past
+  // FIGURE.MAX, and subtracting the beaten lengths from the unclamped number
+  // used to leave the flattened bird at 145 (a maiden crushed by a monster
+  // posted a near-elite figure). The Math.max floor closes the mirror bug,
+  // recorded in BALANCE.md, where a winner banding to 0 pushed the loser to
+  // −5, below the documented [0, MAX] range.
+  const loserFigure = Math.max(
+    0,
+    Math.min(winnerFigure - FIGURE.BAND, band(Math.min(winnerRaw, FIGURE.MAX) - beaten))
+  );
   const figures: [number, number] =
     winner === 0 ? [winnerFigure, loserFigure] : [loserFigure, winnerFigure];
 
@@ -245,19 +278,25 @@ function turnRoll(
 
   let total = dice[0] + dice[1] + (self.stats[stat] * form * decay) / BATTLE.ROLL_DIVISOR;
 
-  if (ELEMENT_BEATS[self.element] === other.element) {
-    total += BATTLE.ELEMENT_EDGE;
-    parts.push(`+${BATTLE.ELEMENT_EDGE}elem`);
+  // Stars are the element's VOLUME (2026-08-04): both edges scale by
+  // halfStars/10, so 5.0★ delivers the full ceiling and 0★ mutes the
+  // matchup entirely. Every half-step is a real rung.
+  const starScale = self.halfStars / STARS.MAX_HALF_STARS;
+  if (starScale > 0 && ELEMENT_BEATS[self.element] === other.element) {
+    total += BATTLE.ELEMENT_EDGE * starScale;
+    parts.push(`+${(BATTLE.ELEMENT_EDGE * starScale).toFixed(2)}elem`);
   }
   // The day's ascendant element (round 24): a bird OF the weather's element
-  // gets the same flat +1, stacking with the head-to-head RPS edge above.
-  if (weather && self.element === weather) {
-    total += WEATHER.EDGE;
-    parts.push(`+${WEATHER.EDGE}wx`);
+  // gets the weather edge at the same star volume, stacking with the
+  // head-to-head RPS edge above.
+  if (starScale > 0 && weather && self.element === weather) {
+    total += WEATHER.EDGE * starScale;
+    parts.push(`+${(WEATHER.EDGE * starScale).toFixed(2)}wx`);
   }
-  // Station — the rivalry modifier: the underdog fights above its book.
-  if (self.underdog) {
-    total += (self.stats.station * form) / BATTLE.STATION_DIVISOR;
+  // Station — the rivalry stat: the outmatched bird claws back a station-
+  // sized fraction of the gap on every roll (see the scale, above).
+  if (self.clawPerRoll > 0) {
+    total += self.clawPerRoll * form;
     parts.push("+station");
   }
   // Gameness holds a hurt bird's performance together late.

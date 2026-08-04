@@ -22,11 +22,14 @@ export interface BirdView extends Omit<BirdRow, "sex"> {
  * ── THE FORM BOOK — one past fight, with the day's weather on it ────────────
  *
  * The daily Element weather (round 24) leaks into the discovery signal: a
- * bird fighting under its own ascendant element carries WEATHER.EDGE on every
+ * bird fighting under its own ascendant element carries WEATHER.EDGE scaled
+ * by its stars (× halfStars/10, since the 2026-08-04 stars rework) on every
  * turn roll, which lifts its Pit Figure by a couple of points on average.
- * That is deliberately small — inside the ±FIGURE.NOISE fog — but it is
- * SYSTEMATIC and one-directional, so a form line read without it slowly
- * over-types a bird that happened to draw good days.
+ * That is deliberately small for ordinary star levels — inside the
+ * ±FIGURE.NOISE fog — but it is SYSTEMATIC and one-directional, so a form
+ * line read without it slowly over-types a bird that happened to draw good
+ * days. (A 0★ bird's `edge` flags are vacuous now; kept because the fog
+ * discipline of reading them costs nothing and stars change at breeding.)
  *
  * Nothing is stored: `battleLog.dayIndex` plus the pure `weatherOfDay` is
  * enough to recover the ascendant element of any fight ever run, back to day

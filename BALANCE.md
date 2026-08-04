@@ -5,16 +5,16 @@ row says otherwise. Every number here is reproducible: the lab is deterministic
 over a fixed seed window, and `--converge=5` re-measures across disjoint
 windows to prove a figure isn't an artifact of one.
 
-This file is a **gap report, not a spec**. Nothing here has been tuned. The
-point of the round was to stop guessing — two knobs shipped at 2× and 4× their
-intended strength in consecutive rounds, both caught by hand, because the only
-fight measurement in the repo was one closure wired to two identical birds on
-one blade.
+**Round 26 rewrote this file.** The previous edition was a gap report — eight
+ranked defects, nothing tuned. This edition is the state after the fix round
+that followed it: the station slope, the stars-as-element-amplifier rework,
+`ROLL_DIVISOR` 400 → 85, and condition re-ruled as intended. The old edition's
+numbers survive inline as "was" figures so the before/after stays readable.
 
 ```
 bun run balance                       # all 14 cases
 bun run balance sensitivity --runs=4000
-bun run balance --sweep=BATTLE.ELEMENT_EDGE=0.25,0.5,1
+bun run balance --sweep=BATTLE.ROLL_DIVISOR=100,85,75
 bun run balance --converge=5
 bun run balance --json | --csv
 ```
@@ -24,220 +24,144 @@ Only tool errors exit non-zero.
 
 ---
 
-## The eight gaps, ranked
+## Fixed this round, with the after-numbers
 
-### 1. Station inverts the grade ladder — breeding is currently net-negative
+### 1. The grade ladder points forward (was: station INVERTED it)
 
-The headline. A bird one full grade better (+100 on all six stats) **loses**:
+The old binary underdog gate paid the weaker bird ~3.5× the stat lead that
+tripped it: a bird +100 better on every stat **lost** 59–67% of the time.
+Station is now a smooth clawback — the outmatched side recovers
+`station/2000 × UNDERDOG_CLAWBACK (0.5) × the gap's per-roll value`, capped
+below the gap by construction, with station itself excluded from the totals
+being compared (heart is not class). With `ROLL_DIVISOR` retuned 400 → 85,
+tuned at the middle of the blade dial per the design's own philosophy:
 
-| blade | +100 bird wins | with station neutralised | station's cost | intent |
+| blade | +100 wins (was) | +200 wins (was) | station cost | target |
 |---|---|---|---|---|
-| Long Knife | **40.9%** | 56.4% | −15.5 | 80% |
-| Short Knife | **38.2%** | 59.0% | −20.8 | 80% |
-| Long Gaff | **34.4%** | 58.8% | −24.3 | 80% |
-| Short Gaff | **33.0%** | 66.8% | −33.7 | 80% |
+| B1 | 69.1% (40.9) | 84.9% (46.9) | +1.3 | 80 / 98 |
+| B2 | 74.8% (38.2) | 91.6% (46.6) | +1.4 | 80 / 98 |
+| **B3** | **82.9%** (34.4) | **97.4%** (47.9) | +1.6 | **80 / 98 ✓** |
+| B4 | 87.5% (33.0) | 98.8% (46.5) | +1.2 | 80 / 98 |
 
-At +200 (two grades) it is still under 50% on every blade — 46.5–47.9%, against
-an intended 98%.
+B3 — the future midpoint once B5 exists — sits on both targets. The ±10-point
+spread toward the ends is turn count amplifying stats, and belongs to the
+deferred phase-weight rework, not to this knob. The lab pins the anti-inversion
+as a permanent regression test (`lab.test.ts`: flat 450/550/750 must all beat
+flat 350).
 
-The arithmetic: +100 on every stat buys `100/ROLL_DIVISOR` = **+0.25** on a
-roll. Crossing the 1.1× total-stat threshold hands the *weaker* bird its full
-`station × form / STATION_DIVISOR` ≈ **+0.88 × form**, on every roll of the
-fight. The underdog bonus is roughly 3.5× the grade step that triggered it.
+### 2. The station cliffs are gone
 
-This is not station softening the ladder. It is reversing it. Overall grade is
-one of the only ways a player can read a bird before it fights, and breeding is
-the game's entire progression — both currently point the wrong way.
+The old gate's 159→160 cliff (−16 points for one stat point) and the 560 flip
+(handing the *opponent* its station): both now measure exactly 50.0% on every
+row — station at parity is a flat line, and buying more of it is never worse.
+When genuinely outmatched (one grade down), the payout is strictly monotone:
+station 0 → 2000 lifts 11–30% up to 22–37%, always short of 50%. An underdog
+with maximum heart makes a real fight of it and remains the underdog — that is
+the whole ruling. (Station still does nothing between even birds; that stays
+true until Crowd Noise gives it a per-fight stage role.)
 
-Sweeping the knob shows the ladder is fine underneath: with station at 0 the
-curve is monotone and sane (58.5 / 66.4 / 81.0 / 96.5% at +100/+200/+400/+800).
+### 3. Stars are the element's volume knob (was: nearly inert, half the ladder dead)
 
-### 2. Station has two cliffs, and one point of it is worth −15 points of win rate
+Both edges now scale by `halfStars/10`; the flat stat boost is gone, and with
+it the confound where a 5★ bird measured *worse* than its 0★ twin. Every
+half-step is a real rung, measured at a favorable matchup:
 
-Station is the only stat behind a hard binary gate (`underdog`, set once,
-`total(other) >= total(self) × 1.1`). Against an even 350-flat bird:
-
-| your station | your total | gate | Short Gaff win% |
-|---|---|---|---|
-| 0 | 1750 | open (you) | 50.0 |
-| **159** | 1909 | open (you) | **66.3** |
-| **160** | 1910 | **closed** | **50.0** |
-| 559 | 2309 | closed | 50.0 |
-| **560** | 2310 | open (them) | **21.1** |
-| 2000 | 3750 | open (them) | 21.1 |
-
-Raising station by **one point** — 159 → 160 — closes your own gate and costs
-16 points of win rate. Raise it far enough and you open your *opponent's* gate
-and fall to 21%. Station is the only stat in the game where more is worse,
-twice, at thresholds nothing surfaces to the player.
-
-When the gate is held open (vs a 689-flat bird), station is enormous and
-perfectly well-behaved: 10.9% → 100% across its range on Short Gaff. The
-mechanic works. The gate is the problem.
-
-### 3. Stars are nearly inert, and half of the ladder does nothing at all
-
-`Math.floor(halfStars / 2)` means **0.5★ ≡ 0★, 1.5★ ≡ 1★, 2.5★ ≡ 2★** — every
-half-step is discarded. Measured, the pairs are bit-identical.
-
-Worse, the naive measurement is *inverted*: a 5★ bird loses to an identical 0★
-bird on every blade (33.0–40.9%), because +100 across six stats trips the same
-underdog gate as gap 1. Controlled for station, 5.0★ is worth only **+6.4 to
-+16.8 points** of win rate — and 5 full stars add `5 × BOOST_PER_FULL_STAR /
-ROLL_DIVISOR` = **+0.25** on a roll, which is exactly one weather day and half
-an element edge.
-
-| | Long Knife | Short Knife | Long Gaff | Short Gaff |
+| stars | B1 | B2 | B3 | B4 |
 |---|---|---|---|---|
-| 5★ vs 0★, naive | 40.9 | 38.2 | 34.4 | 33.0 |
-| 5★ vs 0★, station neutralised | 56.4 | 59.0 | 58.8 | 66.8 |
-| the gate's bite | +15.5 | +20.8 | +24.3 | +33.7 |
+| 0★ | 50.0 | 50.0 | 50.0 | 50.0 |
+| 0.5★ | 51.9 | 52.9 | 54.4 | 54.6 |
+| 2.5★ | 60.3 | 64.0 | 69.2 | 72.3 |
+| 5★ | 69.9 | 76.2 | 83.2 | 87.9 |
 
-**Declared intent** (not implemented): stars should scale the *elemental
-advantage* — 5.0★ = maximum elemental advantage, 0.5★ = minimal, 0★ = none.
-The numbers above are the baseline that rework has to beat.
+And the leak detector holds: same-element duels read 50.0% at **every** star
+level — stars without a matchup are worth nothing, by construction and now by
+measurement. `ELEMENT_EDGE` was raised to 1.0 and `WEATHER.EDGE` to 0.5 as
+**ceilings** (delivered value scales with stars; a 2.5★ bird gets exactly
+round 24's ruled values).
 
-### 4. Three of six stats never drive a turn, and one blade can't reach its phase
+### 4. The figure now tracks the bird (was: a breeding step invisible on the knives)
 
-Phases are **absolute turn windows** (agility T1–2, sight T3–10, gameness T11+)
-while each blade sets its own ceiling. The intersection:
+A side effect of `ROLL_DIVISOR` 85 — roll margins now scale with real stat
+gaps, so the discovery signal sharpened enormously:
 
-| blade · phase | window | turns | % of fights reaching |
-|---|---|---|---|
-| Long Knife · agility | T1–T2 | 2 | 100% |
-| Long Knife · sight | T3–T5 | 3 | 71% |
-| **Long Knife · gameness** | **unreachable** | **0** | **0%** |
-| Short Knife · gameness | T11–T12 | 2 | 8.9% |
-| Long Gaff · gameness | T11–T20 | 10 | 65.8% |
-| Short Gaff · gameness | T11–T30 | 20 | 95.2% |
+| true gap | B1 (was) | B4 (was) |
+|---|---|---|
+| +50 | +7.3 (1.8) | +13.3 (4.7) |
+| +100 | +14.8 (3.7) | +24.7 (9.4) |
 
-Agility drives **exactly 2 turns in every format** — 40% of a Long Knife, 6.7%
-of a Short Gaff. And `stamina`, `station` and `condition` are **never** phase
-stats in any format; they reach a fight only indirectly (wind pool + decay
-resistance; the underdog gate; the per-turn form multiplier).
+One generation of breeding is now 3–5 fog-widths of figure on every blade.
+Two related fixes landed in `fight-sim.ts`: the loser is scored down from the
+winner's *clamped* figure (a maiden crushed by a monster used to post 145),
+and the loser figure is floored at 0 (the recorded −5 bug).
 
-Measured lift from +200 on one stat:
+### 5. Condition re-ruled: the wildcard is intended (was: "contradicts its comment")
 
-| stat | Long Knife | Short Knife | Long Gaff | Short Gaff |
-|---|---|---|---|---|
-| agility | **54.7** | 52.7 | 52.2 | 51.6 |
-| sight | 54.4 | **57.6** | 56.6 | 57.0 |
-| stamina | 52.9 | 53.1 | 55.0 | 55.3 |
-| gameness | 50.7 | 52.7 | **59.1** | **64.0** |
-| station | 50.0 | 50.0 | 50.0 | 50.0 |
-| condition | 50.7 | 50.5 | 50.6 | 51.4 |
-
-Against intent, **only Short Gaff matches**. Long Knife has gameness dead;
-Short Knife inverts stamina and gameness over agility; Long Gaff puts gameness
-and sight over stamina — and stamina is ranked 2nd or 3rd on every blade in the
-intent while never being a phase stat at all.
-
-Note the `shape` case passes on all four blades (a specialist beats an
-anti-specialist at equal total, 52.6–57.8%). Shape works *in aggregate* even
-where individual stats are ranked wrong — the two are not in conflict, they are
-measuring different things, and the aggregate is the weaker claim.
-
-### 5. Condition silently inflates the Pit Figure by ~15 points
-
-Two **identical** birds at different condition levels win 50% by construction —
-but the figure they post does not hold still:
-
-| condition (both birds) | mean figure |
-|---|---|
-| 0 | 39.0 |
-| 1000 | 46.2 |
-| 2000 | 53.8 |
-
-That is ~15 points, three full `FIGURE.BAND`s, on a signal whose entire job is
-to tell a player what a bird is. Condition also *boosts* rather than merely
-stabilising — a favourite gains 4–9 points of win rate across its range — which
-contradicts the config comment calling it a variance buffer that "only ever
-hurts."
-
-### 6. Stamina's decay-resistance route is decorative
-
-Stamina reaches a fight through two doors: the wind pool (`BASE_WIND + stamina
-× 0.01` — more HP) and decay resistance (physical stats fade slower). The
-`fuel` case kills one door at a time and re-measures +200 stamina:
-
-| blade | whole lift | wind pool alone | decay resistance alone |
-|---|---|---|---|
-| Long Knife | +2.9 | +2.8 | **+0.1** |
-| Short Knife | +3.1 | +2.9 | **+0.2** |
-| Long Gaff | +5.0 | +4.9 | **+0.3** |
-| Short Gaff | +5.3 | +5.2 | **+0.5** |
-
-The decay route contributes at most half a point anywhere. `DECAY_PER_TURN`
-and `DECAY_FLOOR` exist, run every turn, and decide essentially nothing —
-stamina **is** the wind pool. Any rework that wants stamina at its intended
-rank (2nd–3rd on every blade) is really deciding what the wind pool is worth,
-and can treat the decay knobs as free to repurpose.
-
-### 7. The "knives are swingy, gaffs are true tests" story is half false
-
-`critMult` is sold as each blade's identity (config: "Knife formats are SWINGY
-… gaff formats are true tests (crits barely matter)"). Measured — outcome
-flips are the % of fights between identical birds whose *winner changes* when
-crits are removed:
-
-| blade | critMult | outcome flips | crit tax on a +100 favourite |
-|---|---|---|---|
-| Long Knife | 2.5 | 8.8% | 1.0 |
-| **Short Knife** | 2.0 | **15.4%** | 1.5 |
-| **Long Gaff** | 1.3 | **13.6%** | 0.7 |
-| Short Gaff | 1.1 | 3.4% | 0.1 |
-
-Short Gaff matches the story. But the swingiest blade is **Short Knife**, not
-Long Knife (5-turn fights end before a crit's margin can be overturned, but
-they also end before one can *land*), and **Long Gaff at critMult 1.3 is
-nearly as crit-decided as Short Knife at 2.0** — turn count multiplies
-exposure faster than the multiplier shrinks. If blade identity is the goal,
-the knob to think in is crits-per-fight, not the multiplier alone.
-
-### 8. A full breeding step is invisible in the Pit Figure on the knives
-
-The figure is the discovery signal, fogged ±`FIGURE.NOISE` (4). Mean figure
-gap between a bird +N on every stat and a plain 350 bird:
-
-| true gap | Long Knife | Short Knife | Long Gaff | Short Gaff |
-|---|---|---|---|---|
-| +50 | 1.8 | 2.3 | 2.0 | 4.7 |
-| **+100** | **3.7** | 5.1 | 4.3 | 9.4 |
-| +200 | 7.5 | 9.7 | 11.7 | 15.4 |
-| +400 | 14.6 | 18.8 | 25.6 | 26.6 |
-
-Identical birds read +0.0 (the control holds). But **+100 — one full grade,
-one generation of breeding — moves the Long Knife figure 3.7 points, under
-the fog** and inside one public band. A player who campaigns their improved
-bird at Long Knife cannot see the improvement in the number. The signal
-scales with blade length because figures integrate more turns; the knives are
-where discovery is weakest and the swing (gap 7) is highest.
+Zane's ruling: condition is the Temper analog — it targets no blade and no
+phase, it makes everything the bird already is arrive more reliably, and the
+boost is intended, not a bug. The config comment now says so. At divisor 85 it
+is genuinely powerful: a +100 favourite converts at 66% (condition 0) up to
+83–98% (condition 2000) depending on blade. The ~13-point figure lift across
+the condition range is accepted — the figure reports performance, and a
+consistent bird genuinely performs better.
 
 ---
 
-## Corrections to things previously believed
+## Still open, ranked
 
-Recorded because both were stated confidently, in this repo, by me.
+### 1. The blade ends miss the grade targets (deferred by design)
 
-- **"Weather's figure inflation sits inside the ±NOISE fog."** True on
-  shortKnife (+2.8), which is where it was measured. On **Short Gaff it is
-  +5.7** — larger than both `FIGURE.NOISE` (4) and `FIGURE.BAND` (5). The claim
-  was blade-specific and got written down as general.
-- **"The non-monotonic stat curve is pre-existing engine weirdness, out of
-  scope."** It was gap 1. A stat gap large enough to trip the underdog gate
-  makes the better bird worse, which is why the curve bent.
+B1 is 11 under at +100 and B4 is 7.5 over; only B3 sits on target. One divisor
+cannot fix this — turn count amplifies stats. This is the phase/blade-weight
+rework, explicitly deferred until the new blade lengths land (tune the middle,
+work outward).
+
+### 2. Stat rankings still miss intent on 3 of 4 blades
+
+B2 now **matches** its intended order (a divisor-85 side effect — it was
+inverted before). Still wrong: B1's gameness is structurally dead (its phase
+starts at turn 11, the blade caps at 5); B3 runs sight over stamina/gameness;
+B4 has agility over stamina. Stamina is ranked 2nd–3rd in the intent on every
+blade but never drives a turn anywhere — and the `fuel` case shows its entire
+lift is the wind pool (+1.8 to +3.9), with decay resistance decorative (≤0.3).
+All of it is the same deferred rework.
+
+### 3. The 5★ ceiling stacks loud on the long blades
+
+At full stars, wheel edge + weather day on B4 measures **95.8%** between
+otherwise equal birds (wheel alone 87.9%). That is the rarest possible
+configuration — both birds 5★, favorable matchup, ascendant day, marathon
+blade — but it is verdict-shaped. Watch it as bred stock climbs the star
+ladder; the lever is the ceilings, and the lab sweeps them in one line.
+
+### 4. Weather figure inflation at the star ceiling clears the fog
+
+At 5★ the weather day inflates figures +4.4 to +5.6 — above `FIGURE.NOISE`
+(4) and around one band. At 2.5★ and below it stays inside the fog, which is
+where round 24's ruling was made and where `formats.test.ts` pins it. Stance:
+the rarest bird's best day is allowed to be loud; the ordinary bird's day is
+not.
+
+### 5. B3's shape case reads backwards
+
+A stamina/gameness specialist (B3's intended top stats) *loses* 43.4% to its
+own anti-specialist — the blade rewards sight, per the sensitivity matrix.
+Same deferred rework as open item 2; the shape case just makes it vivid.
+
+### 6. Nobody is playing the going — probably correctly
+
+Doctor: weather timing 1.13× chance over **starred** entries (0★ entries are
+excluded now — they have no going to play). But a day-one flock tops out at
+1.5★, where the delivered weather edge is 0.15 of a roll; mild bot appetite
+may simply be right. Revisit when the population's stars climb.
 
 ## Comment/code discrepancies
 
-Found while tracing; none fixed this round.
-
-1. `fight-sim.ts:89` says the underdog gate uses "total **base** stats". It
-   uses **star-boosted** stats. (The lab now clamps per-stat to match the
-   engine exactly — an earlier version didn't, and disagreed above 1900 stats.)
+1. ~~`fight-sim.ts` underdog "total base stats" vs star-boosted~~ — moot: the
+   stars rework removed the boost entirely; totals are base (minus station).
 2. `config.ts` worked example says 300 stamina → 23 wind; `Math.round` makes a
-   350-stamina bird 24, not 23.5.
-3. `fight-sim.ts:214` can emit a **loser figure of −5**: the `Math.min(winner −
-   BAND, …)` is applied *after* `band()`'s `[0, MAX]` clamp.
+   350-stamina bird 24, not 23.5. (Still unfixed, still cosmetic.)
+3. ~~The −5 loser figure~~ — fixed this round (floored at 0, and scored down
+   from the clamped winner).
 
 ## Not yet measured
 
@@ -245,8 +169,10 @@ The lab covers the six stats, elements, stars, weather, blade reach, the grade
 ladder, stamina's two routes (`fuel`), crits (`crit`) and figure fidelity
 (`figure`). Still dark: the gacha/breeding stat distributions the engine is
 actually fed, and anything about the live population — that stays the
-doctor's job.
+doctor's job. Crit identity note survives the retune: B2 is still the
+swingiest blade (15.0% of outcomes flip without crits) and B3 at critMult 1.3
+still flips 12.0% — the "knives swingy, gaffs true" story remains half false.
 
 The blade intent is deliberately **not** tuned to. More blade lengths are
-coming (PFL runs 9 distances to our 4), and fitting the curve to four points
-now would be premature.
+coming (an odd count, so the middle blade can weigh every stat evenly), and
+fitting the curve to four points now would be premature.

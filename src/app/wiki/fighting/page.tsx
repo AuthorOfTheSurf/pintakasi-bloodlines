@@ -117,27 +117,32 @@ export default function FightingPage() {
         almost entirely in the deep fight.
       </p>
       <p className="dim">
-        Star rating matters equally everywhere: each full star adds{" "}
-        {STARS.BOOST_PER_FULL_STAR} points to all six stats before any of this math runs (see{" "}
-        <Link href="/wiki/birds">Birds &amp; stats</Link>) — the same boost whether the fight lasts
-        {" "}
-        {FORMATS.b1.maxTurns} turns or {FORMATS.b4.maxTurns}.
+        Star rating never touches these stats. Stars set how loudly a bird&apos;s{" "}
+        <em>element</em> plays — the wheel edge and the weather edge both scale with stars, from
+        nothing at 0★ up to the full value at {STARS.MAX_HALF_STARS / 2}★ (see{" "}
+        <Link href="/wiki/birds">Birds &amp; stats</Link>). The same scaling whether the fight
+        lasts {FORMATS.b1.maxTurns} turns or {FORMATS.b4.maxTurns}.
       </p>
 
       <div className="cards-2">
         <div className="minicard">
-          <b>Station — the underdog&apos;s edge</b>
-          If your total stats are at least {BATTLE.UNDERDOG_RATIO}× behind your opponent&apos;s,
-          you&apos;re the underdog for the whole fight, and your station (divided by{" "}
-          {BATTLE.STATION_DIVISOR}) adds to every roll you make. It&apos;s the game&apos;s
-          built-in path to upsets — matters in every blade, all fight long.
+          <b>Station — the underdog&apos;s heart</b>
+          If your fighting stats (everything except station itself) total behind your
+          opponent&apos;s, your station claws back part of that gap on every roll — smoothly,
+          with no magic cutoff. The further behind you are and the more station you carry, the
+          bigger the claw, up to {BATTLE.UNDERDOG_CLAWBACK * 100}% of the gap&apos;s value at a
+          perfect {STATS.MAX} station. It never claws back the <em>whole</em> gap, so the
+          better bird is always still the favorite — station makes upsets possible, not free.
+          Between even birds it does nothing (for now — a Crowd Noise mechanic is planned).
         </div>
         <div className="minicard">
-          <b>Condition — your variance floor</b>
+          <b>Condition — the wildcard</b>
           Each turn, each bird rolls its &ldquo;form&rdquo; for that turn, somewhere between a
           floor and a perfect 1.0. Condition sets the floor — from {BATTLE.WORST_FORM} at the
-          bottom up toward 1.0 as condition climbs toward {STATS.MAX}. High condition means you
-          rarely have a bad turn; low condition means some turns just arrive ugly.
+          bottom up toward 1.0 as condition climbs toward {STATS.MAX}. High condition means
+          the bird delivers what it is, nearly every turn; low condition means some turns just
+          arrive ugly. It targets no blade and no phase — it makes everything else more real,
+          which is why a condition advantage can quietly cover a stat weakness.
         </div>
       </div>
 

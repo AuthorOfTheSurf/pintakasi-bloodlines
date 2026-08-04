@@ -1,6 +1,6 @@
 # RULINGS
 
-A ledger of WHAT was ruled and WHEN — rounds ~14 through 23. The *reasoning*
+A ledger of WHAT was ruled and WHEN — rounds ~14 through 26. The *reasoning*
 lives in the dated comment blocks in `src/engine/config.ts` (and, for a few
 items, in the test files that pin the behavior); this file exists so an
 agent can see a knob's history without reading that whole file first.
@@ -51,3 +51,17 @@ before assuming "current value = only value this ever was":
 - **No fight, no claim** (reverses prior behavior — see Reversals table): an unmatched claimer used to sell anyway; now it refunds instead, fee and every claim.
 - Cousin bot stables added with handler names (`bot-marco`, `bot-reno`, `bot-kevin`) alongside two new speculator styles — the whale (gacha bundles) and the landlord (maxes the daily land-buy cap) — giving both the gacha and the land market bots with an appetite for them (AGENTS.md's "bots and auto-play need teaching" rule: a door nobody has an appetite for measures zero in simulation, as happened twice before — claiming in round 19, paid gacha rolls in round 22).
 - AGENTS.md gains the rule that pins the Handbook (`src/app/wiki/`) to move with the code in the same unit of work as any rule change.
+
+**Round 24** (2026-08-04) — tooling round (the doctor, `bun run doctor`), plus the **daily Element weather** feature (`WEATHER.EDGE`, `weatherOfDay`): one element ascendant per game-day, boost-only. The edge shipped at a flat +1 and was cut to 0.25 the same round after review — the first appearance of the "read every flat modifier against ROLL_DIVISOR, never against the dice" lesson.
+
+**Round 25** (2026-08-04) — **the fight balance lab** (`bun run balance`, `src/engine/balance/`): 14 measurement cases over the pure combat engine, the middle layer between unit tests and simulation. A measurement round in the round-21 sense — no knobs moved, but its gap report (the previous edition of BALANCE.md) is the direct cause of every round-26 ruling. Also `BATTLE.ELEMENT_EDGE` 1 → 0.5 (the flat era's last value — superseded by round 26's star scaling).
+
+**Round 26** (2026-08-04) — **the big balance round.** Everything below was measured before and after by the lab; BALANCE.md carries the numbers.
+- **Blades enumerated B1–B4** (keys and labels; the sabong weapons live on in `flavor`). Ordered sprint → marathon so a future fifth blade slots in and the MIDDLE blade becomes the balance anchor — Zane wants an odd blade count where the midpoint weighs every stat evenly and tuning works outward.
+- **Station rebuilt: gate → slope** (`BATTLE.UNDERDOG_CLAWBACK` = 0.5 replaces `UNDERDOG_RATIO`/`STATION_DIVISOR`). The old binary gate INVERTED the grade ladder (a +100-per-stat bird lost 59–67%) and carved two one-point cliffs. Now the outmatched bird claws back station/2000 × 0.5 × the gap's per-roll value — capped below the gap (a superior same-shape bird is ALWAYS favored; Zane: "otherwise there's no point in breeding"), smooth from zero, station excluded from the totals it compares (heart, not class — counted in, the stat self-cancelled).
+- **Stars reworked into the element's volume knob** (Zane's declared intent since round 25's report): both element edges scale by halfStars/10; the flat `BOOST_PER_FULL_STAR` stat boost is DELETED. 0★ = the element is a color on the card; every half-step is a real rung (the old floor threw half the ladder away). `ELEMENT_EDGE` 0.5 → **1.0** and `WEATHER.EDGE` 0.25 → **0.5**, re-read as CEILINGS — a 2.5★ bird gets exactly the old ruled values, only 5★ sees the full edge.
+- **`BATTLE.ROLL_DIVISOR` 400 → 85**, tuned at B3 (the future midpoint) against Zane's grade targets: +100 on every stat ≈ 80% win, +200 ≈ 98%. B3 measures 82.9 / 97.4. The blade ends miss by ±10 — turn count amplifies stats — and that spread is the deferred phase-weight rework's job, not this knob's.
+- **Condition re-ruled as intended** (the PFL-Temper theory): the boost is not a bug, condition is the wildcard stat — targets no distance, makes everything else arrive reliably, can offset a stat weakness. Comment and Handbook updated; no mechanic change.
+- Figure fixes riding along: the loser is scored down from the winner's CLAMPED figure (a maiden flattened by a monster used to post 145), and floored at 0 (the round-25-recorded −5 bug).
+- Doctor's weather-timing metric counts STARRED entries only (a 0★ bird has no going to play), and `weatherMatched` in bots requires stars for the same reason.
+- Deferred, explicitly: the phase/blade-weight rework (waiting on the new blade lengths), Crowd Noise (station's parity role), logarithmic breeding speed, and any tuning of the 5★ stacked ceiling (95.8% on B4 with wheel + weather — watch it as the population's stars climb).

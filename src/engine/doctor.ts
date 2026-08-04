@@ -330,6 +330,12 @@ export function cardHealth(db: DB): {
  *
  * The day is the lobby's `dayOpened`, which is exactly the day the fight
  * resolves under (see lobbies.ts) — not the entry's, in case those ever part.
+ *
+ * STARRED entries only (2026-08-04, the stars rework): the weather edge is
+ * WEATHER.EDGE × halfStars/10, so a 0★ bird has NO going to play — carding
+ * it on "its" day is not a timing decision, it is a coincidence. Counting
+ * those entries diluted the ratio toward chance exactly when the bots
+ * started (correctly) ignoring the sky for star-less birds.
  */
 export function weatherTiming(db: DB): {
   entries: number;
@@ -338,14 +344,17 @@ export function weatherTiming(db: DB): {
   chance: number;
   ratio: number;
 } {
-  const element = new Map(db.select().from(birds).all().map((b) => [b.id, b.element]));
+  const starred = new Map(
+    db.select().from(birds).all().map((b) => [b.id, b.halfStars > 0 ? b.element : null])
+  );
   const dayOf = new Map(db.select().from(lobbies).all().map((l) => [l.id, l.dayOpened]));
   let entries = 0;
   let matched = 0;
   for (const e of db.select().from(lobbyEntries).all()) {
     const day = dayOf.get(e.lobbyId);
-    const el = element.get(e.birdId);
-    if (day === undefined || el === undefined) continue; // a bird deleted out from under its entry
+    const el = starred.get(e.birdId);
+    // Skips both a bird deleted out from under its entry and a 0★ bird.
+    if (day === undefined || el === undefined || el === null) continue;
     entries++;
     if (el === weatherOfDay(day)) matched++;
   }
@@ -364,7 +373,7 @@ function weatherLine(db: DB): { line: string; warn?: string } {
       : "⚠ no better than chance";
   return {
     line:
-      `weather timing  ${w.matched}/${w.entries} entries ran on the bird's own element day ` +
+      `weather timing  ${w.matched}/${w.entries} starred entries ran on the bird's own element day ` +
       `(${pct(w.matched, w.entries)} vs ${(w.chance * 100).toFixed(1)}% by chance, ` +
       `${w.ratio.toFixed(2)}×) ${verdict}`,
     warn:

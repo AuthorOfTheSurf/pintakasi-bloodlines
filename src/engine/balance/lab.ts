@@ -149,9 +149,11 @@ export interface DuelResult {
   /** How fights ENDED, as percentages. Three ways, and they mean different things. */
   endings: { ran: number; windOut: number; bell: number };
   /**
-   * Whether the underdog flag fired, and for whom. Surfaced on every result
-   * because it is the engine's one binary gate and the easiest way to
-   * accidentally measure something other than what you meant to.
+   * Which side, if either, collects the station clawback — the side with the
+   * smaller base total. Surfaced on every result because a stat change that
+   * moves a bird's TOTAL also moves the opponent's clawback, which is the
+   * easiest way to accidentally measure something other than what you meant
+   * to. (Under the pre-2026-08-04 engine this was a binary gate at 1.1x.)
    */
   underdog: "A" | "B" | "neither";
 }
@@ -161,33 +163,42 @@ const turnsIn = (playByPlay: string) =>
   Math.max(0, ...[...playByPlay.matchAll(/^T(\d+) /gm)].map((m) => Number(m[1])));
 
 /**
- * Reproduce the engine's underdog decision WITHOUT running a fight.
+ * Reproduce the engine's station decision WITHOUT running a fight.
  *
- * This mirrors fight-sim.ts:89-92 — and note it compares STAR-BOOSTED totals,
- * despite the comment there saying "total base stats". That discrepancy is not
- * academic: 0★ vs 5★ at equal base stats compares 2100 to 2700, which trips
- * the gate and hands the WEAKER bird a station bonus worth more than the whole
- * star boost being measured. A star measurement that ignores this reports
- * stars as weaker than they are, or negative. Cases control for it; this
- * function is how they can see it coming.
+ * Since the 2026-08-04 rework there is no gate: the side with the smaller
+ * BASE total (stars no longer inflate anything) claws back a station-sized
+ * fraction of the gap on every roll. "Underdog" now just means "the side
+ * collecting that clawback" — smaller total, however slightly. The AMOUNT is
+ * what `clawbackOf` reports; cases that used to reason about a binary flag
+ * should reason about whether the clawback is big enough to contaminate the
+ * thing they meant to measure.
  */
 export function underdogOf(a: Combatant, b: Combatant): "A" | "B" | "neither" {
-  // Clamp PER STAT before totalling, exactly as fight-sim.ts:56 does. The
-  // shortcut — total + 6 × boost — is right for every bird that exists today
-  // and silently wrong at the ceiling: a 1950-stat 5★ bird totals 12,300 here
-  // and 12,000 in the engine, which is the difference between the gate firing
-  // and not. Nothing is near 2000 yet, but bred stock is meant to climb there,
-  // and a measuring instrument that drifts from the thing it measures exactly
-  // when the interesting birds arrive is worse than no instrument.
-  const boostedTotal = (c: Combatant) => {
-    const boost = Math.floor(c.halfStars / 2) * STARS.BOOST_PER_FULL_STAR;
-    return Object.values(c.stats).reduce((sum, v) => sum + Math.min(STATS.MAX, v + boost), 0);
-  };
-  const ta = boostedTotal(a);
-  const tb = boostedTotal(b);
-  if (tb >= ta * BATTLE.UNDERDOG_RATIO) return "A";
-  if (ta >= tb * BATTLE.UNDERDOG_RATIO) return "B";
+  // Fighting totals — station excluded, matching the engine's scale.
+  const ta = statTotal(a) - a.stats.station;
+  const tb = statTotal(b) - b.stats.station;
+  if (ta < tb) return "A";
+  if (tb < ta) return "B";
   return "neither";
+}
+
+/**
+ * The per-roll clawback each side would collect, pre-form — mirrors the
+ * `claw` closure at fight-sim.ts's scale exactly. Zero for the side that is
+ * ahead; for the side behind, station/MAX × UNDERDOG_CLAWBACK × the per-roll
+ * value of its deficit. This is the number to compare against a modifier a
+ * case is trying to measure in isolation.
+ */
+export function clawbackOf(a: Combatant, b: Combatant): { A: number; B: number } {
+  // Station is excluded from both totals, exactly as at fight-sim's scale:
+  // heart is not class, and counting it made station self-cancelling.
+  const fightingTotal = (c: Combatant) => statTotal(c) - c.stats.station;
+  const claw = (self: Combatant, other: Combatant) => {
+    const deficit = Math.max(0, fightingTotal(other) - fightingTotal(self));
+    const gapPerRoll = deficit / 6 / BATTLE.ROLL_DIVISOR;
+    return (self.stats.station / STATS.MAX) * BATTLE.UNDERDOG_CLAWBACK * gapPerRoll;
+  };
+  return { A: claw(a, b), B: claw(b, a) };
 }
 
 /**

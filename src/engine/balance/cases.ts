@@ -43,6 +43,7 @@ import {
 import { simulatePair, type Combatant } from "@/engine/fight-sim";
 import { mulberry32 } from "@/engine/rng";
 import {
+  clawbackOf,
   duel,
   flat,
   mirrored,
@@ -177,11 +178,15 @@ const elements: BalanceCase = {
   question: `What is the ${ATTACKER} bird's matchup worth, across the wheel and across the blades?`,
   run(o) {
     const bs = blades(o);
+    // Full stars on BOTH birds since the 2026-08-04 rework: stars are the
+    // element's volume knob, so this case measures the wheel at its ceiling
+    // — the strongest any matchup can be. The star LADDER between there and
+    // zero is the stars case's job, not this one's.
     const rows: Row[] = ELEMENTS.map((opponent) => {
       const cells = bs.map((f) => {
         const r = mirrored(
-          flat(BASE, { name: "A", element: ATTACKER }),
-          flat(BASE, { name: "B", element: opponent }),
+          flat(BASE, { name: "A", element: ATTACKER, halfStars: STARS.MAX_HALF_STARS }),
+          flat(BASE, { name: "B", element: opponent, halfStars: STARS.MAX_HALF_STARS }),
           runOpts(o, f)
         );
         return rate(r);
@@ -193,15 +198,14 @@ const elements: BalanceCase = {
     });
     return [
       {
-        title: "ELEMENTS — THE WHEEL",
-        question: `${ATTACKER} against all five elements. ${ATTACKER} overcomes ${PREY}; ${ELEMENTS.find((e) => ELEMENT_BEATS[e] === ATTACKER)} overcomes ${ATTACKER}.`,
+        title: "ELEMENTS — THE WHEEL, AT FULL STARS",
+        question: `${ATTACKER} against all five elements, both birds ${STARS.MAX_HALF_STARS / 2}★ (the ceiling — a lower-star bird's edge scales down from these rows). ${ATTACKER} overcomes ${PREY}; ${ELEMENTS.find((e) => ELEMENT_BEATS[e] === ATTACKER)} overcomes ${ATTACKER}.`,
         columns: ["matchup", "relation", ...bs.map(bladeLabel)],
         rows,
         findings: [
           // ELEMENT_EDGE is flat, but the blades are not: a flat bonus is worth
-          // more where fewer turns decide the fight, because there are fewer
-          // chances for the dice to average it away.
-          "A flat roll bonus is not worth the same at every distance — fewer turns means fewer chances for the dice to average it out.",
+          // more where more turns compound it against the wind pool.
+          "A flat roll bonus is not worth the same at every distance — the blades weigh the same edge differently.",
           "Mirror and neutral rows are a second read on symmetry: they should sit at the control's 50%.",
         ],
       },
@@ -212,112 +216,92 @@ const elements: BalanceCase = {
 // ── 3. STARS ────────────────────────────────────────────────────────────────
 
 /**
- * THE CONFOUNDED CASE, and the reason the lab exists at all.
+ * Stars are the element's VOLUME KNOB (reworked 2026-08-04): both edges
+ * multiply by halfStars/10, and the old flat stat boost — the confound that
+ * once made a 5★ bird measure WORSE than its 0★ twin by tripping the
+ * underdog gate — is gone. Two invariants define the mechanic, and each gets
+ * a table:
  *
- * Stars boost every stat (fight-sim.ts:56), and the underdog gate reads the
- * BOOSTED totals (fight-sim.ts:89-92, despite its comment saying "base"). So a
- * starred bird crosses BATTLE.UNDERDOG_RATIO against its plain opponent and
- * hands that opponent a station bonus — the naive measurement is
- * "stars, MINUS the station they trigger in the other bird", and station is
- * worth more per point than stars are.
- *
- * Both columns are run and printed side by side. The controlled column zeroes
- * STATION on both birds: the gate still opens, but the bonus it opens is worth
- * nothing, so stars are measured alone. The GAP between the columns is the
- * finding — it is the size of the correction the naive number needed, and
- * nobody had ever measured it.
+ *  1. AT A FAVORABLE MATCHUP the ladder should climb from exactly the
+ *     no-star baseline (0★ = the wheel counts for nothing) to the full
+ *     ELEMENT_EDGE ceiling at 5.0★, with every half-step a real rung.
+ *  2. WITHOUT A MATCHUP stars must do nothing at all — a star bird against
+ *     its own element is a pure coin flip at every star level. This is the
+ *     row set that catches stars ever leaking back into raw power.
  */
 const stars: BalanceCase = {
   name: "stars",
-  question: "What is a star worth — and how much of that is really the underdog gate firing?",
+  question: "Stars scale the element edge — does the ladder climb, and is 0★ truly mute?",
   run(o) {
     const bs = blades(o);
-    const steps = Array.from({ length: STARS.MAX_HALF_STARS }, (_, i) => i + 1);
+    const steps = Array.from({ length: STARS.MAX_HALF_STARS + 1 }, (_, i) => i);
 
-    // Measured once, read by three tables.
-    const naive = new Map<string, DuelResult>();
-    const ctrl = new Map<string, DuelResult>();
-    for (const h of steps) {
-      for (const f of bs) {
-        naive.set(
-          `${h}:${f}`,
-          mirrored(
-            flat(BASE, { name: "Star", halfStars: h }),
-            flat(BASE, { name: "Plain" }),
-            runOpts(o, f)
-          )
-        );
-        ctrl.set(
-          `${h}:${f}`,
-          mirrored(
-            shaped({ station: STATS.MIN }, { base: BASE, name: "Star", halfStars: h }),
-            shaped({ station: STATS.MIN }, { base: BASE, name: "Plain" }),
-            runOpts(o, f)
-          )
-        );
-      }
-    }
-
-    const starOf = (h: number) => flat(BASE, { halfStars: h });
-    const plain = flat(BASE, { name: "Plain" });
-    const gateOpen = (h: number) => underdogOf(starOf(h), plain) !== "neither";
-
-    const naiveRows: Row[] = steps.map((h) => ({
-      label: `${h / 2}★ vs 0★`,
-      cells: [gateOpen(h) ? "GATE OPEN" : "—", ...bs.map((f) => rate(naive.get(`${h}:${f}`)!))],
-    }));
-
-    const ctrlRows: Row[] = steps.map((h) => ({
-      label: `${h / 2}★ vs 0★`,
-      cells: [...bs.map((f) => rate(ctrl.get(`${h}:${f}`)!))],
-    }));
-
-    const gapRows: Row[] = steps.map((h) => {
-      const gaps = bs.map((f) => {
-        const n = naive.get(`${h}:${f}`)!;
-        const c = ctrl.get(`${h}:${f}`)!;
-        return { d: c.winRate - n.winRate, ci: Math.hypot(n.ci95, c.ci95) };
-      });
-      const real = gaps.some((g) => Math.abs(g.d) > g.ci);
+    const matchupRows: Row[] = steps.map((h) => {
+      const results = bs.map((f) =>
+        mirrored(
+          flat(BASE, { name: "Star", element: ATTACKER, halfStars: h }),
+          flat(BASE, { name: "Prey", element: PREY }),
+          runOpts(o, f)
+        )
+      );
+      // Only the mute end carries a verdict: 0★ with the wheel advantage must
+      // be indistinguishable from no advantage at all. The climb itself has
+      // no numeric target — the ceiling is ELEMENT_EDGE's ruling, not ours.
+      const muteBroken = h === 0 && results.some((r) => Math.abs(r.winRate - 50) > r.ci95);
       return {
-        label: `${h / 2}★ vs 0★`,
-        cells: [
-          gateOpen(h) ? "GATE OPEN" : "—",
-          ...gaps.map((g) => `${g.d > 0 ? "+" : ""}${pct(g.d)}`),
-        ],
-        // A verdict here is about MEASUREMENT INTEGRITY, not about design: the
-        // star mechanic has no numeric target to judge against (see STAR_INTENT).
-        verdict: real ? "warn" : "ok",
-        note: real
-          ? "naive number is understating stars — station is absorbing the difference"
-          : "no measurable confound at this star level",
+        label: `${h / 2}★ (edge ×${(h / STARS.MAX_HALF_STARS).toFixed(1)})`,
+        cells: results.map((r) => rate(r)),
+        verdict: h === 0 ? (muteBroken ? "warn" : "ok") : undefined,
+        note:
+          h === 0
+            ? muteBroken
+              ? "a 0★ bird is getting element value it should not have"
+              : "0★ mutes the wheel completely"
+            : undefined,
       };
     });
 
+    // The leak detector: same element, so no edge exists for stars to scale.
+    // Coarser ladder (full stars) — the question is binary, not a curve.
+    const leakRows: Row[] = steps
+      .filter((h) => h % 2 === 0)
+      .map((h) => {
+        const results = bs.map((f) =>
+          mirrored(
+            flat(BASE, { name: "Star", element: ATTACKER, halfStars: h }),
+            flat(BASE, { name: "Twin", element: ATTACKER }),
+            runOpts(o, f)
+          )
+        );
+        const leaks = results.some((r) => Math.abs(r.winRate - 50) > r.ci95);
+        return {
+          label: `${h / 2}★ vs 0★, same element`,
+          cells: results.map((r) => rate(r)),
+          verdict: leaks ? "warn" : "ok",
+          note: leaks
+            ? "stars are worth something WITHOUT a matchup — they are leaking into raw power again"
+            : undefined,
+        };
+      });
+
     return [
       {
-        title: "STARS — NAIVE (as the engine plays them)",
-        question: "Star bird's win rate against an identical 0★ bird, nothing controlled for.",
-        columns: ["stars", "underdog gate", ...bs.map(bladeLabel)],
-        rows: naiveRows,
-      },
-      {
-        title: "STARS — STATION NEUTRALISED",
-        question: `Same fights with station at ${STATS.MIN} on both birds: the gate still opens, but what it opens is worth nothing.`,
+        title: "STARS — THE LADDER AT A FAVORABLE MATCHUP",
+        question: `${ATTACKER} (starred) vs ${PREY} (0★): the wheel edge at each star level. The whole mechanic is this climb.`,
         columns: ["stars", ...bs.map(bladeLabel)],
-        rows: ctrlRows,
+        rows: matchupRows,
+        findings: [
+          `INTENT: ${STAR_INTENT.intended}`,
+          `STATUS: ${STAR_INTENT.status}`,
+          `The delivered edge is ELEMENT_EDGE × halfStars/10 — at today's ceiling (${BATTLE.ELEMENT_EDGE}) a 2.5★ bird plays round 24's old flat edge and only 5.0★ sees the full value.`,
+        ],
       },
       {
-        title: "STARS — THE CONFOUND",
-        question: "Controlled minus naive, in win-rate points. This gap is what the gate was taking back.",
-        columns: ["stars", "underdog gate", ...bs.map(bladeLabel)],
-        rows: gapRows,
-        findings: [
-          `Gate maths: a 0★ bird totals ${statTotal(plain)}; each full star adds ${6 * STARS.BOOST_PER_FULL_STAR} to the boosted total the gate compares, and the gate opens at ${BATTLE.UNDERDOG_RATIO}x.`,
-          `INTENT: ${STAR_INTENT.intended}`,
-          `SHIPPED: ${STAR_INTENT.shipped}`,
-          `STATUS: ${STAR_INTENT.status} — these rows measure the mechanic we have, as the before-picture.`,
-        ],
+        title: "STARS — NO MATCHUP, NO VALUE",
+        question:
+          "Same-element duels: with no edge to amplify, every star level must be a coin flip. This is the leak detector for stars re-entering raw power.",
+        columns: ["stars", ...bs.map(bladeLabel)],
+        rows: leakRows,
       },
     ];
   },
@@ -402,95 +386,95 @@ const shape: BalanceCase = {
 // ── 5. STATION ──────────────────────────────────────────────────────────────
 
 /**
- * The stat nothing has ever measured — and the only one in the game that can
- * be worth LESS THAN NOTHING.
+ * Station under the SLOPE (rebuilt 2026-08-04). The old binary gate — this
+ * case's own headline finding — is gone: the side with the smaller total now
+ * claws back station/MAX × UNDERDOG_CLAWBACK of the gap's per-roll value on
+ * every roll, smoothly from zero.
  *
- * Station only joins a roll when its owner is the underdog: opponent's total
- * >= yours × BATTLE.UNDERDOG_RATIO. At parity it is unread. But it still
- * COUNTS toward the total the gate compares, so pouring points into station
- * pushes you AWAY from being the underdog — and then past the line in the
- * other direction, where it hands your opponent their station instead.
+ * The table walks the OLD cliff coordinates on purpose (159/160, 559/560 at
+ * BASE 350) plus the extremes. Under the gate those rows jumped 16 points in
+ * one stat point; under the slope adjacent rows must be statistically
+ * indistinguishable. Keeping the old ladder makes this case the regression
+ * test for the cliffs ever coming back.
  *
- * The flip point is exact and computed, not guessed: with five stats at BASE
- * and station at s, the opponent (six stats at BASE) becomes the underdog when
- * 5·BASE + s >= 6·BASE · RATIO. Rows sit either side of it by one point.
+ * The second table is the payout curve when genuinely outmatched — the
+ * mechanic's actual job — where more station must always buy more win rate,
+ * and even 2000 station must stay short of flipping the favorite (the
+ * clawback is capped below the gap, which is what makes breeding safe).
  */
-const FLIP_STATION = 6 * BASE * BATTLE.UNDERDOG_RATIO - 5 * BASE;
-/**
- * …and the SECOND cliff, which is the one nobody expects. Below this station
- * value YOU are the underdog (the opponent's flat total clears your reduced
- * one), so your station is live. Buy one point past it and you have closed
- * your own gate: the stat switches itself off by making you too good.
- */
-const SELF_CLOSE_STATION = (6 * BASE) / BATTLE.UNDERDOG_RATIO - 5 * BASE;
+const OLD_CLIFF_A = 159; // was: one point below closing your own gate
+const OLD_CLIFF_B = 560; // was: the point that opened the OPPONENT's gate
 
 const station: BalanceCase = {
   name: "station",
-  question: "Station is gated on being outmatched — so what is it worth, and where is the cliff?",
+  question: "Station claws back a slice of the stat gap — is the slope smooth, and does it stay short of inverting?",
   run(o) {
     const bs = blades(o);
     const control = flat(BASE, { name: "Even" });
 
-    // Either side of the line, plus the extremes. Ordered, deduped, integral.
+    // The old cliff coordinates, one point either side, plus extremes.
     const ladder = [
       STATS.MIN,
-      Math.floor(SELF_CLOSE_STATION),
-      Math.floor(SELF_CLOSE_STATION) + 1,
-      Math.round(FLIP_STATION / 2),
-      Math.ceil(FLIP_STATION) - 1,
-      Math.ceil(FLIP_STATION),
-      Math.round(FLIP_STATION * 1.5),
+      OLD_CLIFF_A,
+      OLD_CLIFF_A + 1,
+      Math.round((OLD_CLIFF_A + OLD_CLIFF_B) / 2),
+      OLD_CLIFF_B - 1,
+      OLD_CLIFF_B,
+      Math.round(OLD_CLIFF_B * 1.5),
       STATS.MAX,
     ];
 
-    const cliffRows: Row[] = ladder.map((s) => {
+    const parityRows: Row[] = ladder.map((s) => {
       const me = bump(BASE, "station", s, { name: "Stn" });
-      const who = underdogOf(me, control);
+      const { A, B } = clawbackOf(me, control);
+      // Raising station raises the OWN total, so the clawback here belongs to
+      // the flat opponent — the row measures what over-buying station costs
+      // now that there is no cliff: it should cost almost nothing.
       return {
         label: `station ${s}`,
         cells: [
           String(statTotal(me)),
-          who === "neither" ? "closed" : `open (${who === "A" ? "Stn" : "Even"})`,
+          `${A > 0 ? "Stn" : B > 0 ? "Even" : "—"} +${(Math.max(A, B)).toFixed(2)}/roll`,
           ...bs.map((f) => rate(mirrored(me, control, runOpts(o, f)))),
         ],
       };
     });
 
-    // Once the gate IS open, what does the stat actually pay? The opponent is
-    // built big enough that the gate stays open across the whole ladder —
-    // otherwise the row that finally closes it would read as station failing.
-    const bigLevel = Math.ceil(((5 * BASE + STATS.MAX) * BATTLE.UNDERDOG_RATIO) / 6) + 1;
+    // The payout curve: genuinely outmatched (a flat bird one grade up), so
+    // the clawback is live on every row and only station varies.
+    const bigLevel = BASE + GRADE_STEP;
     const big = flat(bigLevel, { name: "Big" });
     const payRows: Row[] = ladder.map((s) => {
       const me = bump(BASE, "station", s, { name: "Small" });
-      const open = underdogOf(me, big) === "A";
+      const claw = clawbackOf(me, big).A;
       return {
         label: `station ${s}`,
-        cells: [open ? "open" : "CLOSED", ...bs.map((f) => rate(mirrored(me, big, runOpts(o, f))))],
-        verdict: open ? undefined : "warn",
-        note: open ? undefined : "gate closed on this row — not a station measurement",
+        cells: [
+          `+${claw.toFixed(3)}/roll`,
+          ...bs.map((f) => rate(mirrored(me, big, runOpts(o, f)))),
+        ],
       };
     });
 
     return [
       {
-        title: "STATION — THE CLIFF",
-        question: `Station varied against an even ${BASE}-flat bird. Your own gate CLOSES above station ${Math.floor(SELF_CLOSE_STATION)}; the opponent's OPENS at ${Math.ceil(FLIP_STATION)}.`,
-        columns: ["station", "own total", "gate", ...bs.map(bladeLabel)],
-        rows: cliffRows,
+        title: "STATION — THE OLD CLIFFS, REVISITED",
+        question: `Station varied against an even ${BASE}-flat bird. The ladder sits on the old gate's cliff points (${OLD_CLIFF_A}/${OLD_CLIFF_A + 1} and ${OLD_CLIFF_B - 1}/${OLD_CLIFF_B}) — adjacent rows must now be statistically identical.`,
+        columns: ["station", "own total", "clawback", ...bs.map(bladeLabel)],
+        rows: parityRows,
         findings: [
-          `Two cliffs, not one. Up to station ${Math.floor(SELF_CLOSE_STATION)} the low total keeps YOU the underdog and the stat is live; one point past that you have switched your own stat off by getting too good.`,
-          `Between there and ${Math.ceil(FLIP_STATION)} station is an UNREAD stat: flat at 50% no matter how many points sit in it.`,
-          `Past ${Math.ceil(FLIP_STATION)} it is worse than unread — the extra total makes the OPPONENT the underdog, and they collect their station on every roll.`,
+          "Under the old gate these rows swung 16 points across one stat point, twice. If any adjacent pair separates by more than its combined CI, a cliff is back.",
+          "Buying station past parity now costs only the opponent's tiny clawback on your surplus — more of a stat is never a mistake, which is the property the gate broke.",
         ],
       },
       {
-        title: "STATION — WHAT IT PAYS WHEN THE GATE IS OPEN",
-        question: `The same ladder against a ${bigLevel}-flat bird, chosen so the gate stays open on every row.`,
-        columns: ["station", "gate", ...bs.map(bladeLabel)],
+        title: "STATION — THE PAYOUT WHEN OUTMATCHED",
+        question: `The same ladder against a ${bigLevel}-flat bird (one full grade up), so the clawback is live on every row.`,
+        columns: ["station", "clawback", ...bs.map(bladeLabel)],
         rows: payRows,
         findings: [
-          `Station joins the roll as station × form / ${BATTLE.STATION_DIVISOR} — the same divisor as the phase stats, so at the gate it is a full second stat, not a nudge.`,
+          `The clawback: station/${STATS.MAX} × ${BATTLE.UNDERDOG_CLAWBACK} × the per-roll value of the deficit (deficit/6/${BATTLE.ROLL_DIVISOR}), × form. Capped below the gap by construction — max station claws back half the lead, never all of it.`,
+          "The curve must be monotone in station and the top row must still sit UNDER 50%: an underdog with maximum heart makes a real fight of it and remains the underdog. That is the whole ruling.",
         ],
       },
     ];
@@ -635,21 +619,21 @@ function gradeCase(target: (typeof GRADE_TARGETS)[number], name: string): Balanc
           note: v.note,
         });
       }
-      // The check that turns this from a table into a finding: if the graded
-      // bird is losing OUTRIGHT, station is not clawing back part of a grade,
-      // it is reversing it — and breeding, the game's whole progression, is a
-      // net negative against an opponent carrying ordinary station.
+      // The check that turned this case into round 25's headline: under the
+      // old gate the graded bird LOST outright on all four blades. The slope
+      // makes that structurally impossible (clawback < gap), so this filter
+      // surviving as a permanent regression tripwire costs nothing.
       const inverted = rows.filter((r) => Number(r.cells[0].split(" ")[0]) < SYMMETRY_TARGET);
       return [
         {
           title: `GRADE +${target.delta} — ${target.delta / GRADE_STEP} STEP${target.delta / GRADE_STEP === 1 ? "" : "S"} OF BREEDING`,
-          question: `+${target.delta} on all six stats against a flat ${BASE} bird. Underdog gate is EXPECTED to fire here — that is station doing its job.`,
+          question: `+${target.delta} on all six stats against a flat ${BASE} bird. The station clawback is EXPECTED to be live here — that is the mechanic doing its job.`,
           columns: ["blade", "win% ±95", "station-neutral ±95", "station cost", "intent"],
           rows,
           findings: [
-            "The 'station cost' column is how much of this grade step the underdog mechanic is currently giving back to the weaker bird.",
+            "The 'station cost' column is how much of this grade step the clawback is giving back to the weaker bird — bounded by design at half the gap's value, at maximum station.",
             inverted.length
-              ? `⚠ INVERSION on ${inverted.length}/${rows.length} blades: the graded bird LOSES. Station is not softening the grade ladder, it is reversing it — a ${target.delta}-point stat lead is worth ${target.delta / BATTLE.ROLL_DIVISOR} on a roll, while the opponent's ${BASE} station pays about ${(BASE / BATTLE.STATION_DIVISOR).toFixed(2)} × form on every roll of the fight.`
+              ? `⚠ INVERSION on ${inverted.length}/${rows.length} blades: the graded bird LOSES. The clawback is supposed to make this impossible — if this fires, the cap is broken.`
               : "Graded birds win on every blade; station softens the ladder without reversing it.",
           ],
         },
@@ -697,9 +681,11 @@ const sensitivity: BalanceCase = {
       }
     }
 
+    // The bumped bird's surplus hands the flat opponent a small clawback —
+    // quantified here so the matrix's fine print can say exactly how much
+    // station term each row contains instead of pretending it is zero.
     const probe = bump(BASE, STAT_NAMES[0], BASE + SENS_DELTA, { name: "Bump" });
-    const gate = underdogOf(probe, control);
-    const ratio = statTotal(probe) / statTotal(control);
+    const oppClaw = clawbackOf(probe, control).B;
 
     const matrix: Row[] = STAT_NAMES.map((s) => ({
       label: s,
@@ -731,9 +717,7 @@ const sensitivity: BalanceCase = {
         columns: ["stat", ...bs.map(bladeLabel)],
         rows: matrix,
         findings: [
-          gate === "neither"
-            ? `Underdog gate stayed SHUT for every row: +${SENS_DELTA} on one stat is a ${ratio.toFixed(3)}x total, under the ${BATTLE.UNDERDOG_RATIO}x threshold. These are clean single-stat measurements.`
-            : `⚠ Underdog gate OPENED (${ratio.toFixed(3)}x >= ${BATTLE.UNDERDOG_RATIO}x): every row in this matrix also contains a station term. Reduce the delta or zero station before quoting these.`,
+          `The clawback contamination in every row: the flat opponent claws back ${oppClaw.toFixed(3)}/roll off the bump's surplus (vs the bump's own ${(SENS_DELTA / BATTLE.ROLL_DIVISOR).toFixed(2)}/roll when its stat drives). Small and IDENTICAL across rows, so the ranking is clean even though the levels carry a hair of station.`,
           `A row at 50% ±ci across all blades is a stat a player can ignore — the violation of: ${EVERY_STAT_EVERYWHERE}`,
         ],
       },
@@ -774,8 +758,12 @@ const weather: BalanceCase = {
   question: "What does the day's element buy — alone, stacked, and in the Pit Figure?",
   run(o) {
     const bs = blades(o);
-    const A = (e: Element) => flat(BASE, { name: "A", element: e });
-    const B = (e: Element) => flat(BASE, { name: "B", element: e });
+    // Full stars on both sides: since the 2026-08-04 rework the day only
+    // speaks as loudly as a bird's stars, so this measures the weather at
+    // its ceiling. A 0★ bird's weather day is a no-op by construction (the
+    // stars case owns that invariant).
+    const A = (e: Element) => flat(BASE, { name: "A", element: e, halfStars: STARS.MAX_HALF_STARS });
+    const B = (e: Element) => flat(BASE, { name: "B", element: e, halfStars: STARS.MAX_HALF_STARS });
 
     const scenarios = [
       { key: "alone", label: `${ATTACKER} vs ${NEUTRAL}, ${ATTACKER} day`, a: ATTACKER, b: NEUTRAL, wx: ATTACKER },
@@ -963,7 +951,7 @@ const reach: BalanceCase = {
         s === "stamina"
           ? `the wind pool (${BATTLE.BASE_WIND} + stamina × ${BATTLE.WIND_PER_STAMINA}) and decay resistance`
           : s === "station"
-            ? `only when the underdog gate is open (${BATTLE.UNDERDOG_RATIO}x)`
+            ? `claws back up to ${BATTLE.UNDERDOG_CLAWBACK} of the stat gap's roll value when outmatched`
             : `the per-turn form multiplier on every other stat`,
       ],
     }));

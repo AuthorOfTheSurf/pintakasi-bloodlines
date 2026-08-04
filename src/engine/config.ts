@@ -90,34 +90,26 @@ export const ELEMENT_BEATS: Record<Element, Element> = {
 // element RPS edge (ELEMENT_EDGE) is SEPARATE and stacks with this — a Fire
 // bird vs a Metal opponent on a Fire day gets both.
 export const WEATHER = {
-  // The flat bonus on a turn's roll when your element matches the day's
-  // ascendant element. Boost-only on purpose — no predator penalty — to keep
-  // it soft; a hindrance for the element that beats the ascendant is a
-  // tunable later.
+  // The bonus CEILING on a turn's roll when your element matches the day's
+  // ascendant element — like ELEMENT_EDGE, scaled by the bird's stars
+  // (× halfStars/10) since the 2026-08-04 stars rework: the day only speaks
+  // as loudly as the bird's element does. Boost-only on purpose — no
+  // predator penalty — to keep it soft; a hindrance for the element that
+  // beats the ascendant is a tunable later.
   //
-  // WHY 0.25 AND NOT 1 (re-ruled after round 24's review). This shipped at
-  // +1, matching ELEMENT_EDGE, on the reasoning that "+1 on 2d6 is half a
-  // die, so it only nudges." That reasoning is wrong, and the measurement
-  // says so: between two equal 350-stat birds a flat +1 takes the matched
-  // bird from 50% to 76%, and STACKED on the head-to-head RPS edge it
-  // reaches 92%. It was the single most decisive term in the fight.
+  // History: shipped at a flat +1 "because +1 on 2d6 only nudges" — wrong,
+  // it measured 50%→76% between equals, the single most decisive term in
+  // the fight. Round 24 cut it to a flat 0.25 (50%→57%, and Pit Figure
+  // inflation inside the ±NOISE fog instead of two full bands over it).
+  // The lesson, twice now: read every flat modifier against ROLL_DIVISOR
+  // (what a whole stat block adds to a roll), never against the dice.
   //
-  // The reason is ROLL_DIVISOR (see BATTLE): a turn roll is 2d6 + stat/400,
-  // so a starter bird's ENTIRE stat block is worth about +0.875 on the roll.
-  // Anything flat and near 1.0 doesn't nudge the stat term, it outweighs it.
-  // Every flat modifier in this engine has to be read against 0.875, not
-  // against the dice.
-  //
-  // 0.25 is about a quarter of what a whole starter bird contributes.
-  // Measured on equal 350-stat birds over 4000 seeds, b2:
-  //   weather alone   50% → 57%   (a felt edge; a coin-flip stays a coin-flip)
-  //   stacked on RPS  76% → 82%   (weather adds ~6 points, not ~16)
-  // It also keeps the Pit Figure honest: at +1 a weather-matched winner's
-  // average figure inflated by ~12 points — over two full FIGURE.BANDs, so
-  // the day leaked into the discovery signal and no form line could show it.
-  // At 0.25 the inflation is ~2.7, inside the ±FIGURE.NOISE fog that's
-  // already there. The weather colors a fight; it doesn't relabel the bird.
-  EDGE: 0.25,
+  // 0.5 as the star-scaled ceiling keeps the DELIVERED value at or below
+  // round 24's ruling for nearly the whole ladder: a 2.5★ bird gets
+  // exactly the old 0.25, only a 5.0★ bird doubles it, and day-one stock
+  // (≤1.5★) feels the weather as a whisper. Still exactly half of
+  // ELEMENT_EDGE, the ratio docs.test.ts pins.
+  EDGE: 0.5,
   // The salt that makes weatherOfDay irregular without cycling every 5 days.
   SALT: 0x6c29a1d3,
 } as const;
@@ -138,12 +130,21 @@ export function weatherOfDay(dayIndex: number): Element {
 }
 
 // ── Element stars (typed 0–5 in half-steps; stored as half-stars 0–10) ──────
+// REWORKED 2026-08-04 (Zane's ruling — this was the declared intent all
+// along): stars no longer add stat points. A star is an AMPLIFIER on the
+// bird's element: every element/weather edge is scaled by halfStars/10, so
+// 5.0★ = the full edge, 0.5★ = a twentieth of it, 0★ = the element is
+// decorative. Two things the old flat boost got wrong, both measured:
+//   · Math.floor(halfStars/2) threw every half-step away — 0.5★ was
+//     bit-identical to 0★, half the ladder did nothing
+//   · 5 full stars were worth +0.25 on a roll (one weather day) AND the
+//     boost inflated the bird's total, which tripped the old underdog gate
+//     and made a 5★ bird measure WORSE than a 0★ twin (33-41%)
+// Now stars are exactly one thing: how loudly the bird's element plays.
+// Every half-step is real (10 distinct rungs), and a star bird without a
+// favorable matchup gets nothing — stars reward PLAYING the wheel.
 export const STARS = {
   MAX_HALF_STARS: 10, // 10 half-stars = 5.0★, the max
-  // Baseline boost: every FULL star adds this many effective points to ALL
-  // six stats in battle (format-agnostic — stars work in every blade class).
-  // +20 on the 0–2000 scale ≈ +0.05 on a turn roll per star.
-  BOOST_PER_FULL_STAR: 20,
   // What a STARTER bird is born with (nerfed round 23). Zane: "I was seeing
   // way-too-high star levels for so early into the game." Day-one stock now
   // tops out at 1.5★ — a 4★ bird on the board in week one made the whole
@@ -251,44 +252,79 @@ export const BATTLE = {
   // (e.g. 300 stamina → 20 + 3 = 23 wind; a 2000-stamina monster → 40).
   BASE_WIND: 20,
   WIND_PER_STAMINA: 0.01,
-  // Turn roll = 2d6 + stat/ROLL_DIVISOR: a 2000 stat adds +5 (about two dice
-  // pips); a 300 starter adds +0.75. Dice stay loud, stats stay real.
-  ROLL_DIVISOR: 400,
-  // The element edge: flat bonus on a turn's roll when your element overcomes
-  // the opponent's.
+  // Turn roll = 2d6 + stat/ROLL_DIVISOR.
   //
-  // WHY 0.5 AND NOT 1 (re-ruled after round 24's review, same measurement
-  // that re-ruled WEATHER.EDGE — read that comment first). This sat at +1
-  // from the beginning under the comment "a slight edge only — a Fire bird
-  // can still lose to Water." It was never slight. Between two equal
-  // 350-stat birds, +1 won 76% of the time; against a bird carrying a
-  // genuine +100 stats in every category it still won 85%. Losing the
-  // matchup was closer to a verdict than a handicap.
+  // RE-RULED 400 → 85 (2026-08-04, the grade-target tuning). At 400 a whole
+  // grade of breeding (+100 on every stat) was worth +0.25 on a roll and won
+  // only 56-67% — against Zane's targets of ~80% for one grade and ~98% for
+  // two. Grade is one of the few things a player can read off a bird before
+  // it fights, and breeding is the whole progression; the dice were louder
+  // than a generation of work.
   //
-  // The trap is reading a flat bonus against the DICE (+1 on 2d6 sounds
-  // like half a die, i.e. nothing) instead of against ROLL_DIVISOR. A whole
-  // starter stat block is worth ~+0.875 on the roll; +100 stats is worth
-  // +0.25. Judged on that scale a flat +1 wasn't a tiebreaker, it was the
-  // biggest single term in the fight — and it made BREEDING FOR STATS, the
-  // game's whole progression, lose to a coin-flip of birth element.
+  // 85 was picked AT THE MIDDLE OF THE BLADE DIAL, per Zane's tuning
+  // philosophy (tune the midpoint, work outward): on B3, +100 measures
+  // 82.5% and +200 measures 97.2% — both inside a few points of target.
+  // The blade ends deviate because turn count amplifies stats (B1 68.8%,
+  // B4 87.3% at +100); that spread belongs to the phase-weight rework, not
+  // to this knob. Note the station clawback is DEFINED via ROLL_DIVISOR
+  // (a fraction of the gap's roll value), so this retune could not
+  // reintroduce the inversion it was measured against.
+  ROLL_DIVISOR: 85,
+  // The element edge — now a CEILING, not a constant (re-ruled 2026-08-04
+  // with the stars rework). A bird with the wheel advantage adds
+  //   ELEMENT_EDGE × (halfStars / 10)
+  // to every roll: a 5★ bird gets the full value, a 0★ bird gets nothing.
   //
-  // At 0.5 (measured, equal 350-stat birds, b2, 4000 seeds) the
-  // matchup wins 64% — plainly worth playing for, plainly not a verdict —
-  // and it stays exactly 2x WEATHER.EDGE, which is the relationship the
-  // Handbook states and docs.test.ts pins. Note the two edges are near
-  // LINEAR in this band (0.25 -> ~+7 points of winrate, 0.5 -> ~+14), so
-  // that config ratio really is the felt ratio.
-  ELEMENT_EDGE: 0.5,
+  // History of the number, because it keeps teaching the same lesson: it
+  // shipped at a flat +1 ("a slight edge only") which measured 76% between
+  // equal 350-stat birds — a verdict, not an edge — and round 24's review
+  // cut it to a flat 0.5 (64%). The trap both times was reading it against
+  // the DICE (+1 sounds like half a die) instead of against ROLL_DIVISOR —
+  // every flat modifier must be judged against what a whole stat block adds
+  // to a roll, which is a handful of tenths.
+  //
+  // With stars scaling it, 1.0 is safe as the ceiling precisely BECAUSE it
+  // is rare: only a 5.0★ bird at a favorable matchup ever sees the full +1
+  // (~76% between equals — the "Maximum elemental advantage" Zane asked 5★
+  // to mean), a 2.5★ bird gets round 24's 0.5, and day-one stock (≤1.5★)
+  // plays for tenths. The delivered edge across a real population sits far
+  // below the ceiling; the lab's `elements` and `stars` cases are the
+  // check that this stays true. Still exactly 2x WEATHER.EDGE — the
+  // relationship the Handbook states and docs.test.ts pins.
+  ELEMENT_EDGE: 1.0,
   // Stat decay (stamina's second job): agility and sight fade each turn by
   // PER_TURN × (1 − stamina/2000). A 300-stamina bird loses ~2.6%/turn — by
   // turn 20 it's fighting at ~half book. FLOOR stops decay short of zero.
   DECAY_PER_TURN: 0.03,
   DECAY_FLOOR: 0.2,
-  // Station — the rivalry modifier: if the opponent's total base stats are
-  // ≥ UNDERDOG_RATIO × yours, your station/STATION_DIVISOR joins every roll.
-  // The programmatic path for underdogs to pull upsets.
-  UNDERDOG_RATIO: 1.1,
-  STATION_DIVISOR: 400,
+  // Station — the rivalry stat, REBUILT from a gate into a slope (re-ruled
+  // 2026-08-04, the balance lab's headline finding). It used to be binary:
+  // opponent total ≥ 1.1× yours flipped a flag, and the flag paid your FULL
+  // station/400 on every roll. Measured, that inverted the grade ladder — a
+  // bird +100 better on every stat LOST 59-67% of the time, because the
+  // +100 lead is worth +0.25 on a roll while the weaker bird's station paid
+  // ~0.88 × form. Breeding, the game's whole progression, pointed backwards.
+  // It also carved two invisible cliffs: station 159→160 switched your own
+  // bonus OFF (-16 points of win rate for one stat point), and past 560 you
+  // switched the OPPONENT'S on.
+  //
+  // Now station claws back a FRACTION OF THE GAP ITSELF: the outmatched
+  // bird's bonus per roll is
+  //   (station / 2000) × UNDERDOG_CLAWBACK × (statDeficit / 6 / ROLL_DIVISOR)
+  // i.e. full station at max claws back half the per-roll value of the
+  // deficit. The deficit compares FIGHTING totals — station itself is
+  // excluded from both sides, because heart is not class: counted in, more
+  // station shrank the bird's own measured deficit and the stat cancelled
+  // itself. Four properties the old gate lacked, all load-bearing:
+  //   · capped BELOW the gap — a superior bird of the same shape is ALWAYS
+  //     still favored (Zane: "otherwise there's no point in breeding")
+  //   · smooth from zero — no thresholds, so no cliffs
+  //   · more station is never worse, at any opponent
+  //   · defined relative to the gap's own roll value, so retuning
+  //     ROLL_DIVISOR can never reintroduce the inversion
+  // At parity station still does nothing — that stays true until the Crowd
+  // Noise mechanic gives station its per-fight stage role (planned).
+  UNDERDOG_CLAWBACK: 0.5,
   // Gameness — the deep-fight anchor: below QUIT_WIND_FRACTION of max wind,
   // gameness/GAMENESS_DIVISOR joins every roll… and ONCE per fight the hurt
   // bird checks morale: quit chance = QUIT_BASE_CHANCE × (1 − gameness/2000).
@@ -297,10 +333,25 @@ export const BATTLE = {
   QUIT_WIND_FRACTION: 0.25,
   QUIT_BASE_CHANCE: 0.5,
   GAMENESS_DIVISOR: 400,
-  // Condition — the variance buffer: each turn each bird rolls its "form" in
-  // [floor, 1.0] where floor = WORST_FORM + FORM_RANGE × (condition/2000).
-  // At 2000 condition the floor is 0.95 (never an off-turn); at 300 it's
-  // ~0.61 (some turns arrive badly). Low condition only ever hurts.
+  // Condition — the Temper analog (re-ruled 2026-08-04; the lab caught the
+  // old comment lying). Each turn each bird rolls its "form" in [floor, 1.0]
+  // where floor = WORST_FORM + FORM_RANGE × (condition/2000). At 2000 the
+  // floor is 0.95 (never an off-turn); at 300 it's ~0.61 (some turns arrive
+  // badly).
+  //
+  // The old comment called this "a variance buffer" that "only ever hurts"
+  // when low. Measured, condition BOOSTS: a favourite gains 4-9 points of
+  // win rate across the condition range, because a higher floor raises the
+  // MEAN form, not just the worst case — every stat-derived term in the
+  // roll (phase stat, station clawback, gameness bonus) delivers more of
+  // its book more often. Zane ruled the boost intended: condition is the
+  // wildcard stat, PFL-Temper-style — it targets no distance, it makes
+  // everything the bird already is arrive more reliably, and a condition
+  // advantage can offset a stat weakness without replacing it. It also
+  // lifts the Pit Figure (~15 points across the range between identical
+  // birds): accepted, because the figure reports PERFORMANCE and a
+  // consistent bird genuinely performs better — that is form, in the
+  // racing sense, showing in the form book.
   WORST_FORM: 0.55,
   FORM_RANGE: 0.4,
 } as const;

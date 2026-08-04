@@ -155,11 +155,10 @@ export const GRADE_STEP = GRADE_TARGETS[0].delta;
  * DO NOT IMPLEMENT FROM THIS. It is a declaration, not a spec.
  */
 export const STAR_INTENT = {
-  shipped:
-    "A full star adds a flat boost to all six stats (STARS.BOOST_PER_FULL_STAR), format-agnostic — a second power ladder.",
   intended:
-    "Stars should scale the ELEMENTAL advantage: 5.0★ = maximum elemental edge, 0.5★ = minimal, 0★ = no elemental edge at all.",
-  status: "NOT IMPLEMENTED — recorded as intent so the rework has a before-picture.",
+    "Stars scale the ELEMENTAL advantage: 5.0★ = maximum elemental edge, 0.5★ = minimal, 0★ = no elemental edge at all.",
+  status:
+    "IMPLEMENTED 2026-08-04 — both edges (wheel and weather) multiply by halfStars/10; the old flat stat boost is gone.",
 } as const;
 
 // ── Verdicts ────────────────────────────────────────────────────────────────

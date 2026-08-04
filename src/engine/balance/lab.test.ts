@@ -12,6 +12,7 @@ import {
 import { simulatePair, type Combatant } from "@/engine/fight-sim";
 import { mulberry32 } from "@/engine/rng";
 import {
+  clawbackOf,
   converge,
   duel,
   flat,
@@ -72,18 +73,21 @@ const monster = () => flat(1800, { name: "Monster" });
 const maiden = () => flat(300, { name: "Maiden" });
 
 /**
- * What the ENGINE decided about the underdog gate, read off the narration it
- * writes at the scale. This is the ground truth `underdogOf` is checked
- * against — reimplementing fight-sim's arithmetic here and comparing it to
- * lab.ts's reimplementation would prove only that two copies agree.
+ * What the ENGINE decided about the station slope, read off the narration it
+ * writes at the scale. Since the 2026-08-04 rework the "outmatched on paper"
+ * line prints when a side's clawback reaches 0.05/roll — so this is the
+ * ground truth `clawbackOf` is checked against at that threshold, without
+ * reimplementing fight-sim's arithmetic here (two copies agreeing proves
+ * nothing).
  */
-function engineUnderdog(a: Combatant, b: Combatant): "A" | "B" | "neither" {
+function engineNarratesOutmatched(a: Combatant, b: Combatant): { A: boolean; B: boolean } {
   const pbp = simulatePair(a, b, "b2", mulberry32(1), "TEST").playByPlay;
   const aFlag = pbp.includes(`${a.name} is outmatched on paper`);
   const bFlag = pbp.includes(`${b.name} is outmatched on paper`);
-  // Both sides can't be the underdog: the gate is a ratio against each other.
+  // Both sides can't be outmatched at once: the clawback keys on a one-sided
+  // deficit of totals.
   expect(aFlag && bFlag).toBe(false);
-  return aFlag ? "A" : bFlag ? "B" : "neither";
+  return { A: aFlag, B: bFlag };
 }
 
 describe("determinism — the property everything else rests on", () => {
@@ -180,10 +184,12 @@ describe("duel, under conditions where the answer is known in advance", () => {
 
   test("the element edge lands on the side that has it, in every blade", () => {
     // Fire overcomes Metal. Which bird wins is the engine's business; that the
-    // lab attributes the wins to the right SIDE is the lab's.
+    // lab attributes the wins to the right SIDE is the lab's. Full stars,
+    // because stars are the element's volume knob — at 0★ there is no edge
+    // to attribute (that muteness has its own test in the stars case).
     for (const format of FORMAT_NAMES) {
-      const fire = flat(350, { name: "Fire", element: "Fire" });
-      const metal = flat(350, { name: "Metal", element: "Metal" });
+      const fire = flat(350, { name: "Fire", element: "Fire", halfStars: STARS.MAX_HALF_STARS });
+      const metal = flat(350, { name: "Metal", element: "Metal", halfStars: STARS.MAX_HALF_STARS });
       expect(duel(fire, metal, { format, runs: QUICK }).winRate).toBeGreaterThan(50);
       expect(duel(metal, fire, { format, runs: QUICK }).winRate).toBeLessThan(50);
     }
@@ -191,12 +197,13 @@ describe("duel, under conditions where the answer is known in advance", () => {
 
   test("the weather option reaches the engine", () => {
     // Cheap, but the failure mode is invisible: a dropped `opts.weather` would
-    // make every weather table in the report a table about nothing.
-    const fire = flat(350, { name: "Fire", element: "Fire" });
-    const water = flat(350, { name: "Water", element: "Water" });
+    // make every weather table in the report a table about nothing. Full
+    // stars so the day has a nonzero value to deliver.
+    const fire = flat(350, { name: "Fire", element: "Fire", halfStars: STARS.MAX_HALF_STARS });
+    const water = flat(350, { name: "Water", element: "Water", halfStars: STARS.MAX_HALF_STARS });
     const opts = { format: "b2" as const, runs: LAB.HEADLINE_RUNS };
     // Water overcomes Fire, so the neutral day belongs to Water; a Fire day
-    // hands Fire WEATHER.EDGE back and must move the number toward Fire.
+    // hands Fire the weather edge back and must move the number toward Fire.
     const neutral = duel(fire, water, opts);
     const fireDay = duel(fire, water, { ...opts, weather: "Fire" });
     expect(fireDay.winRate).toBeGreaterThan(neutral.winRate + neutral.ci95);
@@ -393,9 +400,10 @@ describe("withKnob puts the config back", () => {
   test("the knob is live while fn runs — the fight engine sees the new value", () => {
     // Restoring correctly is worthless if the mutation never reached the
     // engine. Zeroing the element edge must collapse a Fire-vs-Metal matchup
-    // onto the same coin flip two identical birds get.
-    const fire = flat(350, { name: "Fire", element: "Fire" });
-    const metal = flat(350, { name: "Metal", element: "Metal" });
+    // onto the same coin flip two identical birds get. Full stars, so the
+    // live edge is the full knob rather than zero-by-muteness.
+    const fire = flat(350, { name: "Fire", element: "Fire", halfStars: STARS.MAX_HALF_STARS });
+    const metal = flat(350, { name: "Metal", element: "Metal", halfStars: STARS.MAX_HALF_STARS });
     const opts = { format: "b2" as const, runs: LAB.HEADLINE_RUNS };
     const live = duel(fire, metal, opts);
     const off = withKnob("BATTLE.ELEMENT_EDGE", 0, () => duel(fire, metal, opts));
@@ -441,7 +449,7 @@ describe("withKnob puts the config back", () => {
     const knobs = sweepableKnobs();
     expect(knobs).toContain("BATTLE.ELEMENT_EDGE");
     expect(knobs).toContain("WEATHER.EDGE");
-    expect(knobs).toContain("STARS.BOOST_PER_FULL_STAR");
+    expect(knobs).toContain("BATTLE.UNDERDOG_CLAWBACK");
     // Nested numbers are advertised by their FULL path…
     expect(knobs).toContain("FORMATS.b1.critMult");
     // …and an intermediate object is never advertised as if it were a knob.
@@ -476,8 +484,9 @@ describe("sweep", () => {
     // A sweep whose rows are all the same number is indistinguishable from a
     // sweep that never set anything — so the rig uses the knob whose real
     // strength was misjudged twice (see BATTLE.ELEMENT_EDGE's comment).
-    const fire = flat(350, { name: "Fire", element: "Fire" });
-    const metal = flat(350, { name: "Metal", element: "Metal" });
+    // Full stars: the sweep sets the ceiling and the birds must deliver it.
+    const fire = flat(350, { name: "Fire", element: "Fire", halfStars: STARS.MAX_HALF_STARS });
+    const metal = flat(350, { name: "Metal", element: "Metal", halfStars: STARS.MAX_HALF_STARS });
     const rows = sweep("BATTLE.ELEMENT_EDGE", [0, 2], () =>
       duel(fire, metal, { format: "b2", runs: LAB.HEADLINE_RUNS }).winRate
     );
@@ -503,111 +512,95 @@ describe("sweep", () => {
   });
 });
 
-describe("underdogOf agrees with the engine", () => {
-  /**
-   * Each row: the matchup, and the answer known a priori from the ratio. The
-   * assertion runs BOTH — the a-priori answer catches the lab and the engine
-   * drifting together, the engine's narration catches the lab drifting alone.
-   */
-  const cases: [string, Combatant, Combatant, "A" | "B" | "neither"][] = [
-    ["identical birds", flat(350, { name: "A" }), flat(350, { name: "B" }), "neither"],
-    // The gate is `>=`, so 1.1x exactly trips it and a hair under does not.
-    [
-      "exactly UNDERDOG_RATIO apart",
-      flat(350, { name: "A" }),
-      flat(350 * BATTLE.UNDERDOG_RATIO, { name: "B" }),
-      "A",
-    ],
-    [
-      "a hair inside the ratio",
-      flat(350, { name: "A" }),
-      flat(350 * BATTLE.UNDERDOG_RATIO - 1, { name: "B" }),
-      "neither",
-    ],
-    ["monster vs maiden", monster(), maiden(), "B"],
-    // Shape, not size: a specialist and a generalist on the same total are
-    // never underdogs to each other. This is the confound `shaped` exists to
-    // avoid — change a stat's LEVEL and you may be measuring station instead.
-    [
-      "same total, different shape",
-      shaped({ gameness: 700, agility: 0 }, { name: "Specialist" }),
-      flat(350, { name: "Generalist" }),
-      "neither",
-    ],
-  ];
+describe("the station slope agrees with the engine and with its own ruling", () => {
+  test("underdogOf: the smaller total collects, equal totals collect nothing", () => {
+    expect(underdogOf(flat(350, { name: "A" }), flat(350, { name: "B" }))).toBe("neither");
+    expect(underdogOf(maiden(), monster())).toBe("A");
+    expect(underdogOf(monster(), maiden())).toBe("B");
+    // Shape, not size: a specialist and a generalist on the same total owe
+    // each other nothing. This is the confound `shaped` exists to avoid.
+    expect(
+      underdogOf(shaped({ gameness: 700, agility: 0 }, { name: "S" }), flat(350, { name: "G" }))
+    ).toBe("neither");
+  });
 
-  for (const [label, a, b, expected] of cases) {
-    test(label, () => {
-      expect(underdogOf(a, b)).toBe(expected);
-      expect(engineUnderdog(a, b)).toBe(expected);
-    });
-  }
-
-  test("0★ vs 5★ on identical base stats trips the gate — the case that motivated it", () => {
-    // The whole reason `underdogOf` is exported. fight-sim judges the gate on
-    // STAR-BOOSTED totals despite its comment saying "total base stats", so
-    // six stats of +BOOST_PER_FULL_STAR × 5 is enough to make the unstarred
-    // bird an underdog at equal base. A star measurement that misses this
-    // hands the weaker bird a station bonus and reports stars as worthless.
+  test("stars no longer move the station picture at all", () => {
+    // Under the old engine the star boost inflated totals into the underdog
+    // comparison, which made a 5★ bird measure WORSE than its 0★ twin. The
+    // rework removed stars from the stat block entirely; totals are base.
     const plain = flat(350, { name: "Plain" });
     const starred = flat(350, { name: "Starred", halfStars: STARS.MAX_HALF_STARS });
-    expect(underdogOf(plain, starred)).toBe("A");
-    expect(engineUnderdog(plain, starred)).toBe("A");
-    // Base totals alone would say "neither" — so this really is the star
-    // boost doing it, not a stat difference sneaking in.
-    expect(statTotal(plain)).toBe(statTotal(starred));
+    expect(underdogOf(plain, starred)).toBe("neither");
+    expect(clawbackOf(plain, starred)).toEqual({ A: 0, B: 0 });
+    // …and the engine narrates no handicap in either direction.
+    const flags = engineNarratesOutmatched(plain, starred);
+    expect(flags).toEqual({ A: false, B: false });
   });
 
-  test("stars can trip the gate in EITHER direction, and the engine agrees on both", () => {
-    const a = flat(350, { name: "A", halfStars: STARS.MAX_HALF_STARS });
-    const b = flat(350, { name: "B" });
-    expect(underdogOf(a, b)).toBe("B");
-    expect(engineUnderdog(a, b)).toBe("B");
-  });
-
-  test("half-stars below a full star don't move the gate", () => {
-    // The boost floors to whole stars (fight-sim line 54), so 1 half-star is
-    // worth nothing at all. If `underdogOf` dropped the floor it would find
-    // gates the engine never fires.
-    const a = flat(350, { name: "A" });
-    const b = flat(350, { name: "B", halfStars: 1 });
-    expect(underdogOf(a, b)).toBe("neither");
-    expect(engineUnderdog(a, b)).toBe("neither");
-  });
-
-  test("agreement holds across a spread of star and stat combinations", () => {
-    // Property-style: no hand-picked answers, just "the two must never
-    // disagree" over the range of birds the lab's cases actually build.
+  test("clawbackOf matches the engine's narration threshold across a spread of matchups", () => {
+    // Property-style: the narration prints at clawback ≥ 0.05/roll. Every
+    // combination must agree with what `clawbackOf` predicts — this is the
+    // lab's arithmetic checked against the engine's behavior, not against a
+    // second copy of the formula.
     for (const level of [250, 350, 600, 1200]) {
-      for (const half of [0, 2, 5, STARS.MAX_HALF_STARS]) {
-        for (const other of [250, 350, 600, 1200]) {
-          const a = flat(level, { name: "A", halfStars: half });
-          const b = flat(other, { name: "B" });
-          expect(`${level}/${half} vs ${other}: ${underdogOf(a, b)}`).toBe(
-            `${level}/${half} vs ${other}: ${engineUnderdog(a, b)}`
-          );
-        }
+      for (const other of [250, 350, 600, 1200]) {
+        const a = flat(level, { name: "A" });
+        const b = flat(other, { name: "B" });
+        const claw = clawbackOf(a, b);
+        const flags = engineNarratesOutmatched(a, b);
+        expect(`${level} vs ${other}: ${flags.A}/${flags.B}`).toBe(
+          `${level} vs ${other}: ${claw.A >= 0.05}/${claw.B >= 0.05}`
+        );
       }
     }
   });
 
-  test("they still agree AT THE STAT CEILING, where the clamp bites", () => {
-    // This case was a real divergence when the lab first shipped: fight-sim
-    // clamps each boosted stat at STATS.MAX before totalling (line 56) and
-    // `underdogOf` originally summed then added the boost, so a 1950-stat 5★
-    // bird totalled 12,300 in the lab and 12,000 in the engine — the
-    // difference between the gate firing and not firing.
-    //
-    // It could only bite above STATS.MAX − 5 × BOOST_PER_FULL_STAR, which no
-    // bird has reached yet, which is exactly why it was worth fixing rather
-    // than noting: bred stock is meant to climb there, and an instrument that
-    // drifts from the engine precisely when the interesting birds arrive is
-    // worse than no instrument. Kept as a regression guard.
-    const ceiling = STATS.MAX - 50;
-    const a = flat(ceiling, { name: "A", halfStars: STARS.MAX_HALF_STARS });
-    const b = flat(1840, { name: "B" });
-    expect(underdogOf(a, b)).toBe(engineUnderdog(a, b));
-    expect(underdogOf(a, b)).toBe("neither"); // both clamp to 12,000 vs 11,040
+  test("the clawback is capped below the gap — and is monotone in station", () => {
+    // The ruling that rebuilt the mechanic: an underdog's compensation must
+    // never reach the full value of the lead it faces, so a superior bird of
+    // the same shape is ALWAYS still favored. At max station the claw is
+    // exactly UNDERDOG_CLAWBACK of the gap's per-roll value, never more.
+    const big = flat(800, { name: "Big" });
+    let last = -1;
+    for (const s of [0, 159, 160, 500, 1000, STATS.MAX]) {
+      const small = shaped({ station: s }, { base: 350, name: "Small" });
+      const claw = clawbackOf(small, big).A;
+      // Station is excluded from the scale on both sides — heart, not class —
+      // so the gap here is constant across the ladder and monotonicity is
+      // exact, not merely usual. (Counted in, station used to shrink its own
+      // deficit and self-cancel; the lab measured a station-2000 build at 45%
+      // at parity before the exclusion.)
+      const fighting = (c: Combatant) => statTotal(c) - c.stats.station;
+      const gapPerRoll = (fighting(big) - fighting(small)) / 6 / BATTLE.ROLL_DIVISOR;
+      expect(claw).toBeLessThanOrEqual(BATTLE.UNDERDOG_CLAWBACK * gapPerRoll + 1e-12);
+      expect(claw).toBeGreaterThan(last); // strictly more station, strictly more claw
+      last = claw;
+    }
+  });
+
+  test("BEHAVIORAL: a same-shape superior bird is favored at every grade step — the anti-inversion ruling", () => {
+    // The old gate FAILED this exact check: flat(450) lost 59-67% of the time
+    // to flat(350) because the gate paid the weaker bird ~3.5x the lead that
+    // tripped it. This is the known-answer regression for the whole rework —
+    // if it ever fails again, breeding points backwards again.
+    for (const level of [450, 550, 750]) {
+      const d = mirrored(flat(level, { name: "Up" }), flat(350, { name: "Base" }), {
+        format: "b2",
+        runs: 1000,
+      });
+      expect(d.winRate).toBeGreaterThan(50 + d.ci95);
+    }
+  });
+
+  test("BEHAVIORAL: the old cliff is gone — station 159 and 160 are the same bird now", () => {
+    // 159 → 160 used to cost 16 points of win rate by closing the bird's own
+    // gate. Under the slope, adjacent station points must be statistically
+    // indistinguishable.
+    const opts = { format: "b4" as const, runs: 1000 };
+    const even = flat(350, { name: "Even" });
+    const at159 = mirrored(shaped({ station: 159 }, { name: "Stn" }), even, opts);
+    const at160 = mirrored(shaped({ station: 160 }, { name: "Stn" }), even, opts);
+    expect(Math.abs(at159.winRate - at160.winRate)).toBeLessThan(at159.ci95 + at160.ci95);
   });
 
   test("duel surfaces the same verdict it would compute standing alone", () => {
@@ -705,17 +698,11 @@ describe("building combatants", () => {
     expect(shaped({}, { base: 420, name: "X" })).toEqual(flat(420, { name: "X" }));
   });
 
-  test("statTotal is the same sum the gate is judged on", () => {
+  test("statTotal is the same sum the station slope is judged on", () => {
     expect(statTotal(flat(350))).toBe(350 * STAT_NAMES.length);
-    // Matched against the engine's own summation shape (fight-sim line 90),
+    // Matched against the engine's own summation shape (fight-sim's scale),
     // computed off config's stat list so a new stat can't be silently omitted.
     const bird = shaped({ gameness: 1500, station: 20 });
     expect(statTotal(bird)).toBe(STAT_NAMES.reduce((sum, s) => sum + bird.stats[s], 0));
-    // …and the gate really is judged on this quantity: two birds one point
-    // either side of the ratio must land on opposite verdicts.
-    const base = flat(1000, { name: "A" });
-    const overIn = flat((1000 * 6 * BATTLE.UNDERDOG_RATIO) / 6, { name: "B" });
-    expect(underdogOf(base, overIn)).toBe("A");
-    expect(engineUnderdog(base, overIn)).toBe("A");
   });
 });

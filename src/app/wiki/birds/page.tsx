@@ -237,24 +237,27 @@ export default function BirdsPage() {
         </table>
       </div>
       <p>
-        It&apos;s an edge, not a hard counter: overcoming the opponent&apos;s element adds a flat
-        +{BATTLE.ELEMENT_EDGE} to every one of your rolls. Don&apos;t underrate it — a starter
-        bird&apos;s whole stat block is only worth about{" "}
+        It&apos;s an edge, not a hard counter — and how big an edge depends entirely on the
+        bird&apos;s <strong>stars</strong> (below). At the full {STARS.MAX_HALF_STARS / 2}★, a
+        favorable matchup adds +{BATTLE.ELEMENT_EDGE} to every roll — a huge deal, since a
+        starter bird&apos;s whole stat block is only worth about{" "}
         {(((STATS.STARTER_MIN + STATS.STARTER_MAX) / 2 / BATTLE.ROLL_DIVISOR)).toFixed(2)} on a
-        roll, so the matchup is worth a good part of the bird itself. It still can&apos;t make a
-        Fire bird unbeatable against Water, because the dice are louder than any bonus and a
+        roll. At 0★ the wheel does nothing at all. Even at full stars it can&apos;t make a Fire
+        bird unbeatable against Water, because the dice are louder than any bonus and a
         genuinely better bird outgrows the wheel. On top of this, one element is{" "}
-        <strong>ascendant</strong> each day — the day&apos;s weather — worth a much smaller lift to
-        birds of that element. Both are explained in{" "}
+        <strong>ascendant</strong> each day — the day&apos;s weather — worth half as much as the
+        wheel edge, scaled by the same stars. Both are explained in{" "}
         <Link href="/wiki/fighting">Fighting</Link>.
       </p>
       <p>
         Alongside its element, every bird carries a <strong>star rating</strong> from 0 to{" "}
         {STARS.MAX_HALF_STARS / 2} in half-star steps — shown on its card as, for example,{" "}
-        &ldquo;2.5★ Wood.&rdquo; Stars are a flat, format-agnostic boost: every full star adds{" "}
-        {STARS.BOOST_PER_FULL_STAR} points to <em>all six stats</em> in battle, on top of whatever
-        the bird rolled. A high-star bird with middling raw stats can genuinely out-fight a
-        low-star bird with better numbers.
+        &ldquo;2.5★ Wood.&rdquo; Stars are the element&apos;s <em>volume knob</em>: every edge
+        the element grants (the wheel, the weather) is multiplied by the bird&apos;s stars out
+        of {STARS.MAX_HALF_STARS / 2}. A 2.5★ bird gets half the edge; a 0★ bird&apos;s element
+        is just a color on the card. Every half-star is a real step. Stars do <em>not</em> add
+        stat points — a 5★ bird with weak stats is a weak bird that punches hard on the right
+        matchup, not a strong bird.
       </p>
       <p>
         Stars matter most at the nest. Breeding spreads a chick&apos;s half-stars within{" "}

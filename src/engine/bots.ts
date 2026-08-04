@@ -388,9 +388,13 @@ export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
  * bot-config's WEATHER_APPETITE.
  */
 
-/** Is this bird's element the day's ascendant one? */
+/** Is this bird's element the day's ascendant one — and can it CASH that in? */
 export function weatherMatched(bird: BirdView, dayIndex: number): boolean {
-  return bird.element === weatherOfDay(dayIndex);
+  // Stars are the element's volume knob (2026-08-04): the weather edge is
+  // WEATHER.EDGE × halfStars/10, so a 0★ bird gets literally nothing from
+  // its own day. A stable that held a 0★ bird back for tomorrow's sky would
+  // be reading a going that doesn't exist for it.
+  return bird.halfStars > 0 && bird.element === weatherOfDay(dayIndex);
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   FIGURE,
   FORMAT_NAMES,
   FORMATS,
+  STARS,
   WEATHER,
   weatherOfDay,
   type Element,
@@ -19,18 +20,19 @@ import { Lobbies } from "./lobbies";
 import { mulberry32 } from "./rng";
 
 /**
- * The house combatant for this file: the lab's flat bird at the 1.5★ grade
- * these tests have always measured on.
+ * The house combatant for this file: the lab's flat bird at FULL stars.
  *
  * The stars are load-bearing, which is why this wrapper exists instead of
- * calling `flat()` inline everywhere. `flat()` defaults to 0★ (the lab's
- * control), and every figure band written down below — "a starter win sits
- * between 35 and 70" — was measured with the star boost in. Both sides always
- * carry the same stars, so win rates are unaffected either way; the absolute
- * Pit Figures are not.
+ * calling `flat()` inline everywhere — but for the opposite reason to the
+ * old one. Since the 2026-08-04 rework stars scale the element and weather
+ * edges (× halfStars/10) and touch nothing else, so a 0★ bird would make
+ * every weather and matchup test below measure literally zero. At 5.0★ the
+ * delivered edges ARE the config knobs, which is what lets these tests pin
+ * WEATHER.EDGE and ELEMENT_EDGE directly. Tests that care about a partial
+ * star level build their own birds and say why.
  */
 const bird = (name: string, level: number, element: Element = "Fire") =>
-  flat(level, { name, element, halfStars: 3 });
+  flat(level, { name, element, halfStars: STARS.MAX_HALF_STARS });
 
 /**
  * Count fought turns from the play-by-play's T<n> markers.
@@ -249,13 +251,14 @@ describe("daily Element weather (round 24)", () => {
     // The no-weather control is a coin flip, which is what makes the matched
     // number attributable: side 0 rolls first each turn but that buys it
     // nothing, so any lift above ~50 is the day and not the turn order.
-    // Measured 49.7 / 49.4 / 49.8 — spread 0.4, i.e. the windows agree.
     inEveryWindow(neutral, 47, 53);
-    // Measured 56.8 / 58.0 / 57.7 across three disjoint windows (n=4000 each).
-    // The floor says the edge is REAL — a matched bird is favoured, not just
-    // flattered. The ceiling says it is not the fight: at the old EDGE=1 this
-    // read 76.7%, so 65 fails loudly if anyone restores a near-1.0 modifier.
-    inEveryWindow(matched, 53, 65);
+    // The house birds are 5.0★, so this measures the full WEATHER.EDGE
+    // ceiling — the loudest any weather day can ever be for any bird. The
+    // floor says the ceiling is REAL; the ceiling of the band says even the
+    // rarest bird's best day is never the whole fight (the old FLAT EDGE=1
+    // read 76.7% for EVERY bird, which is the bug this band remembers).
+    // A 2.5★ bird gets half this and a starter (≤1.5★) less than a third.
+    inEveryWindow(matched, 56, 72);
   });
 
   // ── THE CENTERPIECE ───────────────────────────────────────────────────────
@@ -290,17 +293,12 @@ describe("daily Element weather (round 24)", () => {
     // in every window without re-fighting the control four more times.
     inEveryWindow(ratio, 0, 0.75);
 
-    // …and the felt ratio should TRACK the config ratio. Both edges respond
-    // near-linearly in this band (0.25 -> ~+7 points of winrate, 0.5 -> ~+14),
-    // which is the property that makes the two knobs readable at all: you can
-    // reason about "half as strong" in config and get half as strong in the
-    // pit. If this ever drifts, the knobs have entered a non-linear regime
-    // and every comment in config.ts quoting a winrate needs re-measuring.
-    //
-    // Measured 0.500 / 0.585 / 0.594 across the three windows. This is the
-    // noisiest quantity in the file — a ratio of two differences of two noisy
-    // rates — which is exactly why it is now asserted in all three rather than
-    // in whichever one happened to be run.
+    // …and the felt ratio should TRACK the config ratio. Measured at 5.0★
+    // birds, so both lifts run at their ceilings; the win-rate curve starts
+    // to saturate up there, which is why the tolerance is ±0.15 and not
+    // tighter. If this drifts outside the band, the knobs have entered a
+    // regime where "half as strong in config" stops meaning half as strong
+    // in the pit, and every comment quoting a winrate needs re-measuring.
     const configRatio = WEATHER.EDGE / BATTLE.ELEMENT_EDGE; // 0.5 today
     inEveryWindow(ratio, configRatio - 0.15, configRatio + 0.15);
 
@@ -344,10 +342,11 @@ describe("daily Element weather (round 24)", () => {
     const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Metal"), "b3", mulberry32(1), "TEST", "Fire");
     expect(sim.playByPlay).toContain("Today's element is Fire");
     expect(sim.playByPlay).toContain("carries the weather edge");
-    // The roll detail interpolates the knob, so this tag follows a re-tune
-    // instead of pinning the value the sim shipped with.
-    expect(sim.playByPlay).toContain(`+${WEATHER.EDGE}wx`);
-    expect(sim.playByPlay).toContain(`+${BATTLE.ELEMENT_EDGE}elem`);
+    // The roll detail interpolates the DELIVERED edge (knob × star scale,
+    // printed to 2dp), so this tag follows both a re-tune and a star change.
+    // House birds are 5.0★, so the delivered value here is the full knob.
+    expect(sim.playByPlay).toContain(`+${WEATHER.EDGE.toFixed(2)}wx`);
+    expect(sim.playByPlay).toContain(`+${BATTLE.ELEMENT_EDGE.toFixed(2)}elem`);
   });
 
   test("a no-match day narrates honestly and figures stay banded", () => {
@@ -369,34 +368,43 @@ describe("daily Element weather (round 24)", () => {
     //
     // `meanFigureA` is the matched bird's OWN figure, wins and losses alike —
     // the same quantity the hand-rolled loop used to sum.
+    //
+    // Measured at 2.5★, NOT the house 5.0★: round 24's ruling ("inflation
+    // stays inside the ±NOISE fog") was made about a delivered edge of 0.25,
+    // and 2.5★ is where the star-scaled ceiling delivers exactly that. At
+    // 5.0★ the delivered edge is double and its inflation DOES clear the fog
+    // — accepted and recorded in BALANCE.md: the rarest bird's best day is
+    // allowed to be loud, the ordinary bird's day is not.
+    const at25 = (name: string, element: Element) =>
+      flat(350, { name, element, halfStars: 5 });
     const meanFigure = (weather: Element | undefined, seedFrom: number) =>
-      duel(bird("A", 350, "Fire"), bird("B", 350, "Wood"), {
+      duel(at25("A", "Fire"), at25("B", "Wood"), {
         format: "b2",
         weather,
         runs: SEEDS,
         seedFrom,
       }).meanFigureA;
 
-    const inflation = converge((s) => meanFigure("Fire", s) - meanFigure(undefined, s)); // ~47.8 vs ~45.1
-    // Measured 2.69 / 2.72 / 2.68 across three disjoint windows — spread 0.04,
-    // which is the tightest number in the file. Both bounds are stated in the
-    // terms that make them READABLE: smaller than one displayed band means two
-    // form lines a day apart can print the same number, and inside the ± noise
-    // roll means the day is quieter than the fog already baked into every
-    // figure.
+    const inflation = converge((s) => meanFigure("Fire", s) - meanFigure(undefined, s));
+    // Both bounds are stated in the terms that make them READABLE: smaller
+    // than one displayed band means two form lines a day apart can print the
+    // same number, and inside the ± noise roll means the day is quieter than
+    // the fog already baked into every figure.
     inEveryWindow(inflation, 0, FIGURE.BAND); // winning more shows up, but under one band
     inEveryWindow(inflation, 0, FIGURE.NOISE); // …and under the figure's own fog
   });
 
-  test("the weather edge magnitude is WEATHER.EDGE (one knob, not a hardcoded 1)", () => {
-    // Pin the ruling; tune here, not in the sim. The scale to judge this
-    // against is NOT the 2d6 — it's BATTLE.ROLL_DIVISOR. A turn roll is
-    // 2d6 + stat/400, so a 350-stat starter's ENTIRE stat block is worth about
-    // +0.875. Anything flat and near 1.0 doesn't nudge the stat term, it
-    // replaces it, which is exactly how +1 became the most decisive number in
-    // the fight. 0.25 is about a quarter of a whole starter bird.
-    expect(WEATHER.EDGE).toBe(0.25);
+  test("the weather edge magnitude is WEATHER.EDGE × stars (a ceiling, not a flat bonus)", () => {
+    // Pin the ruling; tune here, not in the sim. The scale to judge a flat
+    // modifier against is NOT the 2d6 — it's BATTLE.ROLL_DIVISOR: a starter's
+    // whole stat block is worth well under +1 on a roll. Since the stars
+    // rework the knob is a CEILING delivered as EDGE × halfStars/10, so the
+    // bound that matters is on what ORDINARY birds actually receive: a
+    // day-one bird (STARTER_MAX_HALF) must feel the weather as less than
+    // half a starter stat block, even though the 5.0★ ceiling may exceed it.
+    expect(WEATHER.EDGE).toBe(0.5);
     const wholeStarterBird = 350 / BATTLE.ROLL_DIVISOR;
-    expect(WEATHER.EDGE).toBeLessThan(wholeStarterBird / 2);
+    const starterDelivered = WEATHER.EDGE * (STARS.STARTER_MAX_HALF / STARS.MAX_HALF_STARS);
+    expect(starterDelivered).toBeLessThan(wholeStarterBird / 2);
   });
 });
