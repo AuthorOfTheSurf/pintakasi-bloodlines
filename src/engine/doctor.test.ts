@@ -4,8 +4,8 @@ import { createDb, type DB } from "@/db/client";
 import { battleLog, farms, gameState, lobbies, lobbyEntries, tournamentEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
-import { ELEMENTS, weatherOfDay } from "./config";
-import { diagnose, formatReport, weatherTiming } from "./doctor";
+import { ELEMENTS, FORMAT_NAMES, weatherOfDay, type FightFormat } from "./config";
+import { bladeDiscovery, diagnose, formatReport, weatherTiming } from "./doctor";
 import { makeBird, world as testWorld } from "./testkit";
 import { Game } from "./game";
 
@@ -301,5 +301,111 @@ describe("the weather-timing line", () => {
     const measured = weatherTiming(w.db).entries;
     expect(measured).toBe(w.db.select().from(lobbyEntries).all().length);
     expect(w.db.select().from(tournamentEntries).all().length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * THE DISCOVERY SECTION (round 28). The fog hid the sheet, so the bots type
+ * their birds by figures now — and only the doctor may still read the true
+ * stats to grade whether that loop converges. Same standard as everything
+ * else in this file: watch the warn FIRE on a rigged-bad world before
+ * trusting the green light.
+ */
+describe("the discovery section", () => {
+  /**
+   * A sprint bird whose sheet only the doctor may read: agility carries half
+   * of B1's weight and a tenth of B5's, so its true best blade is B1 —
+   * UNIQUELY, which keeps every hit/miss call in these tests exact. (The
+   * flat testkit default ties at all five blades, which the metric counts as
+   * five best blades on purpose.)
+   */
+  const sprinter = (db: DB, age: number) =>
+    makeBird(db, { age, agility: 1000, sight: 100, stamina: 100, gameness: 100 });
+
+  /**
+   * One side of one fight, written raw — going through Lobbies would put the
+   * scout report inside the thing being measured. `loss` rows on purpose: a
+   * raw `win` with no mirror would trip the pit-figure invariant, and this
+   * is a health measurement, not an invariant test.
+   */
+  function fought(db: DB, bird: { id: string; farmId: string }, format: FightFormat) {
+    db.insert(battleLog)
+      .values({
+        dayIndex: 0,
+        lobbyId: 1,
+        farmId: bird.farmId,
+        birdId: bird.id,
+        mode: "real",
+        format,
+        opponentBirdId: "ghost",
+        opponentFarmId: "house",
+        opponentName: "Sparring Ghost",
+        result: "loss",
+        pitFigure: 50,
+        gpDeltaCents: 0,
+        seed: 1,
+        playByPlay: "[]",
+      })
+      .run();
+  }
+
+  const section = (db: DB) =>
+    diagnose(db, ":memory:").health.find((h) => h.title === "DISCOVERY")!;
+
+  test("a world that never converges warns — twice, and names both failures", () => {
+    const w = testWorld({ rivalFlock: false });
+    // Juveniles all carded at their best blade, veterans never: the hit rate
+    // FALLS with age, which is discovery running backwards. And the whole
+    // discovery year lives at one blade, so exploration is dead too.
+    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 1), "b1");
+    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 4), "b5");
+
+    const s = section(w.db);
+    expect(s.warn).toContain("not converging");
+    expect(s.warn).toContain("1/5 blades");
+    expect(s.lines.join("\n")).toContain("stables are still guessing");
+    // Health judgement, never an invariant — the run itself stays green.
+    expect(diagnose(w.db, ":memory:").ok).toBe(true);
+  });
+
+  test("a converging world with a full discovery year reads clean", () => {
+    const w = testWorld({ rivalFlock: false });
+    // The discovery year spread across all five blades (chance-rate hits,
+    // exactly what SCOUT.EXPLORE is buying), then a 4+ cohort that has
+    // learned the answer.
+    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 1), FORMAT_NAMES[i % 5]);
+    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 4), "b1");
+
+    const s = section(w.db);
+    expect(s.warn).toBeUndefined();
+    expect(s.lines.join("\n")).toContain("climbs with age");
+    expect(s.lines.join("\n")).toContain("5/5 blades saw an age-1 entry");
+
+    const d = bladeDiscovery(w.db);
+    expect(d.buckets[0].hits / d.buckets[0].entries).toBeCloseTo(0.2, 5); // the chance floor
+    expect(d.buckets[2].hits).toBe(20); // the answer key, matched exactly
+  });
+
+  test("thin buckets say so instead of issuing a verdict", () => {
+    // Five entries at the wrong blade would read 0% — and mean nothing.
+    const w = testWorld({ rivalFlock: false });
+    for (let i = 0; i < 5; i++) fought(w.db, sprinter(w.db, 4), "b5");
+    const s = section(w.db);
+    expect(s.lines.join("\n")).toContain("too few to read");
+    expect(s.warn).toBeUndefined();
+  });
+
+  test("the section shows up on a simulated world with the buckets in order", () => {
+    // Not a rigged card — real bots, real scout reports. No verdict is
+    // asserted (a 9-day world is too young to have converged); what this
+    // proves is that the section reads a live world without choking and
+    // that its rows account for every fight actually fought.
+    const w = world(9);
+    const s = diagnose(w.db, ":memory:").health.find((h) => h.title === "DISCOVERY")!;
+    expect(s.lines[0]).toContain("age 1");
+    expect(s.lines.join("\n")).toContain("blades saw an age-1 entry");
+    const d = bladeDiscovery(w.db);
+    const counted = d.buckets.reduce((n, b) => n + b.entries, 0);
+    expect(counted).toBe(w.db.select().from(battleLog).all().length);
   });
 });

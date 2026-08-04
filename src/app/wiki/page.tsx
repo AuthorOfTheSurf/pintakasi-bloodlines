@@ -14,8 +14,9 @@ export default function WikiHome() {
       <p className="lede">
         You run a gamefarm. You raise fighting cocks, card them against other players&apos; birds,
         and try to build a bloodline good enough to win a Major. Every bird&apos;s stats are fixed
-        the day it hatches — so the game is about <strong>judging</strong> birds, <strong>placing</strong>{" "}
-        them, and <strong>breeding</strong> better ones. Not grinding them stronger.
+        the day it hatches — and hidden until the day it retires — so the game is about{" "}
+        <strong>judging</strong> birds from how they fight, <strong>placing</strong> them, and{" "}
+        <strong>breeding</strong> better ones. Not grinding them stronger.
       </p>
 
       <h2>The five-minute version</h2>
@@ -69,7 +70,9 @@ export default function WikiHome() {
       <h2>The shape of a bird</h2>
       <p>
         Six stats on a 0–{STATS.MAX} scale, one element with a half-star rating, and an age. Stats
-        never change after hatching. A barn holds {BARN.CAPACITY} birds.{" "}
+        never change after hatching — and they stay <strong>hidden</strong> for the whole fighting
+        career, revealed only at retirement. Until then you read the bird&apos;s figures and its
+        scout report, not its sheet. A barn holds {BARN.CAPACITY} birds.{" "}
         <Link href="/wiki/birds">The full anatomy →</Link>
       </p>
 

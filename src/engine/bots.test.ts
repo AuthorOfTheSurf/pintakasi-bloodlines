@@ -4,8 +4,8 @@ import { createDb, type DB } from "@/db/client";
 import { birds, farms, lobbies, lobbyEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { BOT_FARMS, WEATHER_APPETITE } from "./bot-config";
-import { Bots, weatherCardsToday, weatherOrder } from "./bots";
-import { ELEMENTS, weatherOfDay, type Element } from "./config";
+import { Bots, bestFormat, scoutScores, weatherCardsToday, weatherOrder } from "./bots";
+import { ELEMENTS, FORMAT_NAMES, SCOUT, weatherOfDay, type Element } from "./config";
 import { Flock, type BirdView } from "./flock";
 import { mulberry32 } from "./rng";
 import { makeBird, world as testWorld } from "./testkit";
@@ -121,6 +121,50 @@ describe("a bot day", () => {
       .where(eq(lobbyEntries.status, "pending"))
       .all();
     expect(pending.length).toBe(0);
+  });
+});
+
+/**
+ * THE SCOUT'S BLADE PICK (round 28 — the fog). bestFormat is the one place a
+ * stable decides WHERE a bird fights, and since the fog it may only read the
+ * figure history — never the sheet. Distribution properties, so they are
+ * tested here directly rather than through a seeded bot day.
+ */
+describe("the scout's blade pick", () => {
+  test("a fresh bird gets carded at every blade eventually — discovery is alive", () => {
+    // WHY (round 28: the fog): without the EXPLORE draw, a bird's first
+    // blade is self-fulfilling — the only blade with figures is the only
+    // one scoring above prior, so a B5 monster would live and die as a
+    // mediocre B1 bird. If any blade stops appearing here, discovery is
+    // dead and no other test will notice.
+    const w = testWorld({ rivalFlock: false });
+    const row = makeBird(w.db); // unraced two-year-old, zero battle log
+    const bird = new Flock(w.db, w.devId).byId(row.id);
+    const rng = mulberry32(2028);
+    const seen = new Set<string>();
+    for (let i = 0; i < 500 && seen.size < FORMAT_NAMES.length; i++) {
+      seen.add(bestFormat(w.db, bird, rng));
+    }
+    expect([...seen].sort()).toEqual([...FORMAT_NAMES].sort());
+  });
+
+  test("a fogged view flows through the whole entry path — the bots never need the sheet", () => {
+    // WHY: the round-28 rework swapped the bots' stat-weight table for the
+    // scout report precisely because the old table read hidden stats. This
+    // pins that a BirdView full of nulls carries a bird from scoring all
+    // the way through lobbies.enter without anything reaching for a number
+    // that is no longer there.
+    const w = testWorld({ rivalFlock: false });
+    const row = makeBird(w.db);
+    const bird = new Flock(w.db, w.devId).byId(row.id);
+    expect(bird.agility).toBeNull(); // the fog is actually down on this fixture
+    const scores = scoutScores(w.db, bird.id);
+    for (const f of FORMAT_NAMES) expect(scores[f]).toBe(SCOUT.PRIOR_FIGURE); // unraced = prior
+    const format = bestFormat(w.db, bird, mulberry32(7));
+    expect(FORMAT_NAMES).toContain(format);
+    expect(() =>
+      w.dev.lobbies.enter(bird.id, { mode: "real", classType: "maiden", format })
+    ).not.toThrow();
   });
 });
 

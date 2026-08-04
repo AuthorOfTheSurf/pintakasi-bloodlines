@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { farms } from "@/db/schema";
+import { birds, farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { gameState } from "@/db/schema";
 import {
@@ -144,7 +144,11 @@ describe("gacha", () => {
       if (!r.egg) continue;
       eggs++;
       const tier = GACHA_BIRDS[r.token]!;
-      for (const stat of [r.egg.agility, r.egg.sight, r.egg.stamina, r.egg.gameness, r.egg.station, r.egg.condition]) {
+      // The fog (round 28): the pulled egg's VIEW hides its stats — the
+      // tier constraint is asserted against the raw row, where it lives.
+      const row = db.select().from(birds).where(eq(birds.id, r.egg.id)).get()!;
+      expect(r.egg.agility).toBeNull(); // stars are the visible jackpot
+      for (const stat of [row.agility, row.sight, row.stamina, row.gameness, row.station, row.condition]) {
         expect(stat).toBeGreaterThanOrEqual(tier.statMin);
         expect(stat).toBeLessThanOrEqual(tier.statMax);
       }

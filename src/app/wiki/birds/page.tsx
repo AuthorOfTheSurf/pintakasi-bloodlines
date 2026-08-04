@@ -9,6 +9,7 @@ import {
   ELEMENTS,
   ELEMENT_BEATS,
   PHASES,
+  SCOUT,
   STARS,
   STATS,
 } from "@/engine/config";
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Birds & stats — The Pintakasi Handbook",
-  description: "The six stats, the letter-grade ladder, elements and stars, and the bird life cycle.",
+  description: "The six hidden stats, the scout report, the letter-grade ladder, elements and stars, and the bird life cycle.",
 };
 
 /** Walks the real scale so the band table can never drift from grades.ts. */
@@ -70,13 +71,22 @@ export default function BirdsPage() {
     <>
       <h1>Birds &amp; stats</h1>
       <p className="lede">
-        Every bird is six stats, one element, a half-star rating, and an age. That&apos;s the whole
-        bird — there is no hidden mechanic and no training screen. This page explains what each
-        number actually does when two birds meet in the pit, and how to read a bird&apos;s card at a
-        glance.
+        Every bird is six stats, one element, a half-star rating, and an age. The six stats are
+        fixed the day it hatches and never change — but here is the twist: <strong>you cannot see
+        them while the bird can still fight.</strong> The sheet is sealed for the whole career and
+        revealed in full the day the bird retires, however it retires. What you <em>can</em> always
+        see: stars, element, carriage, sex, age, record, and every Pit Figure it has ever posted.
+        Working out what a bird is from how it fights — that discovery is the game.
       </p>
 
       <h2>The six stats</h2>
+      <p>
+        This table is what the hidden sheet holds. You never read these numbers off a live
+        bird&apos;s card — you learn them the slow way, by watching the bird fight and reading its
+        figures, and you see the real sheet only when the career ends. Knowing what each stat{" "}
+        <em>does</em> is still essential, because it&apos;s how you turn what you watched into a
+        guess about what&apos;s underneath.
+      </p>
       <p>
         Four stats are <strong>distance stats</strong> — all four join every roll, but each blade
         weighs them differently (that&apos;s the blade&apos;s &ldquo;distance,&rdquo; see{" "}
@@ -167,10 +177,12 @@ export default function BirdsPage() {
       </h2>
       <p>
         Every stat is stored as a raw number from {STATS.MIN} to {STATS.MAX}. Nobody wants to
-        compare six four-digit numbers at a glance, so the game also shows a letter grade — a
-        100-point band read straight off the raw number. A card that says &ldquo;{bands[3]?.grade}{" "}
-        {bands[3]?.min}&rdquo; means the raw stat is {bands[3]?.min}, and {bands[3]?.min} falls in
-        the {bands[3]?.grade} band. The letter is for scanning; the number is for math.
+        compare six four-digit numbers at a glance, so a revealed sheet also carries a letter
+        grade — a 100-point band read straight off the raw number. Grades appear only where the
+        sheet does: on <strong>retired birds</strong> and on <strong>stud cards</strong>, never on
+        a live fighter. A revealed line that says &ldquo;{bands[3]?.grade} {bands[3]?.min}&rdquo;
+        means the raw stat is {bands[3]?.min}, and {bands[3]?.min} falls in the {bands[3]?.grade}{" "}
+        band. The letter is for scanning; the number is for math.
       </p>
       <div className="tablewrap">
         <table>
@@ -196,8 +208,9 @@ export default function BirdsPage() {
         The families run C → B → A → S → {secondTopGrade[0]}, each with a plain and a
         &ldquo;+&rdquo; rung. The top band, {topGrade}, is deliberately out of reach for a starter
         or gacha bird — it&apos;s where generations of good breeding eventually land, not
-        somewhere a fresh egg shows up. A bird&apos;s <strong>overall grade</strong> (shown on its
-        card as one summary letter) is the same lookup run on the average of all six stats: six
+        somewhere a fresh egg shows up. A bird&apos;s <strong>overall grade</strong> (shown as one
+        summary letter on a retired bird and on its stud card) is the same lookup run on the
+        average of all six stats: six
         stats sitting exactly at the starter floor ({STATS.STARTER_MIN} each) average out to an
         overall {overallGradeOf(STATS.STARTER_MIN * 6)} — so a bird can flash a top grade in one
         stat and still carry a modest overall grade if the other five are ordinary.
@@ -208,9 +221,43 @@ export default function BirdsPage() {
         bird on every line. About {Math.round(STATS.STARTER_SPIKE_CHANCE * 100)}% of the time, a
         single stat spikes instead, landing between {STATS.STARTER_SPIKE_MIN} and{" "}
         {STATS.STARTER_SPIKE_MAX} — as high as a {gradeOf(STATS.STARTER_SPIKE_MAX)}. That&apos;s
-        deliberate: it gives a day-one stable something to point at, without the whole bird
-        jumping bands. Raising the whole bird is what <Link href="/wiki/breeding">breeding</Link>{" "}
-        is for.
+        deliberate: it hides one real talent in some day-one flocks, without the whole bird jumping
+        bands — and since the sheet is sealed, finding out <em>which</em> bird carries the spike,
+        and where, is your first season&apos;s detective work. Raising the whole bird is what{" "}
+        <Link href="/wiki/breeding">breeding</Link> is for.
+      </div>
+
+      <h2>The scout report</h2>
+      <p>
+        If you can&apos;t read the sheet, what <em>do</em> you read? Every bird carries a{" "}
+        <strong>scout report</strong>: for each of the five blades, its record there, its average
+        and best Pit Figure, and a single <strong>score</strong> — the game&apos;s honest estimate
+        of how good the bird has looked at that blade so far. Bots read the same report you do.
+        Nobody, human or machine, reads a live bird&apos;s sheet.
+      </p>
+      <p>
+        The score is deliberately <strong>shrunk toward a neutral prior</strong> of{" "}
+        {SCOUT.PRIOR_FIGURE} — the figure an even, ordinary fight tends to produce. Concretely, the
+        report acts as if every blade already had {SCOUT.PRIOR_WEIGHT} average fights on the books
+        before the real ones are counted. Two reasons. First, one lucky big figure must not type a
+        bird — a single loud 80 gets pulled back toward the middle until more fights back it up.
+        Second, a blade the bird has never fought reads as &ldquo;unknown, average&rdquo; —
+        never as &ldquo;bad.&rdquo; No evidence is not bad evidence.
+      </p>
+      <p>
+        A blade stays marked <strong>unread</strong> until the bird has at least {SCOUT.MIN_READS}{" "}
+        figures there — one reading, however loud, isn&apos;t a verdict. Unread blades are
+        exploration targets: the only way to fill in the report is to card the bird there and pay
+        for the answer, which is exactly what the cheap juvenile year is for.
+      </p>
+      <div className="callout tip">
+        <b>Why the fog exists at all.</b> If every live bird wore its sheet openly, every fight,
+        every claim, and every stud fee would be arithmetic — the better spreadsheet would win
+        before the birds ever met. Hidden sheets keep a live bird a <em>judgement call</em>:
+        claiming one is a bet on your read of its figures, and an average-looking bird stays worth
+        carding because it might be better than its record. The sheet reveals at retirement, so
+        the truth always comes out — just after the career, when it feeds{" "}
+        <Link href="/wiki/breeding">breeding</Link> instead of fight-picking.
       </div>
 
       <h2>Elements and half-star ratings</h2>
@@ -385,11 +432,13 @@ export default function BirdsPage() {
       <p>
         This is the single most important thing to understand about the game. Pintakasi is not
         about grinding a bird stronger — it&apos;s about two other skills: <strong>judging</strong>{" "}
-        what a bird is actually good at from its stats, element, and stars, and{" "}
-        <strong>placing</strong> it in the right company and the right blade to use that (see{" "}
-        <Link href="/wiki/fighting">Fighting</Link>). The only way to raise the ceiling on a
-        bloodline is <Link href="/wiki/breeding">breeding</Link> a better next generation — patience
-        and pairing, not repetition.
+        what a bird is actually good at from its figures and its scout report (the stats
+        themselves stay sealed until retirement — see above), and <strong>placing</strong> it in
+        the right company and the right blade to use that (see{" "}
+        <Link href="/wiki/fighting">Fighting</Link>). When the career ends, the sheet unseals and
+        you finally see how right you were. The only way to raise the ceiling on a bloodline is{" "}
+        <Link href="/wiki/breeding">breeding</Link> a better next generation — patience and
+        pairing, not repetition.
       </p>
 
       <h2>The barn</h2>

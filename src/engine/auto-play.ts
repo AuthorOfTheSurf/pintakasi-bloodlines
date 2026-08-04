@@ -124,7 +124,7 @@ export function playHonestDay(db: DB, farmId: string): void {
   );
   for (const bird of carding) {
     if (!weatherCardsToday(bird, day, cardRng, HONEST_ENTRY_RATE)) continue;
-    const format = bestFormat(bird, cardRng);
+    const format = bestFormat(db, bird, cardRng);
     // The discovery-year ladder (round 23): a winless juvenile starts in a
     // maiden, a winner moves up to juvenile stakes, and now and then one goes
     // out with a tag on it — the cheap way to learn what the market thinks.

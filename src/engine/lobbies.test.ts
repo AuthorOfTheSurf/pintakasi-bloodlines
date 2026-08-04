@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, lobbyEntries } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { ECONOMY, LOBBY, PINTAKASI, STAKER_FLOWS, landForFight } from "./config";
+import { ECONOMY, FORMAT_NAMES, LOBBY, PINTAKASI, SCOUT, STAKER_FLOWS, landForFight } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
@@ -465,6 +465,83 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     Lobbies.close(w.db, "all");
     Lobbies.complete(w.db);
     expect(() => w.rival.claim(lobby.entries[0].entryId)).toThrow(/No open entry/);
+  });
+});
+
+describe("the scout report (round 28 — reading a bird through the fog)", () => {
+  /** One finished fight, reduced to the columns the scout reads. */
+  function logFigure(w: ReturnType<typeof world>, birdId: string, format: "b1" | "b2", pitFigure: number) {
+    w.db
+      .insert(battleLog)
+      .values({
+        dayIndex: 0,
+        lobbyId: 1,
+        farmId: w.devId,
+        birdId,
+        mode: "real",
+        format,
+        lobby: "open",
+        opponentBirdId: "rival-bird",
+        opponentFarmId: w.rivalId,
+        opponentName: "Rival",
+        result: "win",
+        pitFigure,
+        gpDeltaCents: 0,
+        seed: 1,
+        playByPlay: "[]",
+      })
+      .run();
+  }
+
+  test("zero career fights: every blade reads exactly the prior — unknown, never bad", () => {
+    // WHY (round 28: the fog): with the sheet hidden, the scout report is
+    // the ONLY read on a live bird. An unraced blade must score the
+    // even-starter prior, not zero — "no evidence" reading as "bad" would
+    // teach every stable to never try a second blade.
+    const w = world();
+    // Starters seed a career RECORD but no battle log — the scout reads figures only.
+    const report = w.dev.scoutReport(byName(w.devFlock, "Kidlat").id);
+    for (const f of FORMAT_NAMES) {
+      expect(report.blades[f].score).toBe(SCOUT.PRIOR_FIGURE);
+      expect(report.blades[f].fights).toBe(0);
+    }
+    expect(report.totalFights).toBe(0);
+    expect(report.bestEvidence).toBeNull(); // nothing fought = nothing trusted
+    // The all-prior tie breaks in dial order — stable, and honest about it.
+    expect(report.bestBlade).toBe(FORMAT_NAMES[0]);
+  });
+
+  test("one loud figure is SHRUNK toward the prior — computed from config, not lore", () => {
+    // WHY: shrinkage is the whole trick. If one 80 at B1 ranked as a raw 80,
+    // a single lucky night would type a bird for its whole career and the
+    // exploration the bots pay for would buy nothing.
+    const w = world();
+    const alab = byName(w.devFlock, "Alab");
+    logFigure(w, alab.id, "b1", 80);
+    const report = w.dev.scoutReport(alab.id);
+    // The published formula, from the SCOUT constants themselves — at today's
+    // config (prior 50, weight 2) that is (80 + 100)/3 = 70, but the TEST
+    // must move when the knobs do, so it never hard-codes the 70.
+    const expected =
+      Math.round(
+        ((80 * 1 + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) / (1 + SCOUT.PRIOR_WEIGHT)) * 10
+      ) / 10;
+    expect(report.blades.b1.score).toBe(expected);
+    expect(report.blades.b1.score).toBeGreaterThan(SCOUT.PRIOR_FIGURE); // evidence counts…
+    expect(report.blades.b1.score).toBeLessThan(80); // …but one night is not a destiny
+    expect(report.bestBlade).toBe("b1");
+    expect(report.bestEvidence).toBe("b1"); // the most-fought blade IS the read
+    expect(report.totalFights).toBe(1);
+  });
+
+  test("the scout is not farm-scoped — a claimer target can be read from any barn", () => {
+    // WHY: like formBook, the bird you are about to claim is exactly the one
+    // whose figures you most need. Scoping this to the owner would make
+    // claiming blind again — the round-19 dead-mechanic shape.
+    const w = world();
+    const alab = byName(w.devFlock, "Alab");
+    logFigure(w, alab.id, "b2", 60);
+    expect(w.rival.scoutReport(alab.id).totalFights).toBe(1);
   });
 });
 

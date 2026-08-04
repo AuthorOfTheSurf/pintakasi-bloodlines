@@ -318,7 +318,7 @@ export default function MoneyPage() {
         touching your wallet is the free gacha pull that check-in also grants: it costs nothing,
         it always mints a little land, and on the better tokens it drops a whole mystery egg. See{" "}
         <Link href="/wiki/gacha">The gacha</Link>. Save paid rolls and covers for when you&apos;re
-        actually chasing a specific stat or element — the free pull is the floor everyone stands
+        actually chasing stars or a specific element — the free pull is the floor everyone stands
         on.
       </p>
 

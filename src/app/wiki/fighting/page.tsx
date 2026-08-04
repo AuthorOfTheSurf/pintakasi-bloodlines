@@ -344,18 +344,22 @@ export default function FightingPage() {
 
       <h2>Discovery: why the figures are the game</h2>
       <p>
-        You never get to see a bird&apos;s six raw stats laid out on someone else&apos;s card —
-        the board only shows stars and record, never numbers (see{" "}
-        <Link href="/wiki/card">The card</Link>). Certifying a bird&apos;s true quality is
-        deliberately expensive: nobody hands it to you for free, which is exactly what keeps an
-        average bird worth entering. It might surprise you, and you won&apos;t know until it
-        fights.
+        You never get to see a live bird&apos;s six raw stats — not on someone else&apos;s card,
+        and not on your own. The sheet is sealed for the whole fighting career and revealed only
+        at retirement (see <Link href="/wiki/birds">Birds &amp; stats</Link>); until then, every
+        card shows stars, record, and figures, never numbers. Certifying a bird&apos;s true
+        quality is deliberately expensive: nobody hands it to you for free, which is exactly what
+        keeps an average bird worth entering. It might surprise you — even its own farm — and
+        nobody knows until it fights.
       </p>
       <p>
-        That&apos;s what the Pit Figure is for. It&apos;s the one honest window into a bird you
-        don&apos;t own — a number that survives being a loser, that accounts for who it lost to,
-        and that can&apos;t lie about who actually won. Reading figures — yours and everyone
-        else&apos;s — <em>is</em> the skill of the game.
+        That&apos;s what the Pit Figure is for. It&apos;s the one honest window into <em>any</em>{" "}
+        live bird, including your own — a number that survives being a loser, that accounts for
+        who it lost to, and that can&apos;t lie about who actually won. The game folds your
+        bird&apos;s figures into a per-blade scout report (see{" "}
+        <Link href="/wiki/birds">Birds &amp; stats</Link>) so you can read the pattern at a
+        glance. Reading figures — yours and everyone else&apos;s — <em>is</em> the skill of the
+        game.
       </p>
 
       <div className="next">

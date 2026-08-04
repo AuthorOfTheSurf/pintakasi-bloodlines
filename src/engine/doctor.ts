@@ -13,7 +13,14 @@ import {
   tournamentEntries,
   tournaments,
 } from "@/db/schema";
-import { CADENCE, ELEMENTS, weatherOfDay } from "./config";
+import {
+  CADENCE,
+  ELEMENTS,
+  FORMAT_NAMES,
+  FORMATS,
+  weatherOfDay,
+  type FightFormat,
+} from "./config";
 import { GameClock } from "./game-clock";
 import { ageOf } from "./lifecycle";
 import {
@@ -66,6 +73,10 @@ const DOCTOR = {
   // Below this many entries the ratio is noise — a 30-entry world lands two
   // percentage points either side of chance for no reason at all.
   WEATHER_MIN_SAMPLE: 50,
+  // Below this a discovery age bucket is a coin flip's worth of evidence —
+  // ten entries swing past any threshold on one lucky card, so the honest
+  // report for a thin bucket is "too few to read", not a verdict.
+  DISCOVERY_MIN_SAMPLE: 20,
 } as const;
 
 export interface Invariant {
@@ -563,6 +574,114 @@ function adoption(db: DB): HealthSection {
   };
 }
 
+/**
+ * IS THE FOG ACTUALLY BEING LIFTED? (round 28)
+ *
+ * Round 28 hid the sheet: a bird's six stats are invisible until it retires,
+ * and every stable — player, bot and auto-play alike — now picks blades off
+ * the figure-based scout report (Lobbies.scoutReport), buying its evidence
+ * with SCOUT.EXPLORE entries at unread blades. The doctor is OMNISCIENT on
+ * purpose, so this is the one place allowed to grade that loop against the
+ * answer key: for each fight, was the bird carded at its TRUE best blade —
+ * the argmax over FORMATS[].weights that the bots lost the day the fog
+ * dropped? The players can never run this check; that's exactly why the
+ * doctor must.
+ *
+ * The story a healthy world tells: age-1 entries sit near the 1-in-5 chance
+ * floor (the discovery year is SPENT on unread blades, deliberately), and
+ * the hit rate climbs as the figures pile up. Two failure shapes, both
+ * judgement rather than invariants: a 4+ rate no better than age 1 means
+ * the figures aren't teaching anybody anything, and a discovery year that
+ * never touches all five blades means exploration is dead — the round-19/22
+ * "door nobody walked through", wearing the fog as a disguise.
+ */
+export function bladeDiscovery(db: DB): {
+  buckets: { label: string; entries: number; hits: number }[];
+  explored: FightFormat[];
+  chance: number;
+} {
+  const allBirds = db.select().from(birds).all();
+  const birdById = new Map(allBirds.map((b) => [b.id, b]));
+  // The true best blade(s), read straight off the hidden sheet. A SET, not
+  // a single winner: every blade's weights sum to 1, so a flat-statted bird
+  // genuinely is equally good everywhere, and scoring its every entry a
+  // miss would report noise as failure. (Epsilon because those weight sums
+  // only agree to floating point.)
+  const bestOf = new Map<string, Set<FightFormat>>();
+  for (const b of allBirds) {
+    const score = (f: FightFormat) => {
+      const w = FORMATS[f].weights;
+      return (
+        b.agility * w.agility + b.sight * w.sight + b.stamina * w.stamina + b.gameness * w.gameness
+      );
+    };
+    const top = Math.max(...FORMAT_NAMES.map(score));
+    bestOf.set(b.id, new Set(FORMAT_NAMES.filter((f) => score(f) >= top - 1e-6)));
+  }
+
+  const buckets = [
+    { label: "age 1  ", entries: 0, hits: 0 },
+    { label: "age 2–3", entries: 0, hits: 0 },
+    { label: "age 4+ ", entries: 0, hits: 0 },
+  ];
+  const explored = new Set<FightFormat>();
+  for (const r of db.select().from(battleLog).all()) {
+    const bird = birdById.get(r.birdId);
+    if (!bird) continue; // a bird deleted out from under its history
+    // Age AT THE FIGHT, not today — a retiree's whole career would land in
+    // the 4+ bucket otherwise. Same derivation as ageOf (week - birthWeek),
+    // but pinned to the fight's own day instead of the current clock.
+    const age = Math.max(0, GameClock.weekOf(r.dayIndex) - bird.birthWeek);
+    const bucket = buckets[age <= 1 ? 0 : age <= 3 ? 1 : 2];
+    bucket.entries++;
+    if (bestOf.get(bird.id)!.has(r.format)) bucket.hits++;
+    if (age <= 1) explored.add(r.format);
+  }
+  return {
+    buckets,
+    explored: FORMAT_NAMES.filter((f) => explored.has(f)),
+    chance: 1 / FORMAT_NAMES.length,
+  };
+}
+
+function discovery(db: DB): HealthSection {
+  const d = bladeDiscovery(db);
+  const floor = `${(d.chance * 100).toFixed(1)}% by chance`;
+  const lines = d.buckets.map((b) =>
+    b.entries < DOCTOR.DISCOVERY_MIN_SAMPLE
+      ? `${b.label}  ${b.entries} entries — too few to read`
+      : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs ${floor})`
+  );
+  const blades = FORMAT_NAMES.length;
+  lines.push(`explored  ${d.explored.length}/${blades} blades saw an age-1 entry in the discovery year`);
+
+  const [juv, , vet] = d.buckets;
+  // The trend verdict needs BOTH ends of the career to be readable — a
+  // young world with no 4+ fights yet has nothing to converge TO.
+  const readable =
+    juv.entries >= DOCTOR.DISCOVERY_MIN_SAMPLE && vet.entries >= DOCTOR.DISCOVERY_MIN_SAMPLE;
+  const converging = readable && vet.hits / vet.entries > juv.hits / juv.entries;
+  if (readable)
+    lines.push(
+      converging
+        ? "✓ hit rate climbs with age — the figures are teaching"
+        : "⚠ the 4+ rate is not above age 1 — stables are still guessing"
+    );
+
+  const warns = [
+    readable && !converging
+      ? `discovery is not converging: 4+ entries hit ${pct(vet.hits, vet.entries)} vs ` +
+        `${pct(juv.hits, juv.entries)} at age 1`
+      : undefined,
+    // Coverage is only a verdict once the discovery year has a real sample —
+    // an unplayed world hasn't refused to explore, it just hasn't started.
+    juv.entries >= DOCTOR.DISCOVERY_MIN_SAMPLE && d.explored.length < blades
+      ? `only ${d.explored.length}/${blades} blades explored at age 1 — exploration is dead`
+      : undefined,
+  ].filter((w): w is string => !!w);
+  return { title: "DISCOVERY", lines, warn: warns.length ? warns.join(" · ") : undefined };
+}
+
 // ── the report ──────────────────────────────────────────────────────────────
 
 export function diagnose(db: DB, dbPath: string): DoctorReport {
@@ -605,6 +724,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     stakerInflows(db),
     championships(db),
     adoption(db),
+    discovery(db),
   ];
 
   return {

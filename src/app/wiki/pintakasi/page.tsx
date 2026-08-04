@@ -151,8 +151,9 @@ export default function PintakasiPage() {
       <h2>Hardcore throughout</h2>
       <div className="callout warn">
         <b>Every loss in a Major ends a career.</b> Win or go home — permanently. A bird that
-        falls in round one is done fighting for life. It keeps its stats and its bloodline, and it
-        can still <Link href="/wiki/breeding">breed</Link> — but it will never fight again. Don&apos;t
+        falls in round one is done fighting for life. It keeps its stats and its bloodline, its
+        hidden sheet reveals on the spot (a hardcore loss counts as a retirement), and it can
+        still <Link href="/wiki/breeding">breed</Link> — but it will never fight again. Don&apos;t
         enter a bird here unless you mean it. (The Juvenile Championship, below, is the one
         exception in the whole game — it does <em>not</em> force-retire.)
       </div>

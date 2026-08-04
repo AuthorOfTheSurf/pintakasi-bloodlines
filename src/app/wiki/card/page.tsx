@@ -89,7 +89,8 @@ export default function CardPage() {
       </p>
       <div className="callout warn">
         <b>Hardcore is not just a dearer fee.</b> Lose one and your bird&apos;s career ends that
-        instant — it keeps its stats and can still breed, but it never fights again. Every
+        instant — it keeps its stats (its hidden sheet finally reveals, as at any retirement) and
+        can still breed, but it never fights again. Every
         Pintakasi Major bout runs under this same rule — the Juvenile Championship is the one
         exception in the game. Only enter one on purpose.
       </div>
@@ -234,15 +235,28 @@ export default function CardPage() {
 
       <h2>The fog</h2>
       <p>
-        Every lobby on the board shows how full it is — that count is always public. What it does
-        not show, while the lobby is still open, is whose birds are in it. You can see a lobby is 6
-        of {LOBBY.CAPACITY} full; you can&apos;t see which farms or which birds until the lobby
-        closes and the draw is made.
+        The fog has two layers, and they&apos;re the same doctrine: <strong>you don&apos;t get to
+        know who you&apos;re fighting, and you don&apos;t get to know exactly what any live bird
+        is</strong> — not even your own.
       </p>
       <p>
-        The point is nobody can dodge a strong bird by scouting the field first, and an average
-        bird stays worth carding instead of getting cherry-picked around. Judging a lobby&apos;s
-        likely strength from the fill count alone is part of the skill.
+        The first layer covers <strong>who is entered</strong>. Every lobby on the board shows how
+        full it is — that count is always public. What it does not show, while the lobby is still
+        open, is whose birds are in it. You can see a lobby is 6 of {LOBBY.CAPACITY} full; you
+        can&apos;t see which farms or which birds until the lobby closes and the draw is made.
+      </p>
+      <p>
+        The second layer covers <strong>what a live bird is</strong>. A fighting bird&apos;s six
+        stats are sealed until it retires — the card shows stars, element, record, and figures,
+        never the sheet (see <Link href="/wiki/birds">Birds &amp; stats</Link>). So even when a
+        field <em>is</em> visible, as in a claimer, you&apos;re reading a scout report, not a
+        spreadsheet.
+      </p>
+      <p>
+        The point of both layers is the same: nobody can dodge a strong bird by scouting first,
+        and an average bird stays worth carding instead of getting cherry-picked around. Judging a
+        lobby&apos;s likely strength from the fill count, and a bird&apos;s likely quality from
+        its figures, is the skill.
       </p>
       <p>
         Claimer lobbies are the deliberate exception: their fields are visible from the moment a

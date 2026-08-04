@@ -44,16 +44,20 @@ describe("breed", () => {
   });
 
   test("child stats stay in bounds and near the parent average", () => {
-    const { breeding, flock } = freshGame();
-    const mother = flock.byId("starter-2");
-    const father = flock.byId("starter-1");
+    const { db, breeding, flock } = freshGame();
     const { egg } = breeding.breed("starter-2", "starter-1");
+    // The fog (round 28): the egg's VIEW hides its stats — genetics are
+    // asserted against the raw rows, which is also how the engine breeds.
+    const eggRow = db.select().from(birds).where(eq(birds.id, egg.id)).get()!;
+    const mother = db.select().from(birds).where(eq(birds.id, "starter-2")).get()!;
+    const father = db.select().from(birds).where(eq(birds.id, "starter-1")).get()!;
+    expect(egg.agility).toBeNull(); // the view is dark until retirement
     for (const stat of ["agility", "sight", "stamina", "gameness", "station", "condition"] as const) {
-      expect(egg[stat]).toBeGreaterThanOrEqual(STATS.MIN);
-      expect(egg[stat]).toBeLessThanOrEqual(STATS.MAX);
+      expect(eggRow[stat]).toBeGreaterThanOrEqual(STATS.MIN);
+      expect(eggRow[stat]).toBeLessThanOrEqual(STATS.MAX);
       // within variance + max mutation swing of the parent average
       const avg = (mother[stat] + father[stat]) / 2;
-      expect(Math.abs(egg[stat] - avg)).toBeLessThanOrEqual(120 + 300 + 1);
+      expect(Math.abs(eggRow[stat] - avg)).toBeLessThanOrEqual(120 + 300 + 1);
     }
     expect(egg.halfStars).toBeGreaterThanOrEqual(0);
     expect(egg.halfStars).toBeLessThanOrEqual(10);
@@ -264,6 +268,27 @@ describe("bloodline restriction", () => {
     insertRetired(db, "line-a-hen", "female", "starter-2", "starter-1");
     insertRetired(db, "line-b-rooster", "male", "starter-4", "starter-3");
     expect(() => breeding.breed("line-a-hen", "line-b-rooster")).not.toThrow();
+  });
+});
+
+describe("the stud sheet (round 28 — retirement is the reveal)", () => {
+  test("browseStuds carries the full revealed sheet and an overall grade", () => {
+    // WHY (round 28: the fog): a stud is retired by definition, so its sheet
+    // is public — the revealed stats ARE the sales pitch. If this ever came
+    // back nulled or dropped the grade, stud shopping would go blind and the
+    // whole point of retiring well (your sheet becomes your price) is gone.
+    const { db, breeding } = freshGame();
+    const { studs } = breeding.browseStuds("starter-2"); // Dalisay browses her own barn
+    expect(studs.length).toBeGreaterThan(0); // both retired dev roosters stand
+    for (const stud of studs) {
+      const row = db.select().from(birds).where(eq(birds.id, stud.birdId)).get()!;
+      for (const stat of ["agility", "sight", "stamina", "gameness", "station", "condition"] as const) {
+        expect(typeof stud.sheet[stat]).toBe("number");
+        expect(stud.sheet[stat]).toBe(row[stat]); // the TRUE numbers, not a view through fog
+      }
+      expect(typeof stud.overallGrade).toBe("string");
+      expect(stud.overallGrade.length).toBeGreaterThan(0); // one glanceable letter for shoppers
+    }
   });
 });
 

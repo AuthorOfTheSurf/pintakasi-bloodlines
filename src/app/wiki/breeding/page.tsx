@@ -149,9 +149,12 @@ export default function BreedingPage() {
           <b>The six stats</b>
           Each stat starts at the parents&apos; average, then shifts by up to{" "}
           {BREEDING.STAT_VARIANCE} points either way — that spread is why two eggs from the same
-          pair are never identical. On top of that, each stat has a {mutationPct}% chance to
-          mutate, swinging it up to {BREEDING.MUTATION_SWING} further points in either direction.
-          That&apos;s where a real surprise — a breakout stat, or a dud — comes from.
+          pair are never identical. And because both parents are retired, both sheets are{" "}
+          <em>public</em>: a stud card shows the rooster&apos;s full six revealed stats and his
+          overall grade, so you can do this average yourself before you buy the cover. On top of
+          that, each stat has a {mutationPct}% chance to mutate, swinging it up to{" "}
+          {BREEDING.MUTATION_SWING} further points in either direction. That&apos;s where a real
+          surprise — a breakout stat, or a dud — comes from.
         </div>
         <div className="minicard">
           <b>Stars and element</b>
@@ -202,6 +205,15 @@ export default function BreedingPage() {
         parent — two strong birds plus a lucky mutation roll — and stack again in the next
         generation. The gacha can hand you a good body once. Only the nest hands you quality that
         keeps climbing.
+      </p>
+      <p>
+        There&apos;s a second reason the nest is where fortunes are made: it&apos;s the one place
+        in the game where you decide with the <strong>lights on</strong>. A live bird&apos;s stats
+        are hidden until it retires (see <Link href="/wiki/birds">Birds &amp; stats</Link>) — but
+        breeding only uses retired birds, so when you pick a pairing, both full sheets are on the
+        table. That split is the point of the whole design: breeding is the <em>informed</em>{" "}
+        decision, fighting is the <em>discovered</em> one. You breed with everything known, then
+        spend a career finding out what the egg actually gave you.
       </p>
 
       <div className="next">

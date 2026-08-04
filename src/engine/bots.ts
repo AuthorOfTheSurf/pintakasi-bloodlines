@@ -11,6 +11,7 @@ import {
   JUVENILE_MAJOR,
   LAND,
   PINTAKASI,
+  SCOUT,
   weatherOfDay,
   type FightFormat,
   type Lobby,
@@ -53,7 +54,8 @@ const MAX_CLAIMS_PER_DAY = 2;
  * then the clock advances and the card they just joined goes off. They are
  * ordinary farms driving the ordinary engine: every rule that binds a
  * player binds them, and every decision uses only information a player
- * could see (own birds' stats, the fogged board, visible claimer fields).
+ * could see (the scout report, the fogged board, visible claimer fields —
+ * NEVER a live bird's stats, which round 28 hid from everyone alike).
  *
  * Deterministic: the day index seeds the rng, so a replayed day replays.
  * No-ops (empty array) on worlds with no bot farms seeded — tests included.
@@ -264,7 +266,7 @@ export class Bots {
     for (const bird of roster()) {
       if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
       if (gp() <= ECONOMY.HARDCORE_ENTRY_FEE + RESERVE) break;
-      const spec = Bots.pickSpec(bot, bird, rng);
+      const spec = Bots.pickSpec(db, bot, bird, rng);
       if (quietly(() => void lobbies.enter(bird.id, spec))) {
         report.entered.push({ bird: bird.name, ...spec });
       }
@@ -291,13 +293,14 @@ export class Bots {
     return report;
   }
 
-  /** Where does this bird belong tonight? Style + own-stat reading. */
+  /** Where does this bird belong tonight? Style + the scout report (round 28). */
   private static pickSpec(
+    db: DB,
     bot: BotProfile,
     bird: BirdView,
     rng: Rng
   ): { mode: FightMode; classType: Lobby; format: FightFormat; price?: number } {
-    const format = bestFormat(bird, rng);
+    const format = bestFormat(db, bird, rng);
     // THE DISCOVERY-YEAR LADDER (round 23): a juvenile climbs the same way a
     // grown bird does — maiden while it hasn't won, stakes once it has, and
     // sometimes out with a tag on it. The old code carded every chick in one
@@ -350,40 +353,50 @@ export function ladderClass(stakesWins: number): Lobby {
 }
 
 /**
- * How well a bird reads at each distance — the owner's private study of its
- * own stats. One table, two uses: pick the blade for a bird (bestFormat),
- * or pick the bird for a blade (the Pintakasi, round 19).
- *
- * Since round 27 this reads the engine's OWN weight matrix instead of a
- * hand-written guess — an owner studying its bird uses the same dial the
- * pit does, and a weights retune re-teaches every bot for free.
+ * How well a bird reads at each distance — THE SCOUT REPORT'S scores
+ * (round 28). The old table read the bird's true stats through the engine's
+ * own weight matrix, which was legal while owners could see the sheet;
+ * with the fog down (stats hidden until retirement) that would be cheating,
+ * and the bots proved the discovery loop dead by never needing it. Now a
+ * stable — bot or auto-played — reads exactly what a player reads: the
+ * shrunk figure history per blade, nothing else.
  */
-export function formatScores(bird: BirdView): Record<FightFormat, number> {
+export function scoutScores(db: DB, birdId: string): Record<FightFormat, number> {
+  const report = new Lobbies(db, "scout").scoutReport(birdId);
   return Object.fromEntries(
-    FORMAT_NAMES.map((f) => {
-      const w = FORMATS[f].weights;
-      return [
-        f,
-        bird.agility * w.agility +
-          bird.sight * w.sight +
-          bird.stamina * w.stamina +
-          bird.gameness * w.gameness,
-      ];
-    })
+    FORMAT_NAMES.map((f) => [f, report.blades[f].score])
   ) as Record<FightFormat, number>;
 }
 
 /**
- * An owner can read their OWN birds' stats — pick the format that fits them.
+ * Pick tonight's blade for a bird — discovery-first (round 28).
+ *
+ * Two moves, in order:
+ *  1. EXPLORE: while any blade is still UNREAD (fewer than SCOUT.MIN_READS
+ *     figures), sometimes card the least-read one. Without this a bird's
+ *     first blade is self-fulfilling — the only blade with figures is the
+ *     only one that ever scores above the prior, so it would be the only
+ *     blade ever carded, and a B5 monster could live and die as a mediocre
+ *     B1 bird.
+ *  2. EXPLOIT: otherwise take the best score, with SCOUT.JITTER of judge
+ *     error — imperfect reads keep the field spread across lobby keys, same
+ *     job the old stat-scale jitter did.
+ *
  * Shared with auto-play (round 17): every stable cards by style, which also
  * spreads the field across formats instead of piling into one lobby key.
  */
-export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
-  const scores = formatScores(bird);
-  const jitter = () => rng() * 100; // imperfect judges — bots misread the margin calls
-  return (Object.entries(scores) as [FightFormat, number][]).reduce((best, cur) =>
-    cur[1] + jitter() > best[1] + jitter() ? cur : best
-  )[0];
+export function bestFormat(db: DB, bird: BirdView, rng: Rng): FightFormat {
+  const report = new Lobbies(db, "scout").scoutReport(bird.id);
+  const unread = FORMAT_NAMES.filter((f) => report.blades[f].fights < SCOUT.MIN_READS);
+  if (unread.length > 0 && rng() < SCOUT.EXPLORE) {
+    const least = Math.min(...unread.map((f) => report.blades[f].fights));
+    const targets = unread.filter((f) => report.blades[f].fights === least);
+    return targets[randInt(rng, 0, targets.length - 1)];
+  }
+  const jitter = () => rng() * SCOUT.JITTER; // imperfect judges — bots misread the margin calls
+  return FORMAT_NAMES.reduce((best, cur) =>
+    report.blades[cur].score + jitter() > report.blades[best].score + jitter() ? cur : best
+  );
 }
 
 /**
@@ -491,9 +504,14 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
     .all()
     .filter((b) => b.status === "active" && b.named && b.age === 1)
     .filter((b) => b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS);
+  // One scout read per bird — the report is a battleLog aggregation, and a
+  // juvenile field can be thirty birds wide.
+  const scores = new Map(qualified.map((b) => [b.id, scoutScores(db, b.id)]));
   for (const blade of blades) {
     let sent = 0;
-    for (const bird of qualified.sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade])) {
+    for (const bird of qualified.sort(
+      (a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade]
+    )) {
       if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
       try {
         tournaments.enter(bird.id, blade, "juvenile");
@@ -538,18 +556,28 @@ export function chaseCrowns(
 
   // Each bird declares for the running blade it reads BEST at — that's the
   // specialist rule, and it stops a shallow barn from piling its whole
-  // roster into whichever crown happens to be checked first.
+  // roster into whichever crown happens to be checked first. Declared on
+  // the SCOUT scores (round 28): a Major is hardcore, so the read is the
+  // demonstrated form, deterministic — nobody experiments in the ring that
+  // retires losers.
+  const scores = new Map(eligible.map((b) => [b.id, scoutScores(db, b.id)]));
   const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
-  for (const bird of eligible) {
-    const home = blades.reduce((best, b) =>
-      formatScores(bird)[b] > formatScores(bird)[best] ? b : best
-    );
-    declared.get(home)!.push(bird);
+  for (const [i, bird] of eligible.entries()) {
+    // Exact ties spread ROUND-ROBIN across the tied crowns. With the fog
+    // down (round 28) a barn of unraced veterans reads every blade at the
+    // prior — under a first-blade tie-break the whole roster would declare
+    // for the same crown and leave the other two brackets short.
+    const s = scores.get(bird.id)!;
+    const top = Math.max(...blades.map((b) => s[b]));
+    const tied = blades.filter((b) => s[b] === top);
+    declared.get(tied[i % tied.length])!.push(bird);
   }
 
   const send = (blade: FightFormat, candidates: BirdView[]): boolean => {
     let sent = tournaments.myEntriesThisWeek(blade);
-    for (const bird of candidates.sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade])) {
+    for (const bird of candidates.sort(
+      (a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade]
+    )) {
       if (sent >= PINTAKASI.MAX_PER_BARN) break;
       // Free entry still respects the reserve if a future season re-prices it.
       if (

@@ -337,9 +337,11 @@ export const BATTLE = {
   // RE-RULED 400 → 85 (2026-08-04, the grade-target tuning). At 400 a whole
   // grade of breeding (+100 on every stat) was worth +0.25 on a roll and won
   // only 56-67% — against Zane's targets of ~80% for one grade and ~98% for
-  // two. Grade is one of the few things a player can read off a bird before
-  // it fights, and breeding is the whole progression; the dice were louder
-  // than a generation of work.
+  // two. Breeding is the whole progression; the dice were louder than a
+  // generation of work. (The original rationale also leaned on grade being
+  // readable pre-fight — round 28's fog ended that, but the targets stand:
+  // a bred generation must WIN more, visibly, in the figures, or discovery
+  // has nothing to discover.)
   //
   // 85 was picked AT THE MIDDLE OF THE BLADE DIAL, per Zane's tuning
   // philosophy (tune the midpoint, work outward): on B3, +100 measures
@@ -483,6 +485,40 @@ export const FIGURE = {
   NOISE: 4, //           ± uniform, ONE roll per fight (the track variant)
   BAND: 5, //            displayed to the nearest 5
   MAX: 150, //           clamp range [0, MAX] — headroom for bred stock
+} as const;
+
+// ── The Scout Report (round 28 — the fog comes down) ────────────────────────
+// Stats are HIDDEN until retirement (Zane's ruling, 2026-08-05): while a
+// bird can still fight, the only read on it is its figures. That makes the
+// wiki's old promise — "the skill is DISCOVERY" — literally true for the
+// first time, and it makes small samples dangerous: one big figure at B1
+// would type a bird forever if raw averages ranked the blades. So each
+// blade's read is SHRUNK toward what an unraced blade would score — a
+// Bayesian prior sized in pseudo-fights. Players (get_bird), auto-play and
+// the bots all read this same report; nobody reads the sheet.
+export const SCOUT = {
+  // An unread blade scores the even-starter figure — the same ~50 that
+  // GHOST_PACE is tuned to. Reading "nothing known" as "average" is what
+  // stops a single lucky 80 from looking like a destiny.
+  PRIOR_FIGURE: 50,
+  // Pseudo-fights behind the prior: by the third real figure at a blade,
+  // the bird's own evidence carries the read.
+  PRIOR_WEIGHT: 2,
+  // Fewer figures than this and a blade still counts as UNREAD — it stays
+  // an exploration target even if its one figure was loud.
+  MIN_READS: 2,
+  // The chance a stable cards an UNREAD blade instead of its best-known
+  // one. Without this a bird's first blade is self-fulfilling: the only
+  // blade with figures is the only blade that scores above prior, so it
+  // would be the only blade ever carded. Discovery must be bought — this
+  // is the price, paid mostly during the juvenile year (which is when the
+  // fights are cheap and the record doesn't count).
+  EXPLORE: 0.35,
+  // Bots misread the margin calls by up to ~2 figure bands. Replaces the
+  // old rng()*100 jitter, which was scaled to stat-weight sums in the
+  // hundreds — on figure-scale scores (roughly 40-70) that would have been
+  // pure noise.
+  JITTER: 10,
 } as const;
 
 // ── Economy (GP — pegged at $1 = 80 GP, re-ruled 2026-08-03) ────────────────

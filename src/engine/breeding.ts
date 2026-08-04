@@ -17,9 +17,11 @@ import {
   TRIM_BY_ELEMENT,
   type Carriage,
   type Element,
+  type StatName,
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { creditCents } from "./farms";
+import { overallGradeOf, type Grade } from "./grades";
 import { uniqueName } from "./naming";
 import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
@@ -34,7 +36,12 @@ export interface LineageNode {
   father: LineageNode | null;
 }
 
-/** A stud as the barn shows it — public card, own-stat fog intact. */
+/**
+ * A stud as the barn shows it. Since round 28 the card carries the FULL
+ * SHEET: retirement is the reveal, and every stud is retired by definition —
+ * the revealed stats are the sales pitch. (Before the fog, this view hid
+ * stats on principle; now the principle cuts the other way.)
+ */
 export interface StudView {
   birdId: string;
   farm: string;
@@ -42,6 +49,8 @@ export interface StudView {
   stars: string;
   age: number;
   career: { wins: number; losses: number };
+  sheet: Record<StatName, number>; // the revealed stats — what you're buying half of
+  overallGrade: Grade; //             one glanceable letter for shoppers
   price: number; // locked to BREED_FEE for now — player pricing later
   coversLeft: number; // public slots left this week (owner slots tracked apart)
   mine: boolean;
@@ -156,9 +165,13 @@ export class Breeding {
       })
       .where(eq(gameState.id, 1))
       .run();
-    const stats = this.inheritStats(mother, fatherRow);
-    const { element, halfStars } = this.inheritStars(mother, fatherRow);
-    const { carriage, carriageHalfStars } = this.inheritCarriage(mother, fatherRow);
+    // Inheritance reads the RAW rows: the hen's view is fogged by type
+    // (round 28), but both parents are retired here — their sheets are
+    // public — and the genetics never depended on the view anyway.
+    const motherRow = this.database.select().from(birds).where(eq(birds.id, motherId)).get()!;
+    const stats = this.inheritStats(motherRow, fatherRow);
+    const { element, halfStars } = this.inheritStars(motherRow, fatherRow);
+    const { carriage, carriageHalfStars } = this.inheritCarriage(motherRow, fatherRow);
 
     // Coat v0 (round 14): take a parent's base coat, small mutation chance;
     // trim keys off the chick's own element. Real coat genetics come later.
@@ -328,6 +341,9 @@ export class Breeding {
             : `covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`,
         });
       } else {
+        const total =
+          rooster.agility + rooster.sight + rooster.stamina +
+          rooster.gameness + rooster.station + rooster.condition;
         studs.push({
           birdId: rooster.id,
           farm: farm.name,
@@ -335,6 +351,15 @@ export class Breeding {
           stars: `${rooster.halfStars / 2}★ ${rooster.element}`,
           age: ageOf(rooster, week),
           career: { wins: rooster.wins, losses: rooster.losses },
+          sheet: {
+            agility: rooster.agility,
+            sight: rooster.sight,
+            stamina: rooster.stamina,
+            gameness: rooster.gameness,
+            station: rooster.station,
+            condition: rooster.condition,
+          },
+          overallGrade: overallGradeOf(total),
           price: ECONOMY.BREED_FEE,
           coversLeft,
           mine,

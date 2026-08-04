@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { battleLog, birds } from "@/db/schema";
+import { battleLog, birds, events } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { weatherOfDay, type Element } from "./config";
 import { Flock } from "./flock";
@@ -140,6 +141,77 @@ describe("retirement", () => {
     }
     expect(lastEvents.hatched.length).toBe(1); // this week's egg
     expect(lastEvents.forceRetired.length).toBe(1); // Batong Buhay at 9
+  });
+});
+
+describe("the fog (round 28 — the sheet hides until retirement)", () => {
+  const SHEET = ["agility", "sight", "stamina", "gameness", "station", "condition"] as const;
+
+  test("a live bird's view is dark — all six stats null, the card stays public", () => {
+    // WHY (round 28: the fog): if a live view ever leaks one number, every
+    // client that renders a BirdView leaks it too, and discovery goes back
+    // to being a slogan — you'd read the sheet, not the figures.
+    const { flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!; // active, age 2
+    for (const stat of SHEET) expect(alab[stat]).toBeNull();
+    // The card — stars, element, record, age — is NOT the sheet: still public.
+    expect(alab.stars).toContain("★");
+    expect(alab.wins + alab.losses).toBeGreaterThan(0);
+    expect(alab.age).toBe(2);
+  });
+
+  test("an egg is fogged too — the shell hides the sheet like it hides the sex", () => {
+    // WHY: eggs were the easy regression — view() special-cases them for sex
+    // and age, and a refactor that reveals "not active" instead of "retired"
+    // would light every unhatched sheet up.
+    const { db, flock } = freshGame();
+    insertEgg(db, "egg-fog", 0, 0);
+    const egg = flock.byId("egg-fog");
+    for (const stat of SHEET) expect(egg[stat]).toBeNull();
+    expect(egg.sex).toBe("hidden");
+  });
+
+  test("retire() IS the reveal — the returned view carries the true numbers", () => {
+    // WHY: retirement is the one moment the fog lifts. If this view came back
+    // dark, the reveal would exist in prose only and stud shopping would be blind.
+    const { db, flock } = freshGame();
+    const sinag = flock.all().find((b) => b.name === "Sinag")!; // age 3 — fork open
+    const raw = db.select().from(birds).where(eq(birds.id, sinag.id)).get()!;
+    const retired = flock.retire(sinag.id);
+    for (const stat of SHEET) expect(retired[stat]).toBe(raw[stat]);
+    // …and the event log says so, so the barn's neighbors hear the number too.
+    const event = db.select().from(events).all().find((e) => e.type === "retire")!;
+    expect(event.message).toContain("The sheet is public");
+  });
+
+  test("a hardcore force-retire reveals the same way — losing the career buys the sheet", () => {
+    // WHY: hardcoreRetire() is the path the fight engine calls on a hardcore
+    // loss. It must lift the fog exactly like manual retirement — a loser
+    // whose sheet stayed dark would be worthless in the breeding barn.
+    const { db, flock } = freshGame();
+    const sinag = flock.all().find((b) => b.name === "Sinag")!;
+    const raw = db.select().from(birds).where(eq(birds.id, sinag.id)).get()!;
+    flock.hardcoreRetire(sinag.id);
+    const after = flock.byId(sinag.id);
+    expect(after.retiredBy).toBe("hardcore");
+    for (const stat of SHEET) expect(after[stat]).toBe(raw[stat]);
+  });
+
+  test("the age cap reveals on Hatch Friday — forceRetired views come back lit", () => {
+    // WHY: processHatchFriday builds its views from a row it patches in
+    // memory ({...row, status: "retired"}) — if that patch ever stopped
+    // setting the status BEFORE view() runs, the cap's reveal would arrive
+    // one read late and the hatch-day event feed would show a dark sheet.
+    const { db, clock, flock } = freshGame();
+    const raw = db.select().from(birds).all().find((b) => b.name === "Batong Buhay")!;
+    let capped: ReturnType<typeof flock.byId> | undefined;
+    for (let i = 0; i < 4; i++) {
+      clock.tickWeek((w) => {
+        const views = flock.processHatchFriday(w).forceRetired;
+        capped ??= views.find((b) => b.name === "Batong Buhay");
+      });
+    }
+    for (const stat of SHEET) expect(capped![stat]).toBe(raw[stat]);
   });
 });
 

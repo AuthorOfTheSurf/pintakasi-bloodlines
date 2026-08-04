@@ -1,6 +1,6 @@
 # RULINGS
 
-A ledger of WHAT was ruled and WHEN — rounds ~14 through 27. The *reasoning*
+A ledger of WHAT was ruled and WHEN — rounds ~14 through 28. The *reasoning*
 lives in the dated comment blocks in `src/engine/config.ts` (and, for a few
 items, in the test files that pin the behavior); this file exists so an
 agent can see a knob's history without reading that whole file first.
@@ -77,4 +77,12 @@ before assuming "current value = only value this ever was":
 - `intent.ts` re-ruled to the round-27 map (B3 gets an `even` intent judged on spread, not order); all five blades now MATCH intent — round 26's "targets to measure against, not tune to" stance deliberately reversed, because the middle exists now.
 - Bots' `formatScores` now reads the engine's own weight matrix (a weights retune re-teaches every bot for free). Figure guard: a winner never posts below one band.
 - Deferred, still: Crowd Noise (station's parity role), logarithmic breeding speed, and the 5★ stacked ceiling watch.
+
+**Round 28** (2026-08-05) — **THE FOG COMES DOWN: stats hidden until retirement.** Zane's ruling, closing the oldest contradiction in the game: the MCP prose had said "the skill is DISCOVERY" since round 13, while get_bird handed every owner the full sheet — and the bots proved the loop dead by carding perfectly from day one.
+- **The six fighting stats are `null` on every live bird's view** (egg or active) and REVEAL at retirement, whatever ended the career — manual, hardcore loss, or the age cap. The reveal is announced in the retire event ("The sheet is public: <grade> overall"). Gacha pulls hidden too — round 14's "the jackpot is STARS, never raw stats" becomes literal. Stars, element, carriage, sex, age, record and figures stay visible: they are the card, not the sheet. Admin stays omniscient (it reads raw rows — the dev inspector, not a player surface).
+- **The SCOUT REPORT** (`Lobbies.scoutReport`, `SCOUT` config block): per blade, the record + average/best figure + a score SHRUNK toward PRIOR_FIGURE (50, the even-starter figure) by PRIOR_WEIGHT (2) pseudo-fights — one lucky 80 must not out-rank three honest 60s, and an unraced blade reads "unknown, average", never "bad". Surfaced on get_bird; players, auto-play and bots all read THIS, identical evidence, no side channel.
+- **The bots stop cheating**: `formatScores` (true stats × the weight matrix) is deleted. `bestFormat` now explores — while any blade has fewer than MIN_READS (2) figures, EXPLORE (35%) of cards go to the least-read blade, because without forced exploration a bird's first blade is self-fulfilling. Otherwise argmax scout score with JITTER (10) of judge error. Crown declarations sort on scout scores, deterministic (nobody experiments in the ring that retires losers), with round-robin spread on exact ties — a barn of unraced veterans would otherwise pile its whole roster into one crown.
+- **The stud market gets the sheet**: StudView carries the revealed six stats + overall grade — every stud is retired by definition, and the revealed sheet is the sales pitch. Breeding is the INFORMED decision; fighting is the DISCOVERED one. (Grades now appear only on retired birds and studs.)
+- **The doctor grows a discovery section** (omniscient by design): % of entries carded at the bird's TRUE best blade by age bucket — the answer key the players lost — plus juvenile blade coverage as exploration's adoption check.
+
 

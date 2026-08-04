@@ -199,7 +199,10 @@ export default function GachaPage() {
         {STATS.STARTER_MIN} and {STATS.STARTER_MAX}: even a Gold pull, the rarest token in the
         game, only tops out {goldOverStarter} points above a starter&apos;s ceiling. No gacha tier
         is built to meaningfully outclass the birds you already start with on raw stats — the
-        difference is entirely in the stars.
+        difference is entirely in the stars. One caveat: these bands are the public odds, not a
+        receipt — a gacha bird&apos;s actual stats are hidden like any other live bird&apos;s, and
+        you won&apos;t see what you rolled until it retires. The stars are visible the moment the
+        egg hatches, which is exactly why stars are the jackpot.
       </p>
       <div className="callout warn">
         <b>The jackpot is stars, not stats.</b> A Gold egg can carry up to{" "}

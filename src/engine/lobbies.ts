@@ -7,7 +7,9 @@ import {
   CLAIMER,
   ECONOMY,
   FORMATS,
+  FORMAT_NAMES,
   LOBBY,
+  SCOUT,
   PINTAKASI,
   STAKER_FLOWS,
   landForFight,
@@ -18,6 +20,7 @@ import {
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { creditCents, payStakers } from "./farms";
+import { overallGradeOf } from "./grades";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile, canRealFight } from "./lifecycle";
@@ -67,6 +70,19 @@ export type FormatRecord = {
   avgFigure: number;
   bestFigure: number;
 };
+
+/** One blade's line in the scout report: the record plus the shrunk read. */
+export interface ScoutBlade extends FormatRecord {
+  score: number; // (avgFigure·fights + PRIOR_FIGURE·PRIOR_WEIGHT) / (fights + PRIOR_WEIGHT)
+}
+
+/** The whole read on a live bird — the sheet's stand-in while the fog is down. */
+export interface ScoutReport {
+  blades: Record<FightFormat, ScoutBlade>; // ALL five present; unraced = zeros at the prior score
+  bestBlade: FightFormat; //                 highest score — where the evidence points
+  bestEvidence: FightFormat | null; //       the most-fought blade — where the read is most trustworthy
+  totalFights: number;
+}
 
 /**
  * What the board shows about an entered bird. Deliberately fogged twice over:
@@ -302,6 +318,48 @@ export class Lobbies {
     }
     for (const rec of Object.values(out)) rec.avgFigure = Math.round(rec.avgFigure / rec.fights);
     return out;
+  }
+
+  /**
+   * THE SCOUT REPORT (round 28 — the fog comes down). With stats hidden
+   * until retirement, a live bird IS its figure history, and this is that
+   * history turned into a ranked read: every blade gets a `score`, the
+   * average figure SHRUNK toward SCOUT.PRIOR_FIGURE by PRIOR_WEIGHT
+   * pseudo-fights. Shrinkage is the whole trick — one lucky 80 at B1 must
+   * not out-rank three honest 60s at B3, and an unraced blade must read as
+   * "average, unknown", never as "bad".
+   *
+   * Players (get_bird), auto-play and the bots all read THIS — identical
+   * evidence, no side channel. Like formBook, deliberately NOT farm-scoped:
+   * a claimer target is exactly the bird you most need to scout.
+   */
+  scoutReport(birdId: string): ScoutReport {
+    const records = this.formatRecords(birdId);
+    const blades = {} as Record<FightFormat, ScoutBlade>;
+    let totalFights = 0;
+    for (const f of FORMAT_NAMES) {
+      const rec = records[f] ?? { fights: 0, wins: 0, losses: 0, avgFigure: 0, bestFigure: 0 };
+      totalFights += rec.fights;
+      const score =
+        (rec.avgFigure * rec.fights + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
+        (rec.fights + SCOUT.PRIOR_WEIGHT);
+      blades[f] = { ...rec, score: Math.round(score * 10) / 10 };
+    }
+    // Ties break in dial order (FORMAT_NAMES) — stable, and it means a
+    // fresh bird "prefers" the sprint only in the sense that somebody has
+    // to be first alphabetically.
+    const bestBlade = FORMAT_NAMES.reduce((best, f) =>
+      blades[f].score > blades[best].score ? f : best
+    );
+    const mostFought = FORMAT_NAMES.reduce((best, f) =>
+      blades[f].fights > blades[best].fights ? f : best
+    );
+    return {
+      blades,
+      bestBlade,
+      bestEvidence: blades[mostFought].fights > 0 ? mostFought : null,
+      totalFights,
+    };
   }
 
   /**
@@ -566,7 +624,8 @@ export class Lobbies {
           type: "retire",
           farmId: side.entry.farmId,
           birdId: side.row.id,
-          message: `${side.row.name} lost a hardcore — force-retired (${side.row.wins}–${side.row.losses + 1})`,
+          // The hardest reveal in the game: the autopsy comes with the loss.
+          message: `${side.row.name} lost a hardcore — force-retired (${side.row.wins}–${side.row.losses + 1}). The sheet is public: ${overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition)} overall.`,
           data: { by: "hardcore" },
         });
       }
