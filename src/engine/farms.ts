@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { farms, gameState, type FarmRow } from "@/db/schema";
-import { ECONOMY, FARM_COLORS, LAND, type FarmColor } from "./config";
+import { ECONOMY, FARM_COLORS, LAND, STAKER_FLOWS, type FarmColor } from "./config";
 import { emit, fmtGp } from "./events";
 
 export interface FarmView {
@@ -35,6 +35,38 @@ export function creditCents(database: DB, farmId: string, cents: number): void {
     .set({ gp: farm.gp + Math.floor(total / 100), gpCents: total % 100 })
     .where(eq(farms.id, farmId))
     .run();
+}
+
+/**
+ * Pay the Land Token staking pool, in centi-GP (round 22). Every flow named
+ * in STAKER_FLOWS lands here: the fight rake, the claim rake, the gacha
+ * share, the breed cut, and land purchases. The pool splits pro-rata across
+ * staked land at the next day tick — see distributeStaking below.
+ *
+ * `source` is what the ledger will say the money came from, and the events
+ * carry the same `pool_accrual` shape the breed cut has always used, so the
+ * office's GP tab picks them up without a special case.
+ */
+export function payStakers(
+  database: DB,
+  cents: number,
+  source: string,
+  note: string,
+  farmId: string | null = null
+): void {
+  if (cents <= 0) return;
+  const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  database
+    .update(gameState)
+    .set({ stakerPoolCents: state.stakerPoolCents + cents })
+    .where(eq(gameState.id, 1))
+    .run();
+  emit(database, {
+    type: "pool_accrual",
+    farmId,
+    message: `${note}: +${fmtGp(cents)} GP staker pool`,
+    data: { stakerPoolCents: cents, juicePoolCents: 0, source },
+  });
 }
 
 export interface RegisterInput {
@@ -160,6 +192,19 @@ export class Farms {
       lt: amount,
       message: `bought ${amount} LT for ${gpPaid} GP`,
     });
+    // …and the payment goes to the people already staking (round 22). Before
+    // this it went NOWHERE — deducted from the wallet and never banked, a
+    // silent burn that would have broken the conservation proof the moment
+    // anyone bought land. No sim ever caught it because the bots only stake
+    // land they EARN. It's also the fair answer to dilution: new supply
+    // waters down every existing staker's share, so the buyer pays them.
+    payStakers(
+      this.database,
+      Math.round(gpPaid * 100 * STAKER_FLOWS.LAND_PURCHASE_SHARE),
+      "land_purchase",
+      `${farm.name} bought ${amount} LT`,
+      farmId
+    );
     return {
       farm: this.view(this.rowById(farmId)),
       bought: amount,

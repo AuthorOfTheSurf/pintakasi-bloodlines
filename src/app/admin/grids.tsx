@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
+import { PINTAKASI } from "@/engine/config";
 import { gradeColor, gradeOf, overallGradeOf } from "@/engine/grades";
 import { BASE_COAT_HEX, BirdSprite, EggSprite, ElementSprite, TOKEN_EGG_HEX } from "./sprites";
 
@@ -86,6 +87,9 @@ export interface BirdRowUI {
   // fights minted. The answer to "was this bird worth feeding?"
   netGp: number;
   netLt: number;
+  // Qualification points toward a Pintakasi crown (round 22) — the crowns
+  // are free, so this is the currency that actually gets a bird in.
+  crownPoints: number;
 }
 
 export interface BreedingRowUI {
@@ -351,6 +355,13 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
     width: 110,
     valueFormatter: (p) => signed(p.value),
     cellClassRules: deltaClasses,
+  },
+  {
+    field: "crownPoints",
+    headerName: "crown pts",
+    type: "rightAligned",
+    width: 120,
+    cellClassRules: { up: (p: { value: number | null }) => (p.value ?? 0) >= PINTAKASI.QUALIFYING_POINTS },
   },
   {
     field: "netLt",

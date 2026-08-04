@@ -7,6 +7,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies, type LobbySpec } from "./lobbies";
+import { ECONOMY } from "./config";
 import { canHardcore } from "./lifecycle";
 import { drawStarterNames } from "./naming";
 import { mulberry32 } from "./rng";
@@ -24,11 +25,12 @@ import { Tournaments } from "./tournaments";
  * an empty nest, enter every active bird on the card (real at 2+, juvenile
  * under it).
  */
-const quietly = (fn: () => unknown) => {
+const quietly = (fn: () => unknown): boolean => {
   try {
     fn();
+    return true;
   } catch {
-    /* auto-play takes no for an answer, like the bots do */
+    return false; /* auto-play takes no for an answer, like the bots do */
   }
 };
 
@@ -40,11 +42,20 @@ export function playHonestDay(db: DB, farmId: string): void {
   const farmsApi = new Farms(db);
   quietly(() => farmsApi.checkIn(farmId));
 
+  // Free pulls first, then PAID rolls up to the daily cap (round 22). The
+  // paid pass is the whole point of the repricing: at 80 GP a roll not one
+  // stable ever bought a single pull in 35 days, so the gacha's flows into
+  // the pools measured exactly zero. A barn rolls while it can spare the GP.
   const gacha = new Gacha(db, farmId, mulberry32(9000 + day));
   for (;;) {
     const farm = farmsApi.rowById(farmId);
     if (farm.freePulls <= 0) break;
     quietly(() => gacha.roll());
+  }
+  for (let i = 0; i < ECONOMY.PAID_PULLS_PER_DAY; i++) {
+    const farm = farmsApi.rowById(farmId);
+    if (farm.gp < ECONOMY.GACHA_ROLL_PRICE + AUTO_RESERVE) break;
+    if (!quietly(() => gacha.roll())) break; // cap hit, or the barn is full
   }
 
   const flock = new Flock(db, farmId).all();

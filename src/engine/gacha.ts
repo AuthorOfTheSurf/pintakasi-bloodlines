@@ -12,11 +12,12 @@ import {
   GACHA_TOKENS,
   GACHA_WEIGHTS,
   LAND,
+  STAKER_FLOWS,
   TRIM_BY_ELEMENT,
   type Element,
   type GachaToken,
 } from "./config";
-import { emit } from "./events";
+import { emit, fmtGp } from "./events";
 import { Flock, type BirdView } from "./flock";
 import { uniqueName } from "./naming";
 import { GameClock } from "./game-clock";
@@ -56,9 +57,17 @@ export class Gacha {
     const today = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
 
-    // Free pulls (from the daily check-in) spend before GP does.
+    // Free pulls (from the daily check-in) spend before GP does. Past those,
+    // a farm may buy up to PAID_PULLS_PER_DAY more at price (round 22) —
+    // capped the same way land purchases are, so the cheap roll can't be
+    // hoovered by whoever has the biggest wallet.
     const freePullUsed = farm.freePulls > 0;
     const price = freePullUsed ? 0 : ECONOMY.GACHA_ROLL_PRICE;
+    const paidToday = farm.gachaPaidDay === today ? farm.gachaPaidToday : 0;
+    if (!freePullUsed && paidToday >= ECONOMY.PAID_PULLS_PER_DAY)
+      throw new Error(
+        `${farm.name} has used all ${ECONOMY.PAID_PULLS_PER_DAY} paid rolls today — the board resets at the day tick`
+      );
     if (farm.gp < price) throw new Error(`A roll costs ${ECONOMY.GACHA_ROLL_PRICE} GP — you have ${farm.gp}`);
     this.database
       .update(farms)
@@ -66,25 +75,33 @@ export class Gacha {
         gp: farm.gp - price,
         freePulls: freePullUsed ? farm.freePulls - 1 : farm.freePulls,
         landTokens: farm.landTokens + LAND.PER_GACHA_ROLL,
+        ...(freePullUsed ? {} : { gachaPaidDay: today, gachaPaidToday: paidToday + 1 }),
       })
       .where(eq(farms.id, this.farmId))
       .run();
 
-    // Paid rolls feed the juice pool (round 14 — this was a silent BURN
-    // before: the GP left the wallet and went nowhere, which would have
-    // broken the conservation proof on the first real spend). Gacha revenue
-    // now subsidizes the weekly championships, and the books stay zero-sum.
+    // Where the spend goes (round 14 routed it out of a silent burn; round 22
+    // splits it): 10% to the Land Token stakers, 90% to the juice pool that
+    // now IS the championship purse — so rolling the gacha directly funds
+    // the biggest stage in the game.
     if (price > 0) {
+      const cents = price * 100;
+      const stakerCents = Math.round(cents * STAKER_FLOWS.GACHA_SHARE);
+      const juiceCents = cents - stakerCents;
       const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
       this.database
         .update(gameState)
-        .set({ juicePoolCents: state.juicePoolCents + price * 100 })
+        .set({
+          juicePoolCents: state.juicePoolCents + juiceCents,
+          stakerPoolCents: state.stakerPoolCents + stakerCents,
+        })
         .where(eq(gameState.id, 1))
         .run();
       emit(this.database, {
         type: "pool_accrual",
-        message: `gacha spend: +${price}.00 GP juice pool`,
-        data: { stakerPoolCents: 0, juicePoolCents: price * 100, source: "gacha" },
+        farmId: this.farmId,
+        message: `gacha spend: +${fmtGp(stakerCents)} GP staker pool · +${fmtGp(juiceCents)} GP juice pool`,
+        data: { stakerPoolCents: stakerCents, juicePoolCents: juiceCents, source: "gacha" },
       });
     }
 

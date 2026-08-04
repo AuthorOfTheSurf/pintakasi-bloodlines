@@ -226,13 +226,44 @@ export const ECONOMY = {
   REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
   HARDCORE_ENTRY_FEE: 120, // $1.50 a side — and the loser's career (the key rule)
   JUVENILE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
-  GACHA_ROLL_PRICE: 80, //    one roll = $1 — PAID rolls feed the juice pool (round 14; was a silent burn)
+  // ROUND 22 — the gacha repriced to actually get played. At 80 GP a roll,
+  // 35 days of sim produced 570 rolls, ALL of them free and NOT ONE paid:
+  // with a ~15% egg rate an 80 GP roll priced an egg at ~543 GP, against a
+  // 160 GP cover for a better-bred bird. Nobody was ever going to buy that.
+  // At 16 GP a roll an egg costs ~109 GP and finally undercuts the cover.
+  GACHA_ROLL_PRICE: 16, //   $0.20 a roll — was 80 (see PAID_PULLS_PER_DAY)
   FREE_PULLS_PER_CHECK_IN: 1, // daily login bonus: ONE free gacha pull (was 2 — round 20)
+  PAID_PULLS_PER_DAY: 5, //  …then up to five more at price, per farm per game-day
   // The world opens with juice already in the pot (ruled round 20): three
   // days of drip, so the first championships are worth entering before
   // breeding fees have had time to fill the pool. Printed once, at genesis,
   // like the starting purses — never again.
   SEED_JUICE: 2_400, // = DAILY_DRIP × 3
+} as const;
+
+// ── What flows into the Land Token staking pool (ruled round 22) ────────────
+// Round 21's Staking tab measured the old economy honestly and it was thin:
+// ten barns staked 10,627 LT and earned 55.96 GP across 35 days, because
+// breed fees were the pool's ONLY inflow. Zane's intent here is a loop —
+// more GP flowing to stakers makes LT worth holding, which makes players
+// play FOR it. So every way GP changes hands now pays the landholders a
+// slice. All shares are of the GROSS, computed in centi-GP.
+//
+// NOTE this reverses the standing zero-rake ruling on fights: the pot is no
+// longer a pure 2× your entry. A 40 GP card now pays the winner 78.40, not
+// 80.00. GP is still never printed and still conserves to the cent — the
+// 1.60 moves to the staker pool instead of vanishing.
+export const STAKER_FLOWS = {
+  FIGHT_RAKE: 0.02, //     2% of every daily-card pot (both entries)
+  CLAIM_RAKE: 0.02, //     2% of every claiming tag — the owner banks 98%
+  MARKET_RAKE: 0.02, //    the same rule, reserved for the marketplace (not built)
+  GACHA_SHARE: 0.1, //     10% of paid gacha spend (the other 90% is juice)
+  // Buying LT with GP pays the people already staking (round 22 fix): that
+  // GP used to be DELETED — deducted from the wallet and routed nowhere,
+  // which would have broken the conservation proof the first time anyone
+  // bought land. It also offsets the dilution new supply hands existing
+  // stakers. The whole payment goes to the pool.
+  LAND_PURCHASE_SHARE: 1,
 } as const;
 
 // ── Land Tokens (the second currency — the subsidy, and one-way) ────────────
@@ -243,9 +274,10 @@ export const ECONOMY = {
 // entry (odd bird out) earns nothing — land is for FIGHTING, not queueing.
 // Priced: $0.01 = 1 LT, i.e. 80 GP buys 100 LT. Buyable with GP up to a
 // daily cap; NEVER sellable back — land only accumulates. STAKING IS LIVE
-// (2026-08-03): one pool for now; staked LT earns a pro-rata share of the
-// breed-fee staker cut, distributed daily at the tick. (Fight-entry flow
-// into the pool: not yet. Multiple pools — breeding vs. arenas: later.)
+// (2026-08-03): one pool for now; staked LT earns a pro-rata share of every
+// inflow in STAKER_FLOWS above — fight rake, claim rake, gacha share, breed
+// cut and land purchases — distributed daily at the tick. (Multiple pools —
+// breeding vs. arenas: later.)
 export const LAND = {
   FEE_PER_TOKEN: 8, //        the linear base: 1 LT per 8 GP of entry fee…
   FIGHT_EXPONENT: 1.15, //    …raised past linear — the "fight up" incentive
@@ -294,7 +326,9 @@ export const BREEDING = {
 // CENTI-GP (integer hundredths) so the accounting stays exact — the staker
 // pool's pro-rata payouts are where GP goes decimal.
 export const BREED_SPLIT = {
-  STAKER_SHARE: 0.025, // → the single LT staking pool
+  // Doubled round 22 (2.5% → 5%) as part of widening every LT inflow: on the
+  // 160 fee that's 8.00 staker / 76.00 juice / 76.00 stud owner.
+  STAKER_SHARE: 0.05, // → the single LT staking pool
   // The remainder splits evenly: fight juice / stud owner.
   JUICE_SHARE_OF_REST: 0.5,
 } as const;
@@ -361,13 +395,31 @@ export const CLAIMER = {
 // with the population: next power of two, 64 max, overflow live-bumps the
 // weakest entrant (the Selection Committee's other job).
 //
-// The money: GP to the TOP (purse = entries + the week's juice-pool share;
-// first-round losers take zero), LAND to the FALLEN (fights mint on a
-// steeper curve than the daily card, and elimination grants pay the
-// earliest-eliminated the most — the winner takes the money, the dead take
-// the land, so a first-round hardcore death is never a pure loss).
+// The money: GP to the TOP (purse = the week's juice-pool share; first-round
+// losers take zero), LAND to the FALLEN (fights mint on a steeper curve than
+// the daily card, and elimination grants pay the earliest-eliminated the
+// most — the winner takes the money, the dead take the land, so a first-round
+// hardcore death is never a pure loss).
+//
+// ROUND 22 — THE CROWNS GO FREE. Zane: "In PFL they are actually free-entry
+// and just require qualification points… I don't think they should be the
+// highest-cost entry in the game at all." So the 200 GP entry is gone and
+// you QUALIFY BY FIGHTING instead: every win on the daily card banks crown
+// points (see POINTS_FOR), and a bird needs QUALIFYING_POINTS of them to
+// stand in a championship. Two things follow. (1) The purse is now PURE
+// JUICE — which means gacha spend and breed fees fund the crowns, so the
+// round-22 flows feed the biggest stage in the game. (2) The Selection
+// Committee ranks on POINTS first, so the bump line rewards the bird that
+// campaigned hardest, not the barn with the deepest wallet.
 export const PINTAKASI = {
-  ENTRY_FEE: 200, //  $2.50 — open stakes, the dearest card in the game
+  ENTRY_FEE: 0, //    FREE — qualification is earned in the pit, not bought
+  // What a win on the daily card banks toward a crown. The discovery year
+  // is practice and pays nothing; hardcore pays double because the bird
+  // wagered its career to earn it. Losses bank nothing.
+  POINTS_FOR: { juvenile: 0, real: 1, hardcore: 2 } as Record<string, number>,
+  // What it takes to stand in a championship. Three real wins, or two
+  // hardcores — a few weeks of honest campaigning for a bird that turns 3.
+  QUALIFYING_POINTS: 3,
   MAX_BRACKET: 64,
   // Which day the crowns run. dayIndex % 7: 0 = Friday (day 0 of the game
   // week) … 5 = Wednesday, 6 = THURSDAY. Moved Wed → Thu in round 20 so a
@@ -379,6 +431,12 @@ export const PINTAKASI = {
   MAX_PER_BARN: 3,
   MIN_FIELD: 2, //    a straight final still crowns; below this, cancelled
   LAND_EXPONENT: 1.25, // vs. LAND.FIGHT_EXPONENT 1.15 — the Majors mint hard
+  // What the crown land curve is measured against. It used to be the entry
+  // fee, but round 22 made entry free — and landForTournamentFight(0) mints
+  // 1 LT, which would have quietly gutted "land to the fallen" from 40 LT a
+  // fight to 1. So the basis is now its own number: the old 200 GP entry,
+  // held as the STAKE the crowns represent rather than a price anyone pays.
+  LAND_BASIS: 200,
   // GP purse shares by FINISHING STAGE. First-round losers are zeroed
   // whatever stage they fell at, and the remaining shares renormalize —
   // so an 8-bracket pays champion/runner-up/SF only, and a straight final

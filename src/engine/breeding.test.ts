@@ -29,17 +29,18 @@ describe("breed", () => {
     expect(egg.motherId).toBe("starter-2");
     expect(egg.fatherId).toBe("starter-1");
     expect(feePaid).toBe(ECONOMY.BREED_FEE);
-    // The ruled split, exact: 160 GP → 4.00 staker / 78.00 juice / 78.00 stud
-    // owner — and the pieces sum back to the fee, to the cent.
-    expect(split).toEqual({ feeGp: 160, stakerPoolCents: 400, juicePoolCents: 7800, studOwnerCents: 7800 });
+    // The ruled split, exact: 160 GP → 8.00 staker / 76.00 juice / 76.00 stud
+    // owner — and the pieces sum back to the fee, to the cent. (The staker
+    // cut doubled from 2.5% to 5% in round 22; it used to be 4/78/78.)
+    expect(split).toEqual({ feeGp: 160, stakerPoolCents: 800, juicePoolCents: 7600, studOwnerCents: 7600 });
     expect(split.stakerPoolCents + split.juicePoolCents + split.studOwnerCents).toBe(16000);
-    // Own stud: the 78.00 stud share flows straight back — net cost 82 GP.
+    // Own stud: the 76.00 stud share flows straight back — net cost 84 GP.
     const farm = db.select().from(farms).where(eq(farms.id, "farm-1")).get()!;
-    expect(farm.gp).toBe(ECONOMY.STARTING_GP - 82);
+    expect(farm.gp).toBe(ECONOMY.STARTING_GP - 84);
     expect(farm.gpCents).toBe(0);
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.stakerPoolCents).toBe(400);
-    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 7800); // genesis seed + the cover's cut
+    expect(state.stakerPoolCents).toBe(800);
+    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 7600); // genesis seed + the cover's cut
   });
 
   test("child stats stay in bounds and near the parent average", () => {

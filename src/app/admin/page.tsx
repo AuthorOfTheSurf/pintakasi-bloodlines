@@ -5,6 +5,7 @@ import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbie
 import {
   ECONOMY,
   FORMATS,
+  PINTAKASI,
   landForFight,
   landForTournamentFight,
   type FightFormat,
@@ -55,6 +56,18 @@ function cardLabel(mode: string, classType: string): string {
   ];
   return parts.length ? parts.join("·") : "OPEN";
 }
+
+/**
+ * Where a pool accrual came from (round 22 widened this from two sources to
+ * six). Anything unlabelled is a breed cut — the original inflow.
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  gacha: "gacha spend",
+  genesis: "genesis seed",
+  fight_rake: "fight rake",
+  claim_rake: "claim rake",
+  land_purchase: "land bought",
+};
 
 const TYPE_LABELS: Record<string, string> = {
   farm_registered: "register",
@@ -273,14 +286,15 @@ export default function Admin() {
       loserFarmS: fcolors(w.opponentFarmId).S ?? "",
       winFigure: w.pitFigure,
       loseFigure: mirror?.pitFigure ?? 0,
-      pot: w.gpDelta * 2,
+      // What the winner actually banked — the pot net of the 2% staker rake.
+      pot: (w.gpDeltaCents * 2) / 100,
     };
   });
 
   // ── What each bird earned (round 19) ──────────────────────────────────────
-  // GP: pots won less entries lost on the daily card (gpDelta is already the
-  // signed net), plus Pintakasi purse less the 200 GP it cost to enter —
-  // a refunded or bumped registration nets nothing either way.
+  // GP: pots won less entries lost on the daily card (gpDeltaCents is already
+  // the signed net, rake deducted), plus any Pintakasi purse — free entry
+  // since round 22, so a registration costs the bird nothing either way.
   // LT: the land its fights minted (both fighters are paid, win or lose)
   // plus the championship's elimination grant. Entry fees are stored on the
   // entry rows; daily fees are fixed per mode, so they derive exactly.
@@ -293,14 +307,13 @@ export default function Admin() {
   const netLt = new Map<string, number>();
   const bump = (map: Map<string, number>, key: string, by: number) =>
     map.set(key, (map.get(key) ?? 0) + by);
-  const tournamentFee = new Map(allTournaments.map((t) => [t.id, t.entryFee]));
   for (const r of log) {
-    bump(netGpCents, r.birdId, r.gpDelta * 100); // 0 on Pintakasi rows — the purse settles below
+    bump(netGpCents, r.birdId, r.gpDeltaCents); // 0 on Pintakasi rows — the purse settles below
     bump(
       netLt,
       r.birdId,
       r.tournamentId
-        ? landForTournamentFight(tournamentFee.get(r.tournamentId) ?? 0)
+        ? landForTournamentFight(PINTAKASI.LAND_BASIS) // free entry, fixed basis (round 22)
         : landForFight(FEE_BY_MODE[r.mode])
     );
   }
@@ -342,6 +355,7 @@ export default function Admin() {
     losses: b.losses,
     netGp: (netGpCents.get(b.id) ?? 0) / 100,
     netLt: netLt.get(b.id) ?? 0,
+    crownPoints: b.crownPoints,
     };
   });
 
@@ -410,7 +424,7 @@ export default function Admin() {
         juicePoolCents: number;
         source?: string;
       };
-      const cut = pools.source === "gacha" ? "gacha spend" : "breed cut";
+      const cut = SOURCE_LABELS[pools.source ?? ""] ?? "breed cut";
       if (pools.stakerPoolCents > 0)
         gpRows.push({ seq: gpRows.length, ...base, flow: `→ staker pool (${cut})`, amount: pools.stakerPoolCents / 100 });
       if (pools.juicePoolCents > 0)
@@ -517,7 +531,8 @@ export default function Admin() {
           </div>
           <div className="label">staker pool (undistributed)</div>
           <div className="sub">
-            pays pro-rata at every day tick · {gpFmt(totalStakingPaidCents)} GP paid to date
+            fight + claim rakes · gacha share · breed cut · land bought —{" "}
+            {gpFmt(totalStakingPaidCents)} GP paid to date
           </div>
         </div>
         <div className="card">
@@ -581,8 +596,9 @@ export default function Admin() {
             <h2>
               Staking{" "}
               <span className="cardsum">
-                land staked into the pool earns 2.5% of every breed fee, paid pro-rata at
-                each day tick
+                staked land earns a slice of every GP that changes hands — 2% of each
+                fight pot and claim tag, 10% of gacha spend, 5% of every breed fee, and
+                the whole price of any Land Token bought — paid pro-rata at each day tick
               </span>
             </h2>
             <div className="cards stakecards">

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { battleLog, farms, lobbyEntries } from "@/db/schema";
+import { battleLog, birds, farms, gameState, lobbyEntries } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { ECONOMY, LOBBY, landForFight } from "./config";
+import { ECONOMY, LOBBY, PINTAKASI, STAKER_FLOWS, landForFight } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
@@ -33,14 +33,31 @@ function world() {
 }
 
 const gp = (db: DB, id: string) => db.select().from(farms).where(eq(farms.id, id)).get()!.gp;
+/** A farm's wallet to the CENT — the fight rake (round 22) lands fractionally. */
+const gpCents = (db: DB, id: string) => {
+  const f = db.select().from(farms).where(eq(farms.id, id)).get()!;
+  return f.gp * 100 + f.gpCents;
+};
 const land = (db: DB, id: string) =>
   db.select().from(farms).where(eq(farms.id, id)).get()!.landTokens;
-const totalGp = (db: DB) =>
-  db
-    .select()
-    .from(farms)
-    .all()
-    .reduce((s, f) => s + f.gp, 0);
+/**
+ * Every GP in the world, in cents: wallets PLUS both pools. Since round 22 a
+ * fight rakes 2% of the pot to the stakers, so summing wallets alone would
+ * read like GP had gone missing — it moved, which is exactly what these
+ * conservation assertions exist to prove.
+ */
+const totalGp = (db: DB) => {
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  return (
+    db
+      .select()
+      .from(farms)
+      .all()
+      .reduce((s, f) => s + f.gp * 100 + f.gpCents, 0) +
+    state.stakerPoolCents +
+    state.juicePoolCents
+  );
+};
 const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
 
 // Rival birds by canonical STARTER slot — names are world-unique now (each
@@ -194,7 +211,10 @@ describe("the card goes off (pure PvP)", () => {
     const fee = ECONOMY.REAL_ENTRY_FEE;
     const winnerId = fight.winnerFarm === "Bukidnon Farms" ? w.devId : w.rivalId;
     const loserId = winnerId === w.devId ? w.rivalId : w.devId;
-    expect(gp(w.db, winnerId)).toBe(ECONOMY.STARTING_GP + fee);
+    // The pot less the 2% staker rake (round 22): a 40 GP card pays 78.40,
+    // so the winner is up 38.40 on the day, not a round 40.
+    const rakeCents = Math.round(fee * 200 * STAKER_FLOWS.FIGHT_RAKE);
+    expect(gpCents(w.db, winnerId)).toBe(ECONOMY.STARTING_GP * 100 + fee * 100 - rakeCents);
     expect(gp(w.db, loserId)).toBe(ECONOMY.STARTING_GP - fee);
     // No GP printed, none burned — the pot just moved.
     expect(totalGp(w.db)).toBe(before);
@@ -227,6 +247,49 @@ describe("the card goes off (pure PvP)", () => {
     duel(w, "Kidlat", { mode: "juvenile", classType: "open", format: "shortKnife" }, 31);
     const after = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
     expect(after.wins + after.losses).toBe(2); // juvenile counts — ONE record (round 15)
+  });
+
+  // ── Round 22: the pot pays the landholders 2% before it pays the winner ──
+  test("the fight rake: 2% of the pot reaches the staker pool, and GP conserves", () => {
+    const w = world();
+    const before = totalGp(w.db);
+    const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
+    duel(w, "Alab", REAL, 7001);
+    const rake = Math.round(ECONOMY.REAL_ENTRY_FEE * 200 * STAKER_FLOWS.FIGHT_RAKE);
+    expect(rake).toBe(160); // 1.60 GP of an 80 GP pot
+    const state = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    expect(state.stakerPoolCents - poolBefore).toBe(rake);
+    // Nothing printed, nothing burned — it MOVED. This is the invariant the
+    // zero-rake ruling used to protect, and it still holds after the reversal.
+    expect(totalGp(w.db)).toBe(before);
+  });
+
+  test("the rake scales with the stakes — a hardcore pot pays more than a juvenile one", () => {
+    const rakeOf = (fee: number) => Math.round(fee * 200 * STAKER_FLOWS.FIGHT_RAKE);
+    expect(rakeOf(ECONOMY.JUVENILE_ENTRY_FEE)).toBe(32); //  0.32 GP
+    expect(rakeOf(ECONOMY.REAL_ENTRY_FEE)).toBe(160); //     1.60 GP
+    expect(rakeOf(ECONOMY.HARDCORE_ENTRY_FEE)).toBe(480); // 4.80 GP
+  });
+
+  test("a win banks QUALIFICATION POINTS toward a crown — but not in the discovery year", () => {
+    const w = world();
+    const { fight } = duel(w, "Alab", REAL, 7001);
+    const winner = w.db
+      .select()
+      .from(battleLog)
+      .all()
+      .find((r) => r.result === "win")!;
+    expect(w.db.select().from(birds).where(eq(birds.id, winner.birdId)).get()!.crownPoints).toBe(
+      PINTAKASI.POINTS_FOR.real
+    );
+    expect(fight.farms.length).toBe(2);
+    // The loser banks nothing — points are won, never granted for showing up.
+    const loser = w.db
+      .select()
+      .from(battleLog)
+      .all()
+      .find((r) => r.result === "loss")!;
+    expect(w.db.select().from(birds).where(eq(birds.id, loser.birdId)).get()!.crownPoints).toBe(0);
   });
 
   test("an odd lobby strands one bird: fee back, no land, no fight", () => {

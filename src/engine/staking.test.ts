@@ -5,7 +5,7 @@ import { farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Breeding } from "./breeding";
 import { splitBreedFee } from "./breeding";
-import { ECONOMY } from "./config";
+import { ECONOMY, LAND, STAKER_FLOWS } from "./config";
 import { Farms } from "./farms";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
@@ -24,6 +24,20 @@ function world() {
 
 const row = (db: ReturnType<typeof createDb>, id: string) =>
   db.select().from(farms).where(eq(farms.id, id)).get()!;
+
+/** Every GP in the world, in cents: wallets + both pools. */
+const totalCents = (db: ReturnType<typeof createDb>) => {
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  return (
+    db
+      .select()
+      .from(farms)
+      .all()
+      .reduce((s, f) => s + f.gp * 100 + f.gpCents, 0) +
+    state.stakerPoolCents +
+    state.juicePoolCents
+  );
+};
 
 describe("the single staking pool", () => {
   test("stake and unstake move land between liquid and the pool", () => {
@@ -44,17 +58,18 @@ describe("the single staking pool", () => {
     // Stakes 3:1 — dev 75, rival 25.
     w.db.update(farms).set({ stakedLand: 75 }).where(eq(farms.id, w.devId)).run();
     w.db.update(farms).set({ stakedLand: 25 }).where(eq(farms.id, w.rivalId)).run();
-    // One cover: 400 centi-GP to the pool.
+    // One cover: 800 centi-GP to the pool (the staker cut doubled to 5% in
+    // round 22 — it was 2.5%, i.e. 400).
     new Breeding(w.db, w.devId, mulberry32(5)).breed("starter-2", "starter-1");
-    expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(400);
+    expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(800);
 
     const paid = Farms.distributeStaking(w.db);
     expect(paid.stakers).toBe(2);
-    expect(paid.paidGp).toBe(4); // 300 + 100 cents — divides exactly here
-    expect(row(w.db, w.devId).gpCents).toBe(0); // 3.00 GP → whole cents roll…
-    // dev: 8000 − 82 (net own-stud cover) + 3 staking = 7921
-    expect(row(w.db, w.devId).gp).toBe(7921);
-    expect(row(w.db, w.rivalId).gp).toBe(ECONOMY.STARTING_GP + 1);
+    expect(paid.paidGp).toBe(8); // 600 + 200 cents — divides exactly here
+    expect(row(w.db, w.devId).gpCents).toBe(0); // 6.00 GP → whole cents roll…
+    // dev: 8000 − 84 (net own-stud cover: 160 out, 76 back) + 6 staking = 7922
+    expect(row(w.db, w.devId).gp).toBe(7922);
+    expect(row(w.db, w.rivalId).gp).toBe(ECONOMY.STARTING_GP + 2);
     expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(0);
   });
 
@@ -93,5 +108,30 @@ describe("the single staking pool", () => {
     expect(tick.staking.stakers).toBe(2);
     expect(tick.staking.paidGp).toBeCloseTo(0.99, 5);
     expect(w.farms.view(row(w.db, w.devId)).gp).toBeCloseTo(ECONOMY.STARTING_GP + 0.33, 5);
+  });
+
+  // ── Round 22: every way GP changes hands now pays the landholders ────────
+  test("buying Land Tokens pays the STAKERS — the GP is never burned", () => {
+    const w = world();
+    const before = totalCents(w.db);
+    w.farms.buyLand(w.devId, 500);
+    const cost = (500 * LAND.GP_PER_100_TOKENS) / 100; // 400 GP
+    // Before round 22 this GP was deducted and routed NOWHERE — a silent
+    // burn no sim ever caught, because bots only stake land they earn.
+    expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(cost * 100);
+    expect(row(w.db, w.devId).gp).toBe(ECONOMY.STARTING_GP - cost);
+    expect(totalCents(w.db)).toBe(before); // conserved to the cent
+    expect(row(w.db, w.devId).landTokens).toBe(500);
+  });
+
+  test("the daily land cap still holds, and the pool only takes what was paid", () => {
+    const w = world();
+    expect(() => w.farms.buyLand(w.devId, LAND.DAILY_BUY_CAP + 1)).toThrow(/Daily land cap/);
+    w.farms.buyLand(w.devId, LAND.DAILY_BUY_CAP);
+    expect(() => w.farms.buyLand(w.devId, 1)).toThrow(/left today/);
+    const paidCents = ((LAND.DAILY_BUY_CAP * LAND.GP_PER_100_TOKENS) / 100) * 100;
+    expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(
+      Math.round(paidCents * STAKER_FLOWS.LAND_PURCHASE_SHARE)
+    );
   });
 });

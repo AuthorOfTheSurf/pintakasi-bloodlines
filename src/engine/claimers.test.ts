@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { birds, claims, farms } from "@/db/schema";
+import { birds, claims, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { CLAIMER, ECONOMY } from "./config";
+import { CLAIMER, ECONOMY, STAKER_FLOWS } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
@@ -35,6 +35,11 @@ function world() {
 }
 
 const gp = (db: DB, id: string) => db.select().from(farms).where(eq(farms.id, id)).get()!.gp;
+/** A wallet to the CENT — the round-22 rakes land fractionally. */
+const gpCents = (db: DB, id: string) => {
+  const f = db.select().from(farms).where(eq(farms.id, id)).get()!;
+  return f.gp * 100 + f.gpCents;
+};
 const byName = (flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
 // Rival slot 6 = the Alab-slot starter (names are world-unique now; ids are stable).
 const owner = (db: DB, birdId: string) =>
@@ -87,10 +92,18 @@ describe("post time (claims settle after the fights)", () => {
     // The bird now lives in the rival barn — with the record it just earned.
     expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
     // Owner economics: entry ± pot, plus the tag — regardless of result.
+    // Both take a 2% staker rake since round 22 (pot 78.40 of 80; tag 196 of
+    // 200), so the books only balance to the CENT.
     const devWon = card.fights[0].winnerFarm === "Bukidnon Farms";
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP + (devWon ? FEE : -FEE) + TAG);
+    const potRake = Math.round(FEE * 200 * STAKER_FLOWS.FIGHT_RAKE);
+    const tagNet = TAG * 100 - Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
+    expect(gpCents(w.db, w.devId)).toBe(
+      ECONOMY.STARTING_GP * 100 + (devWon ? FEE * 100 - potRake : -FEE * 100) + tagNet
+    );
     // Claimant economics: own entry ± pot, minus the tag (the bird is the value).
-    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP + (devWon ? -FEE : FEE) - TAG);
+    expect(gpCents(w.db, w.rivalId)).toBe(
+      ECONOMY.STARTING_GP * 100 + (devWon ? -FEE * 100 : FEE * 100 - potRake) - TAG * 100
+    );
   });
 
   test("an unmatched claimer still transfers — the sale doesn't need the fight", () => {
@@ -103,8 +116,26 @@ describe("post time (claims settle after the fights)", () => {
     expect(tick.card[0].unmatched.length).toBe(1);
     expect(tick.card[0].claims.length).toBe(1);
     expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
-    // Fee refunded (no fight), tag banked.
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP + TAG);
+    // Fee refunded (no fight), tag banked less the 2% staker rake.
+    const tagNet = TAG * 100 - Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
+    expect(gpCents(w.db, w.devId)).toBe(ECONOMY.STARTING_GP * 100 + tagNet);
+    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
+  });
+
+  // Round 22: the tag settles 98/2 — the same rule the marketplace will use.
+  test("the claim rake: the selling barn banks 98% of the tag, the stakers 2%", () => {
+    const w = world();
+    const devAlab = byName(w.devFlock, "Alab");
+    const { lobby } = w.dev.enter(devAlab.id, SPEC, 33);
+    const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
+    w.rival.claim(lobby.entries[0].entryId);
+    w.game.tickDay();
+    const rake = Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
+    expect(rake).toBe(400); // 4.00 GP of a 200 GP tag
+    const state = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    expect(state.stakerPoolCents - poolBefore).toBe(rake);
+    // The claimant still pays the FULL tag — the rake comes out of the sale,
+    // not out of the buyer's pocket on top of it.
     expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
   });
 

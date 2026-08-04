@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { farms, gameState } from "@/db/schema";
+import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
 import { BOT_FARMS, type BotProfile } from "./bot-config";
 import { CLAIMER, ECONOMY, PINTAKASI, type FightFormat, type Lobby } from "./config";
@@ -21,6 +21,7 @@ export interface BotDayReport {
   style: BotProfile["style"];
   checkedIn: boolean;
   stakedLand: number; // bots stake every liquid LT, daily
+  paidPulls: number; //  gacha rolls bought at price (round 22)
   studsListed: number; // retired roosters put up in the breeding barn
   bred: string | null; // egg name, if a cover was bought (barn included)
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
@@ -99,6 +100,7 @@ export class Bots {
       style: bot.style,
       checkedIn: false,
       stakedLand: 0,
+      paidPulls: 0,
       studsListed: 0,
       bred: null,
       entered: [],
@@ -122,6 +124,18 @@ export class Bots {
     const gacha = new Gacha(db, bot.id, rng);
     while (db.select().from(farms).where(eq(farms.id, bot.id)).get()!.freePulls > 0) {
       if (!quietly(() => gacha.roll())) break;
+    }
+    // …then PAID rolls (round 22). At 80 GP a pull no bot ever bought one,
+    // so the gacha's flow into the pools measured exactly zero across 35
+    // days. At 16 GP it's the cheapest bird in the game. Appetite varies by
+    // stable so the board isn't ten identical buyers: a breeder chasing
+    // bloodlines rolls harder than a pit crew does.
+    const pullAppetite = 0.35 + bot.breedDrive * 0.5;
+    for (let i = 0; i < ECONOMY.PAID_PULLS_PER_DAY; i++) {
+      if (rng() > pullAppetite) continue;
+      if (gp() < ECONOMY.GACHA_ROLL_PRICE + RESERVE) break;
+      if (!quietly(() => gacha.roll())) break; // daily cap hit, or barn full
+      report.paidPulls++;
     }
     const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokens;
     if (liquid > 0 && quietly(() => farmsApi.stake(bot.id, liquid))) report.stakedLand = liquid;
@@ -313,7 +327,20 @@ export function chaseCrowns(
   const entered: string[] = [];
 
   const blades = Tournaments.bladesOfWeek(Tournaments.targetWeek(today));
-  const eligible = flock.all().filter((b) => b.status === "active" && b.named && canHardcore(b.age));
+  // Age AND qualification points (round 22): the crowns cost nothing now, so
+  // the gate is what the bird did on the daily card, not what the barn can
+  // afford. Filtering here keeps the pointless enter() attempts out.
+  const qualified = new Set(
+    db
+      .select()
+      .from(birds)
+      .all()
+      .filter((b) => b.farmId === farmId && b.crownPoints >= PINTAKASI.QUALIFYING_POINTS)
+      .map((b) => b.id)
+  );
+  const eligible = flock
+    .all()
+    .filter((b) => b.status === "active" && b.named && canHardcore(b.age) && qualified.has(b.id));
   if (eligible.length === 0) return entered;
 
   // Each bird declares for the running blade it reads BEST at — that's the
@@ -331,7 +358,11 @@ export function chaseCrowns(
     let sent = tournaments.myEntriesThisWeek(blade);
     for (const bird of candidates.sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade])) {
       if (sent >= PINTAKASI.MAX_PER_BARN) break;
-      if (db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp < PINTAKASI.ENTRY_FEE + reserve)
+      // Free entry still respects the reserve if a future season re-prices it.
+      if (
+        PINTAKASI.ENTRY_FEE > 0 &&
+        db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp < PINTAKASI.ENTRY_FEE + reserve
+      )
         return false; // out of money, out of crowns
       try {
         tournaments.enter(bird.id, blade);

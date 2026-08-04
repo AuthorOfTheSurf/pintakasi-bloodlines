@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS farms (
   free_pulls INTEGER NOT NULL DEFAULT 0,
   land_bought_day INTEGER,
   land_bought_today INTEGER NOT NULL DEFAULT 0,
+  gacha_paid_day INTEGER,
+  gacha_paid_today INTEGER NOT NULL DEFAULT 0,
   created_day INTEGER NOT NULL DEFAULT 0,
   is_bot INTEGER NOT NULL DEFAULT 0,
   wins INTEGER NOT NULL DEFAULT 0,
@@ -44,6 +46,7 @@ CREATE TABLE IF NOT EXISTS birds (
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
   stakes_wins INTEGER NOT NULL DEFAULT 0,
+  crown_points INTEGER NOT NULL DEFAULT 0,
   retired_by TEXT CHECK (retired_by IN ('manual','age','hardcore')),
   retired_week INTEGER,
   listed_stud INTEGER NOT NULL DEFAULT 0,
@@ -84,7 +87,7 @@ CREATE TABLE IF NOT EXISTS battle_log (
   opponent_name TEXT NOT NULL,
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
   pit_figure INTEGER NOT NULL,
-  gp_delta INTEGER NOT NULL,
+  gp_delta_cents INTEGER NOT NULL,
   seed INTEGER NOT NULL,
   play_by_play TEXT NOT NULL
 );

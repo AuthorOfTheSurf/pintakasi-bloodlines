@@ -24,6 +24,10 @@ export const farms = sqliteTable("farms", {
   // Daily land-purchase cap bookkeeping.
   landBoughtDay: integer("land_bought_day"),
   landBoughtToday: integer("land_bought_today").notNull().default(0),
+  // Daily PAID gacha-pull cap bookkeeping (round 22) — same shape as the
+  // land cap above. Free pulls are counted separately, in freePulls.
+  gachaPaidDay: integer("gacha_paid_day"),
+  gachaPaidToday: integer("gacha_paid_today").notNull().default(0),
   createdDay: integer("created_day").notNull().default(0),
   // House-run bot stables (see engine/bot-config.ts) — rivals, not the house.
   isBot: integer("is_bot").notNull().default(0),
@@ -72,6 +76,10 @@ export const birds = sqliteTable("birds", {
   // still a maiden the day real stakes open at age 2. The displayed record
   // stays ONE lifetime line (ruled round 15) — this is eligibility only.
   stakesWins: integer("stakes_wins").notNull().default(0),
+  // QUALIFICATION POINTS for the Pintakasi (round 22, PFL Majors model):
+  // the crowns are FREE to enter and you qualify by fighting instead of
+  // paying. Won on the daily card only — see PINTAKASI.POINTS_FOR.
+  crownPoints: integer("crown_points").notNull().default(0),
   // How the career ended (null while egg/active).
   retiredBy: text("retired_by", { enum: ["manual", "age", "hardcore"] }),
   retiredWeek: integer("retired_week"),
@@ -137,7 +145,10 @@ export const battleLog = sqliteTable("battle_log", {
   // The Pit Figure — banded performance rating, format-normalized. The
   // discovery signal: compare figures ACROSS formats to type the bird.
   pitFigure: integer("pit_figure").notNull(),
-  gpDelta: integer("gp_delta").notNull(),
+  // In CENTI-GP since round 22: the winner's take is the pot less the 2%
+  // staker rake, which doesn't land on a whole GP (a 40 GP card pays
+  // +38.40). Whole-GP deltas would have quietly rounded the rake away.
+  gpDeltaCents: integer("gp_delta_cents").notNull(),
   seed: integer("seed").notNull(), // replay the fight from this
   playByPlay: text("play_by_play").notNull(),
 });

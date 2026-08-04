@@ -75,7 +75,8 @@ export interface ChampionshipView {
 
 /** Committee ranking key — bigger is stronger. */
 interface CommitteeCard {
-  earningsCents: number; // battle_log gpDelta (whole GP) + banked purse shares
+  crownPoints: number; //  qualification points won on the daily card (round 22)
+  earningsCents: number; // battle_log deltas + banked purse shares
   wins: number;
   avgFigure: number;
 }
@@ -124,6 +125,14 @@ export class Tournaments {
       throw new Error(`${bird.name} hasn't been given a real name — name a bird before its first fight`);
     if (!canHardcore(bird.age))
       throw new Error(`${bird.name} is ${bird.age} — the Pintakasi is hardcore, which opens at age 3`);
+    // Qualification, not money (round 22): the crowns are FREE and a bird
+    // earns its way in on the daily card. See PINTAKASI.POINTS_FOR.
+    const birdRow = this.database.select().from(birds).where(eq(birds.id, birdId)).get()!;
+    if (birdRow.crownPoints < PINTAKASI.QUALIFYING_POINTS)
+      throw new Error(
+        `${bird.name} holds ${birdRow.crownPoints} of the ${PINTAKASI.QUALIFYING_POINTS} qualification points a crown asks for — ` +
+          `campaign on the daily card first (a real win banks ${PINTAKASI.POINTS_FOR.real}, a hardcore ${PINTAKASI.POINTS_FOR.hardcore})`
+      );
 
     const today = this.today();
     const week = Tournaments.targetWeek(today);
@@ -160,9 +169,11 @@ export class Tournaments {
       throw new Error(
         `Your barn already has ${mine.length} in the ${label(tournament.format)} — ${PINTAKASI.MAX_PER_BARN} is the limit per championship`
       );
+    // Free since round 22 — the knob survives so a future season can charge
+    // again without a rebuild, but at 0 nothing is escrowed or refunded.
     const fee = tournament.entryFee;
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-    if (farm.gp < fee)
+    if (fee > 0 && farm.gp < fee)
       throw new Error(`The Pintakasi entry is ${fee} GP (escrowed) — you have ${farm.gp}`);
 
     // The Selection Committee's live bump: a full field takes a newcomer
@@ -215,7 +226,10 @@ export class Tournaments {
       farmId: this.farmId,
       birdId,
       gpCents: -fee * 100,
-      message: `registered ${bird.name} for the ${label(tournament.format)} (week ${week}, ${fee} GP escrowed) — hardcore: lose and the career ends`,
+      message:
+        `registered ${bird.name} for the ${label(tournament.format)} (week ${week}, ` +
+        (fee > 0 ? `${fee} GP escrowed` : `free — qualified on ${birdRow.crownPoints} points`) +
+        `) — hardcore: lose and the career ends`,
     });
     return {
       entryId: inserted.id,
@@ -359,6 +373,10 @@ export class Tournaments {
     const week = Math.floor(dayIndex / 7);
     const rng = mulberry32(t.seed);
     const field = Tournaments.pending(database, t.id);
+    // Since round 22 the entries are free, so the purse IS this blade's cut
+    // of the juice pool — which means gacha spend and breed fees are what
+    // the champion actually takes home. (The fee term survives so a paid
+    // season would still add to the pot without a rebuild.)
     const entriesCents = field.reduce((s, e) => s + e.fee, 0) * 100;
     const purseCents = entriesCents + juiceShare;
 
@@ -538,7 +556,7 @@ export class Tournaments {
       { entry: ea, row: rowA, won: sim.winner === 0, figure: sim.figures[0] },
       { entry: eb, row: rowB, won: sim.winner === 1, figure: sim.figures[1] },
     ];
-    const landEach = landForTournamentFight(t.entryFee);
+    const landEach = landForTournamentFight(PINTAKASI.LAND_BASIS);
     const farmNames: string[] = [];
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
@@ -599,7 +617,7 @@ export class Tournaments {
           opponentName: other.row.name,
           result: side.won ? "win" : "loss",
           pitFigure: side.figure,
-          gpDelta: 0, // purse GP is a tournament settle, not a fight settle
+          gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle
           seed: simSeed,
           playByPlay: sim.playByPlay,
         })
@@ -628,7 +646,7 @@ export class Tournaments {
 
   // ── committee, purse & helpers ────────────────────────────────────────────
 
-  /** The committee's book on a set of birds — earnings, wins, average figure. */
+  /** The committee's book on a set of birds — points, earnings, wins, figure. */
   static committeeCards(database: DB, birdIds: string[]): Map<string, CommitteeCard> {
     const out = new Map<string, CommitteeCard>();
     for (const id of birdIds) {
@@ -641,7 +659,8 @@ export class Tournaments {
         .all()
         .reduce((s, e) => s + e.gpWonCents, 0);
       out.set(id, {
-        earningsCents: logRows.reduce((s, r) => s + Math.max(0, r.gpDelta), 0) * 100 + purse,
+        crownPoints: bird.crownPoints,
+        earningsCents: logRows.reduce((s, r) => s + Math.max(0, r.gpDeltaCents), 0) + purse,
         wins: bird.wins,
         avgFigure:
           logRows.length === 0
@@ -652,8 +671,14 @@ export class Tournaments {
     return out;
   }
 
-  /** Sort comparator: negative = a ranks ABOVE b. Earnings → wins → figure → id. */
+  /**
+   * Sort comparator: negative = a ranks ABOVE b. QUALIFICATION POINTS lead
+   * since round 22 — with the crowns free, the bump line should reward the
+   * bird that campaigned hardest, not the barn with the deepest wallet.
+   * Then earnings → wins → figure → id.
+   */
   static compareRank(a: CommitteeCard, b: CommitteeCard, aId: string, bId: string): number {
+    if (a.crownPoints !== b.crownPoints) return b.crownPoints - a.crownPoints;
     if (a.earningsCents !== b.earningsCents) return b.earningsCents - a.earningsCents;
     if (a.wins !== b.wins) return b.wins - a.wins;
     if (a.avgFigure !== b.avgFigure) return b.avgFigure - a.avgFigure;
@@ -708,7 +733,8 @@ export class Tournaments {
 
   private static refundEntry(database: DB, entry: EntryRow, birdName: string, why: string): void {
     const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
-    database.update(farms).set({ gp: farm.gp + entry.fee }).where(eq(farms.id, entry.farmId)).run();
+    if (entry.fee > 0)
+      database.update(farms).set({ gp: farm.gp + entry.fee }).where(eq(farms.id, entry.farmId)).run();
     database
       .update(tournamentEntries)
       .set({ status: "refunded" })
@@ -719,7 +745,11 @@ export class Tournaments {
       farmId: entry.farmId,
       birdId: entry.birdId,
       gpCents: entry.fee * 100,
-      message: `${birdName}'s Pintakasi entry refunded — ${why} (${entry.fee} GP home)`,
+      // Free entry (round 22) means a scratch costs nobody anything — say so
+      // rather than announcing "0 GP home".
+      message:
+        `${birdName}'s Pintakasi entry withdrawn — ${why}` +
+        (entry.fee > 0 ? ` (${entry.fee} GP home)` : ""),
     });
   }
 

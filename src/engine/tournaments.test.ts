@@ -22,6 +22,11 @@ function world() {
     secondaryColor: "red",
   });
   seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
+  // The crowns are free since round 22 but NOT open — a bird qualifies by
+  // campaigning on the daily card. These legacy veterans are meant to have
+  // done exactly that, so stamp them qualified rather than making every
+  // fixture fight its way in. (The gate itself is tested separately.)
+  db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run();
   return {
     db,
     devId: dev.farmId,
@@ -92,6 +97,63 @@ describe("registration & the Selection Committee", () => {
     expect(() => w.dev.enter(sinag.id, "shortGaff")).toThrow(/already registered/);
   });
 
+  // ── Round 22: the crowns are FREE, and you qualify by fighting ───────────
+  test("the crowns cost nothing — and an unqualified bird is turned away at the door", () => {
+    const w = world();
+    expect(PINTAKASI.ENTRY_FEE).toBe(0);
+    const sinag = byName(w.db, w.devFlock, "Sinag");
+    // Strip its campaign: a veteran that never won a real fight can't stand.
+    w.db.update(birds).set({ crownPoints: 0 }).where(eq(birds.id, sinag.id)).run();
+    expect(() => w.dev.enter(sinag.id, "longKnife")).toThrow(/qualification points/);
+    // One point short still isn't enough…
+    w.db
+      .update(birds)
+      .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS - 1 })
+      .where(eq(birds.id, sinag.id))
+      .run();
+    expect(() => w.dev.enter(sinag.id, "longKnife")).toThrow(/qualification points/);
+    // …and the wallet is untouched either way, because entry is free.
+    const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
+    w.db
+      .update(birds)
+      .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS })
+      .where(eq(birds.id, sinag.id))
+      .run();
+    w.dev.enter(sinag.id, "longKnife");
+    expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(before);
+  });
+
+  test("the committee ranks on POINTS first — campaigning beats a fat wallet", () => {
+    const w = world();
+    const sinag = byName(w.db, w.devFlock, "Sinag");
+    w.db.update(birds).set({ crownPoints: 99 }).where(eq(birds.id, sinag.id)).run();
+    w.dev.enter(sinag.id, "longKnife");
+    w.rival.enter("rival-8", "longKnife"); // more career wins, fewer points
+    const lk = w.dev.board().find((c) => c.format === "longKnife")!;
+    expect(lk.field[0].bird).toBe("Sinag"); // points lead the ranking now
+    expect(lk.field[0].rank).toBe(1);
+  });
+
+  test("the purse is pure JUICE now that entries are free", () => {
+    const w = world();
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
+    w.rival.enter("rival-8", "longKnife");
+    const before = totalCents(w.db);
+    const tick = tickThroughCrownDay(w.game);
+    const lk = tick.pintakasi.find((t) => t.format === "longKnife")!;
+    expect(lk.cancelled).toBe(false);
+    // No entry money in the pot at all — the champion is paid by the juice
+    // pool, which gacha spend and breed fees fill.
+    const entriesIn = w.db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .reduce((s, e) => s + e.fee, 0);
+    expect(entriesIn).toBe(0);
+    expect(lk.purseCents).toBeGreaterThan(0);
+    expect(totalCents(w.db)).toBe(before); // still redistribution, never printing
+  });
+
   // Round 19: one bird per CROWN, not one per stable. The old callers
   // stopped after a single entry a week, so three championships shared one
   // field of seven across the whole world and two of them cancelled.
@@ -119,6 +181,7 @@ describe("registration & the Selection Committee", () => {
     const w = world();
     // A deep barn: a second legacy wave gives four age-3+ birds.
     seedStarterFlock(w.db, w.devId, { seed: 55, idPrefix: "dev2", shape: "legacy" });
+    w.db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run(); // campaigned veterans
     const eligible = w.devFlock.all().filter((b) => b.status === "active" && b.age >= 3);
     expect(eligible.length).toBe(4);
     for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "longKnife");
@@ -166,6 +229,9 @@ describe("registration & the Selection Committee", () => {
           birthWeek: -3,
           birthDay: -21,
           named: 1,
+          // Round 22: QUALIFICATION POINTS lead the committee's ranking, so
+          // the dummies campaigned one point harder than the newcomer below.
+          crownPoints: PINTAKASI.QUALIFYING_POINTS + 1,
         })
         .run();
       w.db
@@ -180,8 +246,16 @@ describe("registration & the Selection Committee", () => {
         .run();
     }
     const rivalGpBefore = w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!.gp;
-    // Sinag (4 career wins) outranks every dummy — the weakest goes home.
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "longKnife");
+    // Sinag campaigned harder than the dummies did — and points lead the
+    // committee's ranking since round 22, so it outranks every one of them
+    // and the weakest goes home.
+    const sinagId = byName(w.db, w.devFlock, "Sinag").id;
+    w.db
+      .update(birds)
+      .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS + 5 })
+      .where(eq(birds.id, sinagId))
+      .run();
+    w.dev.enter(sinagId, "longKnife");
     const entries = w.db
       .select()
       .from(tournamentEntries)
@@ -199,6 +273,9 @@ describe("registration & the Selection Committee", () => {
         id: "zzz-weak", farmId: w.devId, name: "Palpak", sex: "male", status: "active",
         agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
         element: "Fire", halfStars: 2, birthWeek: -3, birthDay: -21, named: 1,
+        // Qualified on points, so the COMMITTEE is what turns it away — not
+        // the round-22 door. Zero earnings is what makes it the weakest.
+        crownPoints: PINTAKASI.QUALIFYING_POINTS,
       })
       .run();
     expect(() => w.dev.enter("zzz-weak", "longKnife")).toThrow(/weakest/);
@@ -257,7 +334,9 @@ describe("the crown-day resolution", () => {
     // The log: two mirrored hardcore rows per fight, tournament-tagged.
     const rows = w.db.select().from(battleLog).all().filter((r) => r.tournamentId !== null);
     expect(rows.length).toBe(6);
-    expect(rows.every((r) => r.lobbyId === null && r.mode === "hardcore" && r.gpDelta === 0)).toBe(true);
+    expect(rows.every((r) => r.lobbyId === null && r.mode === "hardcore" && r.gpDeltaCents === 0)).toBe(
+      true
+    );
   });
 
   test("byes go to the top seeds; a 3-bird field fights twice", () => {

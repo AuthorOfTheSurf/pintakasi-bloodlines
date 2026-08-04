@@ -8,12 +8,15 @@ import {
   ECONOMY,
   FORMATS,
   LOBBY,
+  PINTAKASI,
+  STAKER_FLOWS,
   landForFight,
   type Element,
   type FightFormat,
   type Lobby,
 } from "./config";
-import { emit } from "./events";
+import { emit, fmtGp } from "./events";
+import { creditCents, payStakers } from "./farms";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile, canRealFight } from "./lifecycle";
@@ -481,6 +484,13 @@ export class Lobbies {
       { entry: eb, row: rowB, won: sim.winner === 1, figure: sim.figures[1] },
     ];
     const landEach = landForFight(ea.fee);
+    // The staker rake (round 22): 2% off the pooled pot, paid to the Land
+    // Token pool before the winner is. On a 40 GP card that's 1.60 of the
+    // 80 GP pot and the winner banks 78.40. This reverses the old zero-rake
+    // ruling deliberately (Zane's call — widen every LT inflow); no GP is
+    // printed or burned, it lands in the pool instead of the wallet.
+    const potCents = ea.fee * 200;
+    const rakeCents = Math.round(potCents * STAKER_FLOWS.FIGHT_RAKE);
     const forcedRetirements: string[] = [];
     const logIds: number[] = [];
     const farmNames: string[] = [];
@@ -497,13 +507,12 @@ export class Lobbies {
       const farmRecord = side.won ? { wins: farm.wins + 1 } : { losses: farm.losses + 1 };
       database
         .update(farms)
-        .set({
-          gp: farm.gp + (side.won ? side.entry.fee * 2 : 0),
-          landTokens: farm.landTokens + landEach,
-          ...farmRecord,
-        })
+        .set({ landTokens: farm.landTokens + landEach, ...farmRecord })
         .where(eq(farms.id, side.entry.farmId))
         .run();
+      // The pot, less the rake — through creditCents because 78.40 GP isn't
+      // a whole number and the books are kept to the cent.
+      if (side.won) creditCents(database, side.entry.farmId, potCents - rakeCents);
       database
         .update(birds)
         .set(
@@ -512,6 +521,9 @@ export class Lobbies {
                 wins: side.row.wins + 1,
                 // The ladder's line: practice wins don't graduate a maiden.
                 stakesWins: side.row.stakesWins + (lobby.mode === "juvenile" ? 0 : 1),
+                // …and the road to a crown (round 22): the championships are
+                // free to enter, so a win here is how a bird buys its way in.
+                crownPoints: side.row.crownPoints + (PINTAKASI.POINTS_FOR[lobby.mode] ?? 0),
               }
             : { losses: side.row.losses + 1 }
         )
@@ -549,7 +561,9 @@ export class Lobbies {
           opponentName: other.row.name,
           result: side.won ? "win" : "loss",
           pitFigure: side.figure,
-          gpDelta: side.won ? side.entry.fee : -side.entry.fee,
+          // Net to the bird's barn, in cents: the winner keeps the other
+          // side's stake less the rake; the loser drops its whole entry.
+          gpDeltaCents: side.won ? side.entry.fee * 100 - rakeCents : -side.entry.fee * 100,
           seed: simSeed,
           playByPlay: sim.playByPlay,
         })
@@ -565,12 +579,14 @@ export class Lobbies {
 
     const winnerSide = sides[sim.winner];
     const loserSide = sides[1 - sim.winner];
+    payStakers(database, rakeCents, "fight_rake", `${label} pot rake`);
     emit(database, {
       type: "fight",
       birdId: winnerSide.row.id,
       message:
         `${winnerSide.row.name} (${farmNames[sim.winner]}) def. ${loserSide.row.name} (${farmNames[1 - sim.winner]}) — ` +
-        `${label} · figures ${winnerSide.figure}/${loserSide.figure} · pot ${ea.fee * 2} GP · +${landEach} LT each` +
+        `${label} · figures ${winnerSide.figure}/${loserSide.figure} · pot ${fmtGp(potCents - rakeCents)} GP ` +
+        `(${fmtGp(rakeCents)} to stakers) · +${landEach} LT each` +
         (forcedRetirements.length ? ` · ${forcedRetirements.join(", ")} force-retired` : ""),
       data: { lobbyId: lobby.id, battleLogIds: logIds, figures: sim.figures, pot: ea.fee * 2, landEach },
     });
@@ -619,8 +635,14 @@ export class Lobbies {
         });
       }
     }
+    // The tag settles 98/2 (round 22): the selling barn banks the tag less
+    // the staker rake. Same rule is reserved for the marketplace when it's
+    // built — see STAKER_FLOWS.MARKET_RAKE.
     const owner = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
-    database.update(farms).set({ gp: owner.gp + price }).where(eq(farms.id, entry.farmId)).run();
+    const tagCents = price * 100;
+    const tagRakeCents = Math.round(tagCents * STAKER_FLOWS.CLAIM_RAKE);
+    creditCents(database, entry.farmId, tagCents - tagRakeCents);
+    payStakers(database, tagRakeCents, "claim_rake", `${preBird.name}'s ${price} GP tag`);
     database.update(birds).set({ farmId: winner.farmId }).where(eq(birds.id, entry.birdId)).run();
     database
       .update(lobbyEntries)
@@ -642,8 +664,10 @@ export class Lobbies {
       type: "tag_income",
       farmId: entry.farmId,
       birdId: bird.id,
-      gpCents: price * 100,
-      message: `${bird.name} claimed away by ${to.name} — banked the ${price} GP tag`,
+      gpCents: tagCents - tagRakeCents,
+      message:
+        `${bird.name} claimed away by ${to.name} — banked ${fmtGp(tagCents - tagRakeCents)} GP ` +
+        `of the ${price} GP tag (${fmtGp(tagRakeCents)} to stakers)`,
     });
     return {
       bird: bird.name,

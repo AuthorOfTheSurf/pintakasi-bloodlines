@@ -4,7 +4,18 @@ import { createDb } from "@/db/client";
 import { farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { gameState } from "@/db/schema";
-import { BASE_COATS, ECONOMY, GACHA_BIRDS, GACHA_TOKENS, LAND, STATS, TRIM_BY_ELEMENT } from "./config";
+import {
+  BASE_COATS,
+  ECONOMY,
+  GACHA_BIRDS,
+  GACHA_TOKENS,
+  GACHA_WEIGHTS,
+  LAND,
+  STAKER_FLOWS,
+  STATS,
+  TRIM_BY_ELEMENT,
+  type GachaToken,
+} from "./config";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Game } from "./game";
@@ -51,7 +62,13 @@ describe("gacha", () => {
     const { db, farmId } = fresh();
     db.update(farms).set({ gp: 10_000_000 }).where(eq(farms.id, farmId)).run();
     const gacha = new Gacha(db, farmId, mulberry32(2));
-    for (let i = 0; i < 500; i++) gacha.roll();
+    // Round 22 caps PAID rolls per farm per game-day, so a 500-roll sample
+    // has to span days — clear the day's counter each time rather than
+    // ticking 100 days to make the same point about the weights.
+    for (let i = 0; i < 500; i++) {
+      db.update(farms).set({ gachaPaidToday: 0 }).where(eq(farms.id, farmId)).run();
+      gacha.roll();
+    }
     const c = gacha.collection();
     expect(c.White).toBeGreaterThan(c.Gold);
     expect(c.Green).toBeGreaterThan(c.Purple);
@@ -97,18 +114,22 @@ describe("gacha", () => {
   });
 
   test("an empty wallet cannot roll", () => {
-    const { db, farmId } = fresh({ startingGp: 50 });
+    const { db, farmId } = fresh({ startingGp: ECONOMY.GACHA_ROLL_PRICE - 1 });
     expect(() => new Gacha(db, farmId, mulberry32(3)).roll()).toThrow(/A roll costs/);
   });
 
-  test("PAID rolls feed the juice pool — no GP is ever burned (round 14)", () => {
+  test("PAID rolls SPLIT to the pools — no GP is ever burned (round 14, split round 22)", () => {
     const { db, farmId } = fresh();
     const gacha = new Gacha(db, farmId, mulberry32(42));
-    gacha.roll(); // no free pulls yet — this costs 80 GP
+    gacha.roll(); // no free pulls yet — this costs GP
     gacha.roll();
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    // The pool opens with the genesis seed (round 20); both paid rolls land on top.
-    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 2 * ECONOMY.GACHA_ROLL_PRICE * 100);
+    const spentCents = 2 * ECONOMY.GACHA_ROLL_PRICE * 100;
+    const stakerCents = Math.round(ECONOMY.GACHA_ROLL_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE) * 2;
+    // 10% to the stakers, the rest to the juice pool (which opens with the
+    // genesis seed, round 20). Not one centavo is burned between them.
+    expect(state.stakerPoolCents).toBe(stakerCents);
+    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + spentCents - stakerCents);
   });
 
   test("gacha birds are CONSTRAINED — no tier out-muscles bred stock (round 14)", () => {
@@ -124,6 +145,7 @@ describe("gacha", () => {
     const gacha = new Gacha(db, farmId, mulberry32(11));
     let eggs = 0;
     for (let i = 0; i < 200 && eggs < 5; i++) {
+      db.update(farms).set({ gachaPaidToday: 0 }).where(eq(farms.id, farmId)).run();
       const r = gacha.roll();
       if (!r.egg) continue;
       eggs++;
@@ -137,5 +159,31 @@ describe("gacha", () => {
       expect(TRIM_BY_ELEMENT[r.egg.element] as readonly string[]).toContain(r.egg.trimColor);
     }
     expect(eggs).toBeGreaterThan(0);
+  });
+
+  // Round 22: cheap rolls, but a limited number of them per day.
+  test("five paid rolls a day, then the board is closed until the tick", () => {
+    const { db, farmId } = fresh();
+    const gacha = new Gacha(db, farmId, mulberry32(77));
+    for (let i = 0; i < ECONOMY.PAID_PULLS_PER_DAY; i++) {
+      expect(gacha.roll().pricePaid).toBe(ECONOMY.GACHA_ROLL_PRICE);
+    }
+    expect(() => gacha.roll()).toThrow(/paid rolls today/);
+    // A free pull is a separate allowance — it still goes through.
+    db.update(farms).set({ freePulls: 1 }).where(eq(farms.id, farmId)).run();
+    expect(gacha.roll().pricePaid).toBe(0);
+  });
+
+  test("the repricing is what makes rolling rational — an egg now undercuts a cover", () => {
+    // The round-22 diagnosis, kept as an assertion: at 80 GP a roll, a ~15%
+    // egg rate priced a gacha egg near 543 GP against a 160 GP cover, and 35
+    // days of sim produced ZERO paid rolls. The fix has to keep the egg
+    // cheaper than breeding one, or nobody rolls again.
+    const eggChance = Object.entries(GACHA_WEIGHTS)
+      .filter(([token]) => GACHA_BIRDS[token as GachaToken])
+      .reduce((s, [, w]) => s + w, 0);
+    const totalWeight = Object.values(GACHA_WEIGHTS).reduce((s, w) => s + w, 0);
+    const gpPerEgg = ECONOMY.GACHA_ROLL_PRICE / (eggChance / totalWeight);
+    expect(gpPerEgg).toBeLessThan(ECONOMY.BREED_FEE);
   });
 });
