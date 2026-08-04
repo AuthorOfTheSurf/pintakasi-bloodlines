@@ -93,8 +93,10 @@ describe("entry rules (the door)", () => {
     expect(() => w.dev.enter(sinag.id, { mode: "hardcore", classType: "maiden", format: "shortKnife" })).toThrow(
       /open only/
     );
+    // The discovery year runs maidens, stakes and claimers (round 23) — but
+    // NOT the conditions classes: a one-year-old has no record to sort by.
     expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "nw2", format: "shortKnife" })).toThrow(
-      /open or maiden/
+      /open, maiden or claimer/
     );
     expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "shortKnife", price: 200 })).toThrow(
       /only means something in a claimer/
@@ -122,17 +124,22 @@ describe("entry rules (the door)", () => {
   test("a juvenile win does not graduate a maiden — the ladder reads stakes wins", () => {
     const w = world();
     const kidlat = byName(w.devFlock, "Kidlat"); // age 1 — the discovery year
-    const JUV: LobbySpec = { mode: "juvenile", classType: "open", format: "shortKnife" };
-    for (let i = 0; i < 8 && byName(w.devFlock, "Kidlat").wins === 0; i++) {
-      w.dev.enter(kidlat.id, JUV);
-      w.rival.enter(rivalId("Kidlat"), JUV);
-      w.game.tickDay();
-    }
+    // Stamp the practice win rather than fighting for one: the old loop ran
+    // up to eight days hoping for a victory, which meant the bird could age
+    // out of the discovery year before the test got what it came for.
+    w.db.update(birds).set({ wins: 1 }).where(eq(birds.id, kidlat.id)).run();
     const afterPractice = byName(w.devFlock, "Kidlat");
     expect(afterPractice.wins).toBeGreaterThan(0); // the lifetime line moved…
     expect(afterPractice.stakesWins).toBe(0); //     …the ladder's line did not
+    // …so the bird stays a maiden for GROWN purposes. Inside the discovery
+    // year it has graduated its own maiden class, though (round 23): the
+    // juvenile ladder reads juvenile wins, since there is no stakes record
+    // to read at age one.
     expect(() =>
       w.dev.enter(kidlat.id, { mode: "juvenile", classType: "maiden", format: "shortKnife" })
+    ).toThrow(/already won in the discovery year/);
+    expect(() =>
+      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "shortKnife" })
     ).not.toThrow();
 
     // A seeded stakes record DOES graduate a bird: Sinag (age 3, 4W) is past
@@ -211,8 +218,7 @@ describe("the card goes off (pure PvP)", () => {
     const fee = ECONOMY.REAL_ENTRY_FEE;
     const winnerId = fight.winnerFarm === "Bukidnon Farms" ? w.devId : w.rivalId;
     const loserId = winnerId === w.devId ? w.rivalId : w.devId;
-    // The pot less the 2% staker rake (round 22): a 40 GP card pays 78.40,
-    // so the winner is up 38.40 on the day, not a round 40.
+    // Win +entry, lose −entry — the pot is pooled and pure again (round 23).
     const rakeCents = Math.round(fee * 200 * STAKER_FLOWS.FIGHT_RAKE);
     expect(gpCents(w.db, winnerId)).toBe(ECONOMY.STARTING_GP * 100 + fee * 100 - rakeCents);
     expect(gp(w.db, loserId)).toBe(ECONOMY.STARTING_GP - fee);
@@ -249,26 +255,18 @@ describe("the card goes off (pure PvP)", () => {
     expect(after.wins + after.losses).toBe(2); // juvenile counts — ONE record (round 15)
   });
 
-  // ── Round 22: the pot pays the landholders 2% before it pays the winner ──
-  test("the fight rake: 2% of the pot reaches the staker pool, and GP conserves", () => {
+  // ── Round 23: the pot is PURE again — the round-22 rake went back to 0 ──
+  test("no rake: the winner takes the whole pot, and the staker pool is untouched", () => {
     const w = world();
     const before = totalGp(w.db);
     const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
     duel(w, "Alab", REAL, 7001);
-    const rake = Math.round(ECONOMY.REAL_ENTRY_FEE * 200 * STAKER_FLOWS.FIGHT_RAKE);
-    expect(rake).toBe(160); // 1.60 GP of an 80 GP pot
+    // Zane pulled the fight rake after round 22 proved the LT yield was
+    // already strong enough. The daily card is a pooled pot and nothing else.
+    expect(STAKER_FLOWS.FIGHT_RAKE).toBe(0);
     const state = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.stakerPoolCents - poolBefore).toBe(rake);
-    // Nothing printed, nothing burned — it MOVED. This is the invariant the
-    // zero-rake ruling used to protect, and it still holds after the reversal.
-    expect(totalGp(w.db)).toBe(before);
-  });
-
-  test("the rake scales with the stakes — a hardcore pot pays more than a juvenile one", () => {
-    const rakeOf = (fee: number) => Math.round(fee * 200 * STAKER_FLOWS.FIGHT_RAKE);
-    expect(rakeOf(ECONOMY.JUVENILE_ENTRY_FEE)).toBe(32); //  0.32 GP
-    expect(rakeOf(ECONOMY.REAL_ENTRY_FEE)).toBe(160); //     1.60 GP
-    expect(rakeOf(ECONOMY.HARDCORE_ENTRY_FEE)).toBe(480); // 4.80 GP
+    expect(state.stakerPoolCents).toBe(poolBefore);
+    expect(totalGp(w.db)).toBe(before); // still conserved, to the cent
   });
 
   test("a win banks QUALIFICATION POINTS toward a crown — but not in the discovery year", () => {

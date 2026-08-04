@@ -3,7 +3,15 @@ import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
 import { BOT_FARMS, type BotProfile } from "./bot-config";
-import { CLAIMER, ECONOMY, PINTAKASI, type FightFormat, type Lobby } from "./config";
+import {
+  CLAIMER,
+  ECONOMY,
+  JUVENILE_MAJOR,
+  LAND,
+  PINTAKASI,
+  type FightFormat,
+  type Lobby,
+} from "./config";
 import { Breeding } from "./breeding";
 import { drawStarterNames } from "./naming";
 import { emit } from "./events";
@@ -22,6 +30,7 @@ export interface BotDayReport {
   checkedIn: boolean;
   stakedLand: number; // bots stake every liquid LT, daily
   paidPulls: number; //  gacha rolls bought at price (round 22)
+  landBought: number; // LT bought with GP — the landlord's daily play (round 23)
   studsListed: number; // retired roosters put up in the breeding barn
   bred: string | null; // egg name, if a cover was bought (barn included)
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
@@ -31,6 +40,8 @@ export interface BotDayReport {
 
 /** GP a bot keeps in reserve — never gambled into fees, tags, or breeds. */
 const RESERVE = 400;
+/** A whale keeps far less back — that's what makes it a whale. */
+const WHALE_RESERVE = 100;
 const MAX_CLAIMS_PER_DAY = 2;
 
 /**
@@ -59,6 +70,7 @@ export class Bots {
           country: bot.country,
           primaryColor: bot.primaryColor,
           secondaryColor: bot.secondaryColor,
+          handler: bot.handler ?? null,
           apiKey: `fk_${bot.id}`,
           gp: ECONOMY.STARTING_GP,
           landTokens: 0,
@@ -101,6 +113,7 @@ export class Bots {
       checkedIn: false,
       stakedLand: 0,
       paidPulls: 0,
+      landBought: 0,
       studsListed: 0,
       bred: null,
       entered: [],
@@ -125,28 +138,45 @@ export class Bots {
     while (db.select().from(farms).where(eq(farms.id, bot.id)).get()!.freePulls > 0) {
       if (!quietly(() => gacha.roll())) break;
     }
-    // …then PAID rolls (round 22). At 80 GP a pull no bot ever bought one,
-    // so the gacha's flow into the pools measured exactly zero across 35
-    // days. At 16 GP it's the cheapest bird in the game. Appetite varies by
-    // stable so the board isn't ten identical buyers: a breeder chasing
-    // bloodlines rolls harder than a pit crew does.
-    const pullAppetite = 0.35 + bot.breedDrive * 0.5;
-    for (let i = 0; i < ECONOMY.PAID_PULLS_PER_DAY; i++) {
-      if (rng() > pullAppetite) continue;
-      if (gp() < ECONOMY.GACHA_ROLL_PRICE + RESERVE) break;
-      if (!quietly(() => gacha.roll())) break; // daily cap hit, or barn full
-      report.paidPulls++;
+    // …and then the SPECULATORS (round 23). Ordinary stables take the free
+    // pull and put their GP into covers — Zane's ruling that breeding, not
+    // the gacha, should make the birds. Two barns exist to be the other kind
+    // of player: the high roller who buys bundles, and the landlord who
+    // stockpiles Land Tokens on conviction alone.
+    if (bot.gachaAppetite && rng() < bot.gachaAppetite) {
+      // Bundles until the wallet won't take another — the whole point of a
+      // whale is that it does not budget.
+      while (gp() >= ECONOMY.BUNDLE_PRICE + WHALE_RESERVE) {
+        if (!quietly(() => void gacha.bundle())) break;
+        report.paidPulls += ECONOMY.BUNDLE_ROLLS;
+      }
+      // …then singles with whatever's left over.
+      while (gp() >= ECONOMY.GACHA_ROLL_PRICE + WHALE_RESERVE) {
+        if (!quietly(() => gacha.roll())) break;
+        report.paidPulls++;
+      }
     }
-    const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokens;
-    if (liquid > 0 && quietly(() => farmsApi.stake(bot.id, liquid))) report.stakedLand = liquid;
-
+    if (bot.landAppetite && rng() < bot.landAppetite) {
+      // Max the daily cap, or as much of it as the wallet allows. Land never
+      // sells, so this barn is making a one-way bet on the staking yield.
+      const affordable = Math.floor(((gp() - RESERVE) * 100) / LAND.GP_PER_100_TOKENS);
+      const want = Math.min(LAND.DAILY_BUY_CAP, affordable);
+      if (want > 0 && quietly(() => void farmsApi.buyLand(bot.id, want)))
+        report.landBought = want;
+    }
     // 1b. Stand the retired roosters at stud — selling covers is income.
+    //     BEFORE staking, since round 23 a stud seat costs 100 LT and a barn
+    //     that has already staked every token has nothing liquid to pay with.
     const breeding = new Breeding(db, bot.id, rng);
     for (const rooster of flock.all().filter(
       (b) => b.status === "retired" && b.sex === "male" && !b.listedStud
     )) {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
     }
+
+    // 1c. …and only THEN stake what's left over.
+    const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokens;
+    if (liquid > 0 && quietly(() => farmsApi.stake(bot.id, liquid))) report.stakedLand = liquid;
 
     // (No training step — stats are fixed at birth, ruled round 13. The
     // discovery year is fought, not trained.)
@@ -179,6 +209,7 @@ export class Bots {
     //     better bet than any Tuesday hardcore, and every barn knows it.
     const nerve = Math.min(1, 0.4 + bot.hardcoreNerve * 1.6);
     report.crowns = chaseCrowns(db, bot.id, today, rng, { nerve, reserve: RESERVE });
+    report.crowns.push(...chaseJuvenileCrowns(db, bot.id, today));
 
     // 4. LIQUIDITY FIRST — the job bots exist for. A lobby sitting at an
     //    odd count has a bird waiting with no opponent; join it. Fill
@@ -242,7 +273,28 @@ export class Bots {
     rng: Rng
   ): { mode: FightMode; classType: Lobby; format: FightFormat; price?: number } {
     const format = bestFormat(bird, rng);
-    if (bird.age === 1) return { mode: "juvenile", classType: "open", format };
+    // THE DISCOVERY-YEAR LADDER (round 23): a juvenile climbs the same way a
+    // grown bird does — maiden while it hasn't won, stakes once it has, and
+    // sometimes out with a tag on it. The old code carded every chick in one
+    // flat open division, which is exactly the lack of laddering Zane wanted
+    // fixed ("allow deeper discovery by promoting laddering in the Juvi
+    // season").
+    if (bird.age === 1) {
+      if (bird.wins === 0) return { mode: "juvenile", classType: "maiden", format };
+      if (rng() < bot.sellRate) {
+        const idx = Math.min(
+          CLAIMER.JUVENILE_PRICES.length - 1,
+          Math.round(Math.max(0, bird.wins - bird.losses) * bot.tagCourage)
+        );
+        return {
+          mode: "juvenile",
+          classType: "claimer",
+          format,
+          price: CLAIMER.JUVENILE_PRICES[idx],
+        };
+      }
+      return { mode: "juvenile", classType: "open", format };
+    }
     if (bird.age >= 3 && rng() < bot.hardcoreNerve) {
       return { mode: "hardcore", classType: "open", format };
     }
@@ -314,6 +366,37 @@ export function bestFormat(bird: BirdView, rng: Rng): FightFormat {
  * a pit crew). Auto-play passes none — the Majors are the most +EV card on
  * the board, and a stable with the bodies to spare enters all three.
  */
+/**
+ * The DISCOVERY-YEAR chase (round 23): send qualified juveniles to Wednesday's
+ * championship. No nerve check and no reserve — the juvenile stage isn't
+ * hardcore and costs nothing, so there is no reason on earth not to enter a
+ * bird that has earned its way in.
+ */
+export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): string[] {
+  const tournaments = new Tournaments(db, farmId);
+  const flock = new Flock(db, farmId);
+  const entered: string[] = [];
+  const blades = Tournaments.juvenileBladesOfWeek(Tournaments.targetWeek(today));
+  const qualified = flock
+    .all()
+    .filter((b) => b.status === "active" && b.named && b.age === 1)
+    .filter((b) => b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS);
+  for (const blade of blades) {
+    let sent = 0;
+    for (const bird of qualified.sort((a, b) => formatScores(b)[blade] - formatScores(a)[blade])) {
+      if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
+      try {
+        tournaments.enter(bird.id, blade, "juvenile");
+        entered.push(bird.name);
+        sent++;
+      } catch {
+        /* already in this week, barn cap, or not qualified */
+      }
+    }
+  }
+  return entered;
+}
+
 export function chaseCrowns(
   db: DB,
   farmId: string,

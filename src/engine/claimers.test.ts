@@ -53,9 +53,18 @@ describe("carding a claimer", () => {
     // Round 20: the juvenile door now checks the age first — Alab is 2, so
     // it never reaches the class rule. Kidlat (1) does.
     expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "juvenile" as never })).toThrow(/discovery year only/);
+    // Juveniles CAN card a claimer since round 23 — on their own, cheaper
+    // ladder. The grown 200 GP tag isn't one of their rungs.
     expect(() =>
       w.dev.enter(byName(w.devFlock, "Kidlat").id, { ...SPEC, mode: "juvenile" as never })
-    ).toThrow(/open or maiden/);
+    ).toThrow(/25 \/ 50 \/ 100/);
+    expect(() =>
+      w.dev.enter(byName(w.devFlock, "Kidlat").id, {
+        ...SPEC,
+        mode: "juvenile" as never,
+        price: CLAIMER.JUVENILE_PRICES[0],
+      })
+    ).not.toThrow();
     // An open entry takes no claims.
     const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "shortKnife" });
     const openEntry = open.lobby.entries[0].entryId;
@@ -106,7 +115,8 @@ describe("post time (claims settle after the fights)", () => {
     );
   });
 
-  test("an unmatched claimer still transfers — the sale doesn't need the fight", () => {
+  // RULED ROUND 23, reversing the old behaviour: no fight, no claiming.
+  test("an unmatched claimer does NOT sell — the fee and every claim refund", () => {
     const w = world();
     const devAlab = byName(w.devFlock, "Alab");
     const { lobby } = w.dev.enter(devAlab.id, SPEC, 33); // alone on the card — odd bird out
@@ -114,19 +124,24 @@ describe("post time (claims settle after the fights)", () => {
     const tick = w.game.tickDay();
     expect(tick.card[0].fights.length).toBe(0);
     expect(tick.card[0].unmatched.length).toBe(1);
-    expect(tick.card[0].claims.length).toBe(1);
-    expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
-    // Fee refunded (no fight), tag banked less the 2% staker rake.
-    const tagNet = TAG * 100 - Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
-    expect(gpCents(w.db, w.devId)).toBe(ECONOMY.STARTING_GP * 100 + tagNet);
-    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
+    // The sale used to go through without the fight. It doesn't any more:
+    // a claimant shouldn't be able to take a bird on a night it never had to
+    // prove anything, and the seller shouldn't lose one on a technicality.
+    expect(tick.card[0].claims.length).toBe(0);
+    expect(owner(w.db, devAlab.id)).toBe(w.devId); // stays home
+    // Everybody is made whole: the entry fee AND the tag come back.
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP);
+    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP);
   });
 
-  // Round 22: the tag settles 98/2 — the same rule the marketplace will use.
+  // The claim rake SURVIVED round 23. Zane pulled the rake off fight pots
+  // only ("return fight pots back to 0%") — a sale is a different thing from
+  // a fight, and the tag still pays the landholders their 2%.
   test("the claim rake: the selling barn banks 98% of the tag, the stakers 2%", () => {
     const w = world();
     const devAlab = byName(w.devFlock, "Alab");
     const { lobby } = w.dev.enter(devAlab.id, SPEC, 33);
+    w.rival.enter("rival-6", SPEC); // an opponent, so the fight actually runs
     const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
     w.rival.claim(lobby.entries[0].entryId);
     w.game.tickDay();
@@ -134,9 +149,6 @@ describe("post time (claims settle after the fights)", () => {
     expect(rake).toBe(400); // 4.00 GP of a 200 GP tag
     const state = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     expect(state.stakerPoolCents - poolBefore).toBe(rake);
-    // The claimant still pays the FULL tag — the rake comes out of the sale,
-    // not out of the buyer's pocket on top of it.
-    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
   });
 
   test("several claims: the RNG picks one winner, every loser refunds in full", () => {
@@ -147,8 +159,18 @@ describe("post time (claims settle after the fights)", () => {
       secondaryColor: "white",
     });
     const thirdLobbies = new Lobbies(w.db, third.id);
+    // Since round 23 a claim only settles if the bird actually fought, so a
+    // FOURTH barn supplies the opponent — that keeps the two claimants'
+    // wallets clean of entry fees, which is what this test is measuring.
+    const { farm: opponentFarm } = w.game.farms.register({
+      name: "Batangas Bladeworks",
+      primaryColor: "orange",
+      secondaryColor: "black",
+    });
+    seedStarterFlock(w.db, opponentFarm.id, { seed: 99, idPrefix: "opp", shape: "legacy" });
     const devAlab = byName(w.devFlock, "Alab");
     const { lobby } = w.dev.enter(devAlab.id, SPEC, 77);
+    new Lobbies(w.db, opponentFarm.id).enter("opp-6", SPEC);
     const entryId = lobby.entries[0].entryId;
     w.rival.claim(entryId);
     thirdLobbies.claim(entryId);

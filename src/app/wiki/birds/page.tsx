@@ -4,6 +4,8 @@ import {
   BARN,
   BATTLE,
   BREEDING,
+  CARRIAGES,
+  CARRIAGE_LABEL,
   ELEMENTS,
   ELEMENT_BEATS,
   PHASES,
@@ -254,6 +256,52 @@ export default function BirdsPage() {
         <Link href="/wiki/breeding">Breeding</Link>), so stacking stars across generations is one
         of the two real levers a breeder has — the other being the raw stat numbers themselves.
       </p>
+      <div className="callout">
+        <b>Starters open low, on purpose.</b> A fresh egg out of the starting flock rolls between{" "}
+        {STARS.STARTER_MIN_HALF / 2}★ and {STARS.STARTER_MAX_HALF / 2}★ — nowhere near the{" "}
+        {STARS.MAX_HALF_STARS / 2}★ ceiling. Anything higher comes from one of two doors: a lucky{" "}
+        <Link href="/wiki/gacha">gacha</Link> pull (Purple and Gold tokens carry 2★–4★ birds), or
+        several generations of breeding stacking half-stars upward. A 4★ bird sitting on the board
+        in week one would make the whole rating meaningless — stars are supposed to be the thing
+        you chase, not something you start with.
+      </div>
+
+      <h2>Carriage — Ground vs. Air</h2>
+      <p>
+        Every bird also carries a <strong>carriage</strong>: {CARRIAGES.join(" or ")}. Think of it
+        as a second star-like axis, separate from element — a lean plus its own magnitude (0 to{" "}
+        {STARS.MAX_HALF_STARS / 2}★), rolled at hatch and inherited from parents the same way
+        elements are (see <Link href="/wiki/breeding">Breeding</Link>).
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Carriage</th>
+              <th>What it means</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CARRIAGES.map((c) => (
+              <tr key={c}>
+                <td>{c}</td>
+                <td>{CARRIAGE_LABEL[c]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="callout warn">
+        <b>Not wired into fights yet.</b> Carriage is tracked, rolled, and inherited, but tonight&apos;s
+        fight engine doesn&apos;t read it — every bout today still runs on stats, element, and
+        stars alone. The intended hook: the sim already runs in phases (see below), and Air is
+        meant to pay early — over the top of a low fighter before anyone&apos;s wind is gone —
+        while Ground pays late, once the flyer is blown and the shuffler grinds it down. That would
+        tie carriage straight to blade choice, since a short knife lives almost entirely in the
+        early phase and a long gaff spends most of its turns in the late one. Until that lands,
+        treat carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s
+        card.
+      </div>
 
       <h2>Age and the life cycle</h2>
       <p>

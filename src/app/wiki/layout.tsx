@@ -29,7 +29,7 @@ const NAV: { href: string; label: string; blurb: string }[] = [
   { href: "/wiki/fighting", label: "Fighting", blurb: "the four blades, and figures" },
   { href: "/wiki/card", label: "The card", blurb: "lobbies, classes, the fog" },
   { href: "/wiki/claiming", label: "Claiming", blurb: "buying a bird off the card" },
-  { href: "/wiki/pintakasi", label: "The Pintakasi", blurb: "Thursday's crowns" },
+  { href: "/wiki/pintakasi", label: "The Pintakasi", blurb: "Thursday's Majors" },
   { href: "/wiki/breeding", label: "Breeding", blurb: "retired birds make the next ones" },
   { href: "/wiki/gacha", label: "The gacha", blurb: "odds, prices, mystery eggs" },
   { href: "/wiki/money", label: "Golden Pesos", blurb: "where GP comes from and goes" },

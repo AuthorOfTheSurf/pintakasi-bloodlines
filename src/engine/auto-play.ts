@@ -1,16 +1,16 @@
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
-import { bestFormat, chaseCrowns, ladderClass } from "./bots";
+import { bestFormat, chaseCrowns, chaseJuvenileCrowns, ladderClass } from "./bots";
 import { Breeding } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies, type LobbySpec } from "./lobbies";
-import { ECONOMY } from "./config";
+import { CLAIMER, ECONOMY } from "./config";
 import { canHardcore } from "./lifecycle";
 import { drawStarterNames } from "./naming";
-import { mulberry32 } from "./rng";
+import { mulberry32, randInt } from "./rng";
 import { Tournaments } from "./tournaments";
 
 /**
@@ -42,32 +42,30 @@ export function playHonestDay(db: DB, farmId: string): void {
   const farmsApi = new Farms(db);
   quietly(() => farmsApi.checkIn(farmId));
 
-  // Free pulls first, then PAID rolls up to the daily cap (round 22). The
-  // paid pass is the whole point of the repricing: at 80 GP a roll not one
-  // stable ever bought a single pull in 35 days, so the gacha's flows into
-  // the pools measured exactly zero. A barn rolls while it can spare the GP.
+  // The free pull only (round 23). Round 22 had every stable grinding cheap
+  // paid rolls, and the gacha ended up out-supplying the breeding barn 8 to 1
+  // — Zane pulled that back: "I want stables primarily breeding to create
+  // birds." An honest stable takes its free roll and puts its GP into covers.
+  // The rolling is left to the high roller (see the whale bot in bot-config).
   const gacha = new Gacha(db, farmId, mulberry32(9000 + day));
   for (;;) {
     const farm = farmsApi.rowById(farmId);
     if (farm.freePulls <= 0) break;
     quietly(() => gacha.roll());
   }
-  for (let i = 0; i < ECONOMY.PAID_PULLS_PER_DAY; i++) {
-    const farm = farmsApi.rowById(farmId);
-    if (farm.gp < ECONOMY.GACHA_ROLL_PRICE + AUTO_RESERVE) break;
-    if (!quietly(() => gacha.roll())) break; // cap hit, or the barn is full
-  }
 
   const flock = new Flock(db, farmId).all();
+
+  // Studs first, THEN staking: a stud seat costs 100 LT since round 23, and
+  // a barn that has already staked every token has nothing liquid to pay it.
+  const breeding = new Breeding(db, farmId, mulberry32(500 + day));
+  for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
+    quietly(() => breeding.listStud(rooster.id));
 
   quietly(() => {
     const farm = farmsApi.rowById(farmId);
     if (farm.landTokens > 0) farmsApi.stake(farmId, farm.landTokens);
   });
-
-  const breeding = new Breeding(db, farmId, mulberry32(500 + day));
-  for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
-    quietly(() => breeding.listStud(rooster.id));
 
   // One cover a day, first hen whose nest is empty (one egg per hen).
   for (const hen of flock.filter((b) => b.status === "retired" && b.sex === "female")) {
@@ -92,6 +90,8 @@ export function playHonestDay(db: DB, farmId: string): void {
   // running — one bird per championship, not one per stable. Hardcore: the
   // strongest stables put their strongest birds in; that's the design.
   quietly(() => void chaseCrowns(db, farmId, day, mulberry32(1300 + day)));
+  // …and the discovery-year stage on Wednesday (round 23).
+  quietly(() => void chaseJuvenileCrowns(db, farmId, day));
 
   // Card by style, like the bots do (round 17): one format for everyone
   // piled the whole stable into a single lobby key, where matchmaking's
@@ -104,10 +104,22 @@ export function playHonestDay(db: DB, farmId: string): void {
   const lobbies = new Lobbies(db, farmId);
   for (const bird of flockApi.all().filter((b) => b.status === "active")) {
     const format = bestFormat(bird, cardRng);
+    // The discovery-year ladder (round 23): a winless juvenile starts in a
+    // maiden, a winner moves up to juvenile stakes, and now and then one goes
+    // out with a tag on it — the cheap way to learn what the market thinks.
     const spec: LobbySpec =
       bird.age >= 2
         ? { mode: "real", classType: ladderClass(bird.stakesWins), format }
-        : { mode: "juvenile", classType: "open", format };
+        : bird.wins === 0
+          ? { mode: "juvenile", classType: "maiden", format }
+          : cardRng() < JUVENILE_SELL_RATE
+            ? {
+                mode: "juvenile",
+                classType: "claimer",
+                format,
+                price: CLAIMER.JUVENILE_PRICES[randInt(cardRng, 0, CLAIMER.JUVENILE_PRICES.length - 1)],
+              }
+            : { mode: "juvenile", classType: "open", format };
     quietly(() => lobbies.enter(bird.id, spec));
   }
 
@@ -152,6 +164,8 @@ export function shopClaimers(db: DB, farmId: string): void {
 const AUTO_CLAIMS_PER_DAY = 2;
 const AUTO_CLAIM_APPETITE = 0.35;
 const AUTO_RESERVE = 400; // GP never gambled into a tag
+/** How often a juvenile is carded with a tag on it (round 23). */
+const JUVENILE_SELL_RATE = 0.2;
 
 /** Every player-owned (non-bot) stable plays its honest day. */
 export function playAllHonestDays(db: DB): void {

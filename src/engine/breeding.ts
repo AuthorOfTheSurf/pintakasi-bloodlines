@@ -11,9 +11,11 @@ import {
   COVERS,
   ECONOMY,
   ELEMENTS,
+  STARS,
   STATS,
   STAT_NAMES,
   TRIM_BY_ELEMENT,
+  type Carriage,
   type Element,
 } from "./config";
 import { emit, fmtGp } from "./events";
@@ -156,6 +158,7 @@ export class Breeding {
       .run();
     const stats = this.inheritStats(mother, fatherRow);
     const { element, halfStars } = this.inheritStars(mother, fatherRow);
+    const { carriage, carriageHalfStars } = this.inheritCarriage(mother, fatherRow);
 
     // Coat v0 (round 14): take a parent's base coat, small mutation chance;
     // trim keys off the chick's own element. Real coat genetics come later.
@@ -181,6 +184,8 @@ export class Breeding {
       ...stats,
       element,
       halfStars,
+      carriage,
+      carriageHalfStars,
       birthWeek: week + 1,
       birthDay: day,
       motherId: mother.id,
@@ -219,19 +224,42 @@ export class Breeding {
   // ── The breeding barn ──────────────────────────────────────────────────────
 
   /** List a retired rooster for covers from any farm. Idempotent. */
-  listStud(birdId: string): { stud: string; listed: true; price: number } {
+  listStud(birdId: string): { stud: string; listed: true; price: number; landSpent: number } {
     const bird = this.flock.byId(birdId); // own birds only
     if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — the barn lists roosters`);
     if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
-    if (!bird.listedStud)
+    // Re-listing a rooster that's already up is free — the land bought the
+    // seat, and pulling a stud out shouldn't tax putting him back.
+    let landSpent = 0;
+    if (!bird.listedStud) {
+      // THE LAND SINK (round 23): a stud seat costs LAND, not GP. Spent —
+      // not staked, not refundable. It's the first thing in the game that
+      // takes Land Tokens OUT of the world, which is what gives the yield a
+      // price to be measured against.
+      const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+      if (farm.landTokens < COVERS.STUD_LISTING_LT)
+        throw new Error(
+          `Standing ${bird.name} at stud costs ${COVERS.STUD_LISTING_LT} LT — ${farm.name} holds ` +
+            `${farm.landTokens} liquid (unstake some, or earn more in the pit)`
+        );
+      this.database
+        .update(farms)
+        .set({ landTokens: farm.landTokens - COVERS.STUD_LISTING_LT })
+        .where(eq(farms.id, this.farmId))
+        .run();
+      landSpent = COVERS.STUD_LISTING_LT;
       emit(this.database, {
         type: "stud_listed",
         farmId: this.farmId,
         birdId,
-        message: `${bird.name} stands at stud — ${ECONOMY.BREED_FEE} GP a cover`,
+        lt: -COVERS.STUD_LISTING_LT,
+        message:
+          `${bird.name} stands at stud — ${ECONOMY.BREED_FEE} GP a cover ` +
+          `(${COVERS.STUD_LISTING_LT} LT paid for the seat)`,
       });
+    }
     this.database.update(birds).set({ listedStud: 1 }).where(eq(birds.id, birdId)).run();
-    return { stud: bird.name, listed: true, price: ECONOMY.BREED_FEE };
+    return { stud: bird.name, listed: true, price: ECONOMY.BREED_FEE, landSpent };
   }
 
   /** Pull a rooster from the barn. Covers already sold this week stand. */
@@ -347,6 +375,43 @@ export class Breeding {
       out[stat] = Math.min(STATS.MAX, Math.max(STATS.MIN, value));
     }
     return out;
+  }
+
+  /**
+   * CARRIAGE inheritance (round 23) — the same preference-pair maths as
+   * elements, on the Ground/Air axis: the magnitude is drawn around the
+   * parents' average and the LEAN follows the stronger-rated parent, with a
+   * small chance of flipping. Breeding two Ground birds usually makes another
+   * shuffler; crossing a strong flyer over a weak shuffler usually makes a
+   * flyer. That's the whole point of a preference pair — it's selectable.
+   */
+  private inheritCarriage(
+    mother: Pick<BirdRow, "carriageHalfStars" | "carriage">,
+    father: Pick<BirdRow, "carriageHalfStars" | "carriage">
+  ): { carriage: Carriage; carriageHalfStars: number } {
+    const avg = (mother.carriageHalfStars + father.carriageHalfStars) / 2;
+    const carriageHalfStars = Math.min(
+      STARS.MAX_HALF_STARS,
+      Math.max(
+        0,
+        Math.round(avg) +
+          randInt(this.rng, -BREEDING.STAR_SPREAD_HALF_STARS, BREEDING.STAR_SPREAD_HALF_STARS)
+      )
+    );
+    const [stronger, weaker] =
+      mother.carriageHalfStars === father.carriageHalfStars
+        ? this.rng() < 0.5
+          ? [mother, father]
+          : [father, mother]
+        : mother.carriageHalfStars > father.carriageHalfStars
+          ? [mother, father]
+          : [father, mother];
+    const roll = this.rng();
+    const carriage: Carriage =
+      roll < BREEDING.CARRIAGE_LEAN_STRONGER
+        ? (stronger.carriage as Carriage)
+        : (weaker.carriage as Carriage);
+    return { carriage, carriageHalfStars };
   }
 
   /**

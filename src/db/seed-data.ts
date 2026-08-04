@@ -2,8 +2,10 @@ import type { DB } from "./client";
 import { birds, farms, gameState, type NewBird } from "./schema";
 import {
   BASE_COATS,
+  CARRIAGES,
   ECONOMY,
   ELEMENTS,
+  STARS,
   STATS,
   TRIM_BY_ELEMENT,
   type Element,
@@ -98,8 +100,11 @@ export function seedGame(
       id: DEV_FARM_ID,
       name: "Bukidnon Farms",
       country: "🇵🇭",
-      primaryColor: "red",
-      secondaryColor: "gold",
+      // Zane's own barn — fixed green and yellow (round 23) so his colours
+      // are the ones he can find instantly in a table of a dozen stables.
+      primaryColor: "green",
+      secondaryColor: "yellow",
+      handler: "Zane",
       apiKey: DEV_FARM_KEY,
       gp: opts.startingGp ?? ECONOMY.STARTING_GP,
       landTokens: 0,
@@ -147,7 +152,11 @@ export function seedStarterFlock(
         status: s.status,
         ...rollStats(rng),
         element,
-        halfStars: s.halfStars,
+        // Clamped to the round-23 starter band — the legacy shape's hand-set
+        // stars were written when 3★ on day one seemed reasonable.
+        halfStars: Math.min(s.halfStars, STARS.STARTER_MAX_HALF),
+        carriage: CARRIAGES[randInt(rng, 0, CARRIAGES.length - 1)],
+        carriageHalfStars: randInt(rng, STARS.STARTER_MIN_HALF, STARS.STARTER_MAX_HALF),
         birthWeek: -s.age, // age at week 0 = 0 - birthWeek
         birthDay: -s.age * 7,
         wins: s.wins ?? 0,
@@ -197,7 +206,11 @@ export function seedStarterFlock(
       status: "egg" as const,
       ...rollStats(rng),
       element,
-      halfStars: randInt(rng, 2, 6),
+      // Nerfed round 23 — day-one stock tops out at 1.5★. The gacha's Purple
+      // and Gold tiers are where 2–4★ birds enter the world now.
+      halfStars: randInt(rng, STARS.STARTER_MIN_HALF, STARS.STARTER_MAX_HALF),
+      carriage: CARRIAGES[randInt(rng, 0, CARRIAGES.length - 1)],
+      carriageHalfStars: randInt(rng, STARS.STARTER_MIN_HALF, STARS.STARTER_MAX_HALF),
       birthWeek: week, // hatches NEXT Friday, age 1 — no fighting week one
       birthDay: today,
       motherId: null,

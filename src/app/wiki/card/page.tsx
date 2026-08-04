@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   AGE,
+  CLAIMER,
   ECONOMY,
   LOBBIES,
   LOBBY,
@@ -89,7 +90,8 @@ export default function CardPage() {
       <div className="callout warn">
         <b>Hardcore is not just a dearer fee.</b> Lose one and your bird&apos;s career ends that
         instant — it keeps its stats and can still breed, but it never fights again. Every
-        Pintakasi championship bout runs under this same rule. Only enter one on purpose.
+        Pintakasi Major bout runs under this same rule — the Juvenile Championship is the one
+        exception in the game. Only enter one on purpose.
       </div>
 
       <h2>The class ladder</h2>
@@ -139,15 +141,58 @@ export default function CardPage() {
         on its card and the maiden class would never open for anybody.
       </div>
       <p className="dim">
-        Hardcore runs in the open class only — the key rule already does the sorting a ladder would.
-        Juvenile lobbies are open or maiden only.
+        Hardcore runs in the open class only — the key rule already does the sorting a ladder
+        would. Juvenile lobbies only open <em>open</em>, <em>maiden</em>, and <em>claimer</em> — nw2
+        and nw3 stay out, since a one-year-old hasn&apos;t fought long enough to have the record
+        they sort by.
+      </p>
+
+      <h2>The discovery-year ladder</h2>
+      <p>
+        The juvenile season isn&apos;t one flat division. It runs its own maiden, open (stakes),
+        and claimer classes — the same shape as the grown card, so a bird learns the ladder in the
+        one year its results don&apos;t follow it forever.
+      </p>
+      <div className="callout tip">
+        <b>Which record it reads is the trick.</b> A grown bird&apos;s maiden class reads its{" "}
+        <em>stakes</em> wins — real and hardcore fights only. A one-year-old has no stakes record
+        yet, so its juvenile maiden class reads its <em>juvenile</em> wins instead — the same rule,
+        pointed at whichever record the bird is actually old enough to have.
+      </div>
+      <p>
+        Juvenile claimers get their own, cheaper tag ladder — pricing a one-year-old against the
+        grown-bird rungs would mean nobody dares tag one at all:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="num">Juvenile tag</th>
+              <th className="num">≈ $</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CLAIMER.JUVENILE_PRICES.map((price) => (
+              <tr key={price}>
+                <td className="num">{price} GP</td>
+                <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="dim">
+        See <Link href="/wiki/claiming">Claiming</Link> for the full sequence — including the rule
+        for a claimer that draws no fight.
       </p>
 
       <h2>The pot</h2>
       <p>
-        Both sides post the entry fee. The winner takes the pooled pot — less a small rake that
-        goes to the farms staking Land Tokens, not to the house. No GP is ever printed or destroyed
-        here; the rake just moves from the pot to the staking pool.
+        Both sides post the entry fee.{" "}
+        {STAKER_FLOWS.FIGHT_RAKE === 0
+          ? "The daily card takes no cut at all: the winner banks the whole pooled pot, and the loser loses exactly its entry — nothing more, nothing less."
+          : `The winner takes the pooled pot, less a ${(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% rake that goes to the farms staking Land Tokens, not to the house.`}{" "}
+        No GP is ever printed or destroyed here.
       </p>
       <div className="tablewrap">
         <table>
@@ -155,7 +200,6 @@ export default function CardPage() {
             <tr>
               <th>Mode</th>
               <th className="num">Pot (2× entry)</th>
-              <th className="num">Staker rake</th>
               <th className="num">Winner banks</th>
             </tr>
           </thead>
@@ -167,7 +211,6 @@ export default function CardPage() {
                 <tr key={m.mode}>
                   <td>{m.label}</td>
                   <td className="num">{fmtGp(potCents)} GP</td>
-                  <td className="num">{fmtGp(rakeCents)} GP</td>
                   <td className="num">{fmtGp(potCents - rakeCents)} GP</td>
                 </tr>
               );
@@ -175,10 +218,19 @@ export default function CardPage() {
           </tbody>
         </table>
       </div>
-      <p className="dim">
-        The rake is {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% of the whole pot, both entries
-        combined — the loser still loses its full entry either way.
-      </p>
+      {STAKER_FLOWS.FIGHT_RAKE === 0 ? (
+        <p className="dim">
+          The plumbing for a fight-pot rake still exists in the settings (currently{" "}
+          {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%) so a future season can turn it back on —
+          today it&apos;s off, and the daily card is a pure pot. The claiming tag still pays a
+          rake; see <Link href="/wiki/claiming">Claiming</Link>.
+        </p>
+      ) : (
+        <p className="dim">
+          The rake is {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% of the whole pot, both entries
+          combined — the loser still loses its full entry either way.
+        </p>
+      )}
 
       <h2>The fog</h2>
       <p>
@@ -213,10 +265,11 @@ export default function CardPage() {
 
       <h2>After the win</h2>
       <p>
-        A win on the daily card banks qualification points toward Thursday&apos;s championships —{" "}
+        A win on the daily card banks qualification points toward Thursday&apos;s Pintakasi Majors
+        —{" "}
         {PINTAKASI.POINTS_FOR.real} for a real win, {PINTAKASI.POINTS_FOR.hardcore} for a hardcore
         win, {PINTAKASI.POINTS_FOR.juvenile} for juvenile practice. A bird needs{" "}
-        {PINTAKASI.QUALIFYING_POINTS} of them to stand in a crown. See{" "}
+        {PINTAKASI.QUALIFYING_POINTS} of them to stand in a Major. See{" "}
         <Link href="/wiki/pintakasi">The Pintakasi</Link> for the full bracket.
       </p>
 

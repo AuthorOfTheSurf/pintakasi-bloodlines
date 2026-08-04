@@ -1,5 +1,14 @@
 import Link from "next/link";
-import { AGE, ECONOMY, FORMATS, LAND, PINTAKASI, landForFight, landForTournamentFight } from "@/engine/config";
+import {
+  AGE,
+  ECONOMY,
+  FORMATS,
+  JUVENILE_MAJOR,
+  LAND,
+  PINTAKASI,
+  landForFight,
+  landForTournamentFight,
+} from "@/engine/config";
 
 export const dynamic = "force-dynamic";
 
@@ -45,15 +54,19 @@ export default function PintakasiPage() {
   const dailyHardcoreLand = landForFight(ECONOMY.HARDCORE_ENTRY_FEE);
   const crownFightLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
   const exampleBracket = 16;
+  const juvenilePurseTotal = Object.values(JUVENILE_MAJOR.PURSE_SHARES).reduce((a, b) => a + b, 0);
 
   return (
     <>
-      <h1>The Pintakasi</h1>
+      <h1>The Pintakasi Majors</h1>
       <p className="lede">
         Every {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} — the week&apos;s last day — three blade
-        championships crown the best specialist at each distance. Entry costs{" "}
+        championships, called the <strong>Pintakasi Majors</strong> (or just &ldquo;the
+        Majors&rdquo;), crown the best specialist at each distance. Entry costs{" "}
         {PINTAKASI.ENTRY_FEE === 0 ? "nothing" : `${PINTAKASI.ENTRY_FEE} GP`}. Getting a seat is the
-        hard part, and every loser goes home for good. This is the biggest stage in the game.
+        hard part, and every loser goes home for good. This is the biggest stage in the game — a
+        separate, gentler stage for one-year-olds runs the day before; see{" "}
+        <Link href="#juvenile-championship">the Juvenile Championship</Link> below.
       </p>
 
       <h2>What it is</h2>
@@ -100,9 +113,10 @@ export default function PintakasiPage() {
       <h2>Free to enter — but you have to earn it</h2>
       <p>
         There is no entry fee. A bird gets in by <strong>campaigning</strong>: every win on the
-        ordinary daily card banks qualification points toward a crown. The discovery year is
-        practice and pays nothing — a juvenile win doesn&apos;t count. Real fights and hardcore
-        fights do, and hardcore pays double, because that bird wagered its career to win the point.
+        ordinary daily card banks qualification points toward a Major. A juvenile win banks zero of{" "}
+        <em>these</em> points — the discovery year has its own, separate ladder toward its own
+        championship (see below). Real fights and hardcore fights bank points here, and hardcore
+        pays double, because that bird wagered its career to win the point.
       </p>
       <div className="tablewrap">
         <table>
@@ -123,23 +137,24 @@ export default function PintakasiPage() {
         </table>
       </div>
       <p>
-        A bird needs <strong>{PINTAKASI.QUALIFYING_POINTS} points</strong> to stand in a
-        championship — roughly {realWinsNeeded} real wins, or {hardcoreWinsNeeded} hardcore
+        A bird needs <strong>{PINTAKASI.QUALIFYING_POINTS} points</strong> to stand in a Major —
+        roughly {realWinsNeeded} real wins, or {hardcoreWinsNeeded} hardcore
         {hardcoreWinsNeeded === 1 ? " win" : " wins"}, in any mix that adds up. It also has to be
         old enough to fight hardcore at all: age {AGE.FORK}+.
       </p>
       <div className="callout tip">
         <b>Why this way, not a price tag.</b> Buying a seat would just mean the deepest wallet wins
         the biggest purse in the game. Earning a seat means the field is exactly the birds that have
-        been proving themselves all week — the Pintakasi rewards a campaign, not a bank balance.
+        been proving themselves all week — the Majors reward a campaign, not a bank balance.
       </div>
 
       <h2>Hardcore throughout</h2>
       <div className="callout warn">
-        <b>Every loss in this bracket ends a career.</b> Win or go home — permanently. A bird that
+        <b>Every loss in a Major ends a career.</b> Win or go home — permanently. A bird that
         falls in round one is done fighting for life. It keeps its stats and its bloodline, and it
         can still <Link href="/wiki/breeding">breed</Link> — but it will never fight again. Don&apos;t
-        enter a bird here unless you mean it.
+        enter a bird here unless you mean it. (The Juvenile Championship, below, is the one
+        exception in the whole game — it does <em>not</em> force-retire.)
       </div>
 
       <h2>The Selection Committee</h2>
@@ -190,11 +205,13 @@ export default function PintakasiPage() {
 
       <h2>The money</h2>
       <p>
-        The purse isn&apos;t funded by entries — entry is free. It&apos;s the week&apos;s whole{" "}
-        <strong>juice pool</strong>, the shared pot that gacha spend and breeding fees feed all week
-        (see <Link href="/wiki/money">Golden Pesos</Link> for where juice comes from). That pool
-        splits evenly across however many championships run that week, and each blade&apos;s share
-        becomes its purse — paid out top-heavy, and every bird eliminated in round one takes zero.
+        The purse isn&apos;t funded by entries — entry is free. It&apos;s the <strong>juice
+        pool</strong>, the shared pot that gacha spend and breeding fees feed all week (see{" "}
+        <Link href="/wiki/money">Golden Pesos</Link> for where juice comes from). Wednesday&apos;s
+        Juvenile Championship draws its own fixed slice first (see below); the Majors take
+        <strong> everything left in the pool</strong>, split evenly across however many Majors run
+        that week — and each blade&apos;s share becomes its purse, paid out top-heavy, with every
+        bird eliminated in round one taking zero.
       </p>
       <div className="tablewrap">
         <table>
@@ -266,20 +283,97 @@ export default function PintakasiPage() {
       <h2>How many birds</h2>
       <p>
         One barn may enter up to <strong>{PINTAKASI.MAX_PER_BARN} birds</strong> in a single
-        championship — a deep barn can load one blade with specialists instead of spreading thin.
-        But it&apos;s one crown per bird per week: a bird registered for one blade this week can not
+        Major — a deep barn can load one blade with specialists instead of spreading thin. But
+        it&apos;s one Major per bird per week: a bird registered for one blade this week can not
         also stand in another blade&apos;s bracket the same week.
       </p>
 
       <h2>The field is public</h2>
       <p>
         The daily card is fogged — you don&apos;t see who you&apos;re about to fight until the day
-        ticks over (see <Link href="/wiki/card">The card</Link>). The Pintakasi field is the
+        ticks over (see <Link href="/wiki/card">The card</Link>). The Majors&apos; field is the
         opposite: public the moment a bird registers, and public all week. Two reasons. Entering the
         biggest stage in the game is a public act — you&apos;re choosing to be seen campaigning for
         it. And the bump line only means anything if you can see who you&apos;d be bumping: a
         newcomer, and every farm watching, needs to know exactly who the current weakest seed is
         before the Committee makes that call.
+      </p>
+
+      <h2 id="juvenile-championship">The day before: the Juvenile Championship</h2>
+      <p>
+        Round 23 gave the discovery year its own stage. Every{" "}
+        {DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]} — the day before the Majors — two championships run
+        for age-{AGE.CHICK} birds only: one knife crown and one gaff crown, with the exact lengths
+        rotating by week so a juvenile career sees every blade eventually.
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Week parity</th>
+              <th>Blades</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Even weeks</td>
+              <td>
+                {FORMATS[JUVENILE_MAJOR.BLADES[0][0]].label} / {FORMATS[JUVENILE_MAJOR.BLADES[0][1]].label}
+              </td>
+            </tr>
+            <tr>
+              <td>Odd weeks</td>
+              <td>
+                {FORMATS[JUVENILE_MAJOR.BLADES[1][0]].label} / {FORMATS[JUVENILE_MAJOR.BLADES[1][1]].label}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Qualification is the same idea as the Majors, scaled to the discovery year: a juvenile
+        bird needs <strong>{JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins</strong> (see{" "}
+        <Link href="/wiki/card">The card</Link> for the discovery-year ladder) to stand — no GP
+        entry either way. One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN} birds per blade,
+        in a bracket capped at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s ceiling, sized for
+        a stage about discovery, not the biggest purse in the game.
+      </p>
+      <div className="callout warn">
+        <b>The only championship in the game that isn&apos;t hardcore.</b> Every Major force-retires
+        its losers. This one can&apos;t: the discovery year exists to find out what a bird actually
+        is, and ending careers at age one would strangle the very population the Majors are
+        supposed to inherit later. A juvenile crown costs a bird nothing but the fight itself — win
+        or lose, it goes home able to keep climbing the ladder.
+      </div>
+      <p>
+        Its purse comes out of the same juice pool the Majors draw from — a fixed{" "}
+        {(JUVENILE_MAJOR.JUICE_SHARE * 100).toFixed(0)}% slice, taken before Thursday&apos;s Majors
+        get whatever&apos;s left, split across whichever of the two blades runs that week and paid
+        out flatter than a Major&apos;s purse — a discovery-year stage rewards showing up with a
+        live one, not just winning it all:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Finish</th>
+              <th className="num">Share of the purse</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(JUVENILE_MAJOR.PURSE_SHARES).map(([stage, share]) => (
+              <tr key={stage}>
+                <td>{PURSE_LABELS[stage] ?? stage}</td>
+                <td className="num">{((share / juvenilePurseTotal) * 100).toFixed(1)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="dim">
+        Renormalized to whatever the bracket actually pays out, the same rule as the Majors above.
+        Every fight in the bracket still mints Land Tokens to both birds, off the juvenile entry
+        fee&apos;s much smaller base — see <Link href="/wiki/land">Land Tokens</Link>.
       </p>
 
       <div className="next">

@@ -6,6 +6,7 @@ import { seedGame } from "@/db/seed-data";
 import { gameState } from "@/db/schema";
 import {
   BASE_COATS,
+  STARS,
   ECONOMY,
   GACHA_BIRDS,
   GACHA_TOKENS,
@@ -62,13 +63,7 @@ describe("gacha", () => {
     const { db, farmId } = fresh();
     db.update(farms).set({ gp: 10_000_000 }).where(eq(farms.id, farmId)).run();
     const gacha = new Gacha(db, farmId, mulberry32(2));
-    // Round 22 caps PAID rolls per farm per game-day, so a 500-roll sample
-    // has to span days — clear the day's counter each time rather than
-    // ticking 100 days to make the same point about the weights.
-    for (let i = 0; i < 500; i++) {
-      db.update(farms).set({ gachaPaidToday: 0 }).where(eq(farms.id, farmId)).run();
-      gacha.roll();
-    }
+    for (let i = 0; i < 500; i++) gacha.roll();
     const c = gacha.collection();
     expect(c.White).toBeGreaterThan(c.Gold);
     expect(c.Green).toBeGreaterThan(c.Purple);
@@ -145,7 +140,6 @@ describe("gacha", () => {
     const gacha = new Gacha(db, farmId, mulberry32(11));
     let eggs = 0;
     for (let i = 0; i < 200 && eggs < 5; i++) {
-      db.update(farms).set({ gachaPaidToday: 0 }).where(eq(farms.id, farmId)).run();
       const r = gacha.roll();
       if (!r.egg) continue;
       eggs++;
@@ -161,29 +155,58 @@ describe("gacha", () => {
     expect(eggs).toBeGreaterThan(0);
   });
 
-  // Round 22: cheap rolls, but a limited number of them per day.
-  test("five paid rolls a day, then the board is closed until the tick", () => {
+  // Round 23: the roll is a luxury again, and the multi is how a high roller
+  // commits.
+  test("the 11-roll bundle: ten rolls' money, eleven rolls, one ledger line", () => {
     const { db, farmId } = fresh();
-    const gacha = new Gacha(db, farmId, mulberry32(77));
-    for (let i = 0; i < ECONOMY.PAID_PULLS_PER_DAY; i++) {
-      expect(gacha.roll().pricePaid).toBe(ECONOMY.GACHA_ROLL_PRICE);
-    }
-    expect(() => gacha.roll()).toThrow(/paid rolls today/);
-    // A free pull is a separate allowance — it still goes through.
-    db.update(farms).set({ freePulls: 1 }).where(eq(farms.id, farmId)).run();
-    expect(gacha.roll().pricePaid).toBe(0);
+    db.update(farms).set({ freePulls: 0 }).where(eq(farms.id, farmId)).run();
+    const before = db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp;
+    const out = new Gacha(db, farmId, mulberry32(77)).bundle();
+    expect(out.rolls.length).toBe(ECONOMY.BUNDLE_ROLLS);
+    expect(out.pricePaid).toBe(ECONOMY.BUNDLE_PRICE);
+    // Eleven rolls for the price of ten — the bonus roll is the whole point.
+    expect(ECONOMY.BUNDLE_PRICE as number).toBe(
+      (ECONOMY.BUNDLE_ROLLS - 1) * ECONOMY.GACHA_ROLL_PRICE
+    );
+    const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+    expect(farm.gp).toBe(before - ECONOMY.BUNDLE_PRICE);
+    // Every roll still pays its land, and the free pull is NOT consumed.
+    expect(farm.landTokens).toBe(ECONOMY.BUNDLE_ROLLS * LAND.PER_GACHA_ROLL);
+    expect(farm.freePulls).toBe(0);
+    // The spend splits to the pools like any other paid roll.
+    const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const stakerCut = Math.round(ECONOMY.BUNDLE_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE);
+    expect(state.stakerPoolCents).toBe(stakerCut);
   });
 
-  test("the repricing is what makes rolling rational — an egg now undercuts a cover", () => {
-    // The round-22 diagnosis, kept as an assertion: at 80 GP a roll, a ~15%
-    // egg rate priced a gacha egg near 543 GP against a 160 GP cover, and 35
-    // days of sim produced ZERO paid rolls. The fix has to keep the egg
-    // cheaper than breeding one, or nobody rolls again.
+  test("a wallet too thin for the bundle is refused", () => {
+    const { db, farmId } = fresh({ startingGp: ECONOMY.BUNDLE_PRICE - 1 });
+    expect(() => new Gacha(db, farmId, mulberry32(3)).bundle()).toThrow(/bundle costs/);
+  });
+
+  test("BLUE no longer drops a bird — eggs are Purple and Gold only (round 23)", () => {
+    // Blue is the volume tier; its sub-starter egg was filling barns the
+    // breeding pen is supposed to fill. The gacha makes bloodline material
+    // now, not bodies.
+    expect(GACHA_BIRDS.Blue).toBeUndefined();
+    expect(GACHA_BIRDS.Purple).toBeDefined();
+    expect(GACHA_BIRDS.Gold).toBeDefined();
+    // …and what it does drop is STARS: every egg tier starts above the
+    // nerfed starter band, which tops out at 1.5★.
+    for (const tier of Object.values(GACHA_BIRDS)) {
+      expect(tier.halfStars[0]).toBeGreaterThan(STARS.STARTER_MAX_HALF);
+    }
+  });
+
+  test("the gacha is a LUXURY again — an egg costs more than a cover", () => {
+    // The deliberate inverse of round 22. Zane: "I want stables primarily
+    // breeding to create birds." So a rolled egg must NOT undercut a bred
+    // one; the reason to roll is the stars, not the body.
     const eggChance = Object.entries(GACHA_WEIGHTS)
       .filter(([token]) => GACHA_BIRDS[token as GachaToken])
       .reduce((s, [, w]) => s + w, 0);
     const totalWeight = Object.values(GACHA_WEIGHTS).reduce((s, w) => s + w, 0);
     const gpPerEgg = ECONOMY.GACHA_ROLL_PRICE / (eggChance / totalWeight);
-    expect(gpPerEgg).toBeLessThan(ECONOMY.BREED_FEE);
+    expect(gpPerEgg).toBeGreaterThan(ECONOMY.BREED_FEE);
   });
 });

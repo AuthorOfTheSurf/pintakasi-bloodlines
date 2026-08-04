@@ -5,6 +5,7 @@ import { birds, farms, gachaTokens, gameState } from "@/db/schema";
 import {
   BARN,
   BASE_COATS,
+  CARRIAGES,
   BREEDING,
   ECONOMY,
   ELEMENTS,
@@ -14,6 +15,7 @@ import {
   LAND,
   STAKER_FLOWS,
   TRIM_BY_ELEMENT,
+  type Carriage,
   type Element,
   type GachaToken,
 } from "./config";
@@ -53,62 +55,144 @@ export class Gacha {
     this.flock = new Flock(database, farmId);
   }
 
+  /**
+   * One roll. A free pull from the daily check-in spends first; past that it
+   * costs GP. There is NO daily cap any more (round 23) — at 80 GP the price
+   * is the limiter, and the whole point of the repricing is that rolling is a
+   * choice a high roller gets to make as often as they can afford it.
+   */
   roll(): GachaResult {
-    const today = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    const today = this.today();
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-
-    // Free pulls (from the daily check-in) spend before GP does. Past those,
-    // a farm may buy up to PAID_PULLS_PER_DAY more at price (round 22) —
-    // capped the same way land purchases are, so the cheap roll can't be
-    // hoovered by whoever has the biggest wallet.
     const freePullUsed = farm.freePulls > 0;
     const price = freePullUsed ? 0 : ECONOMY.GACHA_ROLL_PRICE;
-    const paidToday = farm.gachaPaidDay === today ? farm.gachaPaidToday : 0;
-    if (!freePullUsed && paidToday >= ECONOMY.PAID_PULLS_PER_DAY)
-      throw new Error(
-        `${farm.name} has used all ${ECONOMY.PAID_PULLS_PER_DAY} paid rolls today — the board resets at the day tick`
-      );
-    if (farm.gp < price) throw new Error(`A roll costs ${ECONOMY.GACHA_ROLL_PRICE} GP — you have ${farm.gp}`);
+    if (farm.gp < price)
+      throw new Error(`A roll costs ${ECONOMY.GACHA_ROLL_PRICE} GP — you have ${farm.gp}`);
     this.database
       .update(farms)
       .set({
         gp: farm.gp - price,
         freePulls: freePullUsed ? farm.freePulls - 1 : farm.freePulls,
-        landTokens: farm.landTokens + LAND.PER_GACHA_ROLL,
-        ...(freePullUsed ? {} : { gachaPaidDay: today, gachaPaidToday: paidToday + 1 }),
       })
       .where(eq(farms.id, this.farmId))
       .run();
+    this.routeSpend(price, 1);
+    const drawn = this.draw(today, price, freePullUsed);
+    return {
+      ...drawn,
+      pricePaid: price,
+      freePullUsed,
+      freePullsLeft: this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!
+        .freePulls,
+      landTokens: LAND.PER_GACHA_ROLL,
+      collection: this.collection(),
+    };
+  }
 
-    // Where the spend goes (round 14 routed it out of a silent burn; round 22
-    // splits it): 10% to the Land Token stakers, 90% to the juice pool that
-    // now IS the championship purse — so rolling the gacha directly funds
-    // the biggest stage in the game.
-    if (price > 0) {
-      const cents = price * 100;
-      const stakerCents = Math.round(cents * STAKER_FLOWS.GACHA_SHARE);
-      const juiceCents = cents - stakerCents;
-      const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-      this.database
-        .update(gameState)
-        .set({
-          juicePoolCents: state.juicePoolCents + juiceCents,
-          stakerPoolCents: state.stakerPoolCents + stakerCents,
-        })
-        .where(eq(gameState.id, 1))
-        .run();
-      emit(this.database, {
-        type: "pool_accrual",
-        farmId: this.farmId,
-        message: `gacha spend: +${fmtGp(stakerCents)} GP staker pool · +${fmtGp(juiceCents)} GP juice pool`,
-        data: { stakerPoolCents: stakerCents, juicePoolCents: juiceCents, source: "gacha" },
+  /**
+   * THE MULTI (round 23): ELEVEN rolls for the price of ten, bought in one
+   * motion for exactly one day's drip. Free pulls are NOT consumed by it —
+   * a bundle is a purchase, not a spend of the daily allowance.
+   *
+   * Why it exists: an 80 GP roll is priced as a luxury, so the gacha needs a
+   * door built for someone who wants to commit real money at once. The bonus
+   * roll is the house's gift rather than a discount — same eleven rolls, but
+   * it reads as generosity, which is the whole psychology of a multi.
+   */
+  bundle(): { rolls: GachaResult[]; pricePaid: number; eggs: number } {
+    const today = this.today();
+    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    if (farm.gp < ECONOMY.BUNDLE_PRICE)
+      throw new Error(
+        `The ${ECONOMY.BUNDLE_ROLLS}-roll bundle costs ${ECONOMY.BUNDLE_PRICE} GP — you have ${farm.gp}`
+      );
+    this.database
+      .update(farms)
+      .set({ gp: farm.gp - ECONOMY.BUNDLE_PRICE })
+      .where(eq(farms.id, this.farmId))
+      .run();
+    this.routeSpend(ECONOMY.BUNDLE_PRICE, ECONOMY.BUNDLE_ROLLS);
+
+    const rolls: GachaResult[] = [];
+    for (let i = 0; i < ECONOMY.BUNDLE_ROLLS; i++) {
+      const drawn = this.draw(today, 0, false, i === ECONOMY.BUNDLE_ROLLS - 1);
+      rolls.push({
+        ...drawn,
+        pricePaid: 0, // the bundle paid, not this roll
+        freePullUsed: false,
+        freePullsLeft: this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!
+          .freePulls,
+        landTokens: LAND.PER_GACHA_ROLL,
+        collection: this.collection(),
       });
     }
+    const eggs = rolls.filter((r) => r.egg).length;
+    emit(this.database, {
+      type: "gacha",
+      farmId: this.farmId,
+      gpCents: -ECONOMY.BUNDLE_PRICE * 100,
+      message:
+        `bought the ${ECONOMY.BUNDLE_ROLLS}-roll bundle (${ECONOMY.BUNDLE_PRICE} GP — ` +
+        `${ECONOMY.BUNDLE_ROLLS - 1} rolls, one on the house) — ` +
+        (eggs > 0 ? `${eggs} mystery egg${eggs === 1 ? "" : "s"} dropped!` : "no eggs"),
+      data: { bundle: true, rolls: ECONOMY.BUNDLE_ROLLS, price: ECONOMY.BUNDLE_PRICE, eggs },
+    });
+    return { rolls, pricePaid: ECONOMY.BUNDLE_PRICE, eggs };
+  }
+
+  private today(): number {
+    return this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+  }
+
+  /**
+   * Where gacha money goes (round 14 routed it out of a silent burn; round 22
+   * split it): a slice to the Land Token stakers, the rest to the juice pool
+   * that pays the Majors. So rolling directly funds the biggest stage in the
+   * game. `rollsCovered` is only for the ledger line.
+   */
+  private routeSpend(price: number, rollsCovered: number): void {
+    if (price <= 0) return;
+    const cents = price * 100;
+    const stakerCents = Math.round(cents * STAKER_FLOWS.GACHA_SHARE);
+    const juiceCents = cents - stakerCents;
+    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    this.database
+      .update(gameState)
+      .set({
+        juicePoolCents: state.juicePoolCents + juiceCents,
+        stakerPoolCents: state.stakerPoolCents + stakerCents,
+      })
+      .where(eq(gameState.id, 1))
+      .run();
+    emit(this.database, {
+      type: "pool_accrual",
+      farmId: this.farmId,
+      message:
+        `gacha spend (${rollsCovered} roll${rollsCovered === 1 ? "" : "s"}): ` +
+        `+${fmtGp(stakerCents)} GP staker pool · +${fmtGp(juiceCents)} GP juice pool`,
+      data: { stakerPoolCents: stakerCents, juicePoolCents: juiceCents, source: "gacha" },
+    });
+  }
+
+  /** One draw: the land, the token, and the egg on a qualifying tier. */
+  private draw(
+    today: number,
+    price: number,
+    freePullUsed: boolean,
+    silent = false
+  ): { token: GachaToken; egg: BirdView | null; barnFull: boolean } {
+    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    this.database
+      .update(farms)
+      .set({ landTokens: farm.landTokens + LAND.PER_GACHA_ROLL })
+      .where(eq(farms.id, this.farmId))
+      .run();
 
     const token = weightedPick(this.rng, GACHA_WEIGHTS);
     this.database.insert(gachaTokens).values({ farmId: this.farmId, token, rolledDay: today }).run();
 
-    // The mystery egg, on qualifying tiers.
+    // The mystery egg — Purple and Gold only since round 23 (Blue's
+    // sub-starter body was filling barns the breeding pen should fill).
     let egg: BirdView | null = null;
     let barnFull = false;
     const tier = GACHA_BIRDS[token];
@@ -131,6 +215,10 @@ export class Gacha {
           condition: stat(),
           element: ELEMENTS[randInt(this.rng, 0, ELEMENTS.length - 1)] as Element,
           halfStars: randInt(this.rng, tier.halfStars[0], tier.halfStars[1]),
+          // A gacha bird's carriage is a free roll on both the lean and the
+          // magnitude — no parents to inherit from (round 23).
+          carriage: CARRIAGES[randInt(this.rng, 0, CARRIAGES.length - 1)] as Carriage,
+          carriageHalfStars: randInt(this.rng, tier.halfStars[0], tier.halfStars[1]),
           birthWeek: GameClock.weekOf(today),
           birthDay: today,
           motherId: null,
@@ -145,29 +233,23 @@ export class Gacha {
       }
     }
 
-    emit(this.database, {
-      type: "gacha",
-      farmId: this.farmId,
-      birdId: egg?.id ?? null,
-      gpCents: -price * 100,
-      lt: LAND.PER_GACHA_ROLL,
-      message:
-        `rolled the gacha${freePullUsed ? " (free pull)" : ` (${price} GP)`} — ${token} token, +${LAND.PER_GACHA_ROLL} LT` +
-        (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
-      data: { token, price, free: freePullUsed, land: LAND.PER_GACHA_ROLL, egg: egg?.name ?? null },
-    });
-
-    const after = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-    return {
-      token,
-      pricePaid: price,
-      freePullUsed,
-      freePullsLeft: after.freePulls,
-      landTokens: LAND.PER_GACHA_ROLL,
-      egg,
-      barnFull,
-      collection: this.collection(),
-    };
+    // A bundle writes ONE summary line instead of eleven — except for the
+    // eggs, which are the news and always get announced.
+    if (!silent || egg) {
+      emit(this.database, {
+        type: "gacha",
+        farmId: this.farmId,
+        birdId: egg?.id ?? null,
+        gpCents: -price * 100,
+        lt: LAND.PER_GACHA_ROLL,
+        message:
+          `rolled the gacha${freePullUsed ? " (free pull)" : price > 0 ? ` (${price} GP)` : " (bundle)"}` +
+          ` — ${token} token, +${LAND.PER_GACHA_ROLL} LT` +
+          (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
+        data: { token, price, free: freePullUsed, land: LAND.PER_GACHA_ROLL, egg: egg?.name ?? null },
+      });
+    }
+    return { token, egg, barnFull };
   }
 
   collection(): Record<GachaToken, number> {

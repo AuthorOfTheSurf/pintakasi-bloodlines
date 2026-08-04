@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { BARN, ECONOMY, LAND, PINTAKASI, STATS } from "@/engine/config";
+import { BARN, ECONOMY, JUVENILE_MAJOR, LAND, PINTAKASI, STATS } from "@/engine/config";
 
 export const dynamic = "force-dynamic";
+
+/** dayIndex % 7 → day name (round 20's calendar), purely for display. */
+const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
 
 /** The hub — the whole game in five minutes, then doors to the detail. */
 export default function WikiHome() {
@@ -10,7 +13,7 @@ export default function WikiHome() {
       <h1>Pintakasi: Bloodlines</h1>
       <p className="lede">
         You run a gamefarm. You raise fighting cocks, card them against other players&apos; birds,
-        and try to build a bloodline good enough to win a crown. Every bird&apos;s stats are fixed
+        and try to build a bloodline good enough to win a Major. Every bird&apos;s stats are fixed
         the day it hatches — so the game is about <strong>judging</strong> birds, <strong>placing</strong>{" "}
         them, and <strong>breeding</strong> better ones. Not grinding them stronger.
       </p>
@@ -34,16 +37,17 @@ export default function WikiHome() {
           they pay you GP every day, forever.
         </li>
         <li>
-          <strong>Chase a crown.</strong> Win enough on the daily card and your bird qualifies for
-          Thursday&apos;s championships — free to enter, and the biggest purse in the game.
+          <strong>Chase a Major.</strong> Win enough on the daily card and your bird qualifies for
+          Thursday&apos;s Pintakasi Majors — free to enter, and the biggest purse in the game.
         </li>
       </ol>
 
       <div className="callout warn">
-        <b>The one rule that will hurt you.</b> Hardcore fights and every Pintakasi bout are{" "}
+        <b>The one rule that will hurt you.</b> Hardcore fights and every Pintakasi Major are{" "}
         <strong>force-retire</strong>: the loser&apos;s career ends on the spot. It keeps its stats
-        and can still breed — but it will never fight again. Nobody is ever entered into one by
-        accident, and you should never enter one casually.
+        and can still breed — but it will never fight again. (The one exception in the whole game:
+        the Juvenile Championship, which never force-retires.) Nobody is ever entered into a
+        force-retire fight by accident, and you should never enter one casually.
       </div>
 
       <h2>The two currencies</h2>
@@ -86,13 +90,21 @@ export default function WikiHome() {
               </td>
             </tr>
             <tr>
-              <td>Sat–Wed</td>
+              <td>Sat–Tue</td>
               <td>Ordinary cards: juvenile, real, hardcore, claimers</td>
+            </tr>
+            <tr>
+              <td>{DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]}</td>
+              <td>
+                <strong>The Juvenile Championship</strong> — two blade crowns for age-1 birds,{" "}
+                <em>not</em> hardcore
+              </td>
             </tr>
             <tr>
               <td>Thursday</td>
               <td>
-                <strong>The Pintakasi</strong> — three blade championships, hardcore throughout
+                <strong>The Pintakasi Majors</strong> — three blade championships, hardcore
+                throughout
               </td>
             </tr>
           </tbody>
@@ -121,8 +133,8 @@ export default function WikiHome() {
           are where a farm compounds instead of just churning.
         </div>
         <div className="minicard">
-          <b>Chasing a crown?</b>
-          <Link href="/wiki/pintakasi">The Pintakasi</Link> — {PINTAKASI.QUALIFYING_POINTS}{" "}
+          <b>Chasing a Major?</b>
+          <Link href="/wiki/pintakasi">The Pintakasi Majors</Link> — {PINTAKASI.QUALIFYING_POINTS}{" "}
           qualification points and an age-3 bird gets you in, free.
         </div>
       </div>

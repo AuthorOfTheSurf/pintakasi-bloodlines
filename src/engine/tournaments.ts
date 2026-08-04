@@ -1,12 +1,54 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
-import { FORMATS, PINTAKASI, landForTournamentFight, type FightFormat } from "./config";
+import {
+  FORMATS,
+  JUVENILE_MAJOR,
+  PINTAKASI,
+  landForFight,
+  landForTournamentFight,
+  ECONOMY,
+  type FightFormat,
+} from "./config";
 import { emit, fmtGp } from "./events";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
-import { canHardcore } from "./lifecycle";
+import { canHardcore, canJuvenile } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
+
+/**
+ * Which championship: the Thursday MAJORS (age 3+, hardcore, the crowns) or
+ * the Wednesday JUVENILE Championship (age 1, NOT hardcore — round 23).
+ * They share every piece of bracket machinery and differ only in their gates,
+ * their purse shares, and whether losing ends a career.
+ */
+export type Division = "major" | "juvenile";
+
+/** The per-division charter — everything that differs, in one lookup. */
+export const DIVISION_RULES = {
+  major: {
+    label: "Pintakasi Major",
+    hardcore: true,
+    maxPerBarn: PINTAKASI.MAX_PER_BARN,
+    maxBracket: PINTAKASI.MAX_BRACKET,
+    minField: PINTAKASI.MIN_FIELD,
+    purseShares: PINTAKASI.PURSE_SHARES as Record<string, number>,
+    landGrants: PINTAKASI.LAND_GRANTS as Record<string, number>,
+    landBasis: PINTAKASI.LAND_BASIS,
+    dayOfWeek: PINTAKASI.DAY_OF_WEEK,
+  },
+  juvenile: {
+    label: "Juvenile Championship",
+    hardcore: false, //  the discovery year never ends a career
+    maxPerBarn: JUVENILE_MAJOR.MAX_PER_BARN,
+    maxBracket: JUVENILE_MAJOR.MAX_BRACKET,
+    minField: JUVENILE_MAJOR.MIN_FIELD,
+    purseShares: JUVENILE_MAJOR.PURSE_SHARES as Record<string, number>,
+    landGrants: JUVENILE_MAJOR.LAND_GRANTS as Record<string, number>,
+    landBasis: ECONOMY.JUVENILE_ENTRY_FEE,
+    dayOfWeek: JUVENILE_MAJOR.DAY_OF_WEEK,
+  },
+} as const;
 
 type TournamentRow = typeof tournaments.$inferSelect;
 type EntryRow = typeof tournamentEntries.$inferSelect;
@@ -83,6 +125,38 @@ interface CommitteeCard {
 
 const label = (format: FightFormat) => `${FORMATS[format].label} Championship`;
 
+/**
+ * Classic single-elimination seed placement: [1] → [1,2] → [1,4,2,3] →
+ * [1,8,4,5,2,7,3,6]… — index i (0-indexed) is the SEED NUMBER standing in
+ * bracket seat i (1-indexed by convention: 1 = top seed). Byes fall out
+ * naturally: a seed beyond the real field is a "ghost" that the caller maps
+ * to `null`, and ghosts always land opposite a real seed in round one — never
+ * opposite each other — because the field only has ghosts when it's MORE
+ * than half of `bracketSize` (the next power of two ≥ field length).
+ * Exported so the admin bracket view can rebuild the exact tree the sim ran,
+ * from nothing but each entry's stored `seedRank`.
+ */
+export function seedPlacement(bracketSize: number): number[] {
+  let placement = [1];
+  while (placement.length < bracketSize)
+    placement = placement.flatMap((s) => [s, placement.length * 2 + 1 - s]);
+  return placement;
+}
+
+/**
+ * The stage name for round `round` of `totalRounds` — Final, Semifinals,
+ * Quarterfinals, else "Round of N". Exported alongside `seedPlacement` so
+ * the admin bracket view names its columns exactly the way a resolution's
+ * own `rounds[].name` would.
+ */
+export function roundName(round: number, totalRounds: number, bracketSize: number): string {
+  const fromFinal = totalRounds - round;
+  if (fromFinal === 0) return "Final";
+  if (fromFinal === 1) return "Semifinals";
+  if (fromFinal === 2) return "Quarterfinals";
+  return `Round of ${bracketSize / Math.pow(2, round - 1)}`;
+}
+
 export class Tournaments {
   private flock: Flock;
 
@@ -103,6 +177,26 @@ export class Tournaments {
   }
 
   /**
+   * The Juvenile Championship's two blades (round 23) — one knife, one gaff,
+   * with the lengths rotating week by week so a discovery year sees both.
+   */
+  static juvenileBladesOfWeek(weekIndex: number): FightFormat[] {
+    return [...JUVENILE_MAJOR.BLADES[weekIndex % JUVENILE_MAJOR.BLADES.length]] as FightFormat[];
+  }
+
+  /** Which blades run for a division in a given week. */
+  static bladesFor(division: Division, weekIndex: number): FightFormat[] {
+    return division === "juvenile"
+      ? Tournaments.juvenileBladesOfWeek(weekIndex)
+      : Tournaments.bladesOfWeek(weekIndex);
+  }
+
+  /** Is this day the Juvenile Championship's day? (Wednesday — round 23.) */
+  static isJuvenileCrownDay(dayIndex: number): boolean {
+    return dayIndex % 7 === JUVENILE_MAJOR.DAY_OF_WEEK;
+  }
+
+  /**
    * The crown day an entry made TODAY fights on. Since round 20 the crowns
    * run on the week's LAST day, so today's entry always belongs to today's
    * week — no roll-forward case left (registering on crown day itself is
@@ -118,25 +212,43 @@ export class Tournaments {
   }
 
   /** Register a bird for one of the week's championships. Binding. */
-  enter(birdId: string, format: FightFormat): { entryId: number; note: string } {
+  enter(
+    birdId: string,
+    format: FightFormat,
+    division: Division = "major"
+  ): { entryId: number; note: string } {
     const bird = this.flock.byId(birdId);
     if (bird.status !== "active") throw new Error(`${bird.name} is not an active fighter`);
     if (!bird.named)
       throw new Error(`${bird.name} hasn't been given a real name — name a bird before its first fight`);
-    if (!canHardcore(bird.age))
-      throw new Error(`${bird.name} is ${bird.age} — the Pintakasi is hardcore, which opens at age 3`);
-    // Qualification, not money (round 22): the crowns are FREE and a bird
-    // earns its way in on the daily card. See PINTAKASI.POINTS_FOR.
     const birdRow = this.database.select().from(birds).where(eq(birds.id, birdId)).get()!;
-    if (birdRow.crownPoints < PINTAKASI.QUALIFYING_POINTS)
-      throw new Error(
-        `${bird.name} holds ${birdRow.crownPoints} of the ${PINTAKASI.QUALIFYING_POINTS} qualification points a crown asks for — ` +
-          `campaign on the daily card first (a real win banks ${PINTAKASI.POINTS_FOR.real}, a hardcore ${PINTAKASI.POINTS_FOR.hardcore})`
-      );
+    if (division === "juvenile") {
+      // The discovery-year stage: age 1 only, and you ladder your way in on
+      // juvenile wins (round 23). Not hardcore — see JUVENILE_MAJOR.
+      if (!canJuvenile(bird.age))
+        throw new Error(
+          `${bird.name} is ${bird.age} — the Juvenile Championship is the discovery year only, age 1`
+        );
+      if (birdRow.wins < JUVENILE_MAJOR.QUALIFYING_WINS)
+        throw new Error(
+          `${bird.name} has ${birdRow.wins} juvenile win${birdRow.wins === 1 ? "" : "s"} — ` +
+            `the Juvenile Championship asks for ${JUVENILE_MAJOR.QUALIFYING_WINS}. Climb the discovery ladder first.`
+        );
+    } else {
+      if (!canHardcore(bird.age))
+        throw new Error(`${bird.name} is ${bird.age} — the Pintakasi is hardcore, which opens at age 3`);
+      // Qualification, not money (round 22): the crowns are FREE and a bird
+      // earns its way in on the daily card. See PINTAKASI.POINTS_FOR.
+      if (birdRow.crownPoints < PINTAKASI.QUALIFYING_POINTS)
+        throw new Error(
+          `${bird.name} holds ${birdRow.crownPoints} of the ${PINTAKASI.QUALIFYING_POINTS} qualification points a crown asks for — ` +
+            `campaign on the daily card first (a real win banks ${PINTAKASI.POINTS_FOR.real}, a hardcore ${PINTAKASI.POINTS_FOR.hardcore})`
+        );
+    }
 
     const today = this.today();
     const week = Tournaments.targetWeek(today);
-    const blades = Tournaments.bladesOfWeek(week);
+    const blades = Tournaments.bladesFor(division, week);
     if (!blades.includes(format))
       throw new Error(
         `The ${FORMATS[format].label} crown doesn't run week ${week} — this week's blades: ${blades
@@ -160,14 +272,15 @@ export class Tournaments {
     if (existing.length > 0)
       throw new Error(`${bird.name} is already registered for this week's Pintakasi`);
 
-    const tournament = this.findOrOpen(week, format);
+    const tournament = this.findOrOpen(week, format, division);
     // …and at most MAX_PER_BARN birds from one barn in one championship
     // (ruled round 20 — load the blade with specialists, but no barn owns
     // a bracket).
+    const rules = DIVISION_RULES[division];
     const mine = this.pendingEntries(tournament.id).filter((e) => e.farmId === this.farmId);
-    if (mine.length >= PINTAKASI.MAX_PER_BARN)
+    if (mine.length >= rules.maxPerBarn)
       throw new Error(
-        `Your barn already has ${mine.length} in the ${label(tournament.format)} — ${PINTAKASI.MAX_PER_BARN} is the limit per championship`
+        `Your barn already has ${mine.length} in the ${label(tournament.format)} — ${rules.maxPerBarn} is the limit per championship`
       );
     // Free since round 22 — the knob survives so a future season can charge
     // again without a rebuild, but at 0 nothing is escrowed or refunded.
@@ -179,7 +292,7 @@ export class Tournaments {
     // The Selection Committee's live bump: a full field takes a newcomer
     // only over the body of its current weakest.
     const field = this.pendingEntries(tournament.id);
-    if (field.length >= PINTAKASI.MAX_BRACKET) {
+    if (field.length >= rules.maxBracket) {
       const cards = Tournaments.committeeCards(this.database, [
         ...field.map((e) => e.birdId),
         birdId,
@@ -261,13 +374,13 @@ export class Tournaments {
   }
 
   /** The week's championships — fields PUBLIC, ranked as the committee sees them today. */
-  board(): ChampionshipView[] {
+  board(division: Division = "major"): ChampionshipView[] {
     const today = this.today();
     const week = Tournaments.targetWeek(today);
     const juice = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!
       .juicePoolCents;
-    return Tournaments.bladesOfWeek(week).map((format) => {
-      const tournament = this.findOrOpen(week, format);
+    return Tournaments.bladesFor(division, week).map((format) => {
+      const tournament = this.findOrOpen(week, format, division);
       const field = this.pendingEntries(tournament.id);
       const cards = Tournaments.committeeCards(this.database, field.map((e) => e.birdId));
       const ranked = [...field].sort((a, b) =>
@@ -294,12 +407,22 @@ export class Tournaments {
    * The crown-day resolution — every open championship of `dayIndex`'s week
    * runs start to finish. Called by Game.tick for each departed crown day.
    */
-  static resolveCrownDay(database: DB, dayIndex: number): TournamentResolution[] {
+  static resolveCrownDay(
+    database: DB,
+    dayIndex: number,
+    division: Division = "major"
+  ): TournamentResolution[] {
     const week = Math.floor(dayIndex / 7);
     const open = database
       .select()
       .from(tournaments)
-      .where(and(eq(tournaments.weekIndex, week), eq(tournaments.status, "open")))
+      .where(
+        and(
+          eq(tournaments.weekIndex, week),
+          eq(tournaments.division, division),
+          eq(tournaments.status, "open")
+        )
+      )
       .all();
     if (open.length === 0) return [];
 
@@ -344,9 +467,16 @@ export class Tournaments {
       }
     }
 
-    // The week's juice splits equally across the championships that run.
+    // The juice split. The Majors take the WHOLE remaining pool between them
+    // (they run last, on Thursday). The Juvenile Championship runs the day
+    // before and takes only its ruled slice — JUVENILE_MAJOR.JUICE_SHARE —
+    // so the discovery year is funded without gutting the main stage.
     const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    const juiceShare = runnable.length > 0 ? Math.floor(state.juicePoolCents / runnable.length) : 0;
+    const divisionPot =
+      division === "juvenile"
+        ? Math.floor(state.juicePoolCents * JUVENILE_MAJOR.JUICE_SHARE)
+        : state.juicePoolCents;
+    const juiceShare = runnable.length > 0 ? Math.floor(divisionPot / runnable.length) : 0;
     let juiceSpent = 0;
     for (const t of runnable) {
       results.push(Tournaments.runChampionship(database, t, dayIndex, juiceShare));
@@ -398,10 +528,7 @@ export class Tournaments {
     while (bracketSize < seeded.length) bracketSize *= 2;
     const totalRounds = Math.log2(bracketSize);
 
-    // Classic seed placement: [1] → [1,2] → [1,4,2,3] → [1,8,4,5,2,7,3,6]…
-    let placement = [1];
-    while (placement.length < bracketSize)
-      placement = placement.flatMap((s) => [s, placement.length * 2 + 1 - s]);
+    const placement = seedPlacement(bracketSize);
     let alive: (EntryRow | null)[] = placement.map((seat) => seeded[seat - 1] ?? null);
 
     const nameOf = new Map(
@@ -450,19 +577,25 @@ export class Tournaments {
 
     // GP to the top: shares by finishing stage, first-round losers zeroed,
     // the rest renormalized. Rounding dust crowns the champion too.
+    const rules = DIVISION_RULES[(t.division ?? "major") as Division];
+    const shareTable = rules.purseShares;
     const shares = new Map<number, { share: number; stage: string }>(); // entry.id →
-    shares.set(championEntry.id, { share: PINTAKASI.PURSE_SHARES.champion, stage: "champion" });
+    shares.set(championEntry.id, { share: shareTable.champion, stage: "champion" });
     for (const e of field) {
       const round = eliminatedIn.get(e.id);
       if (round === undefined || e.id === championEntry.id) continue;
       const fromFinal = totalRounds - round;
       const raw =
         fromFinal === 0
-          ? { share: PINTAKASI.PURSE_SHARES.runnerUp, stage: "runner-up" }
+          ? { share: shareTable.runnerUp, stage: "runner-up" }
           : fromFinal === 1
-            ? { share: PINTAKASI.PURSE_SHARES.sfLoser, stage: "semifinal" }
+            ? shareTable.sfLoser
+              ? { share: shareTable.sfLoser, stage: "semifinal" }
+              : null
             : fromFinal === 2
-              ? { share: PINTAKASI.PURSE_SHARES.qfLoser, stage: "quarterfinal" }
+              ? shareTable.qfLoser
+                ? { share: shareTable.qfLoser, stage: "quarterfinal" }
+                : null
               : null;
       if (raw && round > 1) shares.set(e.id, raw); // first-round losers take ZERO (the ruling)
     }
@@ -486,8 +619,8 @@ export class Tournaments {
       const round = eliminatedIn.get(e.id);
       const grant =
         e.id === championEntry.id
-          ? PINTAKASI.LAND_GRANTS.champion
-          : Tournaments.grantFor(totalRounds - (round ?? totalRounds));
+          ? rules.landGrants.champion
+          : Tournaments.grantFor(totalRounds - (round ?? totalRounds), rules.landGrants);
       const farm = database.select().from(farms).where(eq(farms.id, e.farmId)).get()!;
       database.update(farms).set({ landTokens: farm.landTokens + grant }).where(eq(farms.id, e.farmId)).run();
       database.update(tournamentEntries).set({ landGranted: grant }).where(eq(tournamentEntries.id, e.id)).run();
@@ -546,6 +679,8 @@ export class Tournaments {
     rng: Rng,
     week: number
   ): TournamentFightReport {
+    const divisionRules = DIVISION_RULES[(t.division ?? "major") as Division];
+    const hardcore = divisionRules.hardcore;
     const simSeed = randInt(rng, 1, 2 ** 31 - 1);
     const rowA = database.select().from(birds).where(eq(birds.id, ea.birdId)).get()!;
     const rowB = database.select().from(birds).where(eq(birds.id, eb.birdId)).get()!;
@@ -556,7 +691,13 @@ export class Tournaments {
       { entry: ea, row: rowA, won: sim.winner === 0, figure: sim.figures[0] },
       { entry: eb, row: rowB, won: sim.winner === 1, figure: sim.figures[1] },
     ];
-    const landEach = landForTournamentFight(PINTAKASI.LAND_BASIS);
+    // The Majors mint on the steep curve; the juvenile stage mints off its
+    // own (much smaller) basis — a discovery-year fight isn't worth a Major's
+    // land, and pretending otherwise would make the crowns the cheap way in.
+    const landEach =
+      divisionRules.hardcore
+        ? landForTournamentFight(divisionRules.landBasis)
+        : landForFight(divisionRules.landBasis);
     const farmNames: string[] = [];
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
@@ -575,18 +716,28 @@ export class Tournaments {
         .update(birds)
         .set(
           side.won
-            ? { wins: birdRow.wins + 1, stakesWins: birdRow.stakesWins + 1 }
+            ? {
+                wins: birdRow.wins + 1,
+                // A juvenile crown is still the discovery year — it does not
+                // graduate a maiden (the round-19 rule, held).
+                stakesWins: birdRow.stakesWins + (hardcore ? 1 : 0),
+              }
             : { losses: birdRow.losses + 1 }
         )
         .where(eq(birds.id, side.row.id))
         .run();
-      // Hardcore throughout — the key rule, every round.
+      // Hardcore throughout — the key rule, every round. EXCEPT in the
+      // juvenile division (round 23): the discovery year exists to find out
+      // what a bird is, and ending careers at age one would strangle the very
+      // population the Majors are meant to inherit. A juvenile loser is
+      // eliminated from the bracket and goes home to fight another day.
       if (!side.won) {
-        database
-          .update(birds)
-          .set({ status: "retired", retiredBy: "hardcore", retiredWeek: week })
-          .where(eq(birds.id, side.row.id))
-          .run();
+        if (hardcore)
+          database
+            .update(birds)
+            .set({ status: "retired", retiredBy: "hardcore", retiredWeek: week })
+            .where(eq(birds.id, side.row.id))
+            .run();
         database
           .update(tournamentEntries)
           .set({ status: "eliminated", eliminatedRound: round })
@@ -608,7 +759,7 @@ export class Tournaments {
           tournamentId: t.id,
           farmId: side.entry.farmId,
           birdId: side.row.id,
-          mode: "hardcore",
+          mode: hardcore ? "hardcore" : "juvenile",
           format: t.format,
           lobby: "open",
           claimPrice: null,
@@ -685,17 +836,18 @@ export class Tournaments {
     return aId < bId ? -1 : 1;
   }
 
-  private static grantFor(roundsFromFinal: number): number {
-    const g = PINTAKASI.LAND_GRANTS;
-    return [g.runnerUp, g.sf, g.qf, g.r16, g.r32, g.r64][roundsFromFinal] ?? g.r64;
+  /**
+   * The fallen-weighted land ladder, per division (round 23 — the juvenile
+   * stage has its own, much smaller table; paying discovery-year birds Major
+   * money would have made the free crown the best land in the game).
+   */
+  private static grantFor(roundsFromFinal: number, g: Record<string, number>): number {
+    const ladder = [g.runnerUp, g.sf, g.qf, g.r16, g.r32, g.r64].filter((v) => v !== undefined);
+    return ladder[roundsFromFinal] ?? ladder[ladder.length - 1];
   }
 
   private static roundName(round: number, totalRounds: number, bracketSize: number): string {
-    const fromFinal = totalRounds - round;
-    if (fromFinal === 0) return "Final";
-    if (fromFinal === 1) return "Semifinals";
-    if (fromFinal === 2) return "Quarterfinals";
-    return `Round of ${bracketSize / Math.pow(2, round - 1)}`;
+    return roundName(round, totalRounds, bracketSize);
   }
 
   private static payPurse(
@@ -767,7 +919,11 @@ export class Tournaments {
     return Tournaments.pending(this.database, tournamentId);
   }
 
-  private findOrOpen(weekIndex: number, format: FightFormat): TournamentRow {
+  private findOrOpen(
+    weekIndex: number,
+    format: FightFormat,
+    division: Division = "major"
+  ): TournamentRow {
     const existing = this.database
       .select()
       .from(tournaments)
@@ -775,6 +931,7 @@ export class Tournaments {
         and(
           eq(tournaments.weekIndex, weekIndex),
           eq(tournaments.format, format),
+          eq(tournaments.division, division),
           eq(tournaments.status, "open")
         )
       )
@@ -785,6 +942,7 @@ export class Tournaments {
       .values({
         weekIndex,
         format,
+        division,
         seed: freshSeed(),
         entryFee: PINTAKASI.ENTRY_FEE,
       })

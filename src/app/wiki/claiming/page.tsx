@@ -16,10 +16,11 @@ export default function ClaimingPage() {
 
       <h2>What a claimer is</h2>
       <p>
-        Entering a claimer costs the same entry fee as any real fight — {ECONOMY.REAL_ENTRY_FEE} GP
-        — plus you set a separate tag price from the ladder below. The fee buys the fight; the tag
-        is what you&apos;re willing to sell the bird for if somebody wants it. Anyone else&apos;s
-        farm may then pay that exact tag to claim it.
+        Entering a claimer costs the same entry fee as any ordinary fight for that season —{" "}
+        {ECONOMY.REAL_ENTRY_FEE} GP for a grown bird, {ECONOMY.JUVENILE_ENTRY_FEE} GP for a
+        juvenile — plus you set a separate tag price from the matching ladder below. The fee buys
+        the fight; the tag is what you&apos;re willing to sell the bird for if somebody wants it.
+        Anyone else&apos;s farm may then pay that exact tag to claim it.
       </p>
 
       <h2>The tag ladder</h2>
@@ -56,6 +57,35 @@ export default function ClaimingPage() {
         whatever company chose to fight at that price, which tends to be the stronger birds.
       </p>
 
+      <h3>The juvenile ladder</h3>
+      <p>
+        Claimers also run in the discovery year, on their own, cheaper ladder — a one-year-old is
+        an unproven animal, and pricing it against the grown rungs above would mean nobody dares
+        tag one at all:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="num">Juvenile tag</th>
+              <th className="num">≈ $</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CLAIMER.JUVENILE_PRICES.map((price) => (
+              <tr key={price}>
+                <td className="num">{price} GP</td>
+                <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Everything else about the sequence below works exactly the same whether the bird tagged is
+        a one-year-old or a veteran.
+      </p>
+
       <h2>The sequence</h2>
       <p>The order matters, and it&apos;s the same every time:</p>
       <ol>
@@ -82,9 +112,11 @@ export default function ClaimingPage() {
 
       <h2>The money</h2>
       <p>
-        The selling barn banks the tag less a small staker rake — the same rake structure as a
-        fight&apos;s pot, paid to the farms staking Land Tokens rather than to the house. The buyer
-        always pays the full tag; the rake comes out of the sale, not on top of it.
+        The selling barn banks the tag less a small staker rake, paid to the farms staking Land
+        Tokens rather than to the house. This rake is one of the few in the game that&apos;s still
+        live — the daily-card fight pot itself rakes nothing any more (see{" "}
+        <Link href="/wiki/card">The card</Link>). The buyer always pays the full tag; the rake
+        comes out of the sale, not on top of it.
       </p>
       <div className="tablewrap">
         <table>
@@ -119,9 +151,10 @@ export default function ClaimingPage() {
       <h2>Two more rules</h2>
       <ul>
         <li>
-          <strong>An unmatched claimer still sells.</strong> If your bird draws no opponent — the
-          odd bird out — its entry fee refunds, but any claim on it still settles. The sale
-          doesn&apos;t need the fight.
+          <strong>No fight, no claim.</strong> If your bird draws no opponent — the odd bird out —
+          the whole thing calls off: its entry fee refunds, and so does every claim standing on
+          it, in full. The sale needs the fight to actually happen; a bird that never fought never
+          proved anything worth buying.
         </li>
         <li>
           <strong>You can&apos;t claim your own bird, and the house never claims.</strong> Every

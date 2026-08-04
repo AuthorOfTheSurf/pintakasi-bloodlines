@@ -15,9 +15,11 @@ const ENTRY_FEES: { label: string; fee: number }[] = [
 ];
 
 export default function MoneyPage() {
-  // Worked example for the "cents" section: a 40 GP real card, rake-adjusted.
-  const examplePotCents = ECONOMY.REAL_ENTRY_FEE * 2 * 100;
-  const exampleRakeCents = Math.round(examplePotCents * STAKER_FLOWS.FIGHT_RAKE);
+  // Worked example for the "cents" section: a claiming tag, rake-adjusted.
+  // (The daily-card pot no longer rakes at all — see STAKER_FLOWS.FIGHT_RAKE.)
+  const exampleClaimTag = CLAIMER.PRICES[2];
+  const exampleClaimTagCents = exampleClaimTag * 100;
+  const exampleClaimRakeCents = Math.round(exampleClaimTagCents * STAKER_FLOWS.CLAIM_RAKE);
 
   // The breed fee, split three ways — computed by the same function the
   // engine uses to pay it out, so this page can never drift from reality.
@@ -146,6 +148,11 @@ export default function MoneyPage() {
               <td className="num">${usd(ECONOMY.GACHA_ROLL_PRICE)}</td>
             </tr>
             <tr>
+              <td>The {ECONOMY.BUNDLE_ROLLS}-roll gacha bundle</td>
+              <td className="num">{ECONOMY.BUNDLE_PRICE}</td>
+              <td className="num">${usd(ECONOMY.BUNDLE_PRICE)}</td>
+            </tr>
+            <tr>
               <td>Land Tokens, per 100 LT</td>
               <td className="num">{LAND.GP_PER_100_TOKENS}</td>
               <td className="num">${usd(LAND.GP_PER_100_TOKENS)}</td>
@@ -154,11 +161,12 @@ export default function MoneyPage() {
         </table>
       </div>
       <p className="dim">
-        The Pintakasi championships cost{" "}
+        The Pintakasi Majors cost{" "}
         {PINTAKASI.ENTRY_FEE === 0 ? "nothing to enter — you earn a seat by winning, not by paying"
           : `${PINTAKASI.ENTRY_FEE} GP to enter`}. See <Link href="/wiki/pintakasi">The Pintakasi</Link>.
         Land is capped at {LAND.DAILY_BUY_CAP} LT bought per farm per game-day, and it is never
-        sellable back — see <Link href="/wiki/land">Land Tokens</Link>.
+        sellable back — see <Link href="/wiki/land">Land Tokens</Link>. Standing a rooster at stud
+        costs Land Tokens, not GP — see <Link href="/wiki/breeding">Breeding</Link>.
       </p>
 
       <h2>The two pools</h2>
@@ -170,23 +178,26 @@ export default function MoneyPage() {
         <div className="minicard">
           <b>The juice pool</b>
           <p>
-            Feeds the Thursday championships — see <Link href="/wiki/pintakasi">The Pintakasi</Link>.
+            Funds the week&apos;s championships — see <Link href="/wiki/pintakasi">The Pintakasi</Link>.
             It fills from two places: {breedJuicePct}% of every breeding cover (the other half of
             what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
-            {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. It only
-            ever spends on one thing — the week&apos;s purses — split evenly across however many
-            crowns run that week, then paid out top-heavy by finish.
+            {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. Wednesday&apos;s
+            Juvenile Championship takes its slice first — the pool sends it a fixed share, split
+            across whichever of its two blades run that week — and Thursday&apos;s Pintakasi Majors
+            take the entire remainder, split evenly across however many Majors run, then paid out
+            top-heavy by finish.
           </p>
         </div>
         <div className="minicard">
           <b>The staker pool</b>
           <p>
             Pays everyone with staked land, pro-rata, every single day — see{" "}
-            <Link href="/wiki/land">Land Tokens</Link>. It&apos;s the one pool that skims a little
-            from nearly everything: {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% of every fight
-            pot, {(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}% of every claim tag,{" "}
+            <Link href="/wiki/land">Land Tokens</Link>. It skims from nearly every fee in the game:{" "}
+            {(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}% of every claim tag,{" "}
             {(STAKER_FLOWS.GACHA_SHARE * 100).toFixed(0)}% of gacha spend, {breedStakerPct}% of
-            every breeding cover, and the entire GP price of every land purchase.
+            every breeding cover, and the entire GP price of every land purchase. The one thing it
+            does <em>not</em> skim any more is the daily-card fight pot — round 23 zeroed that rake
+            back to nothing, so a fight&apos;s pot is pure winner-takes-it-all.
           </p>
         </div>
       </div>
@@ -205,6 +216,14 @@ export default function MoneyPage() {
               <td className="num">{(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%</td>
               <td className="num">—</td>
             </tr>
+            {STAKER_FLOWS.FIGHT_RAKE === 0 && (
+              <tr>
+                <td className="dim" colSpan={3}>
+                  ↳ zeroed in round 23 — the daily card is a pure pot again; the plumbing stays
+                  wired at 0% so a future season can turn it back on.
+                </td>
+              </tr>
+            )}
             <tr>
               <td>Claiming tag</td>
               <td className="num">{(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}%</td>
@@ -273,19 +292,22 @@ export default function MoneyPage() {
 
       <h2>Cents</h2>
       <p>
-        Everywhere above, GP moves in whole numbers. It goes fractional in exactly two places: a{" "}
-        <strong>rake-adjusted pot</strong> and a <strong>staking payout</strong>. Both exist because
-        a percentage of an odd number doesn&apos;t always land on a whole GP.
+        Everywhere above, GP moves in whole numbers most of the time. It goes fractional in two
+        kinds of places: a <strong>rake-adjusted amount</strong> and a{" "}
+        <strong>staking payout</strong>. Both exist because a percentage of an odd number
+        doesn&apos;t always land on a whole GP. (The daily-card fight pot used to be the classic
+        example of the first kind — it isn&apos;t any more, now that its rake sits at{" "}
+        {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%. The claiming tag still rakes, so it&apos;s
+        the live example below.)
       </p>
       <p>
-        Take an ordinary {ECONOMY.REAL_ENTRY_FEE} GP real card. The pot is both entries,{" "}
-        {fmtGp(examplePotCents)} GP. The staker rake takes {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%
-        of that, {fmtGp(exampleRakeCents)} GP — so the winner doesn&apos;t bank a clean{" "}
-        {fmtGp(examplePotCents)}, they bank <strong>{fmtGp(examplePotCents - exampleRakeCents)} GP</strong>.
-        That&apos;s not a bug. Staking payouts work the same way, splitting the day&apos;s staker
-        pool pro-rata across everyone&apos;s staked land — see{" "}
-        <Link href="/wiki/land">Land Tokens</Link>. If your balance ever shows something like{" "}
-        .40 or .78 on the end, that&apos;s why.
+        Take a {exampleClaimTag} GP claiming tag. The staker rake takes{" "}
+        {(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}% of that, {fmtGp(exampleClaimRakeCents)} GP —
+        so the seller banks <strong>{fmtGp(exampleClaimTagCents - exampleClaimRakeCents)} GP</strong>,
+        not the full tag. Staking payouts work the same idea but rarely land as clean: splitting
+        the day&apos;s staker pool pro-rata across everyone&apos;s staked land, however oddly that
+        land happens to be divided up — see <Link href="/wiki/land">Land Tokens</Link>. If your
+        balance ever shows something like .40 or .78 on the end, that&apos;s why.
       </p>
 
       <h2>How to not go broke</h2>

@@ -96,6 +96,11 @@ export class Game {
     const card = Lobbies.resolve(this.database);
     const pintakasi: TournamentResolution[] = [];
     for (let d = preDay; d < result.state.dayIndex; d++) {
+      // Wednesday's Juvenile Championship first, then Thursday's Majors — the
+      // week builds (round 23). The juvenile stage takes its ruled slice of
+      // the juice; the Majors take whatever is left.
+      if (Tournaments.isJuvenileCrownDay(d))
+        pintakasi.push(...Tournaments.resolveCrownDay(this.database, d, "juvenile"));
       if (Tournaments.isCrownDay(d)) pintakasi.push(...Tournaments.resolveCrownDay(this.database, d));
     }
     const staking = Farms.distributeStaking(this.database);

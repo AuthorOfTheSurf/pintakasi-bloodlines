@@ -88,9 +88,10 @@ describe("the unified ledger", () => {
     expect(fights.length).toBe(1); // one row per fight, not per side
     expect(fights[0].farmId).toBeNull();
     expect(fights[0].message).toContain(" def. ");
-    // The pot is announced NET of the round-22 staker rake, with the rake
-    // named beside it — 80 GP of entries pays the winner 78.40.
-    expect(fights[0].message).toContain("pot 78.40 GP (1.60 to stakers)");
+    // Back to a pure pot in round 23 — the rake went to zero, so the line
+    // says the whole 80 and mentions no rake at all.
+    expect(fights[0].message).toContain(`pot ${ECONOMY.REAL_ENTRY_FEE * 2} GP`);
+    expect(fights[0].message).not.toContain("to stakers");
 
     const refunds = ofType(w.db, "refund");
     expect(refunds.length).toBe(1);

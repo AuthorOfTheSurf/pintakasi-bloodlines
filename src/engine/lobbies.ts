@@ -396,11 +396,21 @@ export class Lobbies {
         event.unmatched.push({ farm: farm.name, bird: bird.name, refunded: odd.fee });
       }
 
-      // Claims settle last — after every fight, even for the unmatched
-      // (the sale doesn't need the fight). Prize money stayed with the
+      // Claims settle last — after the fights. Prize money stayed with the
       // original owner above; only NOW does the bird change barns.
+      //
+      // NO FIGHT, NO CLAIM (ruled round 23). An unmatched bird's entry fee
+      // refunds, and every claim standing on it refunds too. The old rule let
+      // the sale go through without the fight, which meant a claimant could
+      // buy a bird that never had to prove anything that night — and the
+      // seller couldn't tell whether the tag was being taken on form or on a
+      // technicality. If the card doesn't happen, nothing happens.
       if (lobby.classType === "claimer") {
         for (const entry of entries) {
+          if (entry.opponentEntryId === null) {
+            Lobbies.refundClaims(database, entry.id, "the bird drew no opponent");
+            continue;
+          }
           const settled = Lobbies.settleClaims(database, entry.id, lobby.price!, rng);
           if (settled) event.claims.push(settled);
         }
@@ -585,8 +595,10 @@ export class Lobbies {
       birdId: winnerSide.row.id,
       message:
         `${winnerSide.row.name} (${farmNames[sim.winner]}) def. ${loserSide.row.name} (${farmNames[1 - sim.winner]}) — ` +
-        `${label} · figures ${winnerSide.figure}/${loserSide.figure} · pot ${fmtGp(potCents - rakeCents)} GP ` +
-        `(${fmtGp(rakeCents)} to stakers) · +${landEach} LT each` +
+        `${label} · figures ${winnerSide.figure}/${loserSide.figure} · pot ${fmtGp(potCents - rakeCents)} GP` +
+        // The rake is 0 since round 23 — say nothing rather than "(0.00 to stakers)".
+        (rakeCents > 0 ? ` (${fmtGp(rakeCents)} to stakers)` : "") +
+        ` · +${landEach} LT each` +
         (forcedRetirements.length ? ` · ${forcedRetirements.join(", ")} force-retired` : ""),
       data: { lobbyId: lobby.id, battleLogIds: logIds, figures: sim.figures, pot: ea.fee * 2, landEach },
     });
@@ -601,6 +613,33 @@ export class Lobbies {
       forcedRetirements,
       playByPlay: sim.playByPlay,
     };
+  }
+
+  /**
+   * Hand every claim on an entry back (round 23) — used when the bird never
+   * fought. The claimant's escrow returns in full and the bird stays home.
+   */
+  private static refundClaims(database: DB, entryId: number, why: string): void {
+    const standing = database
+      .select()
+      .from(claims)
+      .where(and(eq(claims.entryId, entryId), eq(claims.status, "pending")))
+      .all();
+    if (standing.length === 0) return;
+    const entry = database.select().from(lobbyEntries).where(eq(lobbyEntries.id, entryId)).get()!;
+    const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+    for (const c of standing) {
+      const claimant = database.select().from(farms).where(eq(farms.id, c.farmId)).get()!;
+      database.update(farms).set({ gp: claimant.gp + c.price }).where(eq(farms.id, c.farmId)).run();
+      database.update(claims).set({ status: "refunded" }).where(eq(claims.id, c.id)).run();
+      emit(database, {
+        type: "claim_refund",
+        farmId: c.farmId,
+        birdId: entry.birdId,
+        gpCents: c.price * 100,
+        message: `claim on ${bird.name} called off — ${why}, ${c.price} GP refunded`,
+      });
+    }
   }
 
   private static settleClaims(
@@ -666,8 +705,10 @@ export class Lobbies {
       birdId: bird.id,
       gpCents: tagCents - tagRakeCents,
       message:
-        `${bird.name} claimed away by ${to.name} — banked ${fmtGp(tagCents - tagRakeCents)} GP ` +
-        `of the ${price} GP tag (${fmtGp(tagRakeCents)} to stakers)`,
+        `${bird.name} claimed away by ${to.name} — banked ` +
+        (tagRakeCents > 0
+          ? `${fmtGp(tagCents - tagRakeCents)} GP of the ${price} GP tag (${fmtGp(tagRakeCents)} to stakers)`
+          : `the ${price} GP tag`),
     });
     return {
       bird: bird.name,
@@ -806,22 +847,41 @@ export class Lobbies {
     const { mode, classType, price } = spec;
     if (mode === "hardcore" && classType !== "open")
       throw new Error("Hardcore runs in the open only — the key rule needs no ladder");
-    if (mode === "juvenile" && classType !== "open" && classType !== "maiden")
-      throw new Error("Juvenile lobbies are open or maiden only");
+    // THE DISCOVERY-YEAR LADDER (round 23). The juvenile season used to be
+    // one flat open division, which gave a chick nowhere to climb. It now
+    // runs maidens, stakes (open) and claimers of its own — the same shape
+    // the grown card has, so a bird learns the ladder in the year its
+    // results don't count against it. The conditions classes (nw2/nw3) stay
+    // out: a one-year-old hasn't the record to sort by.
+    if (mode === "juvenile" && classType !== "open" && classType !== "maiden" && classType !== "claimer")
+      throw new Error("Juvenile lobbies are open, maiden or claimer");
 
-    // The ladder reads the STAKES record (round 19), not the lifetime line:
-    // juvenile fights are the discovery year, and counting them made every
-    // two-year-old an ex-winner — the maiden class went unused for weeks.
-    if (classType === "maiden" && bird.stakesWins > 0)
-      throw new Error(`${bird.name} has won at stakes — maidens take never-winners only`);
+    // WHICH record the ladder reads depends on the season, and this is the
+    // subtle part. Grown classes read the STAKES record (round 19) — juvenile
+    // practice wins must not graduate a maiden, or the class never opens. But
+    // inside the discovery year a bird has NO stakes record at all, so a
+    // juvenile maiden reads its juvenile wins instead. Same rule, measured
+    // against the season the bird is actually in.
+    const ladderWins = mode === "juvenile" ? bird.wins : bird.stakesWins;
+    if (classType === "maiden" && ladderWins > 0)
+      throw new Error(
+        mode === "juvenile"
+          ? `${bird.name} has already won in the discovery year — juvenile maidens take never-winners`
+          : `${bird.name} has won at stakes — maidens take never-winners only`
+      );
     if (classType === "nw2" && bird.stakesWins >= 2)
       throw new Error(`${bird.name} has ${bird.stakesWins} stakes wins — nw2 takes fewer than 2`);
     if (classType === "nw3" && bird.stakesWins >= 3)
       throw new Error(`${bird.name} has ${bird.stakesWins} stakes wins — nw3 takes fewer than 3`);
     if (classType === "claimer") {
-      if (mode !== "real") throw new Error("Claimers are real fights");
-      if (!price || !(CLAIMER.PRICES as readonly number[]).includes(price))
-        throw new Error(`Pick a claiming tag: ${CLAIMER.PRICES.join(" / ")} GP`);
+      if (mode === "hardcore") throw new Error("A hardcore bird isn't for sale — no claimers");
+      // Juveniles claim on their own, cheaper ladder — an unproven bird
+      // priced against grown stock would never be tagged at all.
+      const ladder = (
+        mode === "juvenile" ? CLAIMER.JUVENILE_PRICES : CLAIMER.PRICES
+      ) as readonly number[];
+      if (!price || !ladder.includes(price))
+        throw new Error(`Pick a claiming tag: ${ladder.join(" / ")} GP`);
     } else if (price) {
       throw new Error("A tag price only means something in a claimer");
     }

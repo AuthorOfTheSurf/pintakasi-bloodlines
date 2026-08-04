@@ -85,6 +85,18 @@ export default function BreedingPage() {
         every cover anyone buys against him pays his owner a share (below). A good retired rooster
         sitting idle in your barn is money left on the table.
       </div>
+      <div className="callout warn">
+        <b>Listing costs land — the game&apos;s first Land Token sink.</b> Opening a rooster&apos;s
+        public slots for the first time costs a flat <strong>{COVERS.STUD_LISTING_LT} LT</strong>,
+        spent outright — not staked, not refundable. Pulling him from the barn and re-listing him
+        later is free; the land bought the seat, not a subscription. Why this door: a stud is the
+        best asset in the game — it earns on every outside cover, and its own owner still breeds
+        through it on the reserved slots at nothing above the ordinary fee. A gate that desirable
+        is worth paying land for, and it&apos;s the first thing in the game that takes Land Tokens{" "}
+        <em>out</em> of the world rather than just paying them out — see{" "}
+        <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into a
+        price.
+      </div>
 
       <h2>The fee split</h2>
       <p>
@@ -110,7 +122,7 @@ export default function BreedingPage() {
             </tr>
             <tr>
               <td>
-                The juice pool (<Link href="/wiki/pintakasi">Thursday&apos;s championships</Link>)
+                The juice pool (<Link href="/wiki/pintakasi">the Pintakasi Majors</Link>)
               </td>
               <td className="num">{juicePct}%</td>
               <td className="num">{fmtGp(split.juicePoolCents)} GP</td>
@@ -149,6 +161,16 @@ export default function BreedingPage() {
           other parent less often, and only rarely lands on a completely different element as its
           own small mutation.
         </div>
+        <div className="minicard">
+          <b>Carriage</b>
+          Ground or Air inherits on the same preference-pair maths as stars: the magnitude draws
+          around the parents&apos; average, and the lean follows whichever parent carries the
+          stronger rating {Math.round(BREEDING.CARRIAGE_LEAN_STRONGER * 100)}% of the time —
+          noticeably higher than the element lean, on purpose, because carriage is meant to be{" "}
+          <em>selectable</em>: breed two shufflers, get another shuffler. See{" "}
+          <Link href="/wiki/birds">Birds &amp; stats</Link> for what carriage means, and why it
+          doesn&apos;t change tonight&apos;s fight yet.
+        </div>
       </div>
       <p>
         One more thing is decided at the cover and hidden from you: the egg&apos;s sex, a flat{" "}
@@ -172,13 +194,14 @@ export default function BreedingPage() {
 
       <h2>Why breeding is the only way up</h2>
       <p>
-        Every gacha bird is deliberately held near or just above the starting flock&apos;s stat
-        band — see <Link href="/wiki/gacha">the gacha</Link> for exactly how capped. That&apos;s
-        not an oversight; it&apos;s the reason breeding exists at all. Breeding is the only path in
-        the whole game where a chick&apos;s stats and stars can start from something{" "}
-        <em>better than average</em> — two strong parents plus a lucky mutation roll — and stack
-        again in the next generation. The gacha can hand you a body. Only the nest can hand you
-        quality that compounds.
+        Every gacha bird&apos;s raw stats are deliberately held near or just above the starting
+        flock&apos;s stat band — see <Link href="/wiki/gacha">the gacha</Link> for exactly how
+        capped. A lucky roll can hand you real stars, but that&apos;s a single injection, not
+        something that compounds — the next roll starts from zero again. Breeding is the only path
+        where a chick&apos;s stats <em>and</em> stars start from something better than either
+        parent — two strong birds plus a lucky mutation roll — and stack again in the next
+        generation. The gacha can hand you a good body once. Only the nest hands you quality that
+        keeps climbing.
       </p>
 
       <div className="next">

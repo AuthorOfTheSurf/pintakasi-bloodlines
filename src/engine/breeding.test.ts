@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Breeding } from "./breeding";
-import { ECONOMY, STATS } from "./config";
+import { COVERS, ECONOMY, STATS } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
@@ -137,6 +137,13 @@ describe("the breeding barn (breeding PvP)", () => {
         })
         .run();
     }
+    // A stud seat costs 100 LT since round 23 — stake the rival barn with
+    // enough land to open one, the way a barn that had fought would have.
+    w.db
+      .update(farms)
+      .set({ landTokens: COVERS.STUD_LISTING_LT * 4 })
+      .where(eq(farms.id, rivalId))
+      .run();
     return { ...w, rivalId, rivalBreeding: new Breeding(w.db, rivalId, mulberry32(seed + 1)) };
   }
 

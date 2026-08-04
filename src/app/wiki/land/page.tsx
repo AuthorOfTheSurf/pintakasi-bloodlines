@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   BREED_SPLIT,
   CLAIMER,
+  COVERS,
   ECONOMY,
   LAND,
   PINTAKASI,
@@ -39,8 +40,6 @@ export default function LandPage() {
 
   // Every worked number below is computed from the live config, not typed —
   // so this page can never quietly go stale.
-  const examplePotCents = ECONOMY.REAL_ENTRY_FEE * 2 * 100;
-  const exampleFightRakeCents = Math.round(examplePotCents * STAKER_FLOWS.FIGHT_RAKE);
   const exampleClaimTag = CLAIMER.PRICES[2];
   const exampleClaimRakeCents = Math.round(exampleClaimTag * 100 * STAKER_FLOWS.CLAIM_RAKE);
   const exampleGachaCents = Math.round(ECONOMY.GACHA_ROLL_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE);
@@ -105,11 +104,11 @@ export default function LandPage() {
         fight does. The curve rewards the risk, not just the buy-in.
       </p>
 
-      <h3>Championship fights pay even steeper</h3>
+      <h3>The Pintakasi Majors pay even steeper</h3>
       <p>
-        Every round of a Pintakasi championship mints land on a steeper curve than the daily card —
-        {" "}{crownLand} LT to each fighter, per fight, measured against the {PINTAKASI.LAND_BASIS} GP
-        stake the crowns represent. A bird that survives several rounds banks that amount again and
+        Every round of a Pintakasi Major mints land on a steeper curve than the daily card —{" "}
+        {crownLand} LT to each fighter, per fight, measured against the {PINTAKASI.LAND_BASIS} GP
+        stake the Majors represent. A bird that survives several rounds banks that amount again and
         again before it ever gets to the elimination grants below.
       </p>
       <p>
@@ -135,10 +134,12 @@ export default function LandPage() {
         </table>
       </div>
       <p className="dim">
-        Every crown bout is hardcore — the loser&apos;s career ends there. The grant is the
+        Every Major bout is hardcore — the loser&apos;s career ends there. The grant is the
         game&apos;s way of saying a first-round hardcore death is never a pure loss: the money goes
-        to the champion, but the land goes to the fallen. See{" "}
-        <Link href="/wiki/pintakasi">The Pintakasi</Link> for the full bracket and purse.
+        to the champion, but the land goes to the fallen. The Wednesday Juvenile Championship mints
+        per-fight land too, but off the much smaller juvenile entry fee — it&apos;s a discovery-year
+        stage, not a Major, and losing one doesn&apos;t end a career. See{" "}
+        <Link href="/wiki/pintakasi">The Pintakasi</Link> for both.
       </p>
 
       <h3>Gacha and buying outright</h3>
@@ -180,6 +181,28 @@ export default function LandPage() {
         land. Land is for fighting, not queueing.
       </div>
 
+      <h2>Spending it — the first sink</h2>
+      <p>
+        Until round 23, land only ever flowed one direction: earn it, buy it, stake it, collect the
+        yield. There was nowhere to actually <strong>spend</strong> it — which meant its value was
+        purely reflexive, backed by nothing but the promise of tomorrow&apos;s payout. The breeding
+        barn changed that.
+      </p>
+      <div className="callout warn">
+        <b>Standing a rooster at stud costs {COVERS.STUD_LISTING_LT} LT.</b> Opening a retired
+        rooster&apos;s public cover slots for the first time spends {COVERS.STUD_LISTING_LT} Land
+        Tokens outright — not staked, not refundable, gone. Re-listing him later, after pulling him
+        from the barn, is free; the land bought the seat once, not a subscription. See{" "}
+        <Link href="/wiki/breeding">Breeding</Link> for the full mechanic.
+      </div>
+      <p>
+        Why a stud, of everything in the game: it&apos;s the best asset there is. It earns on every
+        outside cover, it makes the birds, and its own owner still breeds through it on the
+        reserved slots at nothing above the ordinary fee. A gate that desirable is worth paying
+        land for — and it puts every barn in the same choice: stake land for yield, or spend it to
+        open an income stream. That choice is exactly what a sink is for.
+      </p>
+
       <h2>Staking — the heart of the page</h2>
       <p>
         Liquid LT just sits in your barn. <strong>Staked</strong> LT earns a pro-rata share of a
@@ -199,14 +222,6 @@ export default function LandPage() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Every daily-card fight&apos;s pot</td>
-              <td className="num">{(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%</td>
-              <td>
-                A real card&apos;s {fmtGp(examplePotCents)} GP pot sends {fmtGp(exampleFightRakeCents)}{" "}
-                GP to the pool.
-              </td>
-            </tr>
             <tr>
               <td>Every claiming tag</td>
               <td className="num">{(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}%</td>
@@ -244,6 +259,13 @@ export default function LandPage() {
           </tbody>
         </table>
       </div>
+      <p className="dim">
+        Missing from that list on purpose: the daily-card fight pot. It fed the pool at{" "}
+        {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% through round 22, but round 23 zeroed that
+        rake — see <Link href="/wiki/card">The card</Link> — so today it contributes nothing. The
+        plumbing stays wired at zero rather than removed, so a future season can turn it back on
+        with one number.
+      </p>
 
       <div className="callout tip">
         <b>A worked example.</b> Say the pool holds {poolGp} GP today, and your staked land is{" "}
@@ -274,16 +296,18 @@ export default function LandPage() {
         hold land. It is a reason to ignore it.
       </p>
       <p>
-        The fix was not a bigger number on one flow — it was more flows. Now the fight pot, the
-        claiming tag, the gacha spend, the breed cover, and every land purchase all pay the pool.
-        The intent is plain: make land worth holding, so that players play <strong>for</strong> it,
-        not just around it.
+        The fix was not a bigger number on one flow — it was more flows. The claiming tag, the
+        gacha spend, the breed cover, and every land purchase all pay the pool now. (Round 23
+        pulled the fight pot back out again — see above — but the other flows are exactly why the
+        pool survived that without going thin again.) The intent is plain: make land worth
+        holding, so that players play <strong>for</strong> it, not just around it.
       </p>
 
       <h2>Is it worth it?</h2>
       <p>
-        Honestly: land&apos;s value today comes entirely from the yield stream above — nothing
-        else backs it yet. That means a few things worth saying straight, not sold:
+        Honestly: land&apos;s value today comes from two places, not one — the yield stream above,
+        and now a real sink (see &ldquo;Spending it,&rdquo; above). Neither one is a sure thing yet.
+        A few things worth saying straight, not sold:
       </p>
       <ul>
         <li>

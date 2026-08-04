@@ -14,6 +14,7 @@ import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { ageOf } from "@/engine/lifecycle";
 import { baselineBefore, computeTopline, type Topline } from "@/engine/snapshots";
+import { DIVISION_RULES, roundName, seedPlacement, type Division } from "@/engine/tournaments";
 import { GpIcon, LtIcon } from "./sprites";
 import {
   AdminTabs,
@@ -55,6 +56,188 @@ function cardLabel(mode: string, classType: string): string {
     ...(classType === "open" ? [] : [classType.toUpperCase()]),
   ];
   return parts.length ? parts.join("·") : "OPEN";
+}
+
+type EntryRow = typeof tournamentEntries.$inferSelect;
+type LogRow = typeof battleLog.$inferSelect;
+
+/** One side of a bracket card — a fought fighter, or null on a bye. */
+interface BracketFighter {
+  bird: string;
+  farm: string;
+  figure: number | null; // null on a bye — nobody threw a blade
+  won: boolean;
+}
+interface BracketMatch {
+  isBye: boolean;
+  a: BracketFighter;
+  b: BracketFighter | null; // null on a bye — the "opponent" seat is empty
+  onPath: boolean; // the eventual champion won this one
+}
+interface BracketRound {
+  name: string;
+  matches: BracketMatch[];
+}
+
+/**
+ * Rebuild the EXACT tree runChampionship fought, from nothing the resolution
+ * kept for later: each entry's stored `seedRank` and `eliminatedRound`, plus
+ * the battle log. No new state — round 18/23 didn't persist the bracket
+ * shape, only its outcome, so the admin view re-derives the shape the same
+ * way the sim built it (seedPlacement) and reads winners off elimination
+ * rounds rather than log order, which single elimination makes exact: a
+ * bird's `eliminatedRound` IS the round of the fight that beat it, and the
+ * champion never gets one at all.
+ */
+function buildBracket(
+  bracketSize: number,
+  totalRounds: number,
+  field: EntryRow[],
+  log: LogRow[],
+  tournamentId: number,
+  bname: (id: string) => string,
+  fname: (id: string | null) => string,
+  championBirdId: string | null
+): BracketRound[] {
+  // seeded[i] = the entry holding seed rank i+1 (1 = top seed).
+  const seeded = [...field].sort((a, b) => (a.seedRank ?? 0) - (b.seedRank ?? 0));
+  const placement = seedPlacement(bracketSize);
+  // Ghost seats — seeds past the real field — render as byes, same as the
+  // sim itself: a ghost only ever lands opposite a real seed (see
+  // seedPlacement's doc), so this array never needs a "two ghosts" case.
+  let alive: (EntryRow | null)[] = placement.map((seat) => seeded[seat - 1] ?? null);
+
+  // Single elimination means any two birds meet at most once — so a
+  // (birdId, opponentBirdId) pair is enough to find the log row unambiguously,
+  // no round bookkeeping in battle_log required.
+  const figureOf = (birdId: string, oppId: string): number | null =>
+    log.find((r) => r.tournamentId === tournamentId && r.birdId === birdId && r.opponentBirdId === oppId)
+      ?.pitFigure ?? null;
+  const fighter = (e: EntryRow, won: boolean, figure: number | null): BracketFighter => ({
+    bird: bname(e.birdId),
+    farm: fname(e.farmId),
+    figure,
+    won,
+  });
+
+  const rounds: BracketRound[] = [];
+  for (let round = 1; round <= totalRounds; round++) {
+    const matches: BracketMatch[] = [];
+    const next: (EntryRow | null)[] = [];
+    for (let i = 0; i < alive.length; i += 2) {
+      const a = alive[i];
+      const b = alive[i + 1];
+      if (a && !b) {
+        matches.push({ isBye: true, a: fighter(a, true, null), b: null, onPath: a.birdId === championBirdId });
+        next.push(a);
+      } else if (b && !a) {
+        matches.push({ isBye: true, a: fighter(b, true, null), b: null, onPath: b.birdId === championBirdId });
+        next.push(b);
+      } else if (a && b) {
+        // Whichever side exits on THIS round is the loser — the champion
+        // (and anyone not eliminated yet) carries no eliminatedRound at all,
+        // so this reads right even for the final.
+        const winner = a.eliminatedRound === round ? b : a;
+        matches.push({
+          isBye: false,
+          a: fighter(a, winner === a, figureOf(a.birdId, b.birdId)),
+          b: fighter(b, winner === b, figureOf(b.birdId, a.birdId)),
+          onPath: winner.birdId === championBirdId,
+        });
+        next.push(winner);
+      } else {
+        next.push(null); // two ghost seats — shouldn't happen, see above
+      }
+    }
+    rounds.push({ name: roundName(round, totalRounds, bracketSize), matches });
+    alive = next;
+  }
+  return rounds;
+}
+
+// One grid row per bracket SEAT (not per match) — a round-r match spans
+// 2^r of them, which is what makes a CSS grid line it up as a real tree with
+// zero JS: a Quarterfinal card centers itself exactly between the two
+// Round-of-16 cards that fed it, because it spans both their row ranges.
+const BRACKET_ROW_UNIT = "1.85rem";
+const BRACKET_COL_WIDTH = "192px";
+
+/**
+ * The bracket tree for one completed championship — round columns left to
+ * right, the champion's own card at the far right. Pure CSS grid (see
+ * BRACKET_ROW_UNIT above) — no client JS, so this has to be a server
+ * component throughout, same as the rest of the Stewards' Office.
+ */
+function Bracket({
+  rounds,
+  champion,
+  bracketSize,
+}: {
+  rounds: BracketRound[];
+  champion: { bird: string; farm: string; wonCents: number };
+  bracketSize: number;
+}) {
+  const totalRounds = rounds.length;
+  const columns = totalRounds + 1; // + the champion's own column
+  const colTemplate = `repeat(${columns}, ${BRACKET_COL_WIDTH})`;
+  return (
+    // overflow-x: auto lives here, not on the page — a 64-bracket is six
+    // columns wide and would otherwise blow out the whole admin layout.
+    <div className="bracket-wrap">
+      <div className="bracket-head" style={{ gridTemplateColumns: colTemplate }}>
+        {rounds.map((r) => (
+          <div key={r.name} className={r.name === "Final" ? "final" : ""}>
+            {r.name}
+          </div>
+        ))}
+        <div className="final">Champion</div>
+      </div>
+      <div
+        className="bracket-grid"
+        style={{ gridTemplateColumns: colTemplate, gridTemplateRows: `repeat(${bracketSize}, ${BRACKET_ROW_UNIT})` }}
+      >
+        {rounds.map((r, ri) => {
+          const round = ri + 1;
+          const span = 2 ** round; // how many leaf seats this round's card covers
+          return r.matches.map((m, mi) => (
+            <div
+              key={`${round}-${mi}`}
+              // has-prev/has-next grow the little connector stubs (see CSS) —
+              // round one has nothing feeding it, every round feeds either
+              // the next round or the champion box.
+              className={`bmatch${m.onPath ? " on-path" : ""}${round > 1 ? " has-prev" : ""} has-next`}
+              style={{ gridColumn: round, gridRow: `${mi * span + 1} / span ${span}` }}
+            >
+              <div className={`bfighter ${m.a.won ? "won" : "lost"}`}>
+                <span className="bname">{m.a.bird}</span>
+                <span className="bfarm">{m.a.farm}</span>
+                {m.a.figure !== null && <span className="bfig">{m.a.figure}</span>}
+              </div>
+              {m.isBye ? (
+                <div className="bfighter bye">— bye —</div>
+              ) : (
+                <div className={`bfighter ${m.b!.won ? "won" : "lost"}`}>
+                  <span className="bname">{m.b!.bird}</span>
+                  <span className="bfarm">{m.b!.farm}</span>
+                  {m.b!.figure !== null && <span className="bfig">{m.b!.figure}</span>}
+                </div>
+              )}
+            </div>
+          ));
+        })}
+        <div
+          className="bmatch bchamp has-prev on-path"
+          style={{ gridColumn: columns, gridRow: `1 / span ${bracketSize}` }}
+        >
+          <div className="bfighter won champ">
+            🏆 <span className="bname">{champion.bird}</span>
+            <span className="bfarm">{champion.farm}</span>
+          </div>
+          <div className="bpurse">+{gpFmt(champion.wonCents)} GP</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -203,46 +386,32 @@ export default function Admin() {
     .filter((t) => pintakasiWeek !== null && t.weekIndex >= pintakasiWeek - 1)
     .map((t) => {
       const entries = allTEntries.filter((e) => e.tournamentId === t.id);
-      const elimRound = new Map(entries.map((e) => [e.birdId, e.eliminatedRound]));
+      const fieldEntries = entries.filter((e) => e.status !== "bumped" && e.status !== "refunded");
       const totalRounds = t.bracketSize ? Math.log2(t.bracketSize) : 0;
-      const roundName = (r: number) => {
-        const fromFinal = totalRounds - r;
-        if (fromFinal === 0) return "Final";
-        if (fromFinal === 1) return "Semifinals";
-        if (fromFinal === 2) return "Quarterfinals";
-        return `Round of ${(t.bracketSize ?? 0) / Math.pow(2, r - 1)}`;
-      };
-      const bouts = log
-        .filter((r) => r.tournamentId === t.id && r.result === "win")
-        .map((w) => ({
-          round: elimRound.get(w.opponentBirdId) ?? 1,
-          winner: bname(w.birdId),
-          winnerFarm: fname(w.farmId),
-          loser: w.opponentName,
-          loserFarm: fname(w.opponentFarmId),
-          figures: [w.pitFigure, log.find((r) => r.tournamentId === t.id && r.birdId === w.opponentBirdId && r.opponentBirdId === w.birdId)?.pitFigure ?? 0] as const,
-        }))
-        .sort((a, b) => b.round - a.round);
       const champion = entries.find((e) => e.status === "champion");
+      // The tree only exists once the crown has actually run — open/cancelled
+      // boxes fall back to the plain states below.
+      const rounds =
+        t.status === "completed" && t.bracketSize
+          ? buildBracket(t.bracketSize, totalRounds, fieldEntries, log, t.id, bname, fname, champion?.birdId ?? null)
+          : [];
       return {
         id: t.id,
         weekIndex: t.weekIndex,
+        division: t.division as Division,
         label: `${FORMAT_LABEL(t.format)} Championship · wk ${t.weekIndex}`,
         status: t.status,
         bracketSize: t.bracketSize,
-        field: entries.filter((e) => e.status !== "bumped" && e.status !== "refunded").length,
+        field: fieldEntries.length,
         pending: entries.filter((e) => e.status === "pending").length,
         purseCents: t.purseCents,
         champion: champion
           ? { bird: bname(champion.birdId), farm: fname(champion.farmId), wonCents: champion.gpWonCents }
           : null,
-        rounds: [...new Set(bouts.map((b) => b.round))].map((r) => ({
-          name: roundName(r),
-          bouts: bouts.filter((b) => b.round === r),
-        })),
+        rounds,
       };
     })
-    // This week's three columns first, last week's crowns underneath.
+    // This week's crowns first, last week's underneath.
     .sort((a, b) => b.weekIndex - a.weekIndex || a.id - b.id);
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
@@ -704,12 +873,19 @@ export default function Admin() {
                   the blade championships — hardcore throughout, crowns every Thursday
                 </span>
               </h2>
-              {/* One column per championship — three blades, three columns. */}
+              {/* Stacked, not columned (round 24) — a bracket tree runs much
+                  wider than the old text list ever did, and three of them
+                  side by side left no room to breathe. Each gets the full
+                  row width and scrolls its own bracket horizontally if it
+                  outgrows it — see .bracket-wrap. */}
               <div className="crowns">
                 {pintakasiBoxes.map((t) => (
-                  <div className="lobby" key={t.id}>
+                  <div className="lobby crownbox" key={t.id}>
                     <div className="lobby-head">
                       {t.label}
+                      <span className={`division-tag ${t.division}`}>
+                        {DIVISION_RULES[t.division].hardcore ? "MAJOR" : "JUVENILE"}
+                      </span>
                       <span className="fill">
                         {t.status === "open"
                           ? `${t.pending} registered`
@@ -718,28 +894,12 @@ export default function Admin() {
                             : `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP`}
                       </span>
                     </div>
-                    {t.champion && (
-                      <div className="bout crown">
-                        🏆 <b>{t.champion.bird}</b> ({t.champion.farm}) — champion, +
-                        {gpFmt(t.champion.wonCents)} GP
-                      </div>
+                    {t.status === "completed" && t.bracketSize && t.champion && (
+                      <Bracket rounds={t.rounds} champion={t.champion} bracketSize={t.bracketSize} />
                     )}
-                    {t.rounds.map((r) => (
-                      <div key={r.name}>
-                        <div className={r.name === "Final" ? "roundname final" : "roundname"}>
-                          {r.name}
-                        </div>
-                        {r.bouts.map((b, i) => (
-                          <div className="bout" key={i}>
-                            ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
-                            <span className="figs">
-                              figures {b.figures[0]}/{b.figures[1]}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                    {t.status === "completed" && (
+                    {/* Hardcore is a Majors-only rule (round 23) — the
+                        Juvenile Championship's losers fight another day. */}
+                    {t.status === "completed" && DIVISION_RULES[t.division].hardcore && (
                       <div className="hardcore-note">All losing birds force-retired.</div>
                     )}
                     {t.status === "cancelled" && (
@@ -800,23 +960,63 @@ const CSS = `
   .cardday h2 { color: #e8b64c; font-size: 1rem; margin: 0 0 .6rem; }
   .cardday .cardsum { color: #9a8f78; font-weight: 400; font-size: .85em; margin-left: .5em; }
   .lobbies { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: .6rem; }
-  /* The Pintakasi runs three championships a week — three columns. */
-  .crowns { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
-  @media (max-width: 1100px) { .crowns { grid-template-columns: 1fr; } }
-  .hardcore-note { color: #e07a6a; margin-top: .45rem; }
+  /* Stacked, not columned (round 24) — a bracket tree is much wider than the
+     old text list, so each championship now takes the full row and scrolls
+     its own bracket sideways (.bracket-wrap) instead of squeezing three
+     boxes into one width. */
+  .crowns { display: flex; flex-direction: column; gap: .75rem; }
+  .hardcore-note { color: #e07a6a; margin-top: .5rem; }
   .lobby { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px; padding: .55rem .75rem; }
   .lobby-head { color: #e8b64c; margin-bottom: .3rem; }
   .lobby-head .fill { color: #9a8f78; float: right; }
+  /* The major/juvenile pill (round 24) — same shape as .world-badge, its own
+     two colors: gold for the hardcore stage, green for the discovery one. */
+  .division-tag { font-size: .68em; vertical-align: middle; margin-left: .5em; padding: .1em .5em;
+    border-radius: 4px; letter-spacing: .06em; border: 1px solid; }
+  .division-tag.major { color: #e8b64c; background: #3a2f1a; border-color: #6b5527; }
+  .division-tag.juvenile { color: #7fc97f; background: #1c3020; border-color: #3d6b45; }
   .bout { color: #cfc6b2; padding: .12rem 0; }
   .bout b { color: #f4e9d0; }
   .bout .figs { color: #9a8f78; }
   .bout.cancelled { color: #e07a6a; }
   .bout.pending { color: #9fd3f0; }
-  .bout.crown { color: #ffbf00; }
-  .roundname { color: #9a8f78; font-size: .85em; margin-top: .35rem; letter-spacing: .05em; }
-  /* The Final is the headline of a championship — say it in gold. */
-  .roundname.final { color: #e8b64c; font-size: 1em; font-weight: 600; letter-spacing: .12em;
-    text-transform: uppercase; margin-top: .5rem; }
+  /* ── The bracket tree (round 24) ─────────────────────────────────────────
+     One CSS grid, no JS: BRACKET_ROW_UNIT-tall rows, one per leaf SEAT (not
+     per match) — a round-r card spans 2^r of them, so it lands centered
+     between the two feeder cards that produced it purely from grid math. */
+  .crownbox { margin-top: .4rem; }
+  .bracket-wrap { overflow-x: auto; margin-top: .5rem; padding-bottom: .3rem; }
+  .bracket-head, .bracket-grid { display: grid; column-gap: 1.1rem; width: max-content; }
+  .bracket-head > div { color: #9a8f78; font-size: .78em; letter-spacing: .06em; text-transform: uppercase;
+    padding-bottom: .3rem; margin-bottom: .3rem; border-bottom: 1px solid #3a342a; }
+  .bracket-head > div.final { color: #e8b64c; font-weight: 600; }
+  .bmatch { align-self: center; position: relative; background: #171410; border: 1px solid #3a342a;
+    border-radius: 5px; padding: .2rem .5rem; overflow: hidden; }
+  /* The connector stubs — cheap CSS-only gesture at the lines a real bracket
+     draws between rounds; on-path turns them gold so the champion's run is
+     traceable at a glance across every column it touches. */
+  .bmatch.has-prev::before, .bmatch.has-next::after { content: ""; position: absolute; top: 50%;
+    width: 1.1rem; height: 1px; background: #3a342a; }
+  .bmatch.has-prev::before { left: -1.1rem; }
+  .bmatch.has-next::after { right: -1.1rem; }
+  .bmatch.on-path.has-prev::before, .bmatch.on-path.has-next::after { background: #e8b64c; height: 2px; }
+  .bfighter { display: flex; align-items: baseline; gap: .4em; font-size: .82em; line-height: 1.5;
+    white-space: nowrap; }
+  .bfighter.won { color: #f4e9d0; }
+  .bfighter.won .bname { color: #e8b64c; font-weight: 600; }
+  .bfighter.lost { color: #6a6252; }
+  .bfighter.bye { color: #6a6252; font-style: italic; }
+  .bfighter .bfarm { color: #9a8f78; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .bfighter.lost .bfarm { color: #524b3d; }
+  .bfighter .bfig { color: #9a8f78; font-variant-numeric: tabular-nums; }
+  /* The winner's side gets the gold rail the ask asked for; a bye still
+     shows one (it IS the winner, just an unopposed one). */
+  .bfighter.won { border-left: 2px solid #e8b64c; padding-left: .35em; margin-left: -.35em; }
+  .bmatch.bchamp { display: flex; flex-direction: column; align-items: flex-start; gap: .25rem;
+    justify-content: center; padding: .5rem .6rem; }
+  .bfighter.champ { font-size: .95em; border-left: none; padding-left: 0; margin-left: 0; }
+  .bfighter.champ .bname { font-size: 1.05em; }
+  .bpurse { color: #7fc97f; font-size: .82em; }
   .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }

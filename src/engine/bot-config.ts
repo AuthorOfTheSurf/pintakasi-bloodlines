@@ -10,7 +10,10 @@ import type { FarmColor } from "./config";
  * done. Every knob is a 0–1 probability unless noted.
  */
 
-export type BotStyle = "claimer" | "breeder" | "pit";
+// Round 23 adds two SPECULATOR styles. The point isn't liquidity any more —
+// it's that the gacha and the land market need somebody with an appetite for
+// them, so the sim can show what those doors do when a human walks through.
+export type BotStyle = "claimer" | "breeder" | "pit" | "whale" | "landlord";
 
 export interface BotProfile {
   id: string; // stable across reseeds — keys the farm row
@@ -34,6 +37,21 @@ export interface BotProfile {
   sellRate: number;
   /** How high up the tag ladder its claimers card (0 = always 50 GP). */
   tagCourage: number;
+  /** The person behind the barn — shown beside the farm name (round 23). */
+  handler?: string;
+  /**
+   * THE HIGH ROLLER (round 23). Chance per day this barn dumps its spare GP
+   * into gacha bundles. Zane's model: stables breed, and "human speculation
+   * and human high rollers and humans/bots that desire the prizes will drive
+   * gatcha rolling" — so one bot exists to BE that person.
+   */
+  gachaAppetite?: number;
+  /**
+   * THE LANDLORD (round 23). Chance per day this barn maxes out the daily
+   * land-buy cap. Land can't be sold, so this is a pure conviction play: it
+   * spends GP on an asset whose only return is the staking yield.
+   */
+  landAppetite?: number;
 }
 
 export const BOT_FARMS: BotProfile[] = [
@@ -96,5 +114,41 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "brown", secondaryColor: "gold", style: "breeder",
     flockSeed: 909, entryRate: 0.45, claimAggression: 0.05, breedDrive: 0.95,
     hardcoreNerve: 0.08, sellRate: 0.55, tagCourage: 0.2, // breeds first, fights second
+  },
+  // ── Round 23: the two speculators ───────────────────────────────────────
+  {
+    id: "bot-10", name: "Ginto Gaming Club", country: "🇵🇭", handler: "Ginto",
+    primaryColor: "gold", secondaryColor: "black", style: "whale",
+    flockSeed: 1010, entryRate: 0.5, claimAggression: 0.1, breedDrive: 0.2,
+    hardcoreNerve: 0.1, sellRate: 0.2, tagCourage: 0.5,
+    gachaAppetite: 1, // rolls every single day, to the bottom of the wallet
+  },
+  {
+    id: "bot-11", name: "Lupa Land Holdings", country: "🇵🇭", handler: "Lupa",
+    primaryColor: "green", secondaryColor: "brown", style: "landlord",
+    flockSeed: 1111, entryRate: 0.6, claimAggression: 0.05, breedDrive: 0.3,
+    hardcoreNerve: 0.05, sellRate: 0.15, tagCourage: 0.3,
+    landAppetite: 1, // maxes the daily land cap, every day, forever
+  },
+  // ── Round 23: the cousins' stables ──────────────────────────────────────
+  // Zane's cousins are the first testers. Their barns run as bots until they
+  // take the keys — the handler name is the tag, and Zane renames the farms.
+  {
+    id: "bot-marco", name: "Marco Gamefarm", country: "🇵🇭", handler: "Marco",
+    primaryColor: "red", secondaryColor: "black", style: "pit",
+    flockSeed: 1201, entryRate: 0.85, claimAggression: 0.25, breedDrive: 0.35,
+    hardcoreNerve: 0.3, sellRate: 0.2, tagCourage: 0.5,
+  },
+  {
+    id: "bot-reno", name: "Reno Gamefarm", country: "🇵🇭", handler: "Reno",
+    primaryColor: "blue", secondaryColor: "white", style: "breeder",
+    flockSeed: 1202, entryRate: 0.6, claimAggression: 0.1, breedDrive: 0.85,
+    hardcoreNerve: 0.1, sellRate: 0.45, tagCourage: 0.35,
+  },
+  {
+    id: "bot-kevin", name: "Kevin Gamefarm", country: "🇵🇭", handler: "Kevin",
+    primaryColor: "purple", secondaryColor: "gold", style: "claimer",
+    flockSeed: 1203, entryRate: 0.75, claimAggression: 0.7, breedDrive: 0.2,
+    hardcoreNerve: 0.15, sellRate: 0.5, tagCourage: 0.6,
   },
 ];

@@ -21,13 +21,13 @@ export const farms = sqliteTable("farms", {
   // Daily check-in: grants the GP drip + free gacha pulls, once per game-day.
   lastCheckInDay: integer("last_check_in_day"),
   freePulls: integer("free_pulls").notNull().default(0),
+  // The person behind the barn (round 23) — a handler's name shown beside
+  // the farm's, so a table of ten stables reads as PEOPLE. Null for farms
+  // that never named one.
+  handler: text("handler"),
   // Daily land-purchase cap bookkeeping.
   landBoughtDay: integer("land_bought_day"),
   landBoughtToday: integer("land_bought_today").notNull().default(0),
-  // Daily PAID gacha-pull cap bookkeeping (round 22) — same shape as the
-  // land cap above. Free pulls are counted separately, in freePulls.
-  gachaPaidDay: integer("gacha_paid_day"),
-  gachaPaidToday: integer("gacha_paid_today").notNull().default(0),
   createdDay: integer("created_day").notNull().default(0),
   // House-run bot stables (see engine/bot-config.ts) — rivals, not the house.
   isBot: integer("is_bot").notNull().default(0),
@@ -62,6 +62,15 @@ export const birds = sqliteTable("birds", {
   // 0★ still resolves to a type.
   element: text("element", { enum: ["Fire", "Metal", "Wood", "Earth", "Water"] }).notNull(),
   halfStars: integer("half_stars").notNull(),
+  // CARRIAGE — the second preference axis (round 23): Ground (the shuffler,
+  // works low) vs. Air (the flyer, comes over the top), with its own star
+  // magnitude. Deliberately the same shape as element + halfStars, so it
+  // inherits, rolls and displays down the same paths. NOT yet read by the
+  // fight engine — see CARRIAGES in config.ts for the intended hook.
+  carriage: text("carriage", { enum: ["Ground", "Air"] })
+    .notNull()
+    .default("Ground"),
+  carriageHalfStars: integer("carriage_half_stars").notNull().default(0),
   // Birth moment, not age — age in bird-years = currentWeek - birthWeek
   // (birds age one year per game-week; the derivation is Zane's ruling).
   birthWeek: integer("birth_week").notNull(),
@@ -215,6 +224,12 @@ export const tournaments = sqliteTable("tournaments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   weekIndex: integer("week_index").notNull(),
   format: text("format", { enum: ["longKnife", "shortKnife", "longGaff", "shortGaff"] }).notNull(),
+  // Which championship this is (round 23): the Thursday Majors, or the
+  // Wednesday Juvenile Championship — same bracket machinery, different
+  // stakes (the juvenile division is NOT hardcore).
+  division: text("division", { enum: ["major", "juvenile"] })
+    .notNull()
+    .default("major"),
   status: text("status", { enum: ["open", "completed", "cancelled"] }).notNull().default("open"),
   seed: integer("seed").notNull(), // drives every fight in the bracket
   entryFee: integer("entry_fee").notNull(),
