@@ -439,7 +439,11 @@ export class Tournaments {
     const results: TournamentResolution[] = [];
     for (const t of open) {
       const field = Tournaments.pending(database, t.id);
-      if (field.length < PINTAKASI.MIN_FIELD) {
+      // The DIVISION's minimum, not the Majors' (fixed round 24). Both happen
+      // to be 2 today, which is the only reason this read correctly — the
+      // juvenile stage would have been cancelled on the Majors' threshold the
+      // moment either number moved.
+      if (field.length < DIVISION_RULES[division].minField) {
         for (const entry of field) {
           const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
           Tournaments.refundEntry(database, entry, bird.name, "the field was too small");

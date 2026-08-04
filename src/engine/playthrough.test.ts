@@ -1,10 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
-import { Flock } from "./flock";
+import { Flock, type BirdView } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
 import { mulberry32 } from "./rng";
@@ -53,108 +53,139 @@ function duel(w: ReturnType<typeof world>, myBirdId: string, rivalName: string, 
   return tick.card.find((l) => l.fights.length > 0)!.fights[0];
 }
 
-test("the full breeding-lifecycle loop closes — PvP edition", () => {
-  const w = world();
-  const { game, flock, breeding } = w;
+/**
+ * The acceptance narrative, staged. This used to be one ~100-line test() —
+ * provable end to end, but a single bad assertion anywhere in the middle
+ * hid every stage after it, so one broken thing cost a full edit/run cycle
+ * per stage to find. Splitting into sequential test()s makes each stage
+ * report on its own; a `beforeAll`-built world is shared across them so the
+ * story still reads top to bottom.
+ *
+ * ⚠ These stages are NOT independent — each mutates state the next one
+ * depends on (an egg conceived → laid → hatched → aged → retired → bred
+ * again), so they must run in file order. Bun runs the test()s inside one
+ * describe sequentially in declaration order (never in parallel), which is
+ * what makes sharing `w` and the module-scoped narrative variables safe.
+ * No assertion below was weakened from the original single test — same
+ * checks, same order, just reporting per stage instead of all at once.
+ */
+describe("the full breeding-lifecycle loop closes — PvP edition", () => {
+  let w: ReturnType<typeof world>;
+  let egg: BirdView;
+  let chick: BirdView;
+  let retiree: BirdView;
+  let gen2: BirdView;
 
-  // 1. Breed two retired starters — an egg, auto-named, age 0, sex hidden.
-  const { egg } = breeding.breed("starter-2", "starter-1");
-  expect(egg.name).toBe("Egg of Dalisay");
-  expect(egg.age).toBe(0);
-  expect(egg.sex).toBe("hidden");
-  expect(egg.eggStage).toBe("gestating"); // pregnant now — lays Friday
+  beforeAll(() => {
+    w = world();
+  });
 
-  // 2. The nest timeline (round 13): the hen is pregnant now; the egg is
-  //    LAID on the first Friday and HATCHES on the second, as an age-1
-  //    chick whose 50-50 sex is revealed for the player to name.
-  let tick = game.tickWeek(); // Friday 1 — laid, not hatched
-  expect(tick.fridays[0].hatched.length).toBe(0);
-  expect(flock.byId(egg.id).eggStage).toBe("laid");
-  tick = game.tickWeek(); // Friday 2 — the hatch
-  expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(egg.id);
-  const chick = flock.rename(egg.id, "Alon");
-  expect(chick.age).toBe(1);
-  expect(["male", "female"]).toContain(chick.sex);
-  expect(["rooster", "hen"]).toContain(chick.sexLabel!);
+  test("1. breeding two retired starters lays an egg — auto-named, age 0, sex hidden", () => {
+    const { egg: laid } = w.breeding.breed("starter-2", "starter-1");
+    egg = laid;
+    expect(egg.name).toBe("Egg of Dalisay");
+    expect(egg.age).toBe(0);
+    expect(egg.sex).toBe("hidden");
+    expect(egg.eggStage).toBe("gestating"); // pregnant now — lays Friday
+  });
 
-  // 3. The discovery year: a juvenile card against a rival chick of the same
-  // age. Round 20 closed the juvenile division to age 1, so the rival's own
-  // seeded "Kidlat" (three by now) can no longer make the weight — the
-  // rival hatches a contemporary instead.
-  const week = Math.floor(
-    w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
-  );
-  w.db
-    .insert(birds)
-    .values({
-      id: "rival-chick", farmId: rivalByName(w, "Kidlat").farmId, name: "Rival Chick",
-      sex: "male", status: "active",
-      agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
-      element: "Wood", halfStars: 2, birthWeek: week - 1, birthDay: (week - 1) * 7, named: 1,
-    })
-    .run();
-  const juvenile = duel(w, chick.id, "rival-chick", { mode: "juvenile", classType: "open", format: "shortKnife" }, 21);
-  expect(juvenile.birds).toContain("Alon");
-  const afterJuvenile = flock.byId(chick.id);
-  // ONE lifetime record (round 15): juvenile fights count like any other.
-  expect(afterJuvenile.wins + afterJuvenile.losses).toBe(1);
-  // Stats are FIXED at birth (round 13) — no training; discovery is fought.
+  test("2. the nest timeline: laid the first Friday, hatched the second", () => {
+    // The hen is pregnant now; the egg is LAID on the first Friday and
+    // HATCHES on the second, as an age-1 chick whose 50-50 sex is revealed
+    // for the player to name.
+    let tick = w.game.tickWeek(); // Friday 1 — laid, not hatched
+    expect(tick.fridays[0].hatched.length).toBe(0);
+    expect(w.flock.byId(egg.id).eggStage).toBe("laid");
+    tick = w.game.tickWeek(); // Friday 2 — the hatch
+    expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(egg.id);
+    chick = w.flock.rename(egg.id, "Alon");
+    expect(chick.age).toBe(1);
+    expect(["male", "female"]).toContain(chick.sex);
+    expect(["rooster", "hen"]).toContain(chick.sexLabel!);
+  });
 
-  // 4. Age 2 — real stakes open, the record starts.
-  tick = game.tickWeek();
-  expect(flock.byId(chick.id).age).toBe(2);
-  expect(() =>
-    game.lobbies.enter(chick.id, { mode: "hardcore", classType: "open", format: "shortKnife" })
-  ).toThrow(/age 3/);
-  duel(w, chick.id, "Alab", { mode: "real", classType: "open", format: "shortKnife" }, 33);
-  const afterReal = flock.byId(chick.id);
-  expect(afterReal.wins + afterReal.losses).toBe(2); // juvenile + real — one record
+  test("3. the discovery year: a juvenile card against a same-age rival banks one record", () => {
+    // Round 20 closed the juvenile division to age 1, so the rival's own
+    // seeded "Kidlat" (three by now) can no longer make the weight — the
+    // rival hatches a contemporary instead.
+    const week = Math.floor(
+      w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
+    );
+    w.db
+      .insert(birds)
+      .values({
+        id: "rival-chick", farmId: rivalByName(w, "Kidlat").farmId, name: "Rival Chick",
+        sex: "male", status: "active",
+        agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
+        element: "Wood", halfStars: 2, birthWeek: week - 1, birthDay: (week - 1) * 7, named: 1,
+      })
+      .run();
+    const juvenile = duel(w, chick.id, "rival-chick", { mode: "juvenile", classType: "open", format: "shortKnife" }, 21);
+    expect(juvenile.birds).toContain("Alon");
+    const afterJuvenile = w.flock.byId(chick.id);
+    // ONE lifetime record (round 15): juvenile fights count like any other.
+    expect(afterJuvenile.wins + afterJuvenile.losses).toBe(1);
+    // Stats are FIXED at birth (round 13) — no training; discovery is fought.
+  });
 
-  // 5. Age 3 — the fork opens as a package: hardcore AND retirement.
-  tick = game.tickWeek();
-  expect(flock.byId(chick.id).age).toBe(3);
-  // Ride the career one more carded fight, then take the safe arm.
-  duel(w, chick.id, "Sinag", { mode: "real", classType: "open", format: "shortKnife" }, 44);
-  const retiree = flock.retire(chick.id);
-  expect(retiree.status).toBe("retired");
-  expect(retiree.retiredBy).toBe("manual");
+  test("4. age 2 opens real stakes; hardcore still gated at 3", () => {
+    w.game.tickWeek();
+    expect(w.flock.byId(chick.id).age).toBe(2);
+    expect(() =>
+      w.game.lobbies.enter(chick.id, { mode: "hardcore", classType: "open", format: "shortKnife" })
+    ).toThrow(/age 3/);
+    duel(w, chick.id, "Alab", { mode: "real", classType: "open", format: "shortKnife" }, 33);
+    const afterReal = w.flock.byId(chick.id);
+    expect(afterReal.wins + afterReal.losses).toBe(2); // juvenile + real — one record
+  });
 
-  // 6. The career→barn pipe: breed the retiree with an UNRELATED retiree.
-  const partner = retiree.sex === "female" ? "starter-3" : "starter-4";
-  const gen2 = breeding.breed(
-    retiree.sex === "female" ? retiree.id : partner,
-    retiree.sex === "female" ? partner : retiree.id
-  ).egg;
-  expect(gen2.status).toBe("egg");
+  test("5. age 3 opens the fork — hardcore AND retirement — as a package", () => {
+    w.game.tickWeek();
+    expect(w.flock.byId(chick.id).age).toBe(3);
+    // Ride the career one more carded fight, then take the safe arm.
+    duel(w, chick.id, "Sinag", { mode: "real", classType: "open", format: "shortKnife" }, 44);
+    retiree = w.flock.retire(chick.id);
+    expect(retiree.status).toBe("retired");
+    expect(retiree.retiredBy).toBe("manual");
+  });
 
-  // ...but NOT with its own parent (the bloodline restriction holds).
-  const parent = retiree.sex === "female" ? "starter-1" : "starter-2";
-  expect(() =>
-    breeding.breed(
-      retiree.sex === "female" ? retiree.id : parent,
-      retiree.sex === "female" ? parent : retiree.id
-    )
-  ).toThrow(/Bloodline restriction/);
+  test("6. the career→barn pipe: breed the retiree with an unrelated retiree, never its own parent", () => {
+    const partner = retiree.sex === "female" ? "starter-3" : "starter-4";
+    gen2 = w.breeding.breed(
+      retiree.sex === "female" ? retiree.id : partner,
+      retiree.sex === "female" ? partner : retiree.id
+    ).egg;
+    expect(gen2.status).toBe("egg");
 
-  // 7. Two Fridays on (lay, then hatch): generation 2 is on the ground,
-  //    and the lineage shows the line.
-  tick = game.tickWeek(); // laid
-  tick = game.tickWeek(); // hatched
-  expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(gen2.id);
-  const tree = breeding.lineage(gen2.id)!;
-  const parents = [tree.mother!.name, tree.father!.name];
-  expect(parents).toContain("Alon");
-  const grandparents = [
-    tree.mother?.mother?.name,
-    tree.mother?.father?.name,
-    tree.father?.mother?.name,
-    tree.father?.father?.name,
-  ].filter(Boolean);
-  expect(grandparents).toContain("Dalisay"); // Alon's mother, gen2's grandmother
+    // ...but NOT with its own parent (the bloodline restriction holds).
+    const parent = retiree.sex === "female" ? "starter-1" : "starter-2";
+    expect(() =>
+      w.breeding.breed(
+        retiree.sex === "female" ? retiree.id : parent,
+        retiree.sex === "female" ? parent : retiree.id
+      )
+    ).toThrow(/Bloodline restriction/);
+  });
 
-  // The wallet stayed a single closed number all game.
-  const gp = w.db.select().from(farms).where(eq(farms.id, w.farmId)).get()!.gp;
-  expect(Number.isInteger(gp)).toBe(true);
+  test("7. two Fridays on: generation 2 hatches, and the lineage shows the line", () => {
+    w.game.tickWeek(); // laid
+    const tick = w.game.tickWeek(); // hatched
+    expect(tick.fridays[0].hatched.map((b) => b.id)).toContain(gen2.id);
+    const tree = w.breeding.lineage(gen2.id)!;
+    const parents = [tree.mother!.name, tree.father!.name];
+    expect(parents).toContain("Alon");
+    const grandparents = [
+      tree.mother?.mother?.name,
+      tree.mother?.father?.name,
+      tree.father?.mother?.name,
+      tree.father?.father?.name,
+    ].filter(Boolean);
+    expect(grandparents).toContain("Dalisay"); // Alon's mother, gen2's grandmother
+
+    // The wallet stayed a single closed number all game.
+    const gp = w.db.select().from(farms).where(eq(farms.id, w.farmId)).get()!.gp;
+    expect(Number.isInteger(gp)).toBe(true);
+  });
 });
 
 describe("the cold start (round 15 — every stable begins with 4 eggs)", () => {

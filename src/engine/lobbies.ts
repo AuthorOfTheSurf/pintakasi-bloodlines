@@ -159,8 +159,11 @@ export interface LobbyResolution {
  *      take the pooled pot; both fighters earn land scaled superlinearly
  *      to the fee (fighting up pays extra). Hardcore losers force-retire.
  *      Then claims settle: one wins per entry (RNG), the owner banks the
- *      tag, the bird transfers, losers refund in full — even if the bird
- *      went unmatched (the sale doesn't need the fight).
+ *      tag, the bird transfers, losers refund in full. NO FIGHT, NO CLAIM
+ *      (re-ruled round 23 — this used to let a sale go through on an
+ *      unmatched bird; see refundClaims): if the bird drew no opponent, its
+ *      entry fee refunds AND every claim standing on it refunds too — a
+ *      sale needs the fight to actually happen.
  *
  * On manual ticks close-all and complete run back-to-back; the real-time
  * clock (issue #1) spreads them across the PH evening.

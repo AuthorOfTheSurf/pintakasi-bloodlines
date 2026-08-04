@@ -215,7 +215,13 @@ export class Breeding {
     emit(this.database, {
       type: "pool_accrual",
       message: `breed-fee cuts: +${fmtGp(split.stakerPoolCents)} GP staker pool · +${fmtGp(split.juicePoolCents)} GP juice pool`,
-      data: { stakerPoolCents: split.stakerPoolCents, juicePoolCents: split.juicePoolCents },
+      data: {
+        stakerPoolCents: split.stakerPoolCents,
+        juicePoolCents: split.juicePoolCents,
+        // Named since round 24 — this was the ONE accrual site with no source,
+        // which is why the office carried a "?? breed cut" fallback for it.
+        source: "breed",
+      },
     });
 
     return { egg: this.flock.byId(egg.id), feePaid: ECONOMY.BREED_FEE, split };

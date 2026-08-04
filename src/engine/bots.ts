@@ -56,11 +56,23 @@ const MAX_CLAIMS_PER_DAY = 2;
  * No-ops (empty array) on worlds with no bot farms seeded — tests included.
  */
 export class Bots {
-  /** Create the bot farms + their starter flocks. Idempotent — a stable
-   *  added to BOT_FARMS later joins the world on the next seed call. */
-  static seed(db: DB, opts: { flock?: "eggs" | "legacy" } = {}): void {
+  /**
+   * Create the bot farms + their starter flocks. Idempotent — a stable
+   * added to BOT_FARMS later joins the world on the next seed call.
+   *
+   * `only` (test-only knob): seed a named subset of BOT_FARMS instead of the
+   * full roster. `Bots.playDay` already scopes itself to whatever farms carry
+   * `isBot = 1`, so a partial seed plays a partial day for free — nothing
+   * downstream needs to know. Production and `bun run simulate` never pass
+   * it, so the real world always gets every configured stable; it exists so
+   * tests that only need the GENERIC behavior a bot day proves (determinism,
+   * GP conservation, no dangling entries across several days) don't have to
+   * pay for all fifteen stables' worth of DB traffic to prove it.
+   */
+  static seed(db: DB, opts: { flock?: "eggs" | "legacy"; only?: string[] } = {}): void {
     const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
-    for (const bot of BOT_FARMS) {
+    const roster = opts.only ? BOT_FARMS.filter((b) => opts.only!.includes(b.id)) : BOT_FARMS;
+    for (const bot of roster) {
       const exists = db.select().from(farms).where(eq(farms.id, bot.id)).get();
       if (exists) continue;
       db.insert(farms)

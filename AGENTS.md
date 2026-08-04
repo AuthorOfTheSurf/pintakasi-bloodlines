@@ -29,9 +29,10 @@ If a value you want isn't exported from config, either export it or **describe i
 
 1. Change the engine.
 2. Update the tests (they double as the spec — read them before assuming what a rule was *for*).
-3. **Grep `src/app/wiki/` for anything the change makes untrue.** Schedules, gates, "X is the only way to…", worked examples, EV comparisons, and any prose describing a rule you just reversed are the usual suspects — a computed number fixes itself, a *sentence* does not.
-4. Update `src/app/api/mcp/route.ts` if the rule is one an agent-player needs to know. Its tool descriptions are how a Claude playing the game learns the rules.
+3. **Grep `src/app/wiki/` for anything the change makes untrue.** Schedules, gates, "X is the only way to…", worked examples, EV comparisons, and any prose describing a rule you just reversed are the usual suspects — a computed number fixes itself, a *sentence* does not. `src/engine/docs.test.ts` catches the load-bearing cases; it does not catch every sentence.
+4. `src/app/api/mcp/route.ts` builds its prose from config, so most rules propagate on their own — but a genuinely NEW mechanic still needs a sentence written. Its tool descriptions are how a Claude playing the game learns the rules.
 5. `bunx tsc --noEmit` and `bun test` clean.
+6. **`bun run simulate 35` and read the doctor's report at the end** (below). Balance changes are judged on the health block, not on whether the tests pass.
 
 ### Handbook page conventions
 
@@ -53,6 +54,17 @@ The voice is for someone who has never played: short sentences, roughly a 5th-gr
 
 **Bots and auto-play need teaching.** Adding a door doesn't mean anyone walks through it. Twice a feature measured *zero* in simulation because no bot had a reason to use it (claiming in round 19, paid gacha rolls in round 22). If you add a mechanic, give the bots (`src/engine/bot-config.ts`, `src/engine/bots.ts`) and auto-play (`src/engine/auto-play.ts`) an appetite for it — then run a sim and check the number moved.
 
-**Verify by simulating, not by reasoning.** `bun run simulate 35` writes a fresh timestamped sim database; `bun dev:sim` serves the newest one at `localhost:3435/admin`. Query the db directly with `sqlite3` to check a claim before making it.
+**Verify by simulating, not by reasoning.** `bun run simulate 35` writes a fresh timestamped sim database and ends with a doctor's report; `bun dev:sim` serves the newest one at `localhost:3435/admin`.
+
+**`bun run doctor` is the verification loop.** It asserts the five invariants (GP conservation to the cent, no negative balances, no Pit Figure inversions, purses settling exactly, one card per bird per day) and prints the health block: unmatched rate, the worst lobby keys, population and supply-vs-attrition, staker inflows by source, championship fields, and **mechanic adoption**. It exits non-zero on a broken invariant, so `simulate` fails loudly rather than printing a happy log.
+
+- `bun run doctor` — the newest sim · `--live` — `data/game.db` · `--quiet` — invariants only, for pasting · `--json` — the raw report
+- **Read the adoption block after adding anything.** A door at zero means no bot has an appetite for it and the feature is untested in practice. That has happened twice.
+- Health warnings are *judgement*, not failures — "19% of entries never drew an opponent" is a design conversation. Invariant failures are bugs.
+- Reach for `sqlite3` only for questions the doctor doesn't answer yet — and when you do, consider whether the answer belongs in the doctor instead.
+
+**Fan out.** A round of work usually splits cleanly into engine / tests / docs / UI. Those touch different files, so run them as concurrent subagents in a single message rather than serially — wall clock becomes the slowest one instead of the sum. Keep the engine change yourself (it's the part that needs the whole picture) and tell each agent explicitly which files are off-limits, because the failure mode is two agents editing `package.json`.
+
+**While agents are running, `git checkout <file>` is a loaded gun.** Uncommitted work is the only copy of a subagent's output, and reverting a file to HEAD destroys it silently — `git status` afterwards just looks tidy. If you need to test against the old version of a file, copy it aside and restore from the copy. (Recovery, if it happens anyway: message the agent that wrote it — it still has the context and can re-apply faster than a re-run.)
 
 **Commits** are autonomous in this repo: one per round of work, title says what changed and why.

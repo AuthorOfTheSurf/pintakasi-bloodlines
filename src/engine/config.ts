@@ -378,12 +378,14 @@ export const BREEDING = {
 // old win/loss studValue mechanic is deleted). For now the price is locked
 // to BREED_FEE; player-set pricing comes later.
 //
-// Every cover fee SPLITS (ruled 2026-08-03): per 80 GP — 2 GP (2.5%) to the
-// Land Token staking pool, and the other 78 split 50/50 between the fight-
+// Every cover fee SPLITS (ruled 2026-08-03): per 160 GP — 8 GP (5%) to the
+// Land Token staking pool, and the other 152 split 50/50 between the fight-
 // juice pool (future tournament subsidy) and the stud's owner. On the 160
-// fee: 4.00 staker / 78.00 juice / 78.00 stud owner. Splits are computed in
-// CENTI-GP (integer hundredths) so the accounting stays exact — the staker
-// pool's pro-rata payouts are where GP goes decimal.
+// fee: 8.00 staker / 76.00 juice / 76.00 stud owner (see BREED_SPLIT just
+// below — the 2.5% figure this comment used to quote was round 21's rate;
+// round 22 doubled it). Splits are computed in CENTI-GP (integer hundredths)
+// so the accounting stays exact — the staker pool's pro-rata payouts are
+// where GP goes decimal.
 export const BREED_SPLIT = {
   // Doubled round 22 (2.5% → 5%) as part of widening every LT inflow: on the
   // 160 fee that's 8.00 staker / 76.00 juice / 76.00 stud owner.

@@ -13,7 +13,8 @@ import {
 import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { ageOf } from "@/engine/lifecycle";
-import { baselineBefore, computeTopline, type Topline } from "@/engine/snapshots";
+import { baselineBefore, computeTopline, stakingBook, type Topline } from "@/engine/snapshots";
+import { cardHealth } from "@/engine/doctor";
 import { DIVISION_RULES, roundName, seedPlacement, type Division } from "@/engine/tournaments";
 import { GpIcon, LtIcon } from "./sprites";
 import {
@@ -327,7 +328,9 @@ export default function Admin() {
   const delta = (key: keyof Topline, opts: { cents?: boolean } = {}) => {
     if (!base) return null;
     const diff = (now[key] as number) - (base[key] as number);
-    if (diff === 0) return null;
+    // A snapshot written before this field existed parses to undefined, and
+    // undefined arithmetic renders as NaN in the badge.
+    if (!Number.isFinite(diff) || diff === 0) return null;
     const shown = opts.cents ? gpFmt(Math.abs(diff)) : Math.abs(diff).toLocaleString();
     return <span className={`diff ${diff > 0 ? "up" : "down"}`}>{diff > 0 ? "+" : "−"}{shown}</span>;
   };
@@ -372,6 +375,9 @@ export default function Admin() {
   const cardFights = cardLobbies.reduce((s, l) => s + l.bouts.length, 0);
   const cardCancelled = cardLobbies.reduce((s, l) => s + l.unmatched.length, 0);
   const cardPending = cardLobbies.reduce((s, l) => s + l.pending.length, 0);
+  // The all-time view of the same question, from the engine — so `bun run
+  // doctor` and this page can never disagree about how the card is doing.
+  const card = cardHealth(d);
 
   // ── The Pintakasi (round 18) — the latest week's blade championships ──────
   const allTournaments = d.select().from(tournaments).all();
@@ -608,21 +614,11 @@ export default function Admin() {
   // The stake is live state on the farm row; the earnings are the sum of
   // every staking_payout it ever received, so the column is a lifetime total
   // and never rewrites itself when a farm stakes more.
-  const stakingPaid = new Map<string, { cents: number; days: number; lastDay: number }>();
-  for (const e of allEvents) {
-    if (e.type !== "staking_payout" || !e.farmId) continue;
-    const acc = stakingPaid.get(e.farmId) ?? { cents: 0, days: 0, lastDay: e.dayIndex };
-    stakingPaid.set(e.farmId, {
-      cents: acc.cents + (e.gpCents ?? 0),
-      days: acc.days + 1,
-      lastDay: Math.max(acc.lastDay, e.dayIndex),
-    });
-  }
-  const totalStaked = allFarms.reduce((s, f) => s + f.stakedLand, 0);
-  const totalStakingPaidCents = [...stakingPaid.values()].reduce((s, p) => s + p.cents, 0);
-  const stakingDays = new Set(
-    allEvents.filter((e) => e.type === "staking_payout").map((e) => e.dayIndex)
-  ).size;
+  const book = stakingBook(d);
+  const stakingPaid = book.byFarm;
+  const totalStaked = book.totalStakedLand;
+  const totalStakingPaidCents = book.totalPaidCents;
+  const stakingDays = book.payoutDays;
 
   const stakingRows: StakingRowUI[] = allFarms.map((f) => {
     const paid = stakingPaid.get(f.id);
@@ -825,6 +821,8 @@ export default function Admin() {
                   {cardPending > 0
                     ? `${cardPending} awaiting post time`
                     : `went off at the last tick · ${cardFights} fights · ${cardCancelled} cancelled`}
+                  {" · all time: "}
+                  {(card.unmatchedRate * 100).toFixed(1)}% of entries never drew an opponent
                 </span>
               </h2>
               <div className="lobbies">

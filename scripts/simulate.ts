@@ -18,6 +18,7 @@ import { createDb, latestSimDb } from "@/db/client";
 import { farms } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { playAllHonestDays } from "@/engine/auto-play";
+import { diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
 import { Game } from "@/engine/game";
 
@@ -85,5 +86,13 @@ for (let day = 1; day <= days; day++) {
   );
 }
 
+// Every run ends with a check-up (round 24). Before this, a sim printed four
+// numbers a day and asserted nothing — which is how two GP burns shipped.
+const report = diagnose(db, path.relative(process.cwd(), dbPath));
+console.log("\n" + formatReport(report));
+
 console.log(`\nDone → ${dbPath}`);
 console.log(`Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`);
+// LAST, so the path is still on screen when it fails — a broken world is
+// exactly the one you want to open.
+if (!report.ok) process.exit(1);

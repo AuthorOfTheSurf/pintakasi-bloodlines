@@ -6,12 +6,14 @@
     "dev": "next dev -p 3434",
     "build": "next build",
     "start": "next start -p 3434",
-    "test": "bun test src",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "db:seed": "bun run src/db/seed.ts",
     "simulate": "bun run scripts/simulate.ts",
-    "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435"
+    "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435",
+    "doctor": "bun run scripts/doctor.ts",
+    "test:watch": "bun test --watch"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",

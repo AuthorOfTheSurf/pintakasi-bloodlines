@@ -67,6 +67,9 @@ describe("the unified ledger", () => {
     expect(JSON.parse(pools.data!)).toEqual({
       stakerPoolCents: split.stakerPoolCents,
       juicePoolCents: split.juicePoolCents,
+      // Named since round 24 — the breed cut was the one accrual that never
+      // said where it came from, so the doctor's inflow report had to guess.
+      source: "breed",
     });
   });
 
