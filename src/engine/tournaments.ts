@@ -173,18 +173,22 @@ export class Tournaments {
     return this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
   }
 
-  /** The week's three blades: the anchors, plus the rotating middle. */
-  static bladesOfWeek(weekIndex: number): FightFormat[] {
-    return [...PINTAKASI.ANCHORS, PINTAKASI.MIDDLE[weekIndex % 2]] as FightFormat[];
+  /**
+   * The week's three blades — fixed at B1/B3/B5 since round 27 (the dial's
+   * ends and its true middle). weekIndex survives in the signature because
+   * every caller passes it and a future rotation could return; today it is
+   * deliberately unused.
+   */
+  static bladesOfWeek(_weekIndex: number): FightFormat[] {
+    return [...PINTAKASI.BLADES] as FightFormat[];
   }
 
   /**
-   * The Juvenile Championship's two blades (round 23) — one from the short
-   * end of the dial, one from the long end, rotating week by week so a
-   * discovery year sees both halves of the spectrum.
+   * The Juvenile Championship's two blades — fixed at B2/B4 since round 27,
+   * the two blades the Majors don't run. No parity, no rotation.
    */
-  static juvenileBladesOfWeek(weekIndex: number): FightFormat[] {
-    return [...JUVENILE_MAJOR.BLADES[weekIndex % JUVENILE_MAJOR.BLADES.length]] as FightFormat[];
+  static juvenileBladesOfWeek(_weekIndex: number): FightFormat[] {
+    return [...JUVENILE_MAJOR.BLADES] as FightFormat[];
   }
 
   /** Which blades run for a division in a given week. */

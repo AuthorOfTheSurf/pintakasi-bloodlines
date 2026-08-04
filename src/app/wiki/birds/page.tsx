@@ -158,7 +158,7 @@ export default function BirdsPage() {
         <b>Reading it in one line.</b> The short blades (B1, B2) live and die on agility and
         sight. The long blades (B3, B4) burn deep into stamina and gameness. Station and
         condition matter everywhere, all the time — see{" "}
-        <Link href="/wiki/fighting">Fighting</Link> for how the four blades change the mix.
+        <Link href="/wiki/fighting">Fighting</Link> for how the five blades change the mix.
       </div>
 
       <h2>
@@ -307,7 +307,7 @@ export default function BirdsPage() {
         meant to pay early — over the top of a low fighter before anyone&apos;s wind is gone —
         while Ground pays late, once the flyer is blown and the shuffler grinds it down. That would
         tie carriage straight to blade choice, since a B1 bout lives almost entirely in the
-        early phase and a B4 bout spends most of its turns in the late one. Until that lands,
+        early phase and a B5 bout spends most of its turns in the late one. Until that lands,
         treat carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s
         card.
       </div>

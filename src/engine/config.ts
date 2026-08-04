@@ -233,6 +233,19 @@ export const FORMATS = {
     damageMult: 0.7,
     critMult: 1.1,
   },
+  // B5 (ruled 2026-08-04, round 27): the fifth blade the enumeration was FOR.
+  // The dial now has a true middle — B3 — and the odd count Zane asked for.
+  // In sabong terms the shortest heel of all: the shorter the gaff, the less
+  // each puncture does and the deeper the fight goes. This is the deep-water
+  // classic — the longest test in the game, where stamina and gameness are
+  // everything and a sprint bird drowns.
+  b5: {
+    label: "B5",
+    flavor: "Needle Gaff — ⅝″ heel, the deep-water classic",
+    maxTurns: 45, //         the ultra-stayer's test; nobody sprints for 45 turns
+    damageMult: 0.5,
+    critMult: 1.05,
+  },
 } as const;
 export type FightFormat = keyof typeof FORMATS;
 export const FORMAT_NAMES = Object.keys(FORMATS) as FightFormat[];
@@ -388,7 +401,7 @@ export const FIGURE = {
   // The pace a maxed-out ghost sets, per blade — tuned so an even fight
   // between STARTERS figures ~50 in every format (gaff fights run longer,
   // so their damage-per-turn is lower by nature; this is the normalizer).
-  GHOST_PACE: { b1: 5.6, b2: 5.2, b3: 4.0, b4: 3.6 },
+  GHOST_PACE: { b1: 5.6, b2: 5.2, b3: 4.0, b4: 3.6, b5: 3.4 },
   GHOST_FIGURE: 100, //  what matching the ghost's pace scores
   CLASS_BASE: 320, //    the starter band's middle — class credit starts here
   CLASS_DIVISOR: 20, //  each 20 points of beaten-opponent average = +1 figure
@@ -638,12 +651,12 @@ export const JUVENILE_MAJOR = {
   MAX_PER_BARN: 2,
   MAX_BRACKET: 32,
   MIN_FIELD: 2,
-  // The rotation: even weeks run the long blades, odd weeks the short ones.
-  // One knife and one gaff either way.
-  BLADES: [
-    ["b1", "b3"],
-    ["b2", "b4"],
-  ],
+  // FIXED at B2 and B4 (re-ruled 2026-08-04, round 27 — the rotation dies).
+  // The Majors own the ends and the middle of the dial (B1/B3/B5), so the
+  // juveniles get the two in-between blades, every week, no parity to
+  // remember. A discovery year still sees both halves of the spectrum —
+  // and the two crowns no other stage runs.
+  BLADES: ["b2", "b4"],
   // Purse shares — flatter than the Majors on purpose. This is a discovery
   // stage, so spreading the money rewards showing up with a live one.
   PURSE_SHARES: { champion: 0.45, runnerUp: 0.25, sfLoser: 0.15 },
@@ -734,9 +747,14 @@ export const PINTAKASI = {
     r32: 55,
     r64: 70,
   },
-  // The week's three blades: the anchors always run, MIDDLE[week % 2] joins.
-  ANCHORS: ["b1", "b4"],
-  MIDDLE: ["b2", "b3"],
+  // The week's three blades — FIXED at the ends and the middle of the dial
+  // (re-ruled 2026-08-04, round 27). With B5 the dial has a true midpoint,
+  // so the crowns sit at B1 / B3 / B5 — sprint, middle, classic, exactly
+  // PFL's Sprint/Gallop/Classic — and the old middle-blade rotation dies.
+  // B2 and B4 get their stage too: they are the Juvenile Championship's
+  // fixed blades (see JUVENILE_MAJOR.BLADES), so every blade crowns
+  // SOMEWHERE every single week.
+  BLADES: ["b1", "b3", "b5"],
 } as const;
 
 // The Majors' land curve — same shape as landForFight, steeper exponent.

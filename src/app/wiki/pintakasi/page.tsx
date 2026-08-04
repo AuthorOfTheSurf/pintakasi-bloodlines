@@ -71,40 +71,40 @@ export default function PintakasiPage() {
 
       <h2>What it is</h2>
       <p>
-        B1 and B4 — the sprint and the marathon — run <strong>every</strong> week. The third
-        blade rotates: B2 one week, B3 the next, so the middle distances get their own crown
-        too, in turn. Over time every blade gets crowned.
+        The same three blades run <strong>every</strong> week: the two ends of the dial and its
+        exact middle. No rotation, no parity to remember — if your bird is a{" "}
+        {FORMATS[PINTAKASI.BLADES[2]].label} specialist, its crown runs every single week. The two
+        blades the Majors skip, {FORMATS.b2.label} and {FORMATS.b4.label}, are not left out: they
+        are the Juvenile Championship&apos;s fixed blades, the day before.
       </p>
       <p>
-        The rotation is deliberate. Nothing rewards a bird built to be good at everything. A blade
-        favors different stats — a {FORMATS.b1.label} bird lives on agility and the opening
-        break, a {FORMATS.b4.label} bird lives on gameness and grinding out a long fight —
-        and the Pintakasi is built to find and crown the bird that mastered ONE of those, not the
-        bird that&apos;s merely fine at all four. Read <Link href="/wiki/fighting">Fighting</Link>{" "}
-        for how the four blades differ.
+        Three crowns for three kinds of bird. Nothing rewards a bird built to be good at
+        everything. A blade favors different stats — a {FORMATS.b1.label} bird lives on the
+        opening break, a {FORMATS[PINTAKASI.BLADES[2]].label} bird on outlasting a long fight, and
+        the middle blade weighs everything a bird is at once — and the Pintakasi is built to find
+        and crown the bird that mastered ONE of those, not the bird that&apos;s merely fine at all
+        of them. Read <Link href="/wiki/fighting">Fighting</Link> for how the blades differ.
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Slot</th>
+              <th>Crown</th>
               <th>Blade</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Anchor</td>
-              <td>{FORMATS[PINTAKASI.ANCHORS[0]].label}</td>
+              <td>The Sprint</td>
+              <td>{FORMATS[PINTAKASI.BLADES[0]].label}</td>
             </tr>
             <tr>
-              <td>Anchor</td>
-              <td>{FORMATS[PINTAKASI.ANCHORS[1]].label}</td>
+              <td>The Middle</td>
+              <td>{FORMATS[PINTAKASI.BLADES[1]].label}</td>
             </tr>
             <tr>
-              <td>Rotating (this week or next)</td>
-              <td>
-                {FORMATS[PINTAKASI.MIDDLE[0]].label} / {FORMATS[PINTAKASI.MIDDLE[1]].label}
-              </td>
+              <td>The Classic</td>
+              <td>{FORMATS[PINTAKASI.BLADES[2]].label}</td>
             </tr>
           </tbody>
         </table>
@@ -303,30 +303,26 @@ export default function PintakasiPage() {
       <p>
         Round 23 gave the discovery year its own stage. Every{" "}
         {DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]} — the day before the Majors — two championships run
-        for age-{AGE.CHICK} birds only: one crown from the short end of the blade dial and one
-        from the long end, with the exact blades rotating by week so a juvenile career sees
-        every blade eventually.
+        for age-{AGE.CHICK} birds only, on the two blades the Majors don&apos;t run:{" "}
+        {FORMATS[JUVENILE_MAJOR.BLADES[0]].label} and {FORMATS[JUVENILE_MAJOR.BLADES[1]].label},
+        every week. Between the two stages, all five blades crown somebody every single week.
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Week parity</th>
-              <th>Blades</th>
+              <th>Crown</th>
+              <th>Blade</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Even weeks</td>
-              <td>
-                {FORMATS[JUVENILE_MAJOR.BLADES[0][0]].label} / {FORMATS[JUVENILE_MAJOR.BLADES[0][1]].label}
-              </td>
+              <td>Juvenile short blade</td>
+              <td>{FORMATS[JUVENILE_MAJOR.BLADES[0]].label}</td>
             </tr>
             <tr>
-              <td>Odd weeks</td>
-              <td>
-                {FORMATS[JUVENILE_MAJOR.BLADES[1][0]].label} / {FORMATS[JUVENILE_MAJOR.BLADES[1][1]].label}
-              </td>
+              <td>Juvenile long blade</td>
+              <td>{FORMATS[JUVENILE_MAJOR.BLADES[1]].label}</td>
             </tr>
           </tbody>
         </table>

@@ -15,11 +15,11 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Rank the four blades sprint → marathon purely off their configured turn
- * caps, so the "sprint / hybrid / route / marathon" nicknames can't drift
- * out of sync with the numbers next to them if a balance pass reorders them.
+ * Rank the blades sprint → classic purely off their configured turn
+ * caps, so the nicknames can't drift out of sync with the numbers next
+ * to them if a balance pass reorders them.
  */
-const DISTANCE_NICKNAMES = ["the sprint", "the hybrid", "the route", "the marathon"];
+const DISTANCE_NICKNAMES = ["the sprint", "the hybrid", "the route", "the marathon", "the classic"];
 const byLength = [...FORMAT_NAMES].sort((a, b) => FORMATS[a].maxTurns - FORMATS[b].maxTurns);
 const distanceNickname = new Map<FightFormat, string>(
   byLength.map((name, i) => [name, DISTANCE_NICKNAMES[i] ?? `stage ${i + 1}`])
@@ -62,15 +62,16 @@ export default function FightingPage() {
         engine, in plain words. Read it once and every result on the card will make sense.
       </p>
 
-      <h2>The four blades</h2>
+      <h2>The five blades</h2>
       <p>
-        The blade is the game&apos;s version of race distance. The four blades are numbered{" "}
-        <strong>B1 through B4</strong>, from the shortest fights to the longest — think of them
-        as points on one dial, not four separate weapons. The number decides how many turns a
-        fight can run, how hard each hit lands, and — because of that — which of a bird&apos;s
-        stats actually get to matter. The low end (B1, B2 — the knives) is short and swingy: a
-        lucky double can end it in one blow, so upsets happen. The high end (B3, B4 — the
-        gaffs) runs long and true: the bird with the better engine usually shows it by the end.
+        The blade is the game&apos;s version of race distance. The five blades are numbered{" "}
+        <strong>B1 through B5</strong>, from the shortest fights to the longest — think of them
+        as points on one dial, not five separate weapons. B3 sits at the exact middle of that
+        dial. The number decides how many turns a fight can run, how hard each hit lands, and —
+        because of that — which of a bird&apos;s stats actually get to matter. The low end (B1,
+        B2 — the knives) is short and swingy: a lucky double can end it in one blow, so upsets
+        happen. The high end (B4, B5 — the gaffs) runs long and true: the bird with the better
+        engine usually shows it by the end.
       </p>
       <div className="tablewrap">
         <table>
@@ -113,7 +114,7 @@ export default function FightingPage() {
         Turns up to {PHASES.OPEN_THROUGH_TURN} are the <strong>open exchange</strong> — sight,
         accuracy in a real trade. Past that it&apos;s the <strong>deep fight</strong> —{" "}
         <strong>gameness</strong>, grit under punishment. A {FORMATS.b1.maxTurns}-turn B1 bout
-        is over before gameness ever gets a say. A {FORMATS.b4.maxTurns}-turn B4 bout lives
+        is over before gameness ever gets a say. A {FORMATS.b5.maxTurns}-turn B5 bout lives
         almost entirely in the deep fight.
       </p>
       <p className="dim">
@@ -121,7 +122,7 @@ export default function FightingPage() {
         <em>element</em> plays — the wheel edge and the weather edge both scale with stars, from
         nothing at 0★ up to the full value at {STARS.MAX_HALF_STARS / 2}★ (see{" "}
         <Link href="/wiki/birds">Birds &amp; stats</Link>). The same scaling whether the fight
-        lasts {FORMATS.b1.maxTurns} turns or {FORMATS.b4.maxTurns}.
+        lasts {FORMATS.b1.maxTurns} turns or {FORMATS.b5.maxTurns}.
       </p>
 
       <div className="cards-2">
@@ -286,9 +287,9 @@ export default function FightingPage() {
         </table>
       </div>
       <p>
-        Long-end fights (B3, B4) run more turns, so their damage-per-turn is naturally lower —
-        the ghost pace is tuned per blade so figures still mean the same thing across all four,
-        and you can compare one bird&apos;s B1 figure to its B4 figure honestly.
+        Long-end fights (B4, B5) run more turns, so their damage-per-turn is naturally lower —
+        the ghost pace is tuned per blade so figures still mean the same thing across all five,
+        and you can compare one bird&apos;s B1 figure to its B5 figure honestly.
       </p>
       <p>
         <strong>The loser is scored down from the winner.</strong> It doesn&apos;t get an

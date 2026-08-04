@@ -69,10 +69,10 @@ function tickThroughCrownDay(game: Game) {
 }
 
 describe("the week's blades & the calendar", () => {
-  test("anchors always run; the middle blade rotates by week parity", () => {
-    expect(Tournaments.bladesOfWeek(0)).toEqual(["b1", "b4", "b2"]);
-    expect(Tournaments.bladesOfWeek(1)).toEqual(["b1", "b4", "b3"]);
-    expect(Tournaments.bladesOfWeek(2)).toEqual(["b1", "b4", "b2"]);
+  test("the same three crowns every week — B1/B3/B5, the ends and the middle (round 27)", () => {
+    expect(Tournaments.bladesOfWeek(0)).toEqual(["b1", "b3", "b5"]);
+    expect(Tournaments.bladesOfWeek(1)).toEqual(["b1", "b3", "b5"]); // the rotation is dead
+    expect(Tournaments.bladesOfWeek(2)).toEqual(["b1", "b3", "b5"]);
   });
 
   test("crown day is the week's last day — every entry belongs to its own week", () => {
@@ -92,9 +92,9 @@ describe("registration & the Selection Committee", () => {
     const kidlat = byName(w.db, w.devFlock, "Kidlat"); // age 1
     expect(() => w.dev.enter(kidlat.id, "b1")).toThrow(/age 3/);
     const sinag = byName(w.db, w.devFlock, "Sinag"); // age 3
-    expect(() => w.dev.enter(sinag.id, "b3")).toThrow(/doesn't run week 0/);
+    expect(() => w.dev.enter(sinag.id, "b2")).toThrow(/doesn't run week 0/); // B2 belongs to the juveniles now
     w.dev.enter(sinag.id, "b1");
-    expect(() => w.dev.enter(sinag.id, "b4")).toThrow(/already registered/);
+    expect(() => w.dev.enter(sinag.id, "b3")).toThrow(/already registered/);
   });
 
   // ── Round 22: the crowns are FREE, and you qualify by fighting ───────────
@@ -187,7 +187,7 @@ describe("registration & the Selection Committee", () => {
     for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "b1");
     expect(() => w.dev.enter(eligible[3].id, "b1")).toThrow(/limit per championship/);
     // The fourth bird is welcome in a DIFFERENT crown.
-    expect(() => w.dev.enter(eligible[3].id, "b4")).not.toThrow();
+    expect(() => w.dev.enter(eligible[3].id, "b5")).not.toThrow();
   });
 
   test("the fee escrows at entry; the board ranks the public field", () => {
@@ -341,9 +341,9 @@ describe("the crown-day resolution", () => {
 
   test("byes go to the top seeds; a 3-bird field fights twice", () => {
     const w = world();
-    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b4");
-    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "b4");
-    w.rival.enter("rival-7", "b4");
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b5");
+    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "b5");
+    w.rival.enter("rival-7", "b5");
     const result = tickThroughCrownDay(w.game).pintakasi[0];
     expect(result.bracketSize).toBe(4);
     expect(result.rounds[0].byes.length).toBe(1);

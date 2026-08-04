@@ -358,6 +358,7 @@ export function formatScores(bird: BirdView): Record<FightFormat, number> {
     b2: (bird.agility + bird.sight + bird.stamina + bird.gameness) / 2, // the hybrid
     b3: bird.stamina * 2, // the route
     b4: bird.gameness * 2, // the marathon
+    b5: bird.gameness + bird.stamina, // the deep-water classic — the stayer's pair
   };
 }
 

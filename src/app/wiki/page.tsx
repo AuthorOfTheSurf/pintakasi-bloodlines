@@ -124,7 +124,7 @@ export default function WikiHome() {
         </div>
         <div className="minicard">
           <b>Want to win money?</b>
-          <Link href="/wiki/fighting">Fighting</Link> explains the four blades and how to read a Pit
+          <Link href="/wiki/fighting">Fighting</Link> explains the five blades and how to read a Pit
           Figure — the whole skill of the game.
         </div>
         <div className="minicard">

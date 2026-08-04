@@ -82,6 +82,11 @@ export const STAT_PRIORITY: Record<FightFormat, BladeIntent> = {
   b2: parseIntent("Sight > Agility > Stamina >>> Gameness"),
   b3: parseIntent("Stamina > Gameness > Sight >>> Agility"),
   b4: parseIntent("Gameness >> Sight >>> Stamina >>>> Agility"),
+  // B5 (round 27) — the deep-water classic. Zane's PFL reading of the long
+  // end: stayers were Stamina/Finish-first but still carried a LITTLE of
+  // everything — the longest races test all the stats, the short ones are
+  // decided before half of them get a say.
+  b5: parseIntent("Gameness > Stamina > Sight >> Agility"),
 };
 
 /**
