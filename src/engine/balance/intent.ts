@@ -118,26 +118,28 @@ export const EVERY_STAT_EVERYWHERE =
  * The BREEDING rule, ruled by Zane after round 28 and the reason the `pairs`
  * case exists at all.
  *
- * A breeding game where the optimal line is "pour everything into one stat"
- * has no strategy in it — every barn converges on the same bird and the blade
- * ladder becomes decoration. The PFL precedent Zane brought is the target:
- * adjacent stats PAIR (Agility&Sight, Sight&Stamina, Stamina&Gameness), and a
- * bird built on a pair is a real, distinct plan rather than a diluted version
- * of a specialist.
+ * The hypothesis, in his own example: a bird bred `[450, 450, 350, 350]` — a
+ * full grade on two stats, nothing on the other two — "should do well at B1
+ * and B2, and still good at B3 vs a flat bird". That is a claim about RANGE.
+ * A pair is meant to be a plan with TWO HOMES on the blade ladder plus a
+ * respectable middle, which is a different bird from a single spike (tall at
+ * one blade, ordinary everywhere else) — and the PFL precedent is that both
+ * lines are worth breeding, for different reasons.
  *
- * Stated as something measurable: hold the stat budget fixed and compare
- * SPLITTING it across a pair against STACKING it on one member. Splitting does
- * not have to win — a specialist deserves its edge on the blade it was built
- * for — but if stacking beats splitting by more than the interval on a pair
- * that a blade genuinely weighs, the single-stat line dominates and the
- * breeding game has collapsed to one number.
+ * NOT a claim about which is better. Zane ruled that separately: balancing
+ * single-stat spikes is its own concern, and a spike is a fine line anyway
+ * because stars, station and condition are still on the table. The first
+ * version of the `pairs` case measured pair-vs-spike at equal totals and
+ * warned about the result; that question was never asked. The control is a
+ * FLAT bird.
  *
- * NOT a tuning target yet: the weight matrix is one round old and this is the
- * first time anyone has measured a pair. It is here so the report can print an
- * opinion instead of a shrug.
+ * Measurable form, and what the case checks: a pair's two BEST blades should
+ * be the two blades its stats key (derived from the weight matrix, so a
+ * re-weighting moves the prediction with it), and the pair should still be
+ * clearly ahead of a flat bird at B3.
  */
 export const PAIR_INTENT =
-  "Spreading a grade across a stat PAIR should not be clearly worse than stacking it on one stat — otherwise every barn breeds the same single-stat bird.";
+  "A stat PAIR should buy RANGE: strongest at the two blades its two stats key, and still clearly ahead of a flat bird in the middle.";
 
 // ── Numeric targets ─────────────────────────────────────────────────────────
 

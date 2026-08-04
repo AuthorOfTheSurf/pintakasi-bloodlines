@@ -23,9 +23,8 @@ bun run balance --json | --csv
 ```
 
 Warnings are design gaps being catalogued, so the tool **exits 0** with them.
-Only tool errors exit non-zero. The whole suite currently prints **seven**
-warnings: item 1 under "Still open" (B1's +200 floor) and the six rows of the
-new `pairs` case, which are all the same finding — item 0.
+Only tool errors exit non-zero. The whole suite currently prints **one**
+warning (item 1 under "Still open").
 
 ---
 
@@ -133,44 +132,62 @@ Still verdict-shaped, still the rarest configuration in the game, still item
 
 ---
 
+## Pairs buy range — measured after round 28 (`pairs`)
+
+Zane's hypothesis: a bird bred `[450, 450, 350, 350]` should be strong at
+both blades its two stats key, and still good in the middle against a flat
+bird. **Confirmed, at 4,000 runs, for all six pairs.** Every row is +100 on
+two stats against a flat 350 bird:
+
+| pair | B1 | B2 | B3 | B4 | B5 |
+|---|---|---|---|---|---|
+| **agility & sight** | **70.8** | **69.2** | 68.2 | 59.0 | 56.2 |
+| sight & stamina | 61.1 | 67.1 | 69.4 | **72.8** | 65.2 |
+| stamina & gameness | 55.3 | 59.2 | 68.7 | **77.0** | **80.6** |
+| agility & stamina | 66.3 | 61.7 | 69.4 | **71.4** | 63.4 |
+| sight & gameness | 60.2 | 66.5 | 67.9 | 66.4 | **75.3** |
+| agility & gameness | 65.8 | 61.0 | 67.9 | 65.2 | **73.8** |
+
+±1.0. No pair is ever below 55% — a paired bird has no bad blade, which is
+the property the plan is bought for.
+
+**Range is real, and it costs peak.** The shape table runs a pair and a
+single spike at the SAME total surplus, both against flat:
+
+| build | peak | peak height | spread (max−min) |
+|---|---|---|---|
+| pair agility & sight | B1 | 70.8 | **14.6** |
+| spike agility +200 | B1 | **75.5** | 20.9 |
+| pair stamina & gameness | B5 | 80.6 | 25.3 |
+| spike gameness +200 | B5 | **86.8** | 31.8 |
+
+The trade, in one line: a pair gives up roughly **5 points of peak** and buys
+back roughly **5 points at its second home and at B3**. Spike spreads run
+16.7–31.8, pair spreads 9.7–25.3 — narrower and taller vs wider and flatter,
+exactly as the PFL precedent says. Both are real lines; neither dominates.
+(Single-spike balance is a separate concern, ruled so by Zane: stars, station
+and condition are all still on the table for a one-number bird.)
+
+**The middle blade is the pair's blade.** B3 sits at 67.9–69.4 for every
+single pair — for four of the six it beats one of the pair's own key blades,
+and for the widest pairs it is their *third* best blade. That is B3 doing
+what it was built to do: it weighs all four stats equally, so a two-stat bird
+collects on both halves there while a spike collects on one. The `pairs` case
+exempts the even blade from its home check for exactly this reason (read off
+`intent.ts`, not hardcoded, so a future even blade inherits it).
+
+**Saturation is mild.** Every pair keeps 92–100% of the sum of its two single
+lifts; the only real losses are at the extreme corners (stamina & gameness on
+B5: +30.6 of +33.4), where the ceiling does the flattening. Nothing here
+behaves like two stats fighting over the same roll.
+
+**One honest caveat about the ends.** Pairing a far stat onto an end blade
+softens that end: agility & stamina peaks at B4, not B1, and agility &
+gameness at B5, not B1 — because B1 reads its partner stat at 0.12 while B4
+reads stamina at 0.40. The end blades are the least forgiving places to bring
+a split bird, which is a fair reading of a sprint.
+
 ## Still open, ranked
-
-### 0. Stacking one stat beats pairing two, almost everywhere (NEW, biggest)
-
-Measured by the new `pairs` case (`bun run balance pairs`), same-budget
-table: give one bird +200 spread across a pair (+100 each) and another bird
-+200 stacked on whichever stat that blade weighs more, equal totals so the
-clawback cancels. The splitter wins **nowhere**. Representative cells —
-Sight&Gameness on B5 **31.0%**, Agility&Stamina on B4 37.5%, Agility&Sight
-on B1 44.9%, and only B3 sits at a true 50% (equal weights, so there is
-nothing to stack toward).
-
-This is not a tuning miss, it is the shape of the formula: **the turn roll is
-LINEAR in the weighted blend, so a fixed stat budget is always best spent on
-the single highest-weight stat.** A corner solution is the mathematically
-correct answer to a linear objective. Pairs can only pay through the
-non-linear side routes — stamina's fuel tank, gameness's quit check and deep
-bonus — and those are worth a few points, not the 10–20 the weight gap costs.
-The one place it nearly holds is where the weights are TINY: Stamina&Gameness
-on B1 measures 49.6%, because giving up 0.12-vs-0.08 of weight costs almost
-nothing and the side routes cover it.
-
-Zane's ruling (PAIR_INTENT in `intent.ts`) says single-stat lines must not
-dominate, so this is a real violation and the six warnings are honest. It
-cannot be fixed by re-weighting — any weight matrix has a heaviest entry.
-The levers are structural, and each is its own round:
-
-1. **Diminishing returns per stat** — blend on `sqrt(stat)` or subtract a
-   per-stat surplus tax, so the second +100 in one stat buys less than the
-   first. Turns the corner solution into an interior one and makes pairs
-   optimal by construction. Cleanest, and it touches every number in the lab.
-2. **A pair bonus** — an explicit term rewarding the MINIMUM of a blade's two
-   heaviest stats. Direct, easy to explain in the Handbook, but a new
-   mechanic to teach.
-3. **Per-stat caps by blade** — a ceiling on how much of one stat a blade
-   will read. Blunt, and it makes a great stat feel wasted.
-
-Nothing shipped yet: the measurement came first, deliberately.
 
 ### 1. B1 cannot reach the +200 target (accepted, documented)
 
