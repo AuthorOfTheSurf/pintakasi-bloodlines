@@ -15,7 +15,7 @@ tank, and the whole thing was tuned at B3 and worked outward — exactly the
 tuning philosophy the odd blade count was designed to buy.
 
 ```
-bun run balance                       # all 14 cases
+bun run balance                       # all 15 cases
 bun run balance sensitivity --runs=4000
 bun run balance --sweep=FORMATS.b3.statScale=0.9,1.0,1.1
 bun run balance --converge=5
@@ -23,8 +23,9 @@ bun run balance --json | --csv
 ```
 
 Warnings are design gaps being catalogued, so the tool **exits 0** with them.
-Only tool errors exit non-zero. The whole suite currently prints **one**
-warning (item 1 under "Still open").
+Only tool errors exit non-zero. The whole suite currently prints **seven**
+warnings: item 1 under "Still open" (B1's +200 floor) and the six rows of the
+new `pairs` case, which are all the same finding — item 0.
 
 ---
 
@@ -134,6 +135,43 @@ Still verdict-shaped, still the rarest configuration in the game, still item
 
 ## Still open, ranked
 
+### 0. Stacking one stat beats pairing two, almost everywhere (NEW, biggest)
+
+Measured by the new `pairs` case (`bun run balance pairs`), same-budget
+table: give one bird +200 spread across a pair (+100 each) and another bird
++200 stacked on whichever stat that blade weighs more, equal totals so the
+clawback cancels. The splitter wins **nowhere**. Representative cells —
+Sight&Gameness on B5 **31.0%**, Agility&Stamina on B4 37.5%, Agility&Sight
+on B1 44.9%, and only B3 sits at a true 50% (equal weights, so there is
+nothing to stack toward).
+
+This is not a tuning miss, it is the shape of the formula: **the turn roll is
+LINEAR in the weighted blend, so a fixed stat budget is always best spent on
+the single highest-weight stat.** A corner solution is the mathematically
+correct answer to a linear objective. Pairs can only pay through the
+non-linear side routes — stamina's fuel tank, gameness's quit check and deep
+bonus — and those are worth a few points, not the 10–20 the weight gap costs.
+The one place it nearly holds is where the weights are TINY: Stamina&Gameness
+on B1 measures 49.6%, because giving up 0.12-vs-0.08 of weight costs almost
+nothing and the side routes cover it.
+
+Zane's ruling (PAIR_INTENT in `intent.ts`) says single-stat lines must not
+dominate, so this is a real violation and the six warnings are honest. It
+cannot be fixed by re-weighting — any weight matrix has a heaviest entry.
+The levers are structural, and each is its own round:
+
+1. **Diminishing returns per stat** — blend on `sqrt(stat)` or subtract a
+   per-stat surplus tax, so the second +100 in one stat buys less than the
+   first. Turns the corner solution into an interior one and makes pairs
+   optimal by construction. Cleanest, and it touches every number in the lab.
+2. **A pair bonus** — an explicit term rewarding the MINIMUM of a blade's two
+   heaviest stats. Direct, easy to explain in the Handbook, but a new
+   mechanic to teach.
+3. **Per-stat caps by blade** — a ceiling on how much of one stat a blade
+   will read. Blunt, and it makes a great stat feel wasted.
+
+Nothing shipped yet: the measurement came first, deliberately.
+
 ### 1. B1 cannot reach the +200 target (accepted, documented)
 
 91.8% vs 98. Five turns of dice with 2.5× crits has a floor on how sure any
@@ -184,8 +222,8 @@ Separate unit of work: larger grade jumps at the low end, tapering toward
 
 ## Not yet measured
 
-The lab covers the six stats, elements, stars, weather, the weight matrix,
-the fuel wall, the grade ladder, crits and figure fidelity. Still dark: the
+The lab covers the six stats (singly and in PAIRS), elements, stars, weather,
+the weight matrix, the fuel wall, the grade ladder, crits and figure fidelity. Still dark: the
 gacha/breeding stat distributions the engine is actually fed, and anything
 about the live population — that stays the doctor's job. Crit identity after
 the rework: B2 is still the swingiest blade (15.9% of outcomes flip without

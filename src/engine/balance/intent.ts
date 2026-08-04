@@ -114,6 +114,31 @@ export const STAT_PRIORITY: Record<FightFormat, BladeIntent> = {
 export const EVERY_STAT_EVERYWHERE =
   "Every blade stat should have SOME effect at EVERY blade length.";
 
+/**
+ * The BREEDING rule, ruled by Zane after round 28 and the reason the `pairs`
+ * case exists at all.
+ *
+ * A breeding game where the optimal line is "pour everything into one stat"
+ * has no strategy in it — every barn converges on the same bird and the blade
+ * ladder becomes decoration. The PFL precedent Zane brought is the target:
+ * adjacent stats PAIR (Agility&Sight, Sight&Stamina, Stamina&Gameness), and a
+ * bird built on a pair is a real, distinct plan rather than a diluted version
+ * of a specialist.
+ *
+ * Stated as something measurable: hold the stat budget fixed and compare
+ * SPLITTING it across a pair against STACKING it on one member. Splitting does
+ * not have to win — a specialist deserves its edge on the blade it was built
+ * for — but if stacking beats splitting by more than the interval on a pair
+ * that a blade genuinely weighs, the single-stat line dominates and the
+ * breeding game has collapsed to one number.
+ *
+ * NOT a tuning target yet: the weight matrix is one round old and this is the
+ * first time anyone has measured a pair. It is here so the report can print an
+ * opinion instead of a shrug.
+ */
+export const PAIR_INTENT =
+  "Spreading a grade across a stat PAIR should not be clearly worse than stacking it on one stat — otherwise every barn breeds the same single-stat bird.";
+
 // ── Numeric targets ─────────────────────────────────────────────────────────
 
 /**

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, type BirdRow } from "@/db/schema";
 import { weatherOfDay, type Element, type FightFormat, type StatName } from "./config";
-import { overallGradeOf } from "./grades";
+import { overallGradeOf, type Grade } from "./grades";
 import { emit } from "./events";
 import { GameClock } from "./game-clock";
 import { nameTaken } from "./naming";
@@ -19,10 +19,18 @@ import { ageOf, canManualRetire, isEggAge, mustRetire } from "./lifecycle";
  * carriage, sex (post-hatch), age and the record stay visible — they are
  * the card, not the sheet. Combat is untouched: the engine fights on raw
  * DB rows (lobbies.ts toCombatant), never on this view.
+ *
+ * ONE EXCEPTION, RULED IMMEDIATELY AFTER (Zane): `overallGrade` is ALWAYS
+ * public. It says how strong the bird is, never how to use it — the six-stat
+ * average can't tell a B+ sprinter from a B+ stayer, so it hints at power
+ * without giving away the shape, which is the thing discovery is for. It also
+ * gives a fresh hatch something to be excited about on day one, and gives the
+ * claiming ring an honest read on a bird whose figures don't exist yet.
  */
 export interface BirdView
   extends Omit<BirdRow, "sex" | StatName>,
     Record<StatName, number | null> {
+  overallGrade: Grade; // the six-stat average as a letter — public even under the fog
   sex: "male" | "female" | "hidden"; // hidden while an egg — revealed at hatch
   sexLabel: "rooster" | "hen" | null; // the sabong layer over male/female
   age: number; // eggs clamp to 0 (a pregnancy's derived age is negative)
@@ -100,6 +108,10 @@ export class Flock {
       gameness: revealed ? row.gameness : null,
       station: revealed ? row.station : null,
       condition: revealed ? row.condition : null,
+      // Power, always; shape, never (until retirement). See the doctrine above.
+      overallGrade: overallGradeOf(
+        row.agility + row.sight + row.stamina + row.gameness + row.station + row.condition
+      ),
       // The 50-50 is decided at breeding, but the surprise belongs to hatch day.
       sex: isEgg ? "hidden" : row.sex,
       sexLabel: isEgg ? null : row.sex === "male" ? "rooster" : "hen",

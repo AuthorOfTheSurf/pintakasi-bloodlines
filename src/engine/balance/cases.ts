@@ -56,6 +56,7 @@ import {
 import {
   EVERY_STAT_EVERYWHERE,
   GRADE_STEP,
+  PAIR_INTENT,
   GRADE_TARGETS,
   STAR_INTENT,
   STAT_PRIORITY,
@@ -94,6 +95,13 @@ const pct = (x: number) => x.toFixed(1);
 /** A win rate is never printed without the interval that says whether it is real. */
 const rate = (r: DuelResult) => `${pct(r.winRate)} ±${pct(r.ci95)}`;
 const bladeLabel = (f: FightFormat) => FORMATS[f].label;
+
+/**
+ * The four DISTANCE stats, in dial order. The keys of every blade's weight
+ * matrix — station and condition are anchors and never appear in one.
+ */
+const WEIGHT_STATS = ["agility", "sight", "stamina", "gameness"] as const;
+type WeightStat = (typeof WEIGHT_STATS)[number];
 
 /** A copy of a bird with one stat overridden — the sensitivity case's whole method. */
 const bump = (level: number, stat: StatName, to: number, opts = {}) =>
@@ -757,6 +765,175 @@ const sensitivity: BalanceCase = {
   },
 };
 
+// ── 9b. PAIRS ───────────────────────────────────────────────────────────────
+
+/**
+ * THE BREEDING QUESTION, which `sensitivity` cannot answer.
+ *
+ * `sensitivity` moves ONE stat and asks what it bought. Every real breeding
+ * plan moves two: a barn chasing B2 lifts Sight and Agility together, because
+ * the blade weighs both. Zane's rule (PAIR_INTENT, from the PFL precedent) is
+ * that pairing has to be a real plan and not a diluted specialist — otherwise
+ * every barn breeds the same one-stat bird and the blade ladder is decoration.
+ *
+ * Three questions, three tables, because they fail differently:
+ *
+ *  1. WHAT A PAIR BUYS. Both stats +SENS_DELTA against a flat bird. Read down
+ *     a column and you get each blade's shopping list; read across a row and
+ *     you get the blade range a pair covers, which is the thing a breeder
+ *     actually plans around.
+ *  2. SYNERGY vs SATURATION. The pair's lift next to the SUM of its two single
+ *     lifts. Expect the pair to fall short — a win rate is bounded at 100 and
+ *     two lifts cannot add cleanly near the ceiling — so the number to watch
+ *     is not "is it less" but HOW MUCH less, and whether adjacent pairs (the
+ *     ones a blade actually weighs together) saturate less than opposite ones.
+ *  3. SAME BUDGET: SPLIT vs STACK. The only clean one, and the one the ruling
+ *     is about. Both birds carry EXACTLY +SENS_DELTA of total stat, so their
+ *     totals match and the station clawback is zero on both sides — no
+ *     underdog confound at all. One spreads it across the pair, the other
+ *     stacks it on whichever member THAT BLADE weighs more. Above 50% means
+ *     spreading wins; clearly below means the single-stat line dominates and
+ *     PAIR_INTENT is violated.
+ */
+const PAIRS: [WeightStat, WeightStat][] = WEIGHT_STATS.flatMap((x, i) =>
+  WEIGHT_STATS.slice(i + 1).map((y, j) => ({ pair: [x, y] as [WeightStat, WeightStat], gap: j + 1 }))
+)
+  // Adjacent pairs first (Agility&Sight, Sight&Stamina, Stamina&Gameness) —
+  // they are the ones Zane named and the ones the weight matrix pairs up.
+  .sort((a, b) => a.gap - b.gap)
+  .map((p) => p.pair);
+
+const pairLabel = ([x, y]: [WeightStat, WeightStat]) => `${x} & ${y}`;
+const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}`;
+
+const pairs: BalanceCase = {
+  name: "pairs",
+  question: `Per blade, per stat PAIR: what do TWO stats buy, and does splitting a grade beat stacking it?`,
+  run(o) {
+    const bs = blades(o);
+    const control = flat(BASE, { name: "Flat" });
+    // Half a grade each. Rounded so the two halves add back to the whole —
+    // an off-by-one here would hand one bird a free point of total and quietly
+    // reopen the clawback the split-vs-stack table exists to close.
+    const half = Math.round(SENS_DELTA / 2);
+
+    const singles = new Map<string, DuelResult>();
+    const both = new Map<string, DuelResult>();
+    const budget = new Map<string, DuelResult>();
+
+    for (const f of bs) {
+      for (const s of WEIGHT_STATS) {
+        singles.set(
+          `${f}:${s}`,
+          mirrored(bump(BASE, s, BASE + SENS_DELTA, { name: "Bump" }), control, runOpts(o, f))
+        );
+      }
+      for (const p of PAIRS) {
+        const [x, y] = p;
+        const k = `${f}:${x}+${y}`;
+        both.set(
+          k,
+          mirrored(
+            shaped({ [x]: BASE + SENS_DELTA, [y]: BASE + SENS_DELTA }, { base: BASE, name: "Pair" }),
+            control,
+            runOpts(o, f)
+          )
+        );
+        // The stack goes on the member THIS blade weighs more — stacking the
+        // stat the blade barely reads would be a straw man, and the ruling is
+        // about whether a breeder can beat pairing by playing to the blade.
+        const heavier = FORMATS[f].weights[x] >= FORMATS[f].weights[y] ? x : y;
+        budget.set(
+          k,
+          mirrored(
+            shaped({ [x]: BASE + half, [y]: BASE + half }, { base: BASE, name: "Split" }),
+            shaped({ [heavier]: BASE + SENS_DELTA }, { base: BASE, name: "Stack" }),
+            runOpts(o, f)
+          )
+        );
+      }
+    }
+
+    // The pair bird carries DOUBLE the surplus of a sensitivity bump, so the
+    // flat opponent claws back twice as much. Quantified rather than waved at.
+    const probe = shaped(
+      { [PAIRS[0][0]]: BASE + SENS_DELTA, [PAIRS[0][1]]: BASE + SENS_DELTA },
+      { base: BASE, name: "Pair" }
+    );
+    const oppClaw = clawbackOf(probe, control).B;
+
+    const buys: Row[] = PAIRS.map((p) => ({
+      label: pairLabel(p),
+      cells: bs.map((f) => rate(both.get(`${f}:${p[0]}+${p[1]}`)!)),
+    }));
+
+    const synergy: Row[] = PAIRS.map((p) => ({
+      label: pairLabel(p),
+      cells: bs.map((f) => {
+        const pairLift = both.get(`${f}:${p[0]}+${p[1]}`)!.winRate - SYMMETRY_TARGET;
+        const sum =
+          singles.get(`${f}:${p[0]}`)!.winRate -
+          SYMMETRY_TARGET +
+          (singles.get(`${f}:${p[1]}`)!.winRate - SYMMETRY_TARGET);
+        return `${signed(pairLift)} of ${signed(sum)}`;
+      }),
+    }));
+
+    const sameBudget: Row[] = PAIRS.map((p) => {
+      const losses: string[] = [];
+      const cells = bs.map((f) => {
+        const r = budget.get(`${f}:${p[0]}+${p[1]}`)!;
+        const heavier = FORMATS[f].weights[p[0]] >= FORMATS[f].weights[p[1]] ? p[0] : p[1];
+        if (r.winRate + r.ci95 < SYMMETRY_TARGET) losses.push(`${bladeLabel(f)} (stacked ${heavier})`);
+        return rate(r);
+      });
+      return {
+        label: pairLabel(p),
+        cells,
+        verdict: losses.length ? "warn" : "ok",
+        note: losses.length
+          ? `stacking beats splitting beyond the interval at ${losses.join(", ")} — ${PAIR_INTENT}`
+          : undefined,
+      };
+    });
+
+    return [
+      {
+        title: "PAIRS — WHAT TWO STATS BUY",
+        question: `Win rate of a bird with +${SENS_DELTA} on BOTH stats of a pair against a flat ${BASE} bird. Compare with the sensitivity matrix's single-stat rows.`,
+        columns: ["pair", ...bs.map(bladeLabel)],
+        rows: buys,
+        findings: [
+          `Every row here carries twice the surplus of a sensitivity row, so the flat opponent claws back ${oppClaw.toFixed(3)}/roll (vs ${clawbackOf(bump(BASE, PAIRS[0][0], BASE + SENS_DELTA), control).B.toFixed(3)} there). Identical across rows again, so pairs compare cleanly with each other — but a pair number is NOT a single number plus a single number, and the next table is why.`,
+          "Read across a row for the blade RANGE a pair covers. A pair whose row is flat across all five blades is a bird with no home; a pair that spikes on two neighbouring blades is a breeding plan.",
+        ],
+      },
+      {
+        title: "PAIRS — SYNERGY vs SATURATION",
+        question: "The pair's measured lift, next to the SUM of its two single-stat lifts. Falling short is expected — a win rate cannot pass 100 — so the size of the shortfall is the reading.",
+        columns: ["pair", ...bs.map(bladeLabel)],
+        rows: synergy,
+        findings: [
+          "A pair that keeps most of its sum is a pair whose two stats work on DIFFERENT parts of the fight (stamina buys turns, sight buys hits — they multiply). A pair that keeps little of it is two stats fighting over the same roll.",
+          "This table cannot be tuned to directly: the ceiling does most of the flattening. Compare pairs against EACH OTHER at one blade, never a pair against 100%.",
+        ],
+      },
+      {
+        title: "SAME BUDGET — SPLIT vs STACKED",
+        question: `Win rate of a bird that spread +${SENS_DELTA} across the pair (+${half} each) against a bird that stacked all +${SENS_DELTA} on whichever member the blade weighs more. Equal totals, so zero clawback on both sides — the cleanest number in the lab.`,
+        columns: ["pair", ...bs.map(bladeLabel)],
+        rows: sameBudget,
+        findings: [
+          PAIR_INTENT,
+          "50% here is the healthy answer, not a failure: it means the two breeding lines are worth the same and a barn picks on blade fit rather than on arithmetic. The verdict fires only when STACKING wins beyond the interval, which is the collapse Zane ruled against.",
+          "THE MATH TO EXPECT, so a bad result is recognisable: the turn roll is LINEAR in the weighted blend, so a fixed stat budget is always best spent on the single highest-weight stat — split beats stack only where a stat has a NON-linear side route (stamina\'s fuel tank, gameness\'s quit check and deep bonus) big enough to pay for the weight it gave up. A column sitting flat at 50% is a blade with equal weights (B3), not a synergy.",
+          "A pair winning here is a genuine synergy and worth saying out loud in the Handbook — it means the blade reads both halves and the fight length lets them compound.",
+        ],
+      },
+    ];
+  },
+};
+
 // ── 10. WEATHER ─────────────────────────────────────────────────────────────
 
 /**
@@ -908,8 +1085,6 @@ function turnLengths(a: Combatant, b: Combatant, f: FightFormat, o: CaseOptions)
   }
   return out;
 }
-
-const WEIGHT_STATS = ["agility", "sight", "stamina", "gameness"] as const;
 
 const reach: BalanceCase = {
   name: "reach",
@@ -1215,6 +1390,7 @@ export const CASES: BalanceCase[] = [
   grade,
   grade2,
   sensitivity,
+  pairs,
   fuel,
   weather,
   crit,

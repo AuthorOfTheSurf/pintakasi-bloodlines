@@ -6,6 +6,7 @@ import { seedGame } from "@/db/seed-data";
 import { weatherOfDay, type Element } from "./config";
 import { Flock } from "./flock";
 import { GameClock } from "./game-clock";
+import { overallGradeOf } from "./grades";
 import {
   canHardcore,
   canManualRetire,
@@ -158,6 +159,22 @@ describe("the fog (round 28 — the sheet hides until retirement)", () => {
     expect(alab.stars).toContain("★");
     expect(alab.wins + alab.losses).toBeGreaterThan(0);
     expect(alab.age).toBe(2);
+  });
+
+  test("the overall grade is the ONE exception — public on a live bird, and on an egg", () => {
+    // WHY (ruled straight after round 28): the grade says how STRONG a bird
+    // is and never what SHAPE it is — a B+ sprinter and a B+ stayer read the
+    // same letter — so it hints at power without answering the blade
+    // question discovery exists to ask. Pinned because the obvious "tidy-up"
+    // is to fog it alongside the six numbers it summarises.
+    const { db, flock } = freshGame();
+    const alab = flock.all().find((b) => b.name === "Alab")!; // active, age 2
+    const raw = db.select().from(birds).where(eq(birds.id, alab.id)).get()!;
+    const total =
+      raw.agility + raw.sight + raw.stamina + raw.gameness + raw.station + raw.condition;
+    expect(alab.overallGrade).toBe(overallGradeOf(total));
+    insertEgg(db, "egg-grade", 0, 0);
+    expect(flock.byId("egg-grade").overallGrade.length).toBeGreaterThan(0);
   });
 
   test("an egg is fogged too — the shell hides the sheet like it hides the sex", () => {

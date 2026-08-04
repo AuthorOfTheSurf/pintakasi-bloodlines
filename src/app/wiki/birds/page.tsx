@@ -75,8 +75,10 @@ export default function BirdsPage() {
         fixed the day it hatches and never change — but here is the twist: <strong>you cannot see
         them while the bird can still fight.</strong> The sheet is sealed for the whole career and
         revealed in full the day the bird retires, however it retires. What you <em>can</em> always
-        see: stars, element, carriage, sex, age, record, and every Pit Figure it has ever posted.
-        Working out what a bird is from how it fights — that discovery is the game.
+        see: its <strong>overall grade</strong>, stars, element, carriage, sex, age, record, and
+        every Pit Figure it has ever posted. The grade tells you how strong the bird is; it never
+        tells you what shape it is. Working out what a bird is from how it fights — that discovery
+        is the game.
       </p>
 
       <h2>The six stats</h2>
@@ -178,9 +180,9 @@ export default function BirdsPage() {
       <p>
         Every stat is stored as a raw number from {STATS.MIN} to {STATS.MAX}. Nobody wants to
         compare six four-digit numbers at a glance, so a revealed sheet also carries a letter
-        grade — a 100-point band read straight off the raw number. Grades appear only where the
-        sheet does: on <strong>retired birds</strong> and on <strong>stud cards</strong>, never on
-        a live fighter. A revealed line that says &ldquo;{bands[3]?.grade} {bands[3]?.min}&rdquo;
+        grade — a 100-point band read straight off the raw number. Per-stat grades appear only
+        where the sheet does: on <strong>retired birds</strong> and on <strong>stud cards</strong>,
+        never on a live fighter. A revealed line that says &ldquo;{bands[3]?.grade} {bands[3]?.min}&rdquo;
         means the raw stat is {bands[3]?.min}, and {bands[3]?.min} falls in the {bands[3]?.grade}{" "}
         band. The letter is for scanning; the number is for math.
       </p>
@@ -208,13 +210,21 @@ export default function BirdsPage() {
         The families run C → B → A → S → {secondTopGrade[0]}, each with a plain and a
         &ldquo;+&rdquo; rung. The top band, {topGrade}, is deliberately out of reach for a starter
         or gacha bird — it&apos;s where generations of good breeding eventually land, not
-        somewhere a fresh egg shows up. A bird&apos;s <strong>overall grade</strong> (shown as one
-        summary letter on a retired bird and on its stud card) is the same lookup run on the
-        average of all six stats: six
+        somewhere a fresh egg shows up. A bird&apos;s <strong>overall grade</strong> is the same
+        lookup run on the average of all six stats: six
         stats sitting exactly at the starter floor ({STATS.STARTER_MIN} each) average out to an
         overall {overallGradeOf(STATS.STARTER_MIN * 6)} — so a bird can flash a top grade in one
         stat and still carry a modest overall grade if the other five are ordinary.
       </p>
+      <div className="callout tip">
+        <b>The overall grade is always public — even under the fog.</b> It is the one number you
+        can read off a bird on day one, and it is the exception that proves the rule: it tells you{" "}
+        <em>how strong</em> the bird is, never <em>what shape</em> it is. Two birds can both be{" "}
+        {bands[3]?.grade} overall and want opposite ends of the blade ladder — one a sprinter, one
+        a stayer — and the letter cannot tell them apart. So it gives you something to be excited
+        about the day an egg hatches, and something honest to bid on in the claiming ring, without
+        answering the question the <Link href="/wiki/card">card</Link> is supposed to answer.
+      </div>
       <div className="callout">
         <b>Worked example.</b> A brand-new starter bird rolls each stat between {STATS.STARTER_MIN}{" "}
         and {STATS.STARTER_MAX} — a {gradeOf(STATS.STARTER_MIN)} to {gradeOf(STATS.STARTER_MAX)}{" "}
