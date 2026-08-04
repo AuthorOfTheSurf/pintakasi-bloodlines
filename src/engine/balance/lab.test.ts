@@ -3,6 +3,7 @@ import {
   BATTLE,
   FIGURE,
   FORMAT_NAMES,
+  FORMATS,
   STARS,
   STAT_NAMES,
   STATS,
@@ -415,11 +416,36 @@ describe("withKnob puts the config back", () => {
     expect(() => withKnob("TYPO.FOO", 1, () => 0)).toThrow(/BATTLE\.ELEMENT_EDGE/);
   });
 
+  test("a DEEP knob (three segments) is set inside and restored outside", () => {
+    // Added with the crit case: per-blade knobs live INSIDE FORMATS entries,
+    // so the resolver has to walk, not just index a root once.
+    const before = FORMATS.longKnife.critMult;
+    const seen = withKnob("FORMATS.longKnife.critMult", 1, () =>
+      knobValue(FORMATS.longKnife.critMult)
+    );
+    expect(seen).toBe(1);
+    expect(FORMATS.longKnife.critMult).toBe(before);
+    // Sibling blades must be untouched — the walk lands on ONE entry.
+    expect(FORMATS.shortGaff.critMult).not.toBe(1);
+  });
+
+  test("a deep path that dead-ends is refused at any depth", () => {
+    let ran = false;
+    for (const bad of ["FORMATS.longKnife.NOPE", "FORMATS.NOPE.critMult", "FORMATS.longKnife"]) {
+      expect(() => withKnob(bad, 1, () => (ran = true))).toThrow(/Unknown knob/);
+    }
+    expect(ran).toBe(false);
+  });
+
   test("sweepableKnobs lists the numbers and only the numbers", () => {
     const knobs = sweepableKnobs();
     expect(knobs).toContain("BATTLE.ELEMENT_EDGE");
     expect(knobs).toContain("WEATHER.EDGE");
     expect(knobs).toContain("STARS.BOOST_PER_FULL_STAR");
+    // Nested numbers are advertised by their FULL path…
+    expect(knobs).toContain("FORMATS.longKnife.critMult");
+    // …and an intermediate object is never advertised as if it were a knob.
+    expect(knobs).not.toContain("FORMATS.longKnife");
     // FIGURE.GHOST_PACE is a per-format object; a sweep can't set it to a
     // single number, so it must not be advertised as though it could.
     expect(knobs).not.toContain("FIGURE.GHOST_PACE");

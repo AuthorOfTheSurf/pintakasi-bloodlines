@@ -1,7 +1,7 @@
 /**
  * THE CASE CATALOGUE — one measurement per question.
  *
- * `lab.ts` gives you fights; this gives you the ELEVEN QUESTIONS worth asking
+ * `lab.ts` gives you fights; this gives you the FOURTEEN QUESTIONS worth asking
  * of them, each one held still except for the single variable it names. The
  * split matters: the primitives never decide what is interesting, and a case
  * never invents a fight loop. Adding a question means adding an entry to
@@ -29,6 +29,7 @@ import {
   BATTLE,
   ELEMENTS,
   ELEMENT_BEATS,
+  FIGURE,
   FORMATS,
   FORMAT_NAMES,
   PHASES,
@@ -48,6 +49,7 @@ import {
   shaped,
   statTotal,
   underdogOf,
+  withKnob,
   type DuelResult,
 } from "./lab";
 import {
@@ -992,6 +994,209 @@ const reach: BalanceCase = {
   },
 };
 
+// ── 12. FUEL — stamina's two routes, separated ──────────────────────────────
+
+/**
+ * Stamina never drives a turn (see `reach`), so its entire measured lift
+ * arrives through two side doors: the wind pool (BASE_WIND + stamina ×
+ * WIND_PER_STAMINA — more HP) and decay resistance (physical stats fade
+ * slower as wind burns). Nobody has ever known the split, and the split
+ * matters: the intent ranks stamina 2nd or 3rd on every blade, so when the
+ * phase weights get reworked, whoever does it needs to know how much of
+ * stamina's value is already there and WHICH DOOR it comes through — a knob
+ * turned on the wrong door doubles one route while leaving the deficit alone.
+ *
+ * Method: kill one route at a time with `withKnob` and re-measure the same
+ * +SENS_DELTA stamina duel. DECAY_PER_TURN=0 removes decay entirely, so the
+ * resistance route has nothing to resist — what remains is the pool route.
+ * WIND_PER_STAMINA=0 equalises the pools — what remains is the decay route.
+ * The two parts need not sum to the whole; the residual is the interaction,
+ * and reporting it is honester than hiding it in either column.
+ */
+const fuel: BalanceCase = {
+  name: "fuel",
+  question: "Stamina never drives a turn — which of its two routes carries its value?",
+  run(o) {
+    const control = flat(BASE, { name: "Flat" });
+    const rows: Row[] = blades(o).map((f) => {
+      // +SENS_DELTA on one stat is a 1.095x total — under the 1.1x gate, so
+      // these are clean stamina measurements, same as the sensitivity case.
+      const bumped = bump(BASE, "stamina", BASE + SENS_DELTA, { name: "Stam" });
+      const measure = () => mirrored(bumped, control, runOpts(o, f));
+
+      const whole = measure();
+      const poolOnly = withKnob("BATTLE.DECAY_PER_TURN", 0, measure);
+      const decayOnly = withKnob("BATTLE.WIND_PER_STAMINA", 0, measure);
+
+      const lift = (r: DuelResult) => r.winRate - 50;
+      const residual = lift(whole) - (lift(poolOnly) + lift(decayOnly));
+      return {
+        label: bladeLabel(f),
+        cells: [
+          rate(whole),
+          `+${pct(lift(poolOnly))}`,
+          `+${pct(lift(decayOnly))}`,
+          `${residual >= 0 ? "+" : ""}${pct(residual)}`,
+        ],
+      };
+    });
+
+    return [
+      {
+        title: "FUEL — WHERE STAMINA'S LIFT COMES FROM",
+        question: `+${SENS_DELTA} stamina vs a flat ${BASE} bird, then the same duel with one route disabled at a time. Lifts are win-rate points over 50.`,
+        columns: ["blade", "win% ±95 (both routes)", "wind pool alone", "decay resistance alone", "interaction"],
+        rows,
+        findings: [
+          `The pool route: maxWind = ${BATTLE.BASE_WIND} + stamina × ${BATTLE.WIND_PER_STAMINA}, so +${SENS_DELTA} stamina is +${SENS_DELTA * BATTLE.WIND_PER_STAMINA} wind — a fixed head start whose value the table shows growing with blade length, because long fights give the deeper pool more turns to matter.`,
+          "The decay route: physical stats fade by DECAY_PER_TURN × (1 − stamina/2000) per turn, so it can only matter in fights that go long — the opposite blade-length curve from the pool.",
+          "If either column reads ~0 on every blade, that route is decorative and the phase-weight rework can ignore it.",
+        ],
+      },
+    ];
+  },
+};
+
+// ── 13. CRIT — how much of a blade is the Tari Strike ───────────────────────
+
+/**
+ * Doubles on the 2d6 multiply the turn's damage by the blade's critMult, and
+ * the config sells this as each blade's identity: "Knife formats are SWINGY
+ * (big crits — upsets happen); gaff formats are true tests (crits barely
+ * matter)." That sentence has never had a number attached. Two measurements
+ * put one on it:
+ *
+ *  1. THE CRIT TAX — a real favourite's win rate with crits as shipped vs
+ *     critMult forced to 1. The difference is what the mechanic charges the
+ *     better bird for the upset drama.
+ *  2. OUTCOME FLIPS — identical birds, same seeds, crits on vs off, counted
+ *     fight by fight. Averages can agree while individual fights swap
+ *     winners; this is the fraction of fights where the crit WAS the fight.
+ */
+const crit: BalanceCase = {
+  name: "crit",
+  question: "What does the Tari Strike (doubles × critMult) actually decide, per blade?",
+  run(o) {
+    const fav = shaped({ station: STATS.MIN }, { base: BASE + GRADE_STEP, name: "Fav" });
+    const flatBird = shaped({ station: STATS.MIN }, { base: BASE, name: "Flat" });
+
+    const rows: Row[] = blades(o).map((f) => {
+      const knob = `FORMATS.${f}.critMult`;
+      const shipped = mirrored(fav, flatBird, runOpts(o, f));
+      const disarmed = withKnob(knob, 1, () => mirrored(fav, flatBird, runOpts(o, f)));
+
+      // Same seeds, winner recorded under each setting, compared per fight.
+      // Identical birds, so every flip is pure crit — no favourite to mask it.
+      const a = flat(BASE, { name: "A" });
+      const b = flat(BASE, { name: "B" });
+      const winners = (mult?: number): number[] => {
+        const play = () => {
+          const out: number[] = [];
+          for (let seed = o.seedFrom; seed < o.seedFrom + o.runs; seed++) {
+            out.push(simulatePair(a, b, f, mulberry32(seed), "LAB").winner);
+          }
+          return out;
+        };
+        return mult === undefined ? play() : withKnob(knob, mult, play);
+      };
+      const on = winners();
+      const off = winners(1);
+      const flips = on.filter((w, i) => w !== off[i]).length;
+
+      return {
+        label: bladeLabel(f),
+        cells: [
+          FORMATS[f].critMult.toFixed(1),
+          rate(shipped),
+          rate(disarmed),
+          pct(disarmed.winRate - shipped.winRate),
+          pct((flips / o.runs) * 100),
+        ],
+      };
+    });
+
+    return [
+      {
+        title: "CRIT — THE TARI STRIKE'S SHARE OF THE FIGHT",
+        question: `Crit tax: a +${GRADE_STEP}-per-stat favourite (station shut) with crits as shipped vs critMult forced to 1. Flips: identical birds, same seeds, how often the winner changes when crits are removed.`,
+        columns: ["blade", "critMult", "fav win% ±95, crits on", "crits off", "crit tax on the favourite", "outcome flips %"],
+        rows,
+        findings: [
+          "Doubles odds are structural: 1-in-6 per roll per side, so ~30.6% of turns contain at least one crit — the multiplier, not the frequency, is what varies by blade.",
+          "The config's claim on trial here: knives are meant to be SWINGY (upsets happen) and gaffs true tests (crits barely matter). The flip column is that sentence as a number.",
+          "A flip is symmetric between equal birds — it does not favour anyone. The TAX column is where swinginess becomes a price, and the favourite is the one who pays it.",
+        ],
+      },
+    ];
+  },
+};
+
+// ── 14. FIGURE — does the discovery signal track the bird ───────────────────
+
+/**
+ * The whole game loop is discovery: stats are fixed at birth and hidden, and
+ * the Pit Figure is the player's instrument for reading them. The weather and
+ * condition cases already showed the figure moving when the BIRD didn't
+ * (inflation). This case asks the opposite and more fundamental question:
+ * when the bird IS better, does the figure say so — and by more than the fog
+ * (±FIGURE.NOISE) it is wrapped in?
+ *
+ * Station is zeroed on both sides. The gate still opens at the bigger gaps —
+ * unavoidable, the gap IS the total — but with station at 0 it opens onto
+ * nothing, so the figures stay a clean read of the stat difference.
+ */
+const figure: BalanceCase = {
+  name: "figure",
+  question: "When a bird is genuinely better, does the Pit Figure move enough to see through its own fog?",
+  run(o) {
+    const gaps = [0, 50, GRADE_TARGETS[0].delta, GRADE_TARGETS[1].delta, GRADE_TARGETS[1].delta * 2];
+    const control = shaped({ station: STATS.MIN }, { base: BASE, name: "Plain" });
+
+    const rows: Row[] = gaps.map((gap) => {
+      const better = shaped({ station: STATS.MIN }, { base: BASE + gap, name: "Grade" });
+      const cells: string[] = [];
+      let minGap = Infinity;
+      for (const f of blades(o)) {
+        const r = mirrored(better, control, runOpts(o, f));
+        const dFig = r.meanFigureA - r.meanFigureB;
+        minGap = Math.min(minGap, dFig);
+        cells.push(`${dFig >= 0 ? "+" : ""}${dFig.toFixed(1)}`);
+      }
+      // gap 0 is the control: identical birds must read as identical. The
+      // others get judged against the fog — a step the figure cannot lift
+      // above ±NOISE is a step the player cannot see.
+      const verdict: Row["verdict"] =
+        gap === 0 ? (Math.abs(minGap) < 1 ? "ok" : "warn") : minGap < FIGURE.NOISE ? "warn" : "ok";
+      return {
+        label: gap === 0 ? "identical (control)" : `+${gap} every stat`,
+        cells,
+        verdict,
+        note:
+          gap === 0
+            ? verdict === "ok"
+              ? "identical birds post identical figures"
+              : "identical birds are NOT posting identical figures — the instrument is broken"
+            : verdict === "warn"
+              ? `figure gap is under the ±${FIGURE.NOISE} fog on at least one blade — this much bird is invisible in the number`
+              : undefined,
+      };
+    });
+
+    return [
+      {
+        title: "FIGURE — DOES THE SIGNAL TRACK THE BIRD?",
+        question: `Mean figure gap (better bird − plain ${BASE} bird) per blade, as the real stat gap grows. Fog is ±${FIGURE.NOISE}; a band is ${FIGURE.BAND}.`,
+        columns: ["true stat gap", ...blades(o).map(bladeLabel)],
+        rows,
+        findings: [
+          `The figure's fog is ±${FIGURE.NOISE} per reading and the public bands are ${FIGURE.BAND} wide — a gap under the fog needs repeat fights to detect, which is the discovery loop working as designed. A gap still under the fog at +${GRADE_TARGETS[0].delta} — a FULL breeding step — is a different matter: it means a generation of progress does not show in the number.`,
+          "Read this against the weather and condition inflation tables: those measured the figure moving with NO bird difference. Signal (here) has to clear noise (there) or the number teaches nothing.",
+        ],
+      },
+    ];
+  },
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const CASES: BalanceCase[] = [
@@ -1004,7 +1209,10 @@ export const CASES: BalanceCase[] = [
   grade,
   grade2,
   sensitivity,
+  fuel,
   weather,
+  crit,
+  figure,
   reach,
 ];
 

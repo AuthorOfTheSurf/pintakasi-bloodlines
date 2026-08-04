@@ -12,7 +12,7 @@ fight measurement in the repo was one closure wired to two identical birds on
 one blade.
 
 ```
-bun run balance                       # all 11 cases
+bun run balance                       # all 14 cases
 bun run balance sensitivity --runs=4000
 bun run balance --sweep=BATTLE.ELEMENT_EDGE=0.25,0.5,1
 bun run balance --converge=5
@@ -24,7 +24,7 @@ Only tool errors exit non-zero.
 
 ---
 
-## The five gaps, ranked
+## The eight gaps, ranked
 
 ### 1. Station inverts the grade ladder — breeding is currently net-negative
 
@@ -154,6 +154,65 @@ stabilising — a favourite gains 4–9 points of win rate across its range — 
 contradicts the config comment calling it a variance buffer that "only ever
 hurts."
 
+### 6. Stamina's decay-resistance route is decorative
+
+Stamina reaches a fight through two doors: the wind pool (`BASE_WIND + stamina
+× 0.01` — more HP) and decay resistance (physical stats fade slower). The
+`fuel` case kills one door at a time and re-measures +200 stamina:
+
+| blade | whole lift | wind pool alone | decay resistance alone |
+|---|---|---|---|
+| Long Knife | +2.9 | +2.8 | **+0.1** |
+| Short Knife | +3.1 | +2.9 | **+0.2** |
+| Long Gaff | +5.0 | +4.9 | **+0.3** |
+| Short Gaff | +5.3 | +5.2 | **+0.5** |
+
+The decay route contributes at most half a point anywhere. `DECAY_PER_TURN`
+and `DECAY_FLOOR` exist, run every turn, and decide essentially nothing —
+stamina **is** the wind pool. Any rework that wants stamina at its intended
+rank (2nd–3rd on every blade) is really deciding what the wind pool is worth,
+and can treat the decay knobs as free to repurpose.
+
+### 7. The "knives are swingy, gaffs are true tests" story is half false
+
+`critMult` is sold as each blade's identity (config: "Knife formats are SWINGY
+… gaff formats are true tests (crits barely matter)"). Measured — outcome
+flips are the % of fights between identical birds whose *winner changes* when
+crits are removed:
+
+| blade | critMult | outcome flips | crit tax on a +100 favourite |
+|---|---|---|---|
+| Long Knife | 2.5 | 8.8% | 1.0 |
+| **Short Knife** | 2.0 | **15.4%** | 1.5 |
+| **Long Gaff** | 1.3 | **13.6%** | 0.7 |
+| Short Gaff | 1.1 | 3.4% | 0.1 |
+
+Short Gaff matches the story. But the swingiest blade is **Short Knife**, not
+Long Knife (5-turn fights end before a crit's margin can be overturned, but
+they also end before one can *land*), and **Long Gaff at critMult 1.3 is
+nearly as crit-decided as Short Knife at 2.0** — turn count multiplies
+exposure faster than the multiplier shrinks. If blade identity is the goal,
+the knob to think in is crits-per-fight, not the multiplier alone.
+
+### 8. A full breeding step is invisible in the Pit Figure on the knives
+
+The figure is the discovery signal, fogged ±`FIGURE.NOISE` (4). Mean figure
+gap between a bird +N on every stat and a plain 350 bird:
+
+| true gap | Long Knife | Short Knife | Long Gaff | Short Gaff |
+|---|---|---|---|---|
+| +50 | 1.8 | 2.3 | 2.0 | 4.7 |
+| **+100** | **3.7** | 5.1 | 4.3 | 9.4 |
+| +200 | 7.5 | 9.7 | 11.7 | 15.4 |
+| +400 | 14.6 | 18.8 | 25.6 | 26.6 |
+
+Identical birds read +0.0 (the control holds). But **+100 — one full grade,
+one generation of breeding — moves the Long Knife figure 3.7 points, under
+the fog** and inside one public band. A player who campaigns their improved
+bird at Long Knife cannot see the improvement in the number. The signal
+scales with blade length because figures integrate more turns; the knives are
+where discovery is weakest and the swing (gap 7) is highest.
+
 ---
 
 ## Corrections to things previously believed
@@ -182,10 +241,11 @@ Found while tracing; none fixed this round.
 
 ## Not yet measured
 
-The lab covers the six stats, elements, stars, weather, blade reach and the
-grade ladder. Still dark: the gacha/breeding stat distributions the engine is
-actually fed, crit (`critMult`) frequency and impact, `DECAY_*` in isolation,
-and anything about the live population — that stays the doctor's job.
+The lab covers the six stats, elements, stars, weather, blade reach, the grade
+ladder, stamina's two routes (`fuel`), crits (`crit`) and figure fidelity
+(`figure`). Still dark: the gacha/breeding stat distributions the engine is
+actually fed, and anything about the live population — that stays the
+doctor's job.
 
 The blade intent is deliberately **not** tuned to. More blade lengths are
 coming (PFL runs 9 distances to our 4), and fitting the curve to four points

@@ -27,6 +27,7 @@
 import {
   BATTLE,
   FIGURE,
+  FORMATS,
   PHASES,
   STARS,
   STATS,
@@ -360,15 +361,20 @@ const SWEEP_ROOTS: Record<string, object> = {
   STARS,
   STATS,
   PHASES,
+  FORMATS,
 };
+
+/** Walk a root recursively so nested numbers (FORMATS.longKnife.critMult) count too. */
+const knobsUnder = (obj: object, prefix: string): string[] =>
+  Object.entries(obj).flatMap(([k, v]) => {
+    if (typeof v === "number") return [`${prefix}.${k}`];
+    if (v && typeof v === "object" && !Array.isArray(v)) return knobsUnder(v, `${prefix}.${k}`);
+    return [];
+  });
 
 export function sweepableKnobs(): string[] {
   return Object.entries(SWEEP_ROOTS)
-    .flatMap(([root, obj]) =>
-      Object.entries(obj)
-        .filter(([, v]) => typeof v === "number")
-        .map(([k]) => `${root}.${k}`)
-    )
+    .flatMap(([root, obj]) => knobsUnder(obj, root))
     .sort();
 }
 
@@ -384,9 +390,17 @@ export function sweepableKnobs(): string[] {
  * both balance bugs got their wrong numbers written into comments.
  */
 export function withKnob<T>(knob: string, value: number, fn: () => T): T {
-  const [rootName, key] = knob.split(".");
-  const root = SWEEP_ROOTS[rootName] as Record<string, number> | undefined;
-  if (!root || !(key in root)) {
+  // Dotted path of any depth: the last segment is the key, everything before
+  // it is a walk (FORMATS.longKnife.critMult descends two levels). Depth was
+  // added for the crit case — per-blade knobs live inside FORMATS entries.
+  const segs = knob.split(".");
+  const key = segs.pop() as string;
+  let holder: unknown = SWEEP_ROOTS[segs[0]];
+  for (const s of segs.slice(1)) {
+    holder = holder && typeof holder === "object" ? (holder as Record<string, unknown>)[s] : undefined;
+  }
+  const root = holder as Record<string, number> | undefined;
+  if (!root || typeof root[key] !== "number") {
     throw new Error(`Unknown knob "${knob}". Try one of:\n  ${sweepableKnobs().join("\n  ")}`);
   }
   const original = root[key];
