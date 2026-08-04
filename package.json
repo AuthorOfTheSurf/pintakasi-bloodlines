@@ -13,6 +13,7 @@
     "simulate": "bun run scripts/simulate.ts",
     "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435",
     "doctor": "bun run scripts/doctor.ts",
+    "balance": "bun run scripts/balance.ts",
     "test:watch": "bun test --watch"
   },
   "dependencies": {
