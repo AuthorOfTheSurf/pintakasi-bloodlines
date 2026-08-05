@@ -603,8 +603,12 @@ export interface DiscoveryBucket {
   entries: number;
   /** Actual cards at a true-best blade, whether the scout had evidence or not. */
   hits: number;
+  /** Expected exact hits from a random blade choice, accounting for tied homes. */
+  randomHits: number;
   /** Actual cards at a true-best blade or its immediate neighbour. */
   nearHits: number;
+  /** Expected local hits from a random blade choice, accounting for end blades and tied homes. */
+  randomNearHits: number;
   /** Decisions where the bird already had MIN_READS at a true-best blade. */
   covered: number;
   /** Scout's top-ranked blade was truly best, among covered decisions. */
@@ -640,9 +644,9 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
   }
 
   const buckets = [
-    { label: "age 1  ", entries: 0, hits: 0, nearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
-    { label: "age 2–3", entries: 0, hits: 0, nearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
-    { label: "age 4+ ", entries: 0, hits: 0, nearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
+    { label: "age 1  ", entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
+    { label: "age 2–3", entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
+    { label: "age 4+ ", entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
   ];
   const explored = new Set<FightFormat>();
   // Rebuild every bird's report one result at a time. A final report would
@@ -664,6 +668,8 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
     const withinOne = (format: FightFormat) =>
       [...best].some((home) => Math.abs(FORMAT_NAMES.indexOf(format) - FORMAT_NAMES.indexOf(home)) <= 1);
     if (withinOne(r.format)) bucket.nearHits++;
+    bucket.randomHits += best.size / FORMAT_NAMES.length;
+    bucket.randomNearHits += FORMAT_NAMES.filter(withinOne).length / FORMAT_NAMES.length;
     if (age <= 1) explored.add(r.format);
 
     const records = history.get(bird.id) ?? Object.fromEntries(
@@ -698,12 +704,11 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
 }
 
 function discovery(d: BladeDiscovery): HealthSection {
-  const floor = `${(d.chance * 100).toFixed(1)}% by chance`;
   const lines = d.buckets.map((b) =>
     b.entries < DOCTOR.DISCOVERY_MIN_SAMPLE
       ? `${b.label}  ${b.entries} entries — too few to read`
-      : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs ${floor})` +
-        ` · ${b.nearHits}/${b.entries} on or adjacent (${pct(b.nearHits, b.entries)})` +
+      : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs random ${pct(b.randomHits, b.entries)})` +
+        ` · ${b.nearHits}/${b.entries} on or adjacent (${pct(b.nearHits, b.entries)} vs random ${pct(b.randomNearHits, b.entries)})` +
         ` · answer coverage ${b.covered}/${b.entries} (${pct(b.covered, b.entries)})` +
         ` · scout ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)})` +
           `, ${b.scoutNearHits}/${b.covered} on or adjacent (${pct(b.scoutNearHits, b.covered)})`}`

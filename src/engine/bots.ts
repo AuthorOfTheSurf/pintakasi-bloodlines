@@ -27,6 +27,14 @@ import { Lobbies, type FightMode } from "./lobbies";
 import { mulberry32, randInt, type Rng } from "./rng";
 import { Tournaments } from "./tournaments";
 
+/**
+ * "end-first" is simulation-only until it beats the current grid exploration
+ * across matched worlds. It spends unread attempts B1 → B5 → B2 → B4 → B3,
+ * the racing-style route from extremes inward, without ever reading the sheet.
+ */
+export type DiscoveryPolicy = "current" | "end-first";
+const END_FIRST_ORDER: FightFormat[] = ["b1", "b5", "b2", "b4", "b3"];
+
 /** What one bot stable did with its day — surfaced on the tick view. */
 export interface BotDayReport {
   farm: string;
@@ -105,7 +113,7 @@ export class Bots {
     }
   }
 
-  static playDay(db: DB): BotDayReport[] {
+  static playDay(db: DB, discoveryPolicy: DiscoveryPolicy = "current"): BotDayReport[] {
     const botRows = db.select().from(farms).where(eq(farms.isBot, 1)).all();
     if (botRows.length === 0) return [];
     const today = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
@@ -115,12 +123,18 @@ export class Bots {
       const profile = BOT_FARMS.find((b) => b.id === row.id);
       if (!profile) continue; // a bot removed from config sits out
       const rng = mulberry32((today + 1) * 7919 + (i + 1) * 104729);
-      reports.push(Bots.playFarm(db, profile, rng, today));
+      reports.push(Bots.playFarm(db, profile, rng, today, discoveryPolicy));
     }
     return reports;
   }
 
-  private static playFarm(db: DB, bot: BotProfile, rng: Rng, today: number): BotDayReport {
+  private static playFarm(
+    db: DB,
+    bot: BotProfile,
+    rng: Rng,
+    today: number,
+    discoveryPolicy: DiscoveryPolicy
+  ): BotDayReport {
     const farmsApi = new Farms(db);
     const flock = new Flock(db, bot.id);
     const lobbies = new Lobbies(db, bot.id);
@@ -266,7 +280,7 @@ export class Bots {
     for (const bird of roster()) {
       if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
       if (gp() <= ECONOMY.HARDCORE_ENTRY_FEE + RESERVE) break;
-      const spec = Bots.pickSpec(db, bot, bird, rng);
+      const spec = Bots.pickSpec(db, bot, bird, rng, discoveryPolicy);
       if (quietly(() => void lobbies.enter(bird.id, spec))) {
         report.entered.push({ bird: bird.name, ...spec });
       }
@@ -298,9 +312,10 @@ export class Bots {
     db: DB,
     bot: BotProfile,
     bird: BirdView,
-    rng: Rng
+    rng: Rng,
+    discoveryPolicy: DiscoveryPolicy
   ): { mode: FightMode; classType: Lobby; format: FightFormat; price?: number } {
-    const format = bestFormat(db, bird, rng);
+    const format = bestFormat(db, bird, rng, discoveryPolicy);
     // THE DISCOVERY-YEAR LADDER (round 23): a juvenile climbs the same way a
     // grown bird does — maiden while it hasn't won, stakes once it has, and
     // sometimes out with a tag on it. The old code carded every chick in one
@@ -385,13 +400,22 @@ export function scoutScores(db: DB, birdId: string): Record<FightFormat, number>
  * Shared with auto-play (round 17): every stable cards by style, which also
  * spreads the field across formats instead of piling into one lobby key.
  */
-export function bestFormat(db: DB, bird: BirdView, rng: Rng): FightFormat {
+export function bestFormat(
+  db: DB,
+  bird: BirdView,
+  rng: Rng,
+  discoveryPolicy: DiscoveryPolicy = "current"
+): FightFormat {
   const report = new Lobbies(db, "scout").scoutReport(bird.id);
   const unread = FORMAT_NAMES.filter((f) => report.blades[f].fights < SCOUT.MIN_READS);
   if (unread.length > 0 && rng() < SCOUT.EXPLORE) {
     const least = Math.min(...unread.map((f) => report.blades[f].fights));
     const targets = unread.filter((f) => report.blades[f].fights === least);
-    return targets[randInt(rng, 0, targets.length - 1)];
+    // Always spend the draw, even when end-first discards it: matched policy
+    // sims keep their later bot decisions on the same random stream.
+    const randomTarget = targets[randInt(rng, 0, targets.length - 1)];
+    if (discoveryPolicy === "current") return randomTarget;
+    return END_FIRST_ORDER.find((f) => targets.includes(f))!;
   }
   const jitter = () => rng() * SCOUT.JITTER; // imperfect judges — bots misread the margin calls
   return FORMAT_NAMES.reduce((best, cur) =>

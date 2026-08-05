@@ -6,6 +6,7 @@ import {
   chaseCrowns,
   chaseJuvenileCrowns,
   ladderClass,
+  type DiscoveryPolicy,
   weatherCardsToday,
   weatherOrder,
 } from "./bots";
@@ -41,7 +42,11 @@ const quietly = (fn: () => unknown): boolean => {
   }
 };
 
-export function playHonestDay(db: DB, farmId: string): void {
+export function playHonestDay(
+  db: DB,
+  farmId: string,
+  discoveryPolicy: DiscoveryPolicy = "current"
+): void {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
   if (!state) return;
   const day = state.dayIndex;
@@ -124,7 +129,7 @@ export function playHonestDay(db: DB, farmId: string): void {
   );
   for (const bird of carding) {
     if (!weatherCardsToday(bird, day, cardRng, HONEST_ENTRY_RATE)) continue;
-    const format = bestFormat(db, bird, cardRng);
+    const format = bestFormat(db, bird, cardRng, discoveryPolicy);
     // The discovery-year ladder (round 23): a winless juvenile starts in a
     // maiden, a winner moves up to juvenile stakes, and now and then one goes
     // out with a tag on it — the cheap way to learn what the market thinks.
@@ -196,8 +201,8 @@ const JUVENILE_SELL_RATE = 0.2;
 const HONEST_ENTRY_RATE = 1;
 
 /** Every player-owned (non-bot) stable plays its honest day. */
-export function playAllHonestDays(db: DB): void {
-  for (const farm of ownedFarms(db)) playHonestDay(db, farm.id);
+export function playAllHonestDays(db: DB, discoveryPolicy: DiscoveryPolicy = "current"): void {
+  for (const farm of ownedFarms(db)) playHonestDay(db, farm.id, discoveryPolicy);
 }
 
 /** …and shops the claimer board once the night's tags are up (see above). */

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { birds, farms, lobbies, lobbyEntries } from "@/db/schema";
+import { battleLog, birds, farms, lobbies, lobbyEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { BOT_FARMS, WEATHER_APPETITE } from "./bot-config";
 import { Bots, bestFormat, scoutScores, weatherCardsToday, weatherOrder } from "./bots";
@@ -146,6 +146,27 @@ describe("the scout's blade pick", () => {
       seen.add(bestFormat(w.db, bird, rng));
     }
     expect([...seen].sort()).toEqual([...FORMAT_NAMES].sort());
+  });
+
+  test("the simulation-only end-first policy samples the opposite extreme before moving inward", () => {
+    const w = testWorld({ rivalFlock: false });
+    const row = makeBird(w.db);
+    const bird = new Flock(w.db, w.devId).byId(row.id);
+    // B1 is no longer unread. With the deterministic first target draw, the
+    // current grid goes B2 while the PFL-style policy goes to the opposite
+    // extreme, B5. The figure values are irrelevant: both choices are still
+    // in the exploration branch.
+    for (let i = 0; i < SCOUT.MIN_READS; i++) {
+      w.db.insert(battleLog).values({
+        dayIndex: i, lobbyId: 1, farmId: bird.farmId, birdId: bird.id,
+        mode: "real", format: "b1", opponentBirdId: "ghost", opponentFarmId: "house",
+        opponentName: "Sparring Ghost", result: "loss", pitFigure: 50,
+        gpDeltaCents: 0, seed: i, playByPlay: "[]",
+      }).run();
+    }
+    const explore = () => 0;
+    expect(bestFormat(w.db, bird, explore, "current")).toBe("b2");
+    expect(bestFormat(w.db, bird, explore, "end-first")).toBe("b5");
   });
 
   test("a fogged view flows through the whole entry path — the bots never need the sheet", () => {

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
 import { shopAllClaimers } from "./auto-play";
-import { Bots, type BotDayReport } from "./bots";
+import { Bots, type BotDayReport, type DiscoveryPolicy } from "./bots";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
 import { BARN, weatherOfDay, type Element } from "./config";
@@ -47,7 +47,8 @@ export class Game {
 
   constructor(
     private database: DB,
-    readonly farmId: string
+    readonly farmId: string,
+    private discoveryPolicy: DiscoveryPolicy = "current"
   ) {
     this.clock = new GameClock(database);
     this.flock = new Flock(database, farmId);
@@ -85,7 +86,7 @@ export class Game {
     // The bot stables play the closing day first — filling lobbies, placing
     // claims — so the card that goes off has their money on it. No-op on
     // worlds without bots seeded.
-    const bots = Bots.playDay(this.database);
+    const bots = Bots.playDay(this.database, this.discoveryPolicy);
     // Now that tonight's tags are posted, the player-side stables shop the
     // claimer board (round 19) — they run their honest day BEFORE the bots,
     // when the claimer fields are still empty.

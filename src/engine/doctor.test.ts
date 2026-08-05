@@ -407,7 +407,9 @@ describe("the discovery section", () => {
     expect(d).toMatchObject({
       entries: 4,
       hits: 3,
+      randomHits: 0.8,
       nearHits: 3,
+      randomNearHits: 1.6,
       covered: 2,
       scoutHits: 2,
       scoutNearHits: 2,

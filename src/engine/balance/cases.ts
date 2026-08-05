@@ -41,6 +41,7 @@ import {
   type StatName,
 } from "@/engine/config";
 import { simulatePair, type Combatant } from "@/engine/fight-sim";
+import { gradeOf } from "@/engine/grades";
 import { mulberry32 } from "@/engine/rng";
 import {
   clawbackOf,
@@ -1427,6 +1428,100 @@ const figure: BalanceCase = {
   },
 };
 
+// ── 15. FIGURE GRADE — does the public grade set a figure expectation? ─────
+
+/**
+ * A Fleet Figure is not a pure distance label. Against fixed company, a
+ * stronger horse should also run a higher number — a fast A at its home tells
+ * the trainer both "this is its distance" and "this one is worth protecting".
+ *
+ * This is the target-dummy calibration: mirrored B1/B5 specialists, one
+ * fixed B+ flat opponent, no element edge. It holds company and specialist
+ * shape still so a one-grade change can be read as performance rather than a
+ * better field, while home / adjacent / middle reads answer the discovery
+ * question directly. Five figure points per public grade is Zane's stated
+ * first expectation; this table measures it before any figure knob is tuned.
+ */
+const FIGURE_GRADE_LEVELS = [250, 350, 450, 550, 650, 750];
+const FIGURE_GRADE_STEP = 5;
+const figureGrade: BalanceCase = {
+  name: "figuregrade",
+  question: "Against fixed B+ company, do grade and distance both move a specialist's Pit Figure as expected?",
+  run(o) {
+    const dummy = flat(350, { name: "B+ target dummy" });
+    // Equal-total specialist profiles: the B1 bird shifts 100 points from
+    // both deep-water stats into agility/sight; B5 is its exact mirror. The
+    // shape stays fixed while level rises, so grade and distance can be read
+    // separately. Station and condition remain at the public grade — that is
+    // the honest six-stat overall grade players see on the card.
+    const specialist = (level: number, end: "b1" | "b5") =>
+      end === "b1"
+        ? shaped(
+            { agility: level + 100, sight: level + 100, stamina: level - 100, gameness: level - 100 },
+            { base: level, name: "B1 specialist" }
+          )
+        : shaped(
+            { agility: level - 100, sight: level - 100, stamina: level + 100, gameness: level + 100 },
+            { base: level, name: "B5 specialist" }
+          );
+    const previous = new Map<"home" | "adjacent" | "middle", number>();
+    const rows: Row[] = FIGURE_GRADE_LEVELS.map((level) => {
+      const grade = gradeOf(level);
+      const left = specialist(level, "b1");
+      const right = specialist(level, "b5");
+      const averages = {
+        home: (
+          mirrored(left, dummy, runOpts(o, "b1")).meanFigureA +
+          mirrored(right, dummy, runOpts(o, "b5")).meanFigureA
+        ) / 2,
+        adjacent: (
+          mirrored(left, dummy, runOpts(o, "b2")).meanFigureA +
+          mirrored(right, dummy, runOpts(o, "b4")).meanFigureA
+        ) / 2,
+        middle: (
+          mirrored(left, dummy, runOpts(o, "b3")).meanFigureA +
+          mirrored(right, dummy, runOpts(o, "b3")).meanFigureA
+        ) / 2,
+      };
+      let minStep = Infinity;
+      const cells = (["home", "adjacent", "middle"] as const).map((distance) => {
+        const figure = averages[distance];
+        const prior = previous.get(distance);
+        previous.set(distance, figure);
+        if (prior !== undefined) minStep = Math.min(minStep, figure - prior);
+        return prior === undefined ? figure.toFixed(1) : `${figure.toFixed(1)} (+${(figure - prior).toFixed(1)})`;
+      });
+      const verdict: Row["verdict"] =
+        level === FIGURE_GRADE_LEVELS[0] || minStep >= FIGURE_GRADE_STEP ? "ok" : "warn";
+      return {
+        label: `${grade} (${level})`,
+        cells,
+        verdict,
+        note:
+          level === FIGURE_GRADE_LEVELS[0]
+            ? "first reference grade"
+            : verdict === "warn"
+              ? `smallest blade-to-blade step is +${minStep.toFixed(1)}, below the +${FIGURE_GRADE_STEP} target`
+              : undefined,
+      };
+    });
+    return [
+      {
+        title: "PIT FIGURE — GRADE CALIBRATION",
+        question:
+          `Mirrored B1/B5 specialist profiles versus a fixed B+ (350) flat target dummy, no element edge. ` +
+          `Cells are mean figures; parentheses are the step from the prior public grade.`,
+        columns: ["public grade", "home blade", "adjacent blade", "middle blade"],
+        rows,
+        findings: [
+          `The first target is +${FIGURE_GRADE_STEP} figure points per 100-point public-grade step at the same blade and against the same company.`,
+          "This is a target-dummy calibration, not a live-card promise: live figures also move with opponent class, result, weather, and specialist shape.",
+        ],
+      },
+    ];
+  },
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const CASES: BalanceCase[] = [
@@ -1444,6 +1539,7 @@ export const CASES: BalanceCase[] = [
   weather,
   crit,
   figure,
+  figureGrade,
   reach,
 ];
 

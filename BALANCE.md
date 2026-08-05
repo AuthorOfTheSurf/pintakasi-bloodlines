@@ -15,7 +15,7 @@ tank, and the whole thing was tuned at B3 and worked outward — exactly the
 tuning philosophy the odd blade count was designed to buy.
 
 ```
-bun run balance                       # all 15 cases
+bun run balance                       # all 16 cases
 bun run balance sensitivity --runs=4000
 bun run balance --sweep=FORMATS.b3.statScale=0.9,1.0,1.1
 bun run balance --converge=5
@@ -240,7 +240,8 @@ Separate unit of work: larger grade jumps at the low end, tapering toward
 ## Not yet measured
 
 The lab covers the six stats (singly and in PAIRS), elements, stars, weather,
-the weight matrix, the fuel wall, the grade ladder, crits and figure fidelity. Still dark: the
+the weight matrix, the fuel wall, the grade ladder, crits, figure fidelity and
+grade-relative figure calibration. Still dark: the
 gacha/breeding stat distributions the engine is actually fed, and anything
 about the live population — that stays the doctor's job. Crit identity after
 the rework: B2 is still the swingiest blade (15.9% of outcomes flip without

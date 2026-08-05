@@ -11,6 +11,7 @@
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
  * --force  required to reseed a db holding registered player farms.
+ * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -21,6 +22,7 @@ import { playAllHonestDays } from "@/engine/auto-play";
 import { SIMULATION } from "@/engine/config";
 import { diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
+import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
 
 const args = process.argv.slice(2);
@@ -31,6 +33,12 @@ const days = dayArg === undefined ? SIMULATION.DEFAULT_DAYS : Number(dayArg);
 const keep = args.includes("--keep");
 const force = args.includes("--force");
 const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
+const policyArg = args.find((a) => a.startsWith("--discovery-policy="))?.slice("--discovery-policy=".length);
+if (policyArg && policyArg !== "current" && policyArg !== "end-first") {
+  console.error(`Unknown discovery policy "${policyArg}" — use current or end-first.`);
+  process.exit(1);
+}
+const discoveryPolicy: DiscoveryPolicy = (policyArg ?? "current") as DiscoveryPolicy;
 
 function stamp(): string {
   const t = new Date();
@@ -69,11 +77,11 @@ if (!keep) {
   console.log(`Fresh world seeded at ${dbPath} — day 0, Friday\n`);
 }
 
-const game = new Game(db, DEV_FARM_ID);
+const game = new Game(db, DEV_FARM_ID, discoveryPolicy);
 
 for (let day = 1; day <= days; day++) {
   // ── Every player-owned stable plays its honest day ───────────────────
-  playAllHonestDays(db);
+  playAllHonestDays(db, discoveryPolicy);
 
   // ── The day turns: bots play, the card goes off, staking pays ────────
   const tick = game.tickDay();
