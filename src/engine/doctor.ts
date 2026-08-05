@@ -18,6 +18,7 @@ import {
   ELEMENTS,
   FORMAT_NAMES,
   FORMATS,
+  SCOUT,
   weatherOfDay,
   type FightFormat,
 } from "./config";
@@ -101,6 +102,8 @@ export interface DoctorReport {
   clock: { day: number; date: string; week: number };
   invariants: Invariant[];
   health: HealthSection[];
+  /** Omniscient audit of discovery coverage and scout accuracy by fight age. */
+  discovery: BladeDiscovery;
   ok: boolean;
 }
 
@@ -589,17 +592,30 @@ function adoption(db: DB): HealthSection {
  *
  * The story a healthy world tells: age-1 entries sit near the 1-in-5 chance
  * floor (the discovery year is SPENT on unread blades, deliberately), and
- * the hit rate climbs as the figures pile up. Two failure shapes, both
- * judgement rather than invariants: a 4+ rate no better than age 1 means
- * the figures aren't teaching anybody anything, and a discovery year that
- * never touches all five blades means exploration is dead — the round-19/22
- * "door nobody walked through", wearing the fog as a disguise.
+ * the hit rate climbs as the figures pile up. The report also separates
+ * answer coverage (has the true home been tested twice yet?) from scout
+ * accuracy once it has. That distinction is what lets a future extreme-first,
+ * inward discovery policy prove it is narrowing the search rather than merely
+ * checking every blade on a fixed grid.
  */
-export function bladeDiscovery(db: DB): {
-  buckets: { label: string; entries: number; hits: number }[];
+export interface DiscoveryBucket {
+  label: string;
+  entries: number;
+  /** Actual cards at a true-best blade, whether the scout had evidence or not. */
+  hits: number;
+  /** Decisions where the bird already had MIN_READS at a true-best blade. */
+  covered: number;
+  /** Scout's top-ranked blade was truly best, among covered decisions. */
+  scoutHits: number;
+}
+
+export interface BladeDiscovery {
+  buckets: DiscoveryBucket[];
   explored: FightFormat[];
   chance: number;
-} {
+}
+
+export function bladeDiscovery(db: DB): BladeDiscovery {
   const allBirds = db.select().from(birds).all();
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
   // The true best blade(s), read straight off the hidden sheet. A SET, not
@@ -620,12 +636,17 @@ export function bladeDiscovery(db: DB): {
   }
 
   const buckets = [
-    { label: "age 1  ", entries: 0, hits: 0 },
-    { label: "age 2–3", entries: 0, hits: 0 },
-    { label: "age 4+ ", entries: 0, hits: 0 },
+    { label: "age 1  ", entries: 0, hits: 0, covered: 0, scoutHits: 0 },
+    { label: "age 2–3", entries: 0, hits: 0, covered: 0, scoutHits: 0 },
+    { label: "age 4+ ", entries: 0, hits: 0, covered: 0, scoutHits: 0 },
   ];
   const explored = new Set<FightFormat>();
-  for (const r of db.select().from(battleLog).all()) {
+  // Rebuild every bird's report one result at a time. A final report would
+  // leak future figures into an earlier decision, exactly the hindsight this
+  // audit exists to prevent.
+  const history = new Map<string, Record<FightFormat, { fights: number; figureTotal: number }>>();
+  const rows = db.select().from(battleLog).all().sort((a, b) => a.dayIndex - b.dayIndex || a.id - b.id);
+  for (const r of rows) {
     const bird = birdById.get(r.birdId);
     if (!bird) continue; // a bird deleted out from under its history
     // Age AT THE FIGHT, not today — a retiree's whole career would land in
@@ -634,8 +655,32 @@ export function bladeDiscovery(db: DB): {
     const age = Math.max(0, GameClock.weekOf(r.dayIndex) - bird.birthWeek);
     const bucket = buckets[age <= 1 ? 0 : age <= 3 ? 1 : 2];
     bucket.entries++;
-    if (bestOf.get(bird.id)!.has(r.format)) bucket.hits++;
+    const best = bestOf.get(bird.id)!;
+    if (best.has(r.format)) bucket.hits++;
     if (age <= 1) explored.add(r.format);
+
+    const records = history.get(bird.id) ?? Object.fromEntries(
+      FORMAT_NAMES.map((f) => [f, { fights: 0, figureTotal: 0 }])
+    ) as Record<FightFormat, { fights: number; figureTotal: number }>;
+    const covered = [...best].some((f) => records[f].fights >= SCOUT.MIN_READS);
+    if (covered) {
+      bucket.covered++;
+      const score = (f: FightFormat) => {
+        const rec = records[f];
+        const average = rec.fights === 0 ? 0 : rec.figureTotal / rec.fights;
+        return Math.round(
+          ((average * rec.fights + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
+            (rec.fights + SCOUT.PRIOR_WEIGHT)) * 10
+        ) / 10;
+      };
+      const scoutBest = FORMAT_NAMES.reduce((bestFormat, f) =>
+        score(f) > score(bestFormat) ? f : bestFormat
+      );
+      if (best.has(scoutBest)) bucket.scoutHits++;
+    }
+    records[r.format].fights++;
+    records[r.format].figureTotal += r.pitFigure;
+    history.set(bird.id, records);
   }
   return {
     buckets,
@@ -644,13 +689,14 @@ export function bladeDiscovery(db: DB): {
   };
 }
 
-function discovery(db: DB): HealthSection {
-  const d = bladeDiscovery(db);
+function discovery(d: BladeDiscovery): HealthSection {
   const floor = `${(d.chance * 100).toFixed(1)}% by chance`;
   const lines = d.buckets.map((b) =>
     b.entries < DOCTOR.DISCOVERY_MIN_SAMPLE
       ? `${b.label}  ${b.entries} entries — too few to read`
-      : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs ${floor})`
+      : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs ${floor})` +
+        ` · answer coverage ${b.covered}/${b.entries} (${pct(b.covered, b.entries)})` +
+        ` · scout ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)})`}`
   );
   const blades = FORMAT_NAMES.length;
   lines.push(`explored  ${d.explored.length}/${blades} blades saw an age-1 entry in the discovery year`);
@@ -673,11 +719,6 @@ function discovery(db: DB): HealthSection {
       ? `discovery is not converging: 4+ entries hit ${pct(vet.hits, vet.entries)} vs ` +
         `${pct(juv.hits, juv.entries)} at age 1`
       : undefined,
-    // Coverage is only a verdict once the discovery year has a real sample —
-    // an unplayed world hasn't refused to explore, it just hasn't started.
-    juv.entries >= DOCTOR.DISCOVERY_MIN_SAMPLE && d.explored.length < blades
-      ? `only ${d.explored.length}/${blades} blades explored at age 1 — exploration is dead`
-      : undefined,
   ].filter((w): w is string => !!w);
   return { title: "DISCOVERY", lines, warn: warns.length ? warns.join(" · ") : undefined };
 }
@@ -699,6 +740,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
   ];
 
   const weather = weatherLine(db);
+  const discoveryAudit = bladeDiscovery(db);
   // Two things can be wrong with the card at once — too few opponents and
   // nobody playing the going — and a section carries one warn, so they share
   // it. Reading "A · B" beats losing one of them to the other.
@@ -724,7 +766,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     stakerInflows(db),
     championships(db),
     adoption(db),
-    discovery(db),
+    discovery(discoveryAudit),
   ];
 
   return {
@@ -734,6 +776,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     clock: { day: topline.day, date: clockState.date, week: clockState.weekIndex },
     invariants,
     health,
+    discovery: discoveryAudit,
     ok: invariants.every((i) => i.passed),
   };
 }

@@ -352,18 +352,19 @@ describe("the discovery section", () => {
   const section = (db: DB) =>
     diagnose(db, ":memory:").health.find((h) => h.title === "DISCOVERY")!;
 
-  test("a world that never converges warns — twice, and names both failures", () => {
+  test("a world that never converges warns without demanding a full five-blade grid", () => {
     const w = testWorld({ rivalFlock: false });
     // Juveniles all carded at their best blade, veterans never: the hit rate
-    // FALLS with age, which is discovery running backwards. And the whole
-    // discovery year lives at one blade, so exploration is dead too.
+    // FALLS with age, which is discovery running backwards. The whole
+    // discovery year lives at one blade, which is a valid extreme-first
+    // opening rather than a diagnosis by itself.
     for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 1), "b1");
     for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 4), "b5");
 
     const s = section(w.db);
     expect(s.warn).toContain("not converging");
-    expect(s.warn).toContain("1/5 blades");
     expect(s.lines.join("\n")).toContain("stables are still guessing");
+    expect(s.lines.join("\n")).toContain("answer coverage");
     // Health judgement, never an invariant — the run itself stays green.
     expect(diagnose(w.db, ":memory:").ok).toBe(true);
   });
@@ -373,8 +374,10 @@ describe("the discovery section", () => {
     // The discovery year spread across all five blades (chance-rate hits,
     // exactly what SCOUT.EXPLORE is buying), then a 4+ cohort that has
     // learned the answer.
-    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 1), FORMAT_NAMES[i % 5]);
-    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 4), "b1");
+    const juvenile = sprinter(w.db, 1);
+    const veteran = sprinter(w.db, 4);
+    for (let i = 0; i < 20; i++) fought(w.db, juvenile, FORMAT_NAMES[i % 5]);
+    for (let i = 0; i < 20; i++) fought(w.db, veteran, "b1");
 
     const s = section(w.db);
     expect(s.warn).toBeUndefined();
@@ -384,6 +387,24 @@ describe("the discovery section", () => {
     const d = bladeDiscovery(w.db);
     expect(d.buckets[0].hits / d.buckets[0].entries).toBeCloseTo(0.2, 5); // the chance floor
     expect(d.buckets[2].hits).toBe(20); // the answer key, matched exactly
+    expect(d.buckets[2].covered).toBeGreaterThan(0);
+    expect(d.buckets[2].scoutHits).toBe(d.buckets[2].covered);
+    expect(diagnose(w.db, ":memory:").discovery.buckets[2].entries).toBe(20);
+  });
+
+  test("coverage begins only after two reads at a true home, then grades the scout", () => {
+    const w = testWorld({ rivalFlock: false });
+    const bird = sprinter(w.db, 1);
+    // The third B1 decision sees two prior B1 figures. A subsequent wrong
+    // B5 card is still answer-covered, which cleanly separates coverage from
+    // the actual choice the stable made.
+    fought(w.db, bird, "b1");
+    fought(w.db, bird, "b1");
+    fought(w.db, bird, "b1");
+    fought(w.db, bird, "b5");
+
+    const d = bladeDiscovery(w.db).buckets[0];
+    expect(d).toMatchObject({ entries: 4, hits: 3, covered: 2, scoutHits: 2 });
   });
 
   test("thin buckets say so instead of issuing a verdict", () => {
