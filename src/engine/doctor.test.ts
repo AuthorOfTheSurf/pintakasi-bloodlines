@@ -404,7 +404,14 @@ describe("the discovery section", () => {
     fought(w.db, bird, "b5");
 
     const d = bladeDiscovery(w.db).buckets[0];
-    expect(d).toMatchObject({ entries: 4, hits: 3, covered: 2, scoutHits: 2 });
+    expect(d).toMatchObject({
+      entries: 4,
+      hits: 3,
+      nearHits: 3,
+      covered: 2,
+      scoutHits: 2,
+      scoutNearHits: 2,
+    });
   });
 
   test("thin buckets say so instead of issuing a verdict", () => {

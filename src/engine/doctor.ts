@@ -603,10 +603,14 @@ export interface DiscoveryBucket {
   entries: number;
   /** Actual cards at a true-best blade, whether the scout had evidence or not. */
   hits: number;
+  /** Actual cards at a true-best blade or its immediate neighbour. */
+  nearHits: number;
   /** Decisions where the bird already had MIN_READS at a true-best blade. */
   covered: number;
   /** Scout's top-ranked blade was truly best, among covered decisions. */
   scoutHits: number;
+  /** Scout's top-ranked blade was at a true-best blade or its neighbour. */
+  scoutNearHits: number;
 }
 
 export interface BladeDiscovery {
@@ -636,9 +640,9 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
   }
 
   const buckets = [
-    { label: "age 1  ", entries: 0, hits: 0, covered: 0, scoutHits: 0 },
-    { label: "age 2–3", entries: 0, hits: 0, covered: 0, scoutHits: 0 },
-    { label: "age 4+ ", entries: 0, hits: 0, covered: 0, scoutHits: 0 },
+    { label: "age 1  ", entries: 0, hits: 0, nearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
+    { label: "age 2–3", entries: 0, hits: 0, nearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
+    { label: "age 4+ ", entries: 0, hits: 0, nearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
   ];
   const explored = new Set<FightFormat>();
   // Rebuild every bird's report one result at a time. A final report would
@@ -657,6 +661,9 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
     bucket.entries++;
     const best = bestOf.get(bird.id)!;
     if (best.has(r.format)) bucket.hits++;
+    const withinOne = (format: FightFormat) =>
+      [...best].some((home) => Math.abs(FORMAT_NAMES.indexOf(format) - FORMAT_NAMES.indexOf(home)) <= 1);
+    if (withinOne(r.format)) bucket.nearHits++;
     if (age <= 1) explored.add(r.format);
 
     const records = history.get(bird.id) ?? Object.fromEntries(
@@ -677,6 +684,7 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
         score(f) > score(bestFormat) ? f : bestFormat
       );
       if (best.has(scoutBest)) bucket.scoutHits++;
+      if (withinOne(scoutBest)) bucket.scoutNearHits++;
     }
     records[r.format].fights++;
     records[r.format].figureTotal += r.pitFigure;
@@ -695,8 +703,10 @@ function discovery(d: BladeDiscovery): HealthSection {
     b.entries < DOCTOR.DISCOVERY_MIN_SAMPLE
       ? `${b.label}  ${b.entries} entries — too few to read`
       : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs ${floor})` +
+        ` · ${b.nearHits}/${b.entries} on or adjacent (${pct(b.nearHits, b.entries)})` +
         ` · answer coverage ${b.covered}/${b.entries} (${pct(b.covered, b.entries)})` +
-        ` · scout ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)})`}`
+        ` · scout ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)})` +
+          `, ${b.scoutNearHits}/${b.covered} on or adjacent (${pct(b.scoutNearHits, b.covered)})`}`
   );
   const blades = FORMAT_NAMES.length;
   lines.push(`explored  ${d.explored.length}/${blades} blades saw an age-1 entry in the discovery year`);
