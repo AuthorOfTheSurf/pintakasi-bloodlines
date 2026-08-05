@@ -13,6 +13,14 @@ export const CALENDAR = {
   DAYS_PER_WEEK: 7, // a game-week; every 7th day is a Hatch Friday
 } as const;
 
+// ── Simulation ─────────────────────────────────────────────────────────────
+// A thirteen-week run lets the population pass the cold-start burst, cycle
+// multiple generations through the nest, and show whether hardcore attrition
+// is sustainable. Short smoke runs can still pass an explicit day count.
+export const SIMULATION = {
+  DEFAULT_DAYS: 91,
+} as const;
+
 // ── Age gates (in bird-years, derived: currentWeek - birthWeek) ─────────────
 export const AGE = {
   EGG: 0, //          age 0 = egg (sex hidden until hatch)

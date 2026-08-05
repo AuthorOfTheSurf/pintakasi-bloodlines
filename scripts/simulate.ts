@@ -6,7 +6,7 @@
  * play theirs inside the tick. View the newest run with `bun dev:sim` →
  * http://localhost:3435/admin.
  *
- *   bun run simulate [days=5] [--keep] [--db=path] [--force]
+ *   bun run simulate [days=91] [--keep] [--db=path] [--force]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
@@ -18,6 +18,7 @@ import { createDb, latestSimDb } from "@/db/client";
 import { farms } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { playAllHonestDays } from "@/engine/auto-play";
+import { SIMULATION } from "@/engine/config";
 import { diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
 import { Game } from "@/engine/game";
@@ -26,7 +27,7 @@ const args = process.argv.slice(2);
 const dayArg = args.find((a) => /^\d+$/.test(a));
 // `simulate 0` is a real request: seed a fresh world and play NO days —
 // the manual-play starting point (tick it yourself via the API).
-const days = dayArg === undefined ? 5 : Number(dayArg);
+const days = dayArg === undefined ? SIMULATION.DEFAULT_DAYS : Number(dayArg);
 const keep = args.includes("--keep");
 const force = args.includes("--force");
 const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
