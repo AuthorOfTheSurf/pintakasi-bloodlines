@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AGE, BREEDING, BREED_SPLIT, COVERS, ECONOMY, STARS } from "@/engine/config";
+import { AGE, BARN, BREEDING, BREED_SPLIT, COVERS, ECONOMY, STARS } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { fmtGp } from "@/engine/events";
 
@@ -183,16 +183,20 @@ export default function BreedingPage() {
 
       <h2>The nest rule and the calendar</h2>
       <div className="callout">
-        <b>One hen, one egg, at a time.</b> A hen that&apos;s already sitting on an egg cannot take
-        another cover — she&apos;s blocked until it hatches. The timeline: buy the cover today, the
-        egg is laid on the nearest Friday, and it hatches the Friday after that. Conceive now, lay
-        Friday, hatch the following Friday.
+        <b>One hen, one pregnancy at a time.</b> A cover makes a hen pregnant until the nearest
+        Friday. When she lays, she is free for another cover right away, even while the first egg
+        waits to hatch the following Friday. Conceive now, lay Friday, cover again, hatch the
+        following Friday.
       </div>
       <p>
-        Plan around it. A hen is a slow, one-at-a-time asset — if you want three chicks out of one
-        hen, that&apos;s three separate nest cycles, not three covers in one week. Roosters don&apos;t
-        have this limit; that&apos;s exactly why the weekly cover cap above exists on the rooster
-        side instead.
+        Plan around Fridays. A hen cannot take two covers while pregnant, but laying starts her
+        next cycle before the first egg opens. Roosters have their own weekly cover cap above, so
+        no single top stud can supply every nest.
+      </p>
+      <p>
+        A new farm begins with {BARN.STARTER_EGGS} eggs. They hatch together on its first Hatch
+        Friday, giving a new stable a full discovery-year flock before it starts breeding its own
+        line.
       </p>
 
       <h2>Why breeding is the only way up</h2>

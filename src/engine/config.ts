@@ -897,6 +897,11 @@ export type FarmColor = (typeof FARM_COLORS)[number];
 // ── Barn ────────────────────────────────────────────────────────────────────
 export const BARN = {
   CAPACITY: 100, // max birds + eggs; breeding is blocked when full
+  // Every new farm receives these age-0 eggs, hatching together on its first
+  // Hatch Friday. Eight gives a new stable enough discovery-year bodies to
+  // card a real week and absorb early attrition without making the gacha the
+  // population faucet.
+  STARTER_EGGS: 8,
 } as const;
 
 // ── Gacha (pure rarity tokens — correspond to nothing yet) ──────────────────

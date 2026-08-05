@@ -2,6 +2,7 @@ import type { DB } from "./client";
 import { birds, farms, gameState, type NewBird } from "./schema";
 import {
   BASE_COATS,
+  BARN,
   CARRIAGES,
   ECONOMY,
   ELEMENTS,
@@ -38,8 +39,8 @@ interface StarterSpec {
 /**
  * The LEGACY 8-bird shape — TEST-ONLY since round 15. Engine unit tests
  * need retired pairs and gate-age actives on day 0; production seeding
- * (below) starts every stable from four age-0 eggs instead (Zane's ruling:
- * "start every stable with 4x age 0 eggs — they can't fight for the first
+ * (below) starts every stable from eight age-0 eggs instead (Zane's ruling:
+ * "start every stable with 8x age 0 eggs — they can't fight for the first
  * week until they hatch into 1yo chicks").
  */
 const STARTERS: StarterSpec[] = [
@@ -55,9 +56,11 @@ const STARTERS: StarterSpec[] = [
   { name: "Batong Buhay", sex: "male", status: "active", age: 5, element: "Earth", halfStars: 2, wins: 7, losses: 6 }, // veteran
 ];
 
-// The dev farm's four canonical egg names; other farms draw from the pool.
-const EGG_NAMES = ["Tandang Pula", "Dalisay", "Kidlat", "Sinag"];
-const STARTER_EGGS = 4;
+// The dev farm's canonical egg names; other farms draw from the pool.
+const EGG_NAMES = [
+  "Tandang Pula", "Dalisay", "Kidlat", "Sinag",
+  "Bagwis", "Perlas", "Alab", "Batong Buhay",
+];
 
 function rollStats(rng: Rng) {
   // ~300 on the 0–2000 scale (Zane's ruling) — headroom is the point:
@@ -123,10 +126,10 @@ export function seedGame(
 }
 
 /**
- * The starter flock every new farm opens with. Default (ruled round 15):
- * FOUR age-0 eggs — laid today, hatching next Hatch Friday as age-1 chicks.
- * Nothing fights the first week. Sexes balanced 2-2 (hidden until hatch),
- * four distinct elements, stats in the starter band. Eggs arrive NAMED
+ * The starter flock every new farm opens with. Default:
+ * BARN.STARTER_EGGS age-0 eggs — laid today, hatching next Hatch Friday as
+ * age-1 chicks. Nothing fights the first week. Sexes balanced (hidden until
+ * hatch), all five elements represented, stats in the starter band. Eggs arrive NAMED
  * (real names, not auto-names) so the naming law is satisfied at hatch.
  *
  * shape: "legacy" keeps the old 8-bird gate-age shape — TEST-ONLY.
@@ -177,14 +180,17 @@ export function seedStarterFlock(
     return;
   }
 
-  // The real onboarding: four eggs, laid the day the farm registers.
+  // The real onboarding: a full discovery-year flock, laid the day the farm registers.
   const state = db.select().from(gameState).all()[0];
   const today = state?.dayIndex ?? 0;
   const week = Math.floor(today / 7);
 
   const names =
-    farmId === DEV_FARM_ID ? [...EGG_NAMES] : drawStarterNames(db, STARTER_EGGS, rng);
-  const sexes: ("male" | "female")[] = ["male", "male", "female", "female"];
+    farmId === DEV_FARM_ID ? EGG_NAMES.slice(0, BARN.STARTER_EGGS) : drawStarterNames(db, BARN.STARTER_EGGS, rng);
+  const sexes: ("male" | "female")[] = Array.from(
+    { length: BARN.STARTER_EGGS },
+    (_, i) => (i < BARN.STARTER_EGGS / 2 ? "male" : "female")
+  );
   const elements = [...ELEMENTS] as Element[];
   // Shuffle sexes and elements with the flock rng — balanced, not uniform.
   for (let i = sexes.length - 1; i > 0; i--) {
@@ -196,8 +202,8 @@ export function seedStarterFlock(
     [elements[i], elements[j]] = [elements[j], elements[i]];
   }
 
-  const rows: NewBird[] = Array.from({ length: STARTER_EGGS }, (_, i) => {
-    const element = elements[i];
+  const rows: NewBird[] = Array.from({ length: BARN.STARTER_EGGS }, (_, i) => {
+    const element = elements[i % elements.length];
     return {
       id: `${prefix}-${i + 1}`,
       farmId,

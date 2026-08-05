@@ -116,18 +116,20 @@ export class Breeding {
     const forbidden = this.forbiddenReason(mother, fatherRow);
     if (forbidden) throw new Error(`Bloodline restriction: ${forbidden}`);
 
-    // One egg per hen at a time (ruled round 12, timeline round 13): the
-    // cover makes her pregnant now, the egg lays Friday, hatches the Friday
-    // after — and she's blocked until the hatch. This is the hen-side cap;
-    // the rooster side has the 14+2.
-    const sitting = this.database
+    // One PREGNANCY per hen at a time: the cover makes her pregnant now and
+    // the egg lays Friday. Once it is laid, her biological work is done, so
+    // she is immediately free to take another cover while the first egg sits
+    // until next Friday's hatch. This raises supply without weakening the
+    // rooster-side 14+2 cover cap.
+    const pregnancies = this.database
       .select()
       .from(birds)
       .where(and(eq(birds.motherId, mother.id), eq(birds.status, "egg")))
-      .all();
-    if (sitting.length > 0)
+      .all()
+      .filter((egg) => egg.birthWeek > week);
+    if (pregnancies.length > 0)
       throw new Error(
-        `${mother.name} is already ${sitting[0].birthWeek > week ? "pregnant with" : "sitting on"} ${sitting[0].name} — one egg per hen until it hatches`
+        `${mother.name} is already pregnant with ${pregnancies[0].name} — one pregnancy per hen until it lays`
       );
 
     if (this.flock.barnCount() >= BARN.CAPACITY)
@@ -183,10 +185,10 @@ export class Breeding {
           : fatherRow.baseCoat;
     const trimColor = TRIM_BY_ELEMENT[element][this.rng() < 0.5 ? 0 : 1];
 
-    // The nest timeline (ruled 2026-08-03 round 13): the cover makes the
-    // hen pregnant NOW; the egg is LAID on the nearest coming Friday
-    // (birthWeek = week + 1) and hatches the Friday after that, as an
-    // age-1 chick. birthDay keeps the conception day for history.
+    // The nest timeline: the cover makes the hen pregnant NOW; the egg is
+    // LAID on the nearest coming Friday (birthWeek = week + 1), which frees
+    // her for another cover, and hatches the Friday after that as an age-1
+    // chick. birthDay keeps the conception day for history.
     const egg = {
       id: randomUUID(),
       farmId: this.farmId, // the hen's farm — hens keep the egg

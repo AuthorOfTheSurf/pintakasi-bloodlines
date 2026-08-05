@@ -6,6 +6,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { roman, uniqueName } from "./naming";
+import { BARN } from "./config";
 
 /** Bird names are unique across the WORLD — ruled 2026-08-03 (round 12). */
 
@@ -19,7 +20,7 @@ describe("world-unique bird names", () => {
       seedStarterFlock(db, farm.id, { seed: 100 + i, idPrefix: `f${i}` });
     }
     const names = db.select({ name: birds.name }).from(birds).all().map((r) => r.name);
-    expect(names.length).toBe(7 * 4); // 4 starter eggs per farm since round 15
+    expect(names.length).toBe(7 * BARN.STARTER_EGGS);
     expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(names.length);
   });
 

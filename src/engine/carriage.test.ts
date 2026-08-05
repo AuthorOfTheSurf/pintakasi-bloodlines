@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { birds, farms } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
-import { BREEDING, CARRIAGES, STARS } from "./config";
+import { BARN, BREEDING, CARRIAGES, STARS } from "./config";
 import { Gacha } from "./gacha";
 import { mulberry32 } from "./rng";
 
@@ -28,7 +28,9 @@ describe("seeded carriage", () => {
     // A production farm too — cold-start eggs roll carriage the same way.
     seedStarterFlock(db, "farm-2", { seed: 9, idPrefix: "eggs" }); // default shape: "eggs"
     const all = db.select().from(birds).all();
-    expect(all.length).toBeGreaterThan(0);
+    const coldStart = all.filter((bird) => bird.farmId === "farm-2");
+    expect(coldStart).toHaveLength(BARN.STARTER_EGGS);
+    expect(coldStart.every((bird) => bird.status === "egg")).toBe(true);
     for (const bird of all) {
       expect(CARRIAGES).toContain(bird.carriage);
       expect(bird.carriageHalfStars).toBeGreaterThanOrEqual(0);

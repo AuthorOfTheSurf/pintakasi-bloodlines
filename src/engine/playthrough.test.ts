@@ -4,6 +4,7 @@ import { createDb } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
+import { BARN } from "./config";
 import { Flock, type BirdView } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
@@ -188,18 +189,18 @@ describe("the full breeding-lifecycle loop closes — PvP edition", () => {
   });
 });
 
-describe("the cold start (round 15 — every stable begins with 4 eggs)", () => {
-  test("four named age-0 eggs; nobody fights week one; Friday hatches the flock", () => {
+describe("the cold start (every stable begins with BARN.STARTER_EGGS eggs)", () => {
+  test("named age-0 eggs; nobody fights week one; Friday hatches the flock", () => {
     const db = createDb(":memory:");
     const dev = seedGame(db); // PRODUCTION shape — no legacy flock
     const game = new Game(db, dev.farmId);
     const flock = new Flock(db, dev.farmId);
 
     const eggs = flock.all();
-    expect(eggs.length).toBe(4);
+    expect(eggs.length).toBe(BARN.STARTER_EGGS);
     expect(eggs.every((b) => b.status === "egg" && b.age === 0 && b.named === 1)).toBe(true);
-    expect(eggs.filter((b) => b.sex === "hidden").length).toBe(4); // sexes hidden until hatch
-    expect(new Set(eggs.map((b) => b.element)).size).toBe(4); // four distinct elements
+    expect(eggs.filter((b) => b.sex === "hidden").length).toBe(BARN.STARTER_EGGS); // sexes hidden until hatch
+    expect(new Set(eggs.map((b) => b.element)).size).toBe(5); // every element is represented
 
     // Week one: eggs can't be carded at all.
     expect(() =>
@@ -208,7 +209,7 @@ describe("the cold start (round 15 — every stable begins with 4 eggs)", () => 
 
     // Friday: the whole flock hatches at age 1 — juvenile year opens.
     const tick = game.tickWeek();
-    expect(tick.fridays[0].hatched.length).toBe(4);
+    expect(tick.fridays[0].hatched.length).toBe(BARN.STARTER_EGGS);
     const chick = flock.all()[0];
     expect(chick.age).toBe(1);
     expect(["rooster", "hen"]).toContain(chick.sexLabel!);

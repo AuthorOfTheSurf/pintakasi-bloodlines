@@ -8,6 +8,7 @@ import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
 import {
   AGE,
+  BARN,
   BATTLE,
   CARRIAGES,
   CLAIMER,
@@ -118,7 +119,7 @@ export const MCP_INSTRUCTIONS: string[] = [
   "Pintakasi: Bloodlines — a digital sabong game. YOU are the game client: narrate fights and hatch days with color, present choices clearly, and let the player decide.",
   "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. No farm on this connection? register_farm, save the key, and reconnect with ?key=… on the MCP URL. (When only one farm exists, the key is optional.)",
   `THE DAILY RITUAL: check_in once per game-day — it pays the GP drip ($${usd(ECONOMY.DAILY_DRIP)} = ${ECONOMY.DAILY_DRIP} GP) and ${ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull. Do it first thing.`,
-  "THE LOOP: breed retired birds → the hen is pregnant NOW, the egg is LAID next Friday and HATCHES the Friday after as an age-1 chick → juvenile through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
+  "THE LOOP: breed retired birds → the hen is pregnant NOW, the egg is LAID next Friday (freeing her for another cover) and HATCHES the Friday after as an age-1 chick → juvenile through the discovery year → real fights from age 2 → at age 3 the fork opens: hardcore duels AND safe retirement → retire (or lose a hardcore) → the retiree becomes breeding stock → a better bird.",
   `AGE GATES: ${AGE.EGG} = egg · ${AGE.CHICK} = juvenile only · ${AGE.REAL_STAKES}+ = real fights · ${AGE.FORK}+ = hardcore + manual retirement · ${AGE.FIGHTING_CAP} = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.`,
   "STATS ARE FIXED AT BIRTH, AND HIDDEN UNTIL RETIREMENT (round 28 — the fog). There is NO training, and there is no sheet to read on a live bird: the six fighting stats show as null until the career ends (retirement, a hardcore loss, or the age cap — any of them reveals the sheet). The skill is DISCOVERY, for real now: fight the juvenile year across blades, read the scout report on get_bird (figures per blade, shrunk toward a neutral prior), and learn what the bird already is. Stars, element, carriage, the record AND the bird's overallGrade stay visible — they are the card, not the sheet. The overall grade is the deliberate exception: it says HOW STRONG the bird is (six-stat average as a letter) and never WHAT SHAPE it is, so a B+ sprinter and a B+ stayer read identically — quote it freely, it gives a fresh hatch something to be proud of and a claim something honest to bid on. Never guess a live bird's stats to a player; present the scout report instead.",
   `CARRIAGE IS THE SECOND AXIS (round 23) — every bird also carries a rating of ${CARRIAGES.join(" or ")} (pang-baba/pang-itaas — the low-working shuffler vs. the flyer that comes over the top), rolled at birth or gacha and inherited at breeding the same way stars are. It shows on get_bird and list_flock. IT IS DATA ONLY FOR NOW: it is NOT wired into the fight engine yet, so it never changes tonight's outcome — mention it as part of a bird's profile, but don't imply it swings a fight.`,
@@ -161,7 +162,7 @@ export const TOOL_DESCRIPTIONS = {
   register_farm:
     `Create your farm: name (required), country flag (encouraged — pick one!), and two colors from the palette: ` +
     FARM_COLORS.join(", ") +
-    `. Returns your farm key (fk_…) — SAVE IT and reconnect with ?key=… on the MCP URL. Seeds the 8-bird starter flock and a $${usd(ECONOMY.STARTING_GP)} (${ECONOMY.STARTING_GP.toLocaleString()} GP) stake.`,
+    `. Returns your farm key (fk_…) — SAVE IT and reconnect with ?key=… on the MCP URL. Seeds ${BARN.STARTER_EGGS} starter eggs, hatching together on the first Friday, and a $${usd(ECONOMY.STARTING_GP)} (${ECONOMY.STARTING_GP.toLocaleString()} GP) stake.`,
 
   list_farms: "Every farm's public identity — name, flag, colors, GP, land. No keys.",
 
@@ -185,7 +186,7 @@ export const TOOL_DESCRIPTIONS = {
     "Jump the WORLD clock to the next Hatch Friday (the aging tick). Eggs hatch into age-1 chicks — prompt the player to name them. Tonight's card goes off too.",
 
   breed:
-    `Buy a cover: YOUR retired hen × a retired rooster — your own, or ANY farm's listed stud (browse_studs first). Costs ${ECONOMY.BREED_FEE} GP ($${usd(ECONOMY.BREED_FEE)}, min AND max for now), which SPLITS: ${fmtGp(breedSplit.stakerPoolCents)} GP to the land-staking pool, ${fmtGp(breedSplit.juicePoolCents)} to the fight-juice pool, ${fmtGp(breedSplit.studOwnerCents)} to the stud's owner. The hen's farm keeps the egg ('Egg of <mother>' — hatches next Hatch Friday). Covers are capped per rooster per week (${COVERS.PER_WEEK} public + ${COVERS.OWNER_RESERVED} owner-reserved).`,
+    `Buy a cover: YOUR retired hen × a retired rooster — your own, or ANY farm's listed stud (browse_studs first). Costs ${ECONOMY.BREED_FEE} GP ($${usd(ECONOMY.BREED_FEE)}, min AND max for now), which SPLITS: ${fmtGp(breedSplit.stakerPoolCents)} GP to the land-staking pool, ${fmtGp(breedSplit.juicePoolCents)} to the fight-juice pool, ${fmtGp(breedSplit.studOwnerCents)} to the stud's owner. The hen's farm keeps the egg ('Egg of <mother>'). She is pregnant until the next Friday, then the egg lays and she is free for another cover; that egg hatches the Friday after. Covers are capped per rooster per week (${COVERS.PER_WEEK} public + ${COVERS.OWNER_RESERVED} owner-reserved).`,
 
   browse_studs:
     `The barn from one hen's point of view: every stud she CAN breed with (name, farm, stars, age, record, covers left — ${ECONOMY.BREED_FEE} GP each) plus the excluded ones WITH the reason (kin overlap named explicitly, or covered out this week). Candidates = every farm's listed studs + your own retired roosters.`,

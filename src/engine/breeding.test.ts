@@ -88,22 +88,23 @@ describe("breed", () => {
   });
 });
 
-describe("the nest (rounds 12–13: pregnant now, laid Friday, hatched the next)", () => {
-  test("one egg per hen, blocked until the hatch — two Fridays out", () => {
+describe("the nest (pregnant now, laid Friday, hatched the next)", () => {
+  test("one pregnancy per hen; laying frees her before the first egg hatches", () => {
     const w = freshGame(7);
     const game = new Game(w.db, w.farmId);
     const first = w.breeding.breed("starter-2", "starter-1").egg; // Dalisay conceives
     expect(first.eggStage).toBe("gestating");
     expect(() => w.breeding.breed("starter-2", "starter-3")).toThrow(/already pregnant/);
-    // The OTHER hen is free — the rule is per hen, not per farm.
+    // The OTHER hen is free — the rule is per pregnancy, not per farm.
     expect(() => w.breeding.breed("starter-4", "starter-3")).not.toThrow();
-    game.tickWeek(); // Friday 1 — the egg is LAID, still in the nest
+    game.tickWeek(); // Friday 1 — the egg is LAID, and the hen is free
     expect(w.flock.byId(first.id).eggStage).toBe("laid");
-    expect(() => w.breeding.breed("starter-2", "starter-1")).toThrow(/sitting on/);
-    game.tickWeek(); // Friday 2 — the hatch empties the nest
     const { egg } = w.breeding.breed("starter-2", "starter-3");
-    // The first chick still wears "Egg of Dalisay" — names stay world-unique.
     expect(egg.name).toBe("Egg of Dalisay II");
+    expect(egg.eggStage).toBe("gestating");
+    game.tickWeek(); // Friday 2 — first egg hatches; second egg is laid
+    expect(w.flock.byId(first.id).status).toBe("active");
+    expect(w.flock.byId(egg.id).eggStage).toBe("laid");
   });
 });
 
