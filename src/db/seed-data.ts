@@ -110,7 +110,7 @@ export function seedGame(
       handler: "Zane",
       apiKey: DEV_FARM_KEY,
       gp: opts.startingGp ?? ECONOMY.STARTING_GP,
-      landTokens: 0,
+      landTokensCents: 0,
       createdDay: 0,
     })
     .run();

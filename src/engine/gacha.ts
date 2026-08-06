@@ -18,6 +18,7 @@ import {
   type Carriage,
   type Element,
   type GachaToken,
+  fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { Flock, type BirdView } from "./flock";
@@ -30,7 +31,7 @@ export interface GachaResult {
   pricePaid: number; // 0 when a free pull was used
   freePullUsed: boolean;
   freePullsLeft: number;
-  landTokens: number; // every roll pays land, alongside whatever drops
+  landTokensCents: number; // every roll pays land, alongside whatever drops
   // Blue/Purple/Gold rolls drop a MYSTERY EGG (random element, hidden sex,
   // no parents) that hatches next Hatch Friday. Null on White/Green — or
   // when the barn is full (barnFull says which).
@@ -84,7 +85,7 @@ export class Gacha {
       freePullUsed,
       freePullsLeft: this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!
         .freePulls,
-      landTokens: LAND.PER_GACHA_ROLL,
+      landTokensCents: LAND.PER_GACHA_ROLL,
       collection: this.collection(),
     };
   }
@@ -122,7 +123,7 @@ export class Gacha {
         freePullUsed: false,
         freePullsLeft: this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!
           .freePulls,
-        landTokens: LAND.PER_GACHA_ROLL,
+        landTokensCents: LAND.PER_GACHA_ROLL,
         collection: this.collection(),
       });
     }
@@ -184,7 +185,7 @@ export class Gacha {
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     this.database
       .update(farms)
-      .set({ landTokens: farm.landTokens + LAND.PER_GACHA_ROLL })
+      .set({ landTokensCents: farm.landTokensCents + LAND.PER_GACHA_ROLL })
       .where(eq(farms.id, this.farmId))
       .run();
 
@@ -247,7 +248,7 @@ export class Gacha {
         lt: LAND.PER_GACHA_ROLL,
         message:
           `rolled the gacha${freePullUsed ? " (free pull)" : price > 0 ? ` (${price} GP)` : " (bundle)"}` +
-          ` — ${token} token, +${LAND.PER_GACHA_ROLL} LT` +
+          ` — ${token} token, +${fmtLt(LAND.PER_GACHA_ROLL)} LT` +
           (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
         data: { token, price, free: freePullUsed, land: LAND.PER_GACHA_ROLL, egg: egg?.name ?? null },
       });

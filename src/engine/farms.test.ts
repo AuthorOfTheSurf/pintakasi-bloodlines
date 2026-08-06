@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
 import { gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { ECONOMY, LAND } from "./config";
+import { ECONOMY, LAND, LT_CENTS } from "./config";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 
@@ -71,20 +71,35 @@ describe("check-in (the daily ritual)", () => {
 });
 
 describe("land purchases (one-way, capped)", () => {
+  // ⚠ THE WHOLE-TOKEN BOUNDARY (round 36). Land is MINTED in hundredths now,
+  // but buying is still a whole-token player action: you ask for 100 LT and
+  // the column moves by 100 * LT_CENTS. This test is the pin on that
+  // conversion — the one place the two units meet — so a future edit that
+  // "simplifies" buyLand into hundredths end-to-end fails here instead of
+  // quietly turning a 1,000 LT daily cap into a 10 LT one.
+  const CAP_LT = LAND.DAILY_BUY_CAP / LT_CENTS; // the cap in the API's own unit
+
   test("80 GP buys 100 LT; the daily cap holds; land never sells back", () => {
     const { db, dev, farmsApi } = fresh();
     const buy = farmsApi.buyLand(dev.farmId, 100);
     expect(buy.gpPaid).toBe(LAND.GP_PER_100_TOKENS);
-    expect(buy.farm.landTokens).toBe(100);
-    expect(buy.capLeftToday).toBe(LAND.DAILY_BUY_CAP - 100);
-    // The cap is per game-day.
-    expect(() => farmsApi.buyLand(dev.farmId, LAND.DAILY_BUY_CAP)).toThrow(/Daily land cap/);
-    farmsApi.buyLand(dev.farmId, LAND.DAILY_BUY_CAP - 100); // exactly to the cap
+    expect(buy.farm.landTokensCents).toBe(100 * LT_CENTS); // whole tokens in, hundredths stored
+    expect(buy.capLeftToday).toBe(CAP_LT - 100); // …and back out in whole tokens
+    // The cap is per game-day, and it is a cap on WHOLE TOKENS: the 1,001st
+    // token of the day is refused even though the column counts to 100,000.
+    expect(() => farmsApi.buyLand(dev.farmId, CAP_LT)).toThrow(/Daily land cap/);
+    farmsApi.buyLand(dev.farmId, CAP_LT - 100); // exactly to the cap
     expect(() => farmsApi.buyLand(dev.farmId, 1)).toThrow(/Daily land cap/);
     db.update(gameState).set({ dayIndex: 1 }).where(eq(gameState.id, 1)).run();
     expect(() => farmsApi.buyLand(dev.farmId, 1)).not.toThrow();
     // Odd amounts round the GP cost up — never fractional GP.
     const odd = farmsApi.buyLand(dev.farmId, 7);
     expect(odd.gpPaid).toBe(Math.ceil((7 * LAND.GP_PER_100_TOKENS) / 100));
+  });
+
+  test("the API refuses fractional tokens — hundredths are minted, not bought", () => {
+    const { dev, farmsApi } = fresh();
+    expect(() => farmsApi.buyLand(dev.farmId, 6.73)).toThrow(/whole/);
+    expect(() => farmsApi.buyLand(dev.farmId, 0)).toThrow(/whole/);
   });
 });

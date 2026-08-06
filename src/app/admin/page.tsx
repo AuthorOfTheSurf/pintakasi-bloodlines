@@ -6,6 +6,7 @@ import {
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
   FORMATS,
+  LT_CENTS,
   PINTAKASI,
   landForFight,
   landForTournamentFight,
@@ -53,6 +54,23 @@ function gpFmt(cents: number): string {
 }
 
 /**
+ * ⚠ LAND IS MINTED IN HUNDREDTHS since round 36 — every land figure reaching
+ * this page (farm piles, topline totals, entry awards, crown grants, the
+ * ledger's Δ column) is 100× what a player calls it, and printing one raw is a
+ * correctness bug rather than a formatting one.
+ *
+ * Grouped rather than config's `fmtLt`, which is plain `toFixed(2)`: the
+ * office's topline runs to six figures of land and a comma-less 1234567.89 is
+ * unreadable. Same value, thousands separators.
+ */
+function ltFmt(cents: number): string {
+  return (cents / LT_CENTS).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
  * The card's name for a lobby: mode·class, with "REAL" left unsaid (round
  * 20 — real stakes are the default, so only juvenile and hardcore announce
  * themselves). A plain real/open card just reads OPEN.
@@ -86,7 +104,7 @@ interface BracketFighter {
   stars: number;
   figure: number | null; // null on a bye — nobody threw a blade
   gpWonCents: number;
-  landGranted: number;
+  landGranted: number; // hundredths of a token (round 36) — render via ltFmt
   won: boolean;
 }
 interface BracketMatch {
@@ -232,7 +250,7 @@ function Bracket({
     f.gpWonCents > 0 || f.landGranted > 0 ? (
       <span className="bawards">
         {f.gpWonCents > 0 && <><GpIcon size={11} /> +{gpFmt(f.gpWonCents)}</>}
-        {f.landGranted > 0 && <><LtIcon size={11} /> +{f.landGranted}</>}
+        {f.landGranted > 0 && <><LtIcon size={11} /> +{ltFmt(f.landGranted)}</>}
       </span>
     ) : null;
   const totalRounds = rounds.length;
@@ -305,7 +323,7 @@ function Bracket({
           </div>
           <div className="bpurse">
             <GpIcon size={11} /> +{gpFmt(champion.wonCents)}
-            {champion.landGranted > 0 && <> · <LtIcon size={11} /> +{champion.landGranted}</>}
+            {champion.landGranted > 0 && <> · <LtIcon size={11} /> +{ltFmt(champion.landGranted)}</>}
           </div>
         </div>
       </div>
@@ -409,14 +427,23 @@ export default function Admin() {
   const winRows = log.filter((r) => r.result === "win"); // one per fight
   const bred = allBirds.filter((b) => b.motherId !== null);
 
-  /** Signed, colored delta badge — GP values in cents, counts as-is. */
-  const delta = (key: keyof Topline, opts: { cents?: boolean } = {}) => {
+  /**
+   * Signed, colored delta badge — GP values in cents, LAND in hundredths of a
+   * token (round 36), counts as-is. The diff is always taken on the RAW stored
+   * figure and only the rendering scales, so a badge can never disagree with
+   * the number it sits beside.
+   */
+  const delta = (key: keyof Topline, opts: { cents?: boolean; lt?: boolean } = {}) => {
     if (!base) return null;
     const diff = (now[key] as number) - (base[key] as number);
     // A snapshot written before this field existed parses to undefined, and
     // undefined arithmetic renders as NaN in the badge.
     if (!Number.isFinite(diff) || diff === 0) return null;
-    const shown = opts.cents ? gpFmt(Math.abs(diff)) : Math.abs(diff).toLocaleString();
+    const shown = opts.cents
+      ? gpFmt(Math.abs(diff))
+      : opts.lt
+        ? ltFmt(Math.abs(diff))
+        : Math.abs(diff).toLocaleString();
     return <span className={`diff ${diff > 0 ? "up" : "down"}`}>{diff > 0 ? "+" : "−"}{shown}</span>;
   };
 
@@ -589,8 +616,8 @@ export default function Admin() {
       farmP: f.primaryColor,
       farmS: f.secondaryColor,
       gp: (f.gp * 100 + f.gpCents) / 100,
-      liquidLt: f.landTokens,
-      stakedLt: f.stakedLand,
+      liquidLt: f.landTokensCents,
+      stakedLt: f.stakedLandCents,
       birds: mine.length,
       wins: f.wins,
       losses: f.losses,
@@ -664,6 +691,9 @@ export default function Admin() {
   // their own fight count, so this reproduces the engine's settle-up exactly
   // (see Lobbies.complete) rather than re-deriving a fee from the mode.
   // Tournament land stays per fight: the Majors never joined the group stage.
+  // Both maps accumulate the engine's own integers — cents of GP, hundredths
+  // of a token (round 36). Summing before scaling is the point: scale first
+  // and a column of thousands of awards accretes float error a cent at a time.
   const netGpCents = new Map<string, number>();
   const netLt = new Map<string, number>();
   const bump = (map: Map<string, number>, key: string, by: number) =>
@@ -816,15 +846,17 @@ export default function Admin() {
       farmP: f.primaryColor,
       farmS: f.secondaryColor,
       bot: f.isBot === 1,
-      stakedLt: f.stakedLand,
-      liquidLt: f.landTokens,
-      share: totalStaked > 0 ? f.stakedLand / totalStaked : 0,
+      stakedLt: f.stakedLandCents,
+      liquidLt: f.landTokensCents,
+      share: totalStaked > 0 ? f.stakedLandCents / totalStaked : 0,
       earnedGp,
       payouts: paid?.days ?? 0,
       perDay: paid?.days ? earnedGp / paid.days : 0,
       // Lifetime yield against TODAY's stake — the stake grew the whole way,
       // so read it as "what this pile has returned so far", not as a rate.
-      perLt: f.stakedLand > 0 ? earnedGp / f.stakedLand : 0,
+      // Per WHOLE token: the stake is hundredths since round 36, and dividing
+      // by it unscaled would quote a hundredth's worth of yield as a token's.
+      perLt: f.stakedLandCents > 0 ? earnedGp / (f.stakedLandCents / LT_CENTS) : 0,
       lastPaidDay: paid?.lastDay ?? null,
     };
   });
@@ -892,11 +924,11 @@ export default function Admin() {
         </div>
         <div className="card">
           <div className="big">
-            <LtIcon size={22} /> {now.landMinted.toLocaleString()} LT {delta("landMinted")}
+            <LtIcon size={22} /> {ltFmt(now.landMinted)} LT {delta("landMinted", { lt: true })}
           </div>
           <div className="label">Land Tokens minted</div>
           <div className="sub">
-            {now.landStaked.toLocaleString()} staked · {now.landLiquid.toLocaleString()} liquid
+            {ltFmt(now.landStaked)} staked · {ltFmt(now.landLiquid)} liquid
           </div>
         </div>
         <div className="card">
@@ -979,11 +1011,11 @@ export default function Admin() {
             <div className="cards stakecards">
               <div className="card">
                 <div className="big">
-                  <LtIcon size={22} /> {totalStaked.toLocaleString()} LT
+                  <LtIcon size={22} /> {ltFmt(totalStaked)} LT
                 </div>
                 <div className="label">total Land Tokens staked</div>
                 <div className="sub">
-                  {now.landLiquid.toLocaleString()} LT still idle ·{" "}
+                  {ltFmt(now.landLiquid)} LT still idle ·{" "}
                   {stakingRows.filter((s) => s.stakedLt > 0).length} of {allFarms.length} barns
                   staking
                 </div>
@@ -995,8 +1027,10 @@ export default function Admin() {
                 <div className="label">total GP earned via staking</div>
                 <div className="sub">
                   paid out over {stakingDays} day{stakingDays === 1 ? "" : "s"} ·{" "}
+                  {/* Per WHOLE token — the stake is held in hundredths, so it
+                      is scaled out before dividing or this reads 100× light. */}
                   {totalStaked > 0
-                    ? `${(totalStakingPaidCents / 100 / totalStaked).toFixed(3)} GP per staked LT`
+                    ? `${(totalStakingPaidCents / 100 / (totalStaked / LT_CENTS)).toFixed(3)} GP per staked LT`
                     : "no stake yet"}
                 </div>
               </div>

@@ -14,7 +14,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies } from "./lobbies";
-import { CLAIMER, ECONOMY } from "./config";
+import { CLAIMER, ECONOMY, LT_CENTS } from "./config";
 import { canHardcore } from "./lifecycle";
 import { drawStarterNames } from "./naming";
 import { mulberry32, randInt } from "./rng";
@@ -73,9 +73,11 @@ export function playHonestDay(
   for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
     quietly(() => breeding.listStud(rooster.id));
 
+  // Whole tokens in, hundredths stored (round 36) — see the note in bots.ts.
+  // Floor, or `stake` throws on a 100× request and `quietly` hides it.
   quietly(() => {
-    const farm = farmsApi.rowById(farmId);
-    if (farm.landTokens > 0) farmsApi.stake(farmId, farm.landTokens);
+    const whole = Math.floor(farmsApi.rowById(farmId).landTokensCents / LT_CENTS);
+    if (whole > 0) farmsApi.stake(farmId, whole);
   });
 
   // One cover a day, first hen whose nest is empty (one egg per hen).

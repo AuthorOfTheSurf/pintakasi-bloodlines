@@ -8,6 +8,8 @@ import {
   FIGHTS_PER_GROUP_BIRD,
   FORMAT_NAMES,
   GROUP,
+  LAND,
+  LT_CENTS,
   PINTAKASI,
   SCOUT,
   STAKER_FLOWS,
@@ -56,7 +58,7 @@ const gpCents = (db: DB, id: string) => {
   return f.gp * 100 + f.gpCents;
 };
 const land = (db: DB, id: string) =>
-  db.select().from(farms).where(eq(farms.id, id)).get()!.landTokens;
+  db.select().from(farms).where(eq(farms.id, id)).get()!.landTokensCents;
 /**
  * Every GP in the world, in cents: wallets PLUS both pools. Since round 22 a
  * fight rakes 2% of the pot to the stakers, so summing wallets alone would
@@ -645,8 +647,13 @@ describe("the land curve (fight up)", () => {
     // of a single fight; it is now the TOTAL a bird risked across its group,
     // which for a full night is the whole fee and for a short one is less. The
     // rungs below are therefore the FULL-NIGHT rungs.
-    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBe(1);
-    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBe(6);
+    //
+    // ⚠ ROUND 36 CHANGED THE UNIT. landForFight returns HUNDREDTHS now, so a
+    // juvenile night is 115 (1.15 LT) and a real night 673 (6.73 LT). Both
+    // rungs are written against LT_CENTS rather than as bare integers, so the
+    // reader can see which unit they are in without going to look.
+    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE) / LT_CENTS).toBeCloseTo(1.15, 2);
+    expect(landForFight(ECONOMY.REAL_ENTRY_FEE) / LT_CENTS).toBeCloseTo(6.73, 2);
     expect(landForTournamentFight(PINTAKASI.LAND_BASIS)).toBeGreaterThan(
       landForFight(ECONOMY.REAL_ENTRY_FEE)
     );
@@ -660,22 +667,32 @@ describe("the land curve (fight up)", () => {
     const perGp = (fee: number) => landForFight(fee) / fee;
     expect(perGp(ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(perGp(ECONOMY.JUVENILE_ENTRY_FEE));
 
-    // WHY LAND PAYS ONCE ON THE NIGHT rather than once per fight. Not because
-    // it pays better — at the real rungs the two happen to land on the same
-    // number — but because paying per fight would feed the curve three small
-    // stakes, and a small stake sits on the `max(1, …)` FLOOR where the
-    // exponent does nothing. A juvenile is the case that shows it: three 3 GP
-    // fights would each floor to 1 LT and mint 3 for a 9 GP night that is
-    // worth exactly 1. Per-fight payment doesn't reward fighting, it rewards
-    // being cheap. So the rule is: never more than per-fight, often much less.
+    // WHY LAND PAYS ONCE ON THE NIGHT rather than once per fight.
+    //
+    // ⚠ THE REASON CHANGED IN ROUND 36, and the assertions with it. Under
+    // whole tokens the argument was about the FLOOR: a 3 GP stake sat on
+    // `max(1, …)` where the exponent did nothing, so three juvenile fights
+    // each floored to 1 LT and minted 3 for a night worth 1 — per-fight
+    // payment rewarded being cheap, not fighting. Hundredths dissolved that
+    // floor (a 3 GP stake is 0.32 LT now, on the curve like everything else),
+    // so the ordering FLIPPED: the night now pays MORE than the sum of its
+    // fights, and that is the correct direction, not a regression. It is just
+    // superlinearity doing its job — f(a+b+c) > f(a)+f(b)+f(c) — which is the
+    // same property as "fighting up pays extra", read on one bird's night
+    // instead of across two cards. Paying per fight would have SHRUNK the
+    // reward for taking a full night, which is precisely backwards.
     const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
-    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBeLessThanOrEqual(
+    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(
       FIGHTS_PER_GROUP_BIRD * landForFight(stake)
     );
     const juvStake = stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE);
-    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBeLessThan(
+    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBeGreaterThan(
       FIGHTS_PER_GROUP_BIRD * landForFight(juvStake)
     );
+    // …and a bird that fought a SHORT card is still honestly paid short: the
+    // curve is fed what it actually risked, so two fights of three pay less
+    // than the full night. (That is the half of the round-34 ruling that did
+    // not change.)
     expect(landForFight(2 * stake)).toBeLessThan(landForFight(ECONOMY.REAL_ENTRY_FEE));
     expect(landForFight(stake)).toBeLessThan(landForFight(2 * stake));
     // 3× the fee pays MORE than 3× the land — the "fight up" incentive, which
@@ -683,6 +700,92 @@ describe("the land curve (fight up)", () => {
     expect(landForFight(3 * ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(
       3 * landForFight(ECONOMY.REAL_ENTRY_FEE)
     );
+  });
+
+  /**
+   * ⚠ THE GUARD. THIS IS THE TEST THAT SHOULD HAVE EXISTED BEFORE ROUND 34.
+   *
+   * The ruling the land curve exists to express is one sentence: FIGHTING UP
+   * INTO DEARER COMPANY PAYS EXTRA. Every test above pins that at the rungs
+   * the game happens to use today — a juvenile night, a real night, a Major.
+   * Rungs are not the ruling. The ruling is a property of the whole curve,
+   * and round 34 broke it at a rung nobody had written down.
+   *
+   * WHAT HAPPENED. Round 34 moved the juvenile entry fee 8 GP → 9. The curve
+   * was `max(1, ceil((fee/8)^1.15))` in WHOLE TOKENS, and (9/8)^1.15 = 1.145,
+   * which `ceil` turned into 2 tokens. So the discovery year began minting
+   * 2/9 = 0.222 LT per GP risked while a real card paid 6/36 = 0.167 — the
+   * CHEAPEST fight in the game paying the BEST land in it, exactly backwards.
+   * Nothing caught it. Every invariant passed, every number was internally
+   * consistent, and the rule it violated lived in a comment.
+   *
+   * WHY IT WAS INVISIBLE. Whole tokens made `ceil` LOAD-BEARING. At the cheap
+   * end of a superlinear curve the rounding is worth more than the exponent —
+   * rounding 1.145 up to 2 is a 75% overpayment, while the same rounding on a
+   * real night is worth 4% — so the distortion was always largest exactly
+   * where the curve is shallowest. Round 34's answer was to move the base to
+   * 9 until the numbers landed on friendly integers; that worked once and
+   * would have broken again on the next fee change.
+   *
+   * WHAT THIS PINS INSTEAD. LT per GP risked must be NON-DECREASING in the
+   * fee, at every fee, not just at the rungs. That is the ruling stated as
+   * arithmetic, and it fails the moment somebody moves a fee the wrong way —
+   * which is the whole point, because a fee moves for reasons that have
+   * nothing to do with land.
+   *
+   * ⚠ AND IT IS IMPOSSIBLE TO GUARANTEE WITH INTEGER TOKENS. This assertion
+   * could not have been written before round 36: with whole-token output the
+   * curve is a staircase, and per-GP yield sawtooths DOWN across every flat
+   * tread (at base 8 and `ceil`, 1 LT covers 1–8 GP, so 8 GP pays 0.125/GP
+   * against 1 GP's 1.0). No amount of choosing a base fixes that; only
+   * resolution does. Hundredths make the rounding error two orders of
+   * magnitude smaller than the gaps it was corrupting, so the exponent — not
+   * the rounding — decides the ordering, and the property becomes testable.
+   * If a future round ever returns land to whole tokens, THIS TEST IS THE
+   * THING IT BREAKS, and that is the correct alarm.
+   */
+  test("GUARD: LT per GP risked never decreases as the fee rises (1–300 GP)", () => {
+    // The realistic range with room over the top: 1 GP is below any real fee,
+    // 300 GP is well past the Majors' 200 GP basis.
+    //
+    // Collected rather than asserted in the loop so a failure NAMES THE FEE.
+    // "expected 0.222 to be >= 0.167" three hundred times over tells the next
+    // person nothing; "inverted at 9 GP" tells them which knob they moved.
+    const inversions: string[] = [];
+    let prev = landForFight(1) / 1;
+    for (let fee = 1; fee <= 300; fee++) {
+      const perGp = landForFight(fee) / fee;
+      // Non-DECREASING, not strictly increasing: rounding to a hundredth can
+      // legitimately leave two adjacent fees on the same per-GP yield. What it
+      // must never do is go BACKWARDS, because backwards is the inversion.
+      if (perGp < prev)
+        inversions.push(`${fee} GP pays ${perGp.toFixed(4)} LT/GP after ${prev.toFixed(4)}`);
+      prev = perGp;
+    }
+    expect(inversions).toEqual([]);
+    // A fight ALWAYS mints something. The floor is a hundredth, not a token,
+    // but it is a floor: no fee, however small, buys a night of fighting for
+    // nothing.
+    for (let fee = 1; fee <= 300; fee++) expect(landForFight(fee)).toBeGreaterThan(0);
+  });
+
+  test("GUARD: the ordering the ruling actually names, rung by rung", () => {
+    const perGp = (lt: number, fee: number) => lt / fee;
+    const juv = perGp(landForFight(ECONOMY.JUVENILE_ENTRY_FEE), ECONOMY.JUVENILE_ENTRY_FEE);
+    const real = perGp(landForFight(ECONOMY.REAL_ENTRY_FEE), ECONOMY.REAL_ENTRY_FEE);
+    // The exact pair round 34 inverted: the discovery year must pay WORSE land
+    // per GP than a real card, because it is the cheaper, safer company.
+    expect(real).toBeGreaterThan(juv);
+
+    // And the Majors sit above the daily card on the same measure — a steeper
+    // exponent on a dearer basis. This is the second half of "fight up": it is
+    // not only about the size of the fee but about which card you took it on.
+    const major = perGp(landForTournamentFight(PINTAKASI.LAND_BASIS), PINTAKASI.LAND_BASIS);
+    expect(major).toBeGreaterThan(real);
+    // …and the two curves agree at their shared base — the Majors are the same
+    // shape pulled steeper, not a different deal bolted on.
+    expect(landForTournamentFight(LAND.FEE_PER_TOKEN)).toBe(landForFight(LAND.FEE_PER_TOKEN));
+    expect(landForFight(LAND.FEE_PER_TOKEN)).toBe(LT_CENTS); // one fee-per-token = 1.00 LT
   });
 });
 

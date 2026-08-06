@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { events, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding, splitBreedFee } from "./breeding";
-import { ECONOMY, FIGHTS_PER_GROUP_BIRD, stakePerFight } from "./config";
+import { ECONOMY, FIGHTS_PER_GROUP_BIRD, LT_CENTS, stakePerFight } from "./config";
 import { Farms } from "./farms";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
@@ -133,7 +133,9 @@ describe("the unified ledger", () => {
 
   test("staking writes both sides: the stake and the daily yield", () => {
     const w = world();
-    w.db.update(farms).set({ landTokens: 10 }).where(eq(farms.id, w.devId)).run();
+    // 10 whole tokens in the column's own unit (hundredths, round 36) — stake()
+    // takes the whole number and the log line quotes it back the same way.
+    w.db.update(farms).set({ landTokensCents: 10 * LT_CENTS }).where(eq(farms.id, w.devId)).run();
     w.game.farms.stake(w.devId, 10);
     const [stake] = ofType(w.db, "stake");
     expect(stake.message).toContain("staked 10 LT");

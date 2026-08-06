@@ -6,6 +6,7 @@ import {
   GACHA_TOKENS,
   GACHA_WEIGHTS,
   LAND,
+  LT_CENTS,
   STAKER_FLOWS,
   STATS,
   type GachaToken,
@@ -49,7 +50,9 @@ export default function GachaPage() {
       <h2>What a roll gives you</h2>
       <p>
         Every single roll, free or paid, always gives you two things: a rarity token, and{" "}
-        {LAND.PER_GACHA_ROLL} Land Token. Only the rarest tokens — {eggTokenNames} — also drop a{" "}
+        {/* PER_GACHA_ROLL is in hundredths of a token since round 36 — printing
+            it raw would promise 100 Land Tokens a roll. */}
+        {LAND.PER_GACHA_ROLL / LT_CENTS} Land Token. Only the rarest tokens — {eggTokenNames} — also drop a{" "}
         <strong>mystery egg</strong>: random element, hidden sex, no parents, hatching next Hatch
         Friday like any other egg.
       </p>

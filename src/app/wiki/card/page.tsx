@@ -15,6 +15,7 @@ import {
   PINTAKASI,
   STAKER_FLOWS,
   cardOfDay,
+  fmtLt,
   landForFight,
   stakePerFight,
 } from "@/engine/config";
@@ -369,10 +370,11 @@ export default function CardPage() {
       <div className="callout warn">
         <b>Land is paid once, on what you actually risked.</b> Not once per fight. When the card
         settles, your bird earns Land Tokens on the total it put up that night — a full card of{" "}
-        {FIGHTS_PER_GROUP_BIRD} real fights mints {landForFight(ECONOMY.REAL_ENTRY_FEE)} LT, a short
-        card of {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
-        {landForFight(stakePerFight(ECONOMY.REAL_ENTRY_FEE) * (FIGHTS_PER_GROUP_BIRD - 1))} LT. A
-        bird that drew nobody at all earns none.{" "}
+        {FIGHTS_PER_GROUP_BIRD} real fights mints {fmtLt(landForFight(ECONOMY.REAL_ENTRY_FEE))} LT, a
+        short card of {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
+        {fmtLt(landForFight(stakePerFight(ECONOMY.REAL_ENTRY_FEE) * (FIGHTS_PER_GROUP_BIRD - 1)))} LT.
+        Those decimals are real: land is minted in hundredths of a token, so an award is almost
+        never a round number. A bird that drew nobody at all earns none.{" "}
         <strong>Land is for fighting, not queueing.</strong> See{" "}
         <Link href="/wiki/land">Land Tokens</Link>.
       </div>
@@ -406,7 +408,7 @@ export default function CardPage() {
                 <td>{MODE_LABEL[mode]}</td>
                 <td className="num">{MODE_FEE[mode]} GP</td>
                 <td>{MODE_WHO[mode]}</td>
-                <td className="num">{landForFight(MODE_FEE[mode])} LT</td>
+                <td className="num">{fmtLt(landForFight(MODE_FEE[mode]))} LT</td>
               </tr>
             ))}
           </tbody>

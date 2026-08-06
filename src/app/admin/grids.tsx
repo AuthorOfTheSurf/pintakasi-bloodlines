@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
+import { LT_CENTS } from "@/engine/config";
 import { gradeColor, gradeOf, overallGradeOf, type Grade } from "@/engine/grades";
 import {
   BASE_COAT_HEX,
@@ -42,6 +43,8 @@ export interface FarmRowUI {
   farmP: string;
   farmS: string;
   gp: number;
+  // Land, in hundredths of a token since round 36 — raw so the grid sorts on
+  // it; ltNum is the only thing that divides. Same for every `…Lt` below.
   liquidLt: number;
   stakedLt: number;
   birds: number;
@@ -98,7 +101,7 @@ export interface BirdRowUI {
   // fought: purses and pots net of its own entry fees, and the land its
   // fights minted. The answer to "was this bird worth feeding?"
   netGp: number;
-  netLt: number;
+  netLt: number; // hundredths of a token (round 36)
 }
 
 export interface BreedingRowUI {
@@ -129,7 +132,7 @@ export interface GachaRowUI {
   farmS: string;
   token: string;
   cost: string; // "free" or "8 GP"
-  lt: number;
+  lt: number; // hundredths of a token (round 36)
   egg: string;
 }
 
@@ -155,13 +158,16 @@ export interface StakingRowUI {
   farmP: string;
   farmS: string;
   bot: boolean;
-  stakedLt: number;
+  stakedLt: number; // hundredths of a token (round 36), like liquidLt
   liquidLt: number; // land sitting idle — staked land is the working kind
   share: number; // fraction of the pool this stake commands TODAY
   earnedGp: number; // lifetime staking yield, all payouts summed
   payouts: number; // days this farm was paid
   perDay: number; // average yield on a paid day
-  perLt: number; // lifetime yield ÷ TODAY's stake — a rough return, not a rate
+  // Lifetime yield ÷ TODAY's stake — a rough return, not a rate. GP per WHOLE
+  // token: the divisor is scaled back out of hundredths at the source, because
+  // a "GP per staked LT" that quoted hundredths would read 100× too small.
+  perLt: number;
   lastPaidDay: number | null;
 }
 
@@ -174,7 +180,7 @@ export interface LedgerRowUI {
   farmS?: string;
   message: string;
   gp: number | null;
-  lt: number | null;
+  lt: number | null; // signed, in hundredths of a token (round 36)
 }
 
 const num = (v: number | null | undefined, dp = 2) =>
@@ -182,6 +188,24 @@ const num = (v: number | null | undefined, dp = 2) =>
 
 const signed = (v: number | null | undefined) =>
   v == null || v === 0 ? "" : `${v > 0 ? "+" : "−"}${num(Math.abs(v))}`;
+
+/**
+ * ⚠ EVERY LT FIGURE IN THESE ROWS IS HUNDREDTHS OF A TOKEN (round 36) — the
+ * rows carry the engine's raw integers and this is the ONLY place they are
+ * divided. That split is deliberate: AG Grid sorts and filters on the row
+ * value, so scaling at the source would put floats in the sort key, and
+ * formatting at the source would sort "9.90" above "10.00" as strings.
+ *
+ * Always two decimals. A land column that renders 673 as "6.73" and 500 as "5"
+ * reads as two different units, which is the confusion this round is about.
+ */
+const ltNum = (v: number | null | undefined) =>
+  v == null
+    ? ""
+    : (v / LT_CENTS).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const signedLt = (v: number | null | undefined) =>
+  v == null || v === 0 ? "" : `${v > 0 ? "+" : "−"}${ltNum(Math.abs(v))}`;
 
 const deltaClasses = {
   up: (p: { value: number | null }) => (p.value ?? 0) > 0,
@@ -218,11 +242,17 @@ function TokenAmountCell(props: {
   dp?: number;
 }) {
   if (props.value == null) return null;
+  // The token decides the SCALE, not just the icon: GP rows arrive in whole GP,
+  // land rows in hundredths of a token (round 36). `dp` only means anything to
+  // GP — land is fixed at two places by ltNum.
+  const isLt = props.token === "lt";
+  const mag = (v: number, dpFallback = 2) =>
+    isLt ? ltNum(v) : num(v, props.dp ?? dpFallback);
   const text = props.display === "signed"
-    ? signed(props.value)
+    ? (isLt ? signedLt(props.value) : signed(props.value))
     : props.display === "positive"
-      ? (props.value ? `+${num(props.value, props.dp ?? 0)}` : "")
-      : num(props.value, props.dp);
+      ? (props.value ? `+${mag(props.value, 0)}` : "")
+      : mag(props.value);
   if (!text) return null;
   return (
     <span>
@@ -296,8 +326,20 @@ const FARM_COLS: ColDef<FarmRowUI>[] = [
     type: "rightAligned",
     width: 90,
   },
-  { field: "liquidLt", headerName: "LT liquid", type: "rightAligned", width: 110 },
-  { field: "stakedLt", headerName: "LT staked", type: "rightAligned", width: 110 },
+  {
+    field: "liquidLt",
+    headerName: "LT liquid",
+    type: "rightAligned",
+    width: 110,
+    valueFormatter: (p) => ltNum(p.value),
+  },
+  {
+    field: "stakedLt",
+    headerName: "LT staked",
+    type: "rightAligned",
+    width: 110,
+    valueFormatter: (p) => ltNum(p.value),
+  },
   { field: "birds", headerName: "birds", type: "rightAligned", width: 90 },
   { field: "studs", headerName: "studs listed", type: "rightAligned", width: 120 },
 ];
@@ -465,7 +507,7 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
     type: "rightAligned",
     width: 110,
     cellRenderer: TokenAmountCell,
-    cellRendererParams: { token: "lt", display: "positive", dp: 0 },
+    cellRendererParams: { token: "lt", display: "positive" },
     cellClass: "up",
   },
   // Unimportant — parked at the far end (ruled round 15).
@@ -507,7 +549,13 @@ const GACHA_COLS: ColDef<GachaRowUI>[] = [
   farmCol("farm", "farm", "farm"),
   { field: "token", width: 110 },
   { field: "cost", width: 100 },
-  { field: "lt", headerName: "+LT", type: "rightAligned", width: 80 },
+  {
+    field: "lt",
+    headerName: "+LT",
+    type: "rightAligned",
+    width: 90,
+    valueFormatter: (p) => ltNum(p.value),
+  },
   { field: "egg", headerName: "mystery egg", minWidth: 170, cellRenderer: GachaEggCell },
 ];
 
@@ -542,7 +590,7 @@ const STAKING_COLS: ColDef<StakingRowUI>[] = [
     type: "rightAligned",
     width: 130,
     sort: "desc",
-    valueFormatter: (p) => num(p.value, 0),
+    valueFormatter: (p) => ltNum(p.value),
   },
   {
     field: "share",
@@ -581,7 +629,13 @@ const STAKING_COLS: ColDef<StakingRowUI>[] = [
     width: 140,
     valueFormatter: (p) => (p.value == null ? "never" : String(p.value)),
   },
-  { field: "liquidLt", headerName: "LT idle", type: "rightAligned", width: 110 },
+  {
+    field: "liquidLt",
+    headerName: "LT idle",
+    type: "rightAligned",
+    width: 110,
+    valueFormatter: (p) => ltNum(p.value),
+  },
 ];
 
 const LEDGER_COLS: ColDef<LedgerRowUI>[] = [
@@ -602,8 +656,8 @@ const LEDGER_COLS: ColDef<LedgerRowUI>[] = [
     field: "lt",
     headerName: "ΔLT",
     type: "rightAligned",
-    width: 90,
-    valueFormatter: (p) => signed(p.value),
+    width: 100,
+    valueFormatter: (p) => signedLt(p.value),
     cellClassRules: deltaClasses,
   },
 ];

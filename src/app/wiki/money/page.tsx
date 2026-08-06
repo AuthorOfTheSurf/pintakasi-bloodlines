@@ -4,6 +4,7 @@ import {
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
   LAND,
+  LT_CENTS,
   PINTAKASI,
   STAKER_FLOWS,
   stakePerFight,
@@ -188,8 +189,10 @@ export default function MoneyPage() {
         The Pintakasi Majors cost{" "}
         {PINTAKASI.ENTRY_FEE === 0 ? "nothing to enter — you earn a seat by winning, not by paying"
           : `${PINTAKASI.ENTRY_FEE} GP to enter`}. See <Link href="/wiki/pintakasi">The Pintakasi</Link>.
-        Land is capped at {LAND.DAILY_BUY_CAP} LT bought per farm per game-day, and it is never
-        sellable back — see <Link href="/wiki/land">Land Tokens</Link>. Standing a rooster at stud
+        Land is capped at {(LAND.DAILY_BUY_CAP / LT_CENTS).toLocaleString()} LT bought per farm per
+        game-day, and it is never sellable back — see <Link href="/wiki/land">Land Tokens</Link>.
+        You buy and stake land in whole tokens; you <em>earn</em> it in hundredths, so a fought
+        night pays an amount with decimals on it. Standing a rooster at stud
         costs Land Tokens, not GP — see <Link href="/wiki/breeding">Breeding</Link>.
       </p>
 

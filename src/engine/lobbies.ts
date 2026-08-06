@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
@@ -35,6 +35,7 @@ import {
   type FightFormat,
   type FightMode,
   type Lobby,
+  fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { creditCents, payStakers } from "./farms";
@@ -187,6 +188,16 @@ export interface EntrySettlement {
   staked: number; //   GP actually put at risk
   refunded: number; // the unfought share, handed back
   land: number; //     LT for the night, on the curve, off the total staked
+}
+
+/**
+ * Every name a lobby view needs, read once (round 36). See `lookupFor` — this
+ * exists so rendering a room is two queries rather than one per printed name.
+ */
+interface LobbyLookup {
+  birdName: Map<string, string>;
+  farms: Map<string, typeof farms.$inferSelect>;
+  flockFor: (farmId: string) => Flock;
 }
 
 /** One lobby going off at the tick — a public event. */
@@ -638,7 +649,7 @@ export class Lobbies {
         const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
         database
           .update(farms)
-          .set({ gp: farm.gp + refunded, landTokens: farm.landTokens + land })
+          .set({ gp: farm.gp + refunded, landTokensCents: farm.landTokensCents + land })
           .where(eq(farms.id, entry.farmId))
           .run();
         database
@@ -666,7 +677,7 @@ export class Lobbies {
             lt: land,
             message:
               `${bird.name} finished ${label} — ${fights} of ${FIGHTS_PER_GROUP_BIRD} fights, ` +
-              `${staked} GP risked, +${land} LT` +
+              `${staked} GP risked, +${fmtLt(land)} LT` +
               // Say nothing about a refund of nothing: a full card is the
               // normal case and "0 GP back" reads as a bug in the ledger.
               (refunded > 0 ? ` · ${refunded} GP unfought and returned` : ""),
@@ -1120,18 +1131,61 @@ export class Lobbies {
       price: lobby.price,
       fee: MODE_FEES[lobby.mode],
       filled: entries.length,
-      entries: visible.map((e) => this.card(e, closed ? entries : undefined)),
+      entries: visible.map((e) => this.card(e, this.lookupFor(entries), closed ? entries : undefined)),
+    };
+  }
+
+  /**
+   * ONE READ PER TABLE FOR THE WHOLE LOBBY (round 36) — the N+1 fix.
+   *
+   * `card` used to query for every name it printed: a `farms` row per entry, a
+   * fresh `Flock` per entry, and — worst — a `birds` AND a `farms` lookup for
+   * every group-mate listed in the draw. Under the group stage a closed lobby
+   * of twenty birds reveals roughly sixty group-mate names, so rendering one
+   * room cost well over a hundred queries to print about twenty rows.
+   *
+   * Round 35's indexes made each of those fast, which is exactly why this was
+   * worth fixing separately: indexes turn a catastrophe into a papercut, and a
+   * papercut per row is still the wrong shape. Two queries now, whatever the
+   * lobby holds.
+   *
+   * The `Flock` cache is per FARM rather than per entry because `byId` returns
+   * a BirdView with derived fields (age, stars, sexLabel) that the raw row
+   * doesn't carry, and a barn entering five birds should build one Flock.
+   */
+  private lookupFor(entries: (typeof lobbyEntries.$inferSelect)[]): LobbyLookup {
+    const birdIds = [...new Set(entries.map((e) => e.birdId))];
+    const farmIds = [...new Set(entries.map((e) => e.farmId))];
+    // `inArray` on an empty list is not valid SQL — an empty lobby is a real
+    // state (a phantom key nobody entered), so guard rather than let it throw.
+    const birdRows = birdIds.length
+      ? this.database.select().from(birds).where(inArray(birds.id, birdIds)).all()
+      : [];
+    const farmRows = farmIds.length
+      ? this.database.select().from(farms).where(inArray(farms.id, farmIds)).all()
+      : [];
+    const flocks = new Map<string, Flock>();
+    return {
+      birdName: new Map(birdRows.map((b) => [b.id, b.name])),
+      farms: new Map(farmRows.map((f) => [f.id, f])),
+      flockFor: (farmId: string) => {
+        const cached = flocks.get(farmId);
+        if (cached) return cached;
+        const made = new Flock(this.database, farmId);
+        flocks.set(farmId, made);
+        return made;
+      },
     };
   }
 
   /** `field` is passed only once the lobby has closed — it carries the draw. */
   private card(
     entry: typeof lobbyEntries.$inferSelect,
+    lookup: LobbyLookup,
     field?: (typeof lobbyEntries.$inferSelect)[]
   ): EntryCard {
-    const ownerFlock = new Flock(this.database, entry.farmId);
-    const bird = ownerFlock.byId(entry.birdId);
-    const farm = this.database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+    const bird = lookup.flockFor(entry.farmId).byId(entry.birdId);
+    const farm = lookup.farms.get(entry.farmId)!;
     const view: EntryCard = {
       entryId: entry.id,
       farm: {
@@ -1165,8 +1219,8 @@ export class Lobbies {
             e.farmId !== entry.farmId
         )
         .map((e) => ({
-          bird: this.database.select().from(birds).where(eq(birds.id, e.birdId)).get()!.name,
-          farm: this.database.select().from(farms).where(eq(farms.id, e.farmId)).get()!.name,
+          bird: lookup.birdName.get(e.birdId)!,
+          farm: lookup.farms.get(e.farmId)!.name,
         }));
     }
     return view;

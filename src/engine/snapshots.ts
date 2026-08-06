@@ -99,8 +99,8 @@ export function computeTopline(db: DB): Topline {
     pendingEntries.reduce((s, e) => s + e.fee * 100, 0) +
     pendingClaims.reduce((s, c) => s + c.price * 100, 0) +
     tournamentEscrowCents;
-  const landStaked = allFarms.reduce((s, f) => s + f.stakedLand, 0);
-  const landLiquid = allFarms.reduce((s, f) => s + f.landTokens, 0);
+  const landStaked = allFarms.reduce((s, f) => s + f.stakedLandCents, 0);
+  const landLiquid = allFarms.reduce((s, f) => s + f.landTokensCents, 0);
   const byStatus = { egg: 0, active: 0, retired: 0 };
   for (const b of allBirds) byStatus[b.status]++;
 
@@ -201,7 +201,7 @@ export function stakingBook(db: DB): StakingBook {
     });
   }
   return {
-    totalStakedLand: db.select().from(farms).all().reduce((s, f) => s + f.stakedLand, 0),
+    totalStakedLand: db.select().from(farms).all().reduce((s, f) => s + f.stakedLandCents, 0),
     totalPaidCents: [...byFarm.values()].reduce((s, p) => s + p.cents, 0),
     payoutDays: days.size,
     byFarm,

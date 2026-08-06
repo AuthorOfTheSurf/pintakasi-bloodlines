@@ -21,6 +21,7 @@ import {
   type FightFormat,
   type Lobby,
   type StatName,
+  LT_CENTS,
 } from "./config";
 import { Breeding, type StudView } from "./breeding";
 import { drawStarterNames } from "./naming";
@@ -47,7 +48,7 @@ export interface BotDayReport {
   farm: string;
   style: BotProfile["style"];
   checkedIn: boolean;
-  stakedLand: number; // bots stake every liquid LT, daily
+  stakedLandCents: number; // bots stake every liquid LT, daily
   paidPulls: number; //  gacha rolls bought at price (round 22)
   landBought: number; // LT bought with GP — the landlord's daily play (round 23)
   studsListed: number; // retired roosters put up in the breeding barn
@@ -109,7 +110,7 @@ export class Bots {
           handler: bot.handler ?? null,
           apiKey: `fk_${bot.id}`,
           gp: ECONOMY.STARTING_GP,
-          landTokens: 0,
+          landTokensCents: 0,
           createdDay: day,
           isBot: 1,
         })
@@ -153,7 +154,7 @@ export class Bots {
       farm: bot.name,
       style: bot.style,
       checkedIn: false,
-      stakedLand: 0,
+      stakedLandCents: 0,
       paidPulls: 0,
       landBought: 0,
       studsListed: 0,
@@ -202,8 +203,16 @@ export class Bots {
     if (bot.landAppetite && rng() < bot.landAppetite) {
       // Max the daily cap, or as much of it as the wallet allows. Land never
       // sells, so this barn is making a one-way bet on the staking yield.
+      // ⚠ BOTH SIDES IN WHOLE TOKENS (round 36). `DAILY_BUY_CAP` is stored in
+      // hundredths but `buyLand` takes whole tokens, so the cap has to come
+      // down to tokens before it meets `affordable` — otherwise this asks for
+      // up to 100× the cap, `buyLand` refuses it, `quietly` eats the refusal,
+      // and the landlord silently stops buying. That would have been an
+      // expensive silence: land purchases were 72,800 GP of the 87,510 GP the
+      // staker pool paid out over 91 days, so the whole staking economy would
+      // have gone quiet with nothing on fire.
       const affordable = Math.floor(((gp() - RESERVE) * 100) / LAND.GP_PER_100_TOKENS);
-      const want = Math.min(LAND.DAILY_BUY_CAP, affordable);
+      const want = Math.min(LAND.DAILY_BUY_CAP / LT_CENTS, affordable);
       if (want > 0 && quietly(() => void farmsApi.buyLand(bot.id, want)))
         report.landBought = want;
     }
@@ -218,8 +227,20 @@ export class Bots {
     }
 
     // 1c. …and only THEN stake what's left over.
-    const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokens;
-    if (liquid > 0 && quietly(() => farmsApi.stake(bot.id, liquid))) report.stakedLand = liquid;
+    //
+    // ⚠ WHOLE TOKENS GO IN, HUNDREDTHS COME OUT (round 36). The balance is
+    // stored in hundredths but `stake` takes whole tokens, so this must floor
+    // — and getting it wrong would have been INVISIBLE. Passing the raw
+    // hundredths asks to stake 100× the balance, `stake` throws, `quietly`
+    // eats it, and every bot in the world silently stops staking while the
+    // staker pool quietly stops paying anyone. That is the round-19 claiming
+    // and round-22 gacha failure exactly: a door nobody walks through, with no
+    // error anywhere. The fractional remainder simply stays liquid until the
+    // next day's earnings round it up past a whole token.
+    const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokensCents;
+    const whole = Math.floor(liquid / LT_CENTS);
+    if (whole > 0 && quietly(() => farmsApi.stake(bot.id, whole)))
+      report.stakedLandCents = whole * LT_CENTS;
 
     // (No training step — stats are fixed at birth, ruled round 13. The
     // discovery year is fought, not trained.)

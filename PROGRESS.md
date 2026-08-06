@@ -442,3 +442,22 @@ bottom.*
     Bigger fields with more cancellations most likely means the early weeks
     are still thin while the later ones are full — but it is an average hiding
     a distribution, and nothing currently prints the per-week field sizes.
+17. **Make LAND conservation provable, the way GP is.** GP has a two-sided
+    proof — `gpInWorldCents` against `gpFromFaucetsCents` — and it has caught
+    two silent burns. Land has no equivalent: the Majors' per-fight mint
+    (`tournaments.ts`) credits `landTokensCents` but records the award as
+    `data.landEach` on a `fight` event instead of a signed `lt` delta per
+    side, so `sum(events.lt)` does not reconcile against wallets. Round 36
+    made this matter more, not less: land is now fractional, minted on a curve
+    at three different call sites, and burned at one. The fix is small — emit
+    signed `lt` deltas from the tournament mint — and it buys a seventh
+    invariant.
+18. **Round 36's lesson, worth generalising: a unit change is a silent-failure
+    generator.** Converting land to hundredths created three bugs, all of the
+    same shape (a hundredths figure passed to an API expecting whole tokens)
+    and all invisible: two were swallowed by `quietly()` in the bot layer, and
+    the third would have paid a Major champion 0.05 LT. None would have failed
+    a test or an invariant. What caught them was reading the call sites by
+    hand and rendering the Handbook pages. If another unit ever changes, grep
+    every call site of the changed API before trusting the type checker — a
+    rename type-checks perfectly while meaning something different.

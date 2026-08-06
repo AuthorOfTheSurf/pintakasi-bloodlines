@@ -18,6 +18,8 @@ import {
   type Carriage,
   type Element,
   type StatName,
+  LT_CENTS,
+  fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { creditCents } from "./farms";
@@ -265,14 +267,14 @@ export class Breeding {
       // takes Land Tokens OUT of the world, which is what gives the yield a
       // price to be measured against.
       const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-      if (farm.landTokens < COVERS.STUD_LISTING_LT)
+      if (farm.landTokensCents < COVERS.STUD_LISTING_LT)
         throw new Error(
-          `Standing ${bird.name} at stud costs ${COVERS.STUD_LISTING_LT} LT — ${farm.name} holds ` +
-            `${farm.landTokens} liquid (unstake some, or earn more in the pit)`
+          `Standing ${bird.name} at stud costs ${COVERS.STUD_LISTING_LT / LT_CENTS} LT — ${farm.name} holds ` +
+            `${farm.landTokensCents} liquid (unstake some, or earn more in the pit)`
         );
       this.database
         .update(farms)
-        .set({ landTokens: farm.landTokens - COVERS.STUD_LISTING_LT })
+        .set({ landTokensCents: farm.landTokensCents - COVERS.STUD_LISTING_LT })
         .where(eq(farms.id, this.farmId))
         .run();
       landSpent = COVERS.STUD_LISTING_LT;
@@ -283,7 +285,7 @@ export class Breeding {
         lt: -COVERS.STUD_LISTING_LT,
         message:
           `${bird.name} stands at stud — ${ECONOMY.BREED_FEE} GP a cover ` +
-          `(${COVERS.STUD_LISTING_LT} LT paid for the seat)`,
+          `(${COVERS.STUD_LISTING_LT / LT_CENTS} LT paid for the seat)`,
       });
     }
     this.database.update(birds).set({ listedStud: 1 }).where(eq(birds.id, birdId)).run();

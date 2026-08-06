@@ -8,6 +8,7 @@ import {
   JUVENILE_MAJOR,
   LAND,
   PINTAKASI,
+  fmtLt,
   landForFight,
   landForTournamentFight,
 } from "@/engine/config";
@@ -260,9 +261,11 @@ export default function PintakasiPage() {
         <strong>weighted to the fallen</strong>. Every fight in the bracket mints{" "}
         <Link href="/wiki/land">Land Tokens (LT)</Link> to both birds, on a steeper curve than an
         ordinary daily-card fight. The regular card pays land once per entry, at settle-up — a
-        dear bird that fights its whole group takes {dailyRealLand} LT for the night. A Pintakasi
-        fight mints {crownFightLand} LT per fighter <em>every single round</em>, no matter who
-        wins, and a bird that keeps winning keeps collecting it.
+        dear bird that fights its whole group takes {fmtLt(dailyRealLand)} LT for the night. A
+        Pintakasi fight mints {fmtLt(crownFightLand)} LT per fighter <em>every single round</em>, no
+        matter who wins, and a bird that keeps winning keeps collecting it. (Land is minted in
+        hundredths of a token, which is why these are decimals — see{" "}
+        <Link href="/wiki/land">Land Tokens</Link>.)
       </p>
       <p>
         On top of that, elimination itself pays a grant — and the grant gets bigger the{" "}
@@ -282,7 +285,9 @@ export default function PintakasiPage() {
               .map(([stage, grant]) => (
                 <tr key={stage}>
                   <td>{LAND_LABELS[stage] ?? stage}</td>
-                  <td className="num">{grant}</td>
+                  {/* Grants are stored in the same hundredths as every land
+                      figure since round 36 — format, never print raw. */}
+                  <td className="num">{fmtLt(grant)}</td>
                 </tr>
               ))}
           </tbody>

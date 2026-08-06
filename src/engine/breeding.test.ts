@@ -172,7 +172,7 @@ describe("the breeding barn (breeding PvP)", () => {
     // enough land to open one, the way a barn that had fought would have.
     w.db
       .update(farms)
-      .set({ landTokens: COVERS.STUD_LISTING_LT * 4 })
+      .set({ landTokensCents: COVERS.STUD_LISTING_LT * 4 })
       .where(eq(farms.id, rivalId))
       .run();
     return { ...w, rivalId, rivalBreeding: new Breeding(w.db, rivalId, mulberry32(seed + 1)) };

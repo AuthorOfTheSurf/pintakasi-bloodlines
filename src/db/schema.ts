@@ -14,10 +14,15 @@ export const farms = sqliteTable("farms", {
   // The fractional wallet: 0–99 hundredths of a GP. Staking payouts are
   // pro-rata and go decimal; everything stays integer-exact in centi-GP.
   gpCents: integer("gp_cents").notNull().default(0),
-  landTokens: integer("land_tokens").notNull().default(0),
+  // ⚠ HUNDREDTHS OF A TOKEN since round 36 (673 = 6.73 LT), the same
+  // convention as every other `…Cents` column. Whole tokens made `ceil`
+  // load-bearing in the land curve and inverted the "fighting up pays extra"
+  // ruling in round 34 without anything being able to see it; see
+  // config.landForFight.
+  landTokensCents: integer("land_tokens_cents").notNull().default(0),
   // Land staked into THE pool (single pool for now) — earns the breed-fee
   // staker cut daily, pro-rata. Unstake freely; land itself never sells.
-  stakedLand: integer("staked_land").notNull().default(0),
+  stakedLandCents: integer("staked_land_cents").notNull().default(0), // hundredths, as above
   // Daily check-in: grants the GP drip + free gacha pulls, once per game-day.
   lastCheckInDay: integer("last_check_in_day"),
   freePulls: integer("free_pulls").notNull().default(0),
@@ -287,7 +292,7 @@ export const tournamentEntries = sqliteTable("tournament_entries", {
   seedRank: integer("seed_rank"), // committee rank, set at close (1 = top seed)
   eliminatedRound: integer("eliminated_round"),
   gpWonCents: integer("gp_won_cents").notNull().default(0),
-  landGranted: integer("land_granted").notNull().default(0),
+  landGranted: integer("land_granted").notNull().default(0), // hundredths of an LT (round 36)
 });
 
 // The UNIFIED LEDGER (round 11) — every meaningful happening, one

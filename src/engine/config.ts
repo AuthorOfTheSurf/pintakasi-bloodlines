@@ -812,33 +812,38 @@ export const STAKER_FLOWS = {
 // inflow in STAKER_FLOWS above — fight rake, claim rake, gacha share, breed
 // cut and land purchases — distributed daily at the tick. (Multiple pools —
 // breeding vs. arenas: later.)
+/** Hundredths in one Land Token — the same relationship GP has to its cents. */
+export const LT_CENTS = 100;
+
 export const LAND = {
-  // The linear base: 1 LT per this much GP risked… ⚠ 8 → 9 IN ROUND 34, and
-  // NOT for the reason it looks like. Round 34 moved the juvenile night from
-  // 8 GP to 9, which pushed it across a rounding boundary: (9/8)^1.15 = 1.145,
-  // and `ceil` made that TWO tokens. That quietly INVERTED the standing "fight
-  // up pays extra" ruling — the discovery year would have minted 0.222 LT per
-  // GP staked against a real card's 0.167, so the cheapest company in the game
-  // paid the best land in it. Moving the base to 9 puts a full juvenile night
-  // exactly on 1.0, back to a single token, and the direction is right again:
-  // 0.111 juvenile against 0.143 real.
+  // The linear base: 1 LT per this much GP risked.
   //
-  // The cost, stated plainly: a full real night drops 7 LT → 6 and a Major's
-  // round 56 → 49. That is a ~13% haircut across the board, taken deliberately
-  // in preference to a 100% rise in juvenile land supply. If the yield gets
-  // thin, raise the exponent rather than dropping this back — the base is what
-  // keeps the floor from swallowing the curve at the cheap end.
+  // ⚠ BACK TO 8 IN ROUND 36, and the round-34/35 detour is worth reading. It
+  // was 8 forever; round 34 moved it to 9 to fix an inversion it had itself
+  // created. Moving the juvenile night 8 GP → 9 pushed (9/8)^1.15 = 1.145
+  // across a rounding boundary and `ceil` made it TWO whole tokens, so the
+  // discovery year minted 0.222 LT per GP risked against a real card's 0.167
+  // — the cheapest company in the game paying the best land in it, exactly
+  // backwards from the ruling this curve exists to express.
   //
-  // The `max(1, …)` floor still bites BELOW a full night: a juvenile that got
-  // only two of its three fights risks 6 GP and is floored at 1 LT, which is
-  // 0.167/GP — better than a real short card's 0.143. That is the floor doing
-  // its job (a fight always mints something) and it is not worth curing; the
-  // comparison the ruling is about is a full night against a full night.
-  FEE_PER_TOKEN: 9,
+  // Base 9 fixed the direction by landing a juvenile night on exactly 1.0,
+  // but it was a goalpost move: it cost a ~13% haircut everywhere (a real
+  // night 7 → 6 LT, a Major's round 56 → 49) and it would have broken again
+  // the next time a fee changed. Round 36 cured the CAUSE instead — land is
+  // minted in hundredths now, so `ceil` is no longer load-bearing and the
+  // exponent decides the ordering by itself. With that done, 8 is simply
+  // correct again, and the haircut is handed back.
+  FEE_PER_TOKEN: 8,
   FIGHT_EXPONENT: 1.15, //    …raised past linear — the "fight up" incentive
-  PER_GACHA_ROLL: 1,
-  GP_PER_100_TOKENS: 80, // $1 buys 100 LT
-  DAILY_BUY_CAP: 1000, //  max LT purchasable per farm per game-day ($10 worth)
+  // ⚠ THE THREE BELOW ARE IN HUNDREDTHS since round 36, like every other
+  // `…Cents` quantity. They are written as `n * LT_CENTS` rather than as
+  // 100/8000/100000 so the ROUND NUMBER a human ruled on stays legible: this
+  // is one token a roll, a hundred tokens for 80 GP, a thousand tokens a day.
+  // Spelling them out as raw hundredths is how a "1,000 LT cap" silently
+  // becomes a 10 LT cap in somebody's later edit.
+  PER_GACHA_ROLL: 1 * LT_CENTS,
+  GP_PER_100_TOKENS: 80, //          GP, not land — untouched: $1 buys 100 LT
+  DAILY_BUY_CAP: 1_000 * LT_CENTS, // max LT a farm may buy per game-day ($10)
 } as const;
 
 // The land curve, fed the TOTAL a bird risked in a night: a full juvenile
@@ -852,15 +857,57 @@ export const LAND = {
 //
 // ⚠ ROUND 34 MOVED THE CALL SITE, and that mattered more than the numbers.
 // Land used to be paid per FIGHT on the entry fee. With the group stage a bird
-// takes up to three fights on one fee, so paying per fight would have either
-// tripled the LT supply or, if fed the per-fight stake instead, flattened the
-// whole curve toward its floor (14 GP and 3 GP both sit near the bottom, where
-// superlinear is indistinguishable from linear). So land is paid ONCE per
-// entry at settle-up, on stake × fights actually taken. A bird that fought
-// twice of three gets landForFight(28) = 4 of the 6 — the curve keeps its
-// shape, and a short card is honestly paid short.
+// takes up to three fights on one fee, so paying per fight on the FEE would
+// have tripled the LT supply outright. Land is paid ONCE per entry at
+// settle-up instead, on stake × fights actually taken: a bird that fought
+// twice of three gets landForFight(28) = 4.22 of the 6.73, so a short card is
+// honestly paid short.
+//
+// ⚠ THE SECOND HALF OF THIS ARGUMENT DIED IN ROUND 36, and it is worth saying
+// so rather than leaving a comment that quietly stopped being true. The old
+// reasoning was that feeding the curve the per-fight STAKE would flatten it,
+// because 14 GP and 3 GP both sat on the `max(1, …)` floor where superlinear
+// is indistinguishable from linear. Hundredths dissolved that floor — 14 GP is
+// 1.90 LT now, not a floored 1 — so the flattening argument no longer holds.
+//
+// Paying once per night is still right, for a cleaner reason: the curve is
+// superlinear, so f(a+b+c) > f(a)+f(b)+f(c). A full real night pays 6.73
+// against the 5.70 that three separate 14 GP fights would pay. That is not a
+// bonus bolted on; it is the SAME "fighting up pays extra" property, read
+// across one bird's evening instead of across two price rungs. A bird that
+// risks a whole entry in a night has fought up, and the curve should say so.
+/**
+ * ⚠ RETURNS HUNDREDTHS OF A TOKEN (round 36), like every `…Cents` figure in
+ * the game. 673 means 6.73 LT.
+ *
+ * This is the structural cure for the round-34 inversion, and the reason is
+ * worth stating in one line: WHOLE TOKENS MADE `ceil` LOAD-BEARING. At the
+ * cheap end of a superlinear curve the rounding is worth more than the
+ * exponent — a 9 GP night is genuinely 1.145 tokens, and rounding that up to 2
+ * is a 75% overpayment, while the same rounding on a 42 GP night is worth 4%.
+ * So the distortion was always largest exactly where the curve is shallowest,
+ * which is how the ordering flipped. Round 34 answered by moving the base
+ * until the numbers landed on friendly integers; that worked once and would
+ * have broken on the next fee change, silently, because nothing could see it.
+ *
+ * At 1/100th resolution the rounding error is two orders of magnitude smaller
+ * than the gap it was corrupting, and the ordering falls out of the exponent
+ * by itself — verified in `lobbies.test.ts` across every fee from 1 to 300,
+ * which is the guard that should have existed before round 34 touched a fee.
+ *
+ * Fed the TOTAL a bird risked in a night (see the group stage): a full
+ * juvenile group (9 GP) → 1.15 LT · a full real/claimer group (42 GP) → 6.73.
+ */
 export function landForFight(fee: number): number {
-  return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT)));
+  return Math.max(
+    1, // never zero: a fight always mints something, even a hundredth
+    Math.round(LT_CENTS * Math.pow(fee / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT))
+  );
+}
+
+/** Land Tokens for display, from hundredths: 673 → "6.73". */
+export function fmtLt(cents: number): string {
+  return (cents / LT_CENTS).toFixed(2);
 }
 
 // ── Breeding ────────────────────────────────────────────────────────────────
@@ -922,7 +969,11 @@ export const COVERS = {
   // A gate that desirable is worth paying land for — and it puts every barn
   // in the position of choosing between staking land for yield and spending
   // it to open an income stream. That's the decision a sink is FOR.
-  STUD_LISTING_LT: 100,
+  // ⚠ IN HUNDREDTHS since round 36 (see LT_CENTS). Written as `100 * LT_CENTS`
+  // so the ruled number — a hundred tokens to stand a stud, the game's first
+  // land SINK — stays readable. Stored raw it would be 10000, and a later edit
+  // "correcting" that to 100 would silently make the seat cost one token.
+  STUD_LISTING_LT: 100 * LT_CENTS,
   PER_WEEK: 14, //     public cover slots per rooster per game-week…
   OWNER_RESERVED: 2, // …plus these, reserved for the rooster's own farm.
   // The point of the cap: top studs sell out → their price can rise (later,
@@ -1295,7 +1346,15 @@ export const JUVENILE_MAJOR = {
   // Majors' grants (40/25/15/10/5) are priced against a 200 GP stake and a
   // career-ending loss; a juvenile risks neither, so paying it Major money
   // would make the cheap crown the best land in the game.
-  LAND_GRANTS: { champion: 1, runnerUp: 2, sf: 3, qf: 5, r16: 7, r32: 9 },
+  // ⚠ IN HUNDREDTHS since round 36, like every land figure. Written as
+  // `n * LT_CENTS` so the ruled shape — the EARLIEST exit is paid the most —
+  // stays readable at a glance. Left as bare integers these silently became
+  // hundredths of a token, and a juvenile champion's grant would have been
+  // 0.01 LT instead of 1.
+  LAND_GRANTS: {
+    champion: 1 * LT_CENTS, runnerUp: 2 * LT_CENTS, sf: 3 * LT_CENTS,
+    qf: 5 * LT_CENTS, r16: 7 * LT_CENTS, r32: 9 * LT_CENTS,
+  },
 } as const;
 
 // ── The Pintakasi (ruled 2026-08-03 round 18) — the weekly blade Majors ─────
@@ -1369,14 +1428,19 @@ export const PINTAKASI = {
   },
   // LT grants by ELIMINATION STAGE — the fallen-weighted inversion.
   // Keyed by "rounds from the final" at elimination (champion included).
+  // ⚠ IN HUNDREDTHS since round 36 — see the note on JUVENILE_MAJOR's grants.
+  // "Land to the fallen" is the whole point of this table (the earliest exit
+  // is paid the most, because the purse pays the latest), and leaving these as
+  // bare integers would have paid a champion 0.05 LT and a round-of-64 loser
+  // 0.70 — a 100× cut to the one thing that makes losing a Major survivable.
   LAND_GRANTS: {
-    champion: 5,
-    runnerUp: 10,
-    sf: 15,
-    qf: 25,
-    r16: 40,
-    r32: 55,
-    r64: 70,
+    champion: 5 * LT_CENTS,
+    runnerUp: 10 * LT_CENTS,
+    sf: 15 * LT_CENTS,
+    qf: 25 * LT_CENTS,
+    r16: 40 * LT_CENTS,
+    r32: 55 * LT_CENTS,
+    r64: 70 * LT_CENTS,
   },
   // The week's three blades — FIXED at the ends and the middle of the dial
   // (re-ruled 2026-08-04, round 27). With B5 the dial has a true midpoint,
@@ -1388,13 +1452,16 @@ export const PINTAKASI = {
   BLADES: ["b1", "b3", "b5"],
 } as const;
 
-// The Majors' land curve — same shape as landForFight, steeper exponent.
-// On the 200 GP basis: (200/9)^1.25 ≈ 49 LT per fighter per fight. (It was 56
-// until round 34 moved FEE_PER_TOKEN off 8; see the note there. The Majors
-// took the same ~13% haircut as the daily card, which is the right outcome —
-// the two curves are meant to differ in STEEPNESS, not in their base.)
+// The Majors' land curve — same shape as landForFight, steeper exponent, and
+// ⚠ ALSO IN HUNDREDTHS since round 36. On the 200 GP basis: (200/8)^1.25 =
+// 55.90 LT per fighter per fight. (It read 56 before round 34, then 49 while
+// FEE_PER_TOKEN sat at 9; round 36 hands that haircut back. The two curves are
+// meant to differ in STEEPNESS, not in their base.)
 export function landForTournamentFight(fee: number): number {
-  return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, PINTAKASI.LAND_EXPONENT)));
+  return Math.max(
+    1,
+    Math.round(LT_CENTS * Math.pow(fee / LAND.FEE_PER_TOKEN, PINTAKASI.LAND_EXPONENT))
+  );
 }
 
 // ── Fight cadence ───────────────────────────────────────────────────────────

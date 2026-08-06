@@ -20,6 +20,7 @@ import {
   FIGHTS_PER_GROUP_BIRD,
   FORMAT_NAMES,
   FORMATS,
+  LT_CENTS,
   SCOUT,
   weatherOfDay,
   type FightFormat,
@@ -60,7 +61,16 @@ import {
  * anywhere in this repo and a 35-day world is a few thousand rows.
  */
 
-/** Tooling thresholds — NOT game balance, which is why they aren't in config. */
+/**
+ * Tooling thresholds — NOT game balance, which is why they aren't in config.
+ *
+ * ⚠ NOTHING HERE IS DENOMINATED IN LAND, and that is worth stating rather than
+ * leaving to be rediscovered. Round 36 moved Land Tokens to hundredths, which
+ * would have silently multiplied any land-unit threshold in this block by 100 —
+ * a warning that stops firing is invisible in a way a wrong printed number is
+ * not. Every knob below is a RATIO or a COUNT, so the move was a no-op here.
+ * If a land threshold is ever added, write it as `n * LT_CENTS`.
+ */
 const DOCTOR = {
   // Past this, matchmaking is failing rather than merely being unlucky.
   //
@@ -178,6 +188,15 @@ export interface DoctorReport {
 }
 
 const gp = (cents: number) => (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
+/**
+ * Land Tokens for the terminal. Land is minted in HUNDREDTHS since round 36
+ * (see LT_CENTS), so every raw land figure reaching this file is 100× what a
+ * player calls it — printing one unscaled is precisely the class of bug that
+ * round existed to kill. Always two decimals: a column where 673 renders "6.73"
+ * and 500 renders "5" invites the reader to mistake a scale change for a value.
+ */
+const lt = (cents: number) =>
+  (cents / LT_CENTS).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n: number, d: number) => (d === 0 ? "0.0%" : `${((n / d) * 100).toFixed(1)}%`);
 /** Signed so a baseline of ~0 and a selected +68 read as different things at a glance. */
 const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}`;
@@ -862,6 +881,47 @@ function generations(db: DB): HealthSection {
   return { title: "BLOODLINES", lines, warn };
 }
 
+/**
+ * HOW MUCH LAND HAS THE WORLD MINTED? (round 36)
+ *
+ * Nothing reported this before, and round 36 is why it now has to. Land is a
+ * faucet with almost no drain — fights, crown grants and gacha rolls all mint
+ * it, and the only exit is a stud seat — so the world's land is a running
+ * total of everything ever awarded, and the RATE is the entire balance
+ * question. That rate has already moved twice with nobody able to watch it:
+ * round 34 took ~13% off every award as a side effect of chasing a rounding
+ * bug, and round 36 handed it back. Both were argued from the config file,
+ * because there was no measurement to argue from.
+ *
+ * The arithmetic is exact rather than estimated: circulating land is the sum
+ * of every farm's two piles, and the single sink is the only negative `lt`
+ * delta any engine path writes, so `minted = circulating + burned` holds.
+ *
+ * Per-source attribution is deliberately NOT here. The Majors mint per fight
+ * inside a `fight` event's `data`, not as an `lt` delta, so a by-source table
+ * built off the ledger would quietly under-count the crowns — and a table that
+ * is wrong in a way only its author knows about is worse than no table.
+ *
+ * HEALTH, never an invariant: there is no correct amount of land, only a rate
+ * somebody should read after changing the curve.
+ */
+function landSupply(db: DB, topline: Topline): HealthSection {
+  const circulating = topline.landStaked + topline.landLiquid;
+  let burned = 0;
+  for (const e of db.select().from(events).all()) if (e.lt !== null && e.lt < 0) burned -= e.lt;
+  const minted = circulating + burned;
+  const days = topline.day + 1; // day 0 was a day of fighting too
+  return {
+    title: "LAND SUPPLY",
+    lines: [
+      `circulating ${lt(circulating)} LT · ${lt(topline.landStaked)} staked ` +
+        `(${pct(topline.landStaked, circulating)}) · ${lt(topline.landLiquid)} idle`,
+      `minted      ${lt(minted)} LT over ${days} day(s) · ${lt(Math.round(minted / days))} LT per day`,
+      `burned      ${lt(burned)} LT into stud seats — the only way land leaves the world`,
+    ],
+  };
+}
+
 /** What has actually fed the staker pool, by source. */
 function stakerInflows(db: DB): HealthSection {
   const bySource = new Map<string, number>();
@@ -878,7 +938,7 @@ function stakerInflows(db: DB): HealthSection {
     title: "STAKER POOL",
     lines: [
       `paid out ${gp(book.totalPaidCents)} GP over ${book.payoutDays} day(s) · ` +
-        `${gp(state.stakerPoolCents)} waiting · ${book.totalStakedLand.toLocaleString()} LT staked`,
+        `${gp(state.stakerPoolCents)} waiting · ${lt(book.totalStakedLand)} LT staked`,
       [...bySource.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([s, c]) => `${s} ${gp(c)}`)
@@ -1435,6 +1495,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // Right after POPULATION: that section counts the flock, this one asks
     // whether the birds coming out of it are any better than the ones going in.
     generations(db),
+    // Land before the pool it feeds: STAKER POOL reports what a stake EARNS,
+    // which is unreadable without knowing how much land the world made.
+    landSupply(db, topline),
     stakerInflows(db),
     championships(db),
     adoption(db),

@@ -11,6 +11,7 @@ import {
   ECONOMY,
   type Element,
   type FightFormat,
+  fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { simulatePair, type Combatant } from "./fight-sim";
@@ -641,14 +642,14 @@ export class Tournaments {
           ? rules.landGrants.champion
           : Tournaments.grantFor(totalRounds - (round ?? totalRounds), rules.landGrants);
       const farm = database.select().from(farms).where(eq(farms.id, e.farmId)).get()!;
-      database.update(farms).set({ landTokens: farm.landTokens + grant }).where(eq(farms.id, e.farmId)).run();
+      database.update(farms).set({ landTokensCents: farm.landTokensCents + grant }).where(eq(farms.id, e.farmId)).run();
       database.update(tournamentEntries).set({ landGranted: grant }).where(eq(tournamentEntries.id, e.id)).run();
       emit(database, {
         type: "purse_payout",
         farmId: e.farmId,
         birdId: e.birdId,
         lt: grant,
-        message: `${nameOf.get(e.id)} — ${label(t.format)} land grant: +${grant} LT (${
+        message: `${nameOf.get(e.id)} — ${label(t.format)} land grant: +${fmtLt(grant)} LT (${
           e.id === championEntry.id ? "champion" : `out in the ${Tournaments.roundName(round!, totalRounds, bracketSize)}`
         })`,
       });
@@ -735,7 +736,7 @@ export class Tournaments {
       const farmRecord = side.won ? { wins: farm.wins + 1 } : { losses: farm.losses + 1 };
       database
         .update(farms)
-        .set({ landTokens: farm.landTokens + landEach, ...farmRecord })
+        .set({ landTokensCents: farm.landTokensCents + landEach, ...farmRecord })
         .where(eq(farms.id, side.entry.farmId))
         .run();
       const birdRow = database.select().from(birds).where(eq(birds.id, side.row.id)).get()!;
@@ -809,7 +810,7 @@ export class Tournaments {
       birdId: sides[w].row.id,
       message:
         `${sides[w].row.name} (${farmNames[w]}) def. ${sides[1 - w].row.name} (${farmNames[1 - w]}) — ` +
-        `${header} · figures ${sides[w].figure}/${sides[1 - w].figure} · +${landEach} LT each · ${sides[1 - w].row.name} force-retired`,
+        `${header} · figures ${sides[w].figure}/${sides[1 - w].figure} · +${fmtLt(landEach)} LT each · ${sides[1 - w].row.name} force-retired`,
       data: { tournamentId: t.id, round, figures: sim.figures, landEach },
     });
     return {

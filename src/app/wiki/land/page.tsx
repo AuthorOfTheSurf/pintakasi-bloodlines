@@ -6,8 +6,10 @@ import {
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
   LAND,
+  LT_CENTS,
   PINTAKASI,
   STAKER_FLOWS,
+  fmtLt,
   landForFight,
   landForTournamentFight,
   stakePerFight,
@@ -33,33 +35,48 @@ const ELIMINATION_STAGES: { label: string; grant: number }[] = [
   { label: "Champion", grant: PINTAKASI.LAND_GRANTS.champion },
 ];
 
+/**
+ * Land quantities live in HUNDREDTHS of a token since round 36 — every figure
+ * on this page has to be divided down before it is printed, or the page says
+ * "673 LT" for a night's fighting. `fmtLt` is for the curve's output, which is
+ * genuinely fractional; this is for the knobs a human ruled as round numbers
+ * (a 1,000 LT cap, a 100 LT stud seat), where two decimal places would only
+ * add noise.
+ */
+const wholeLt = (cents: number) => (cents / LT_CENTS).toLocaleString();
+
 export default function LandPage() {
   // The "fighting up pays more land" comparison, re-anchored in round 31 on the
   // two modes the daily card actually runs. It used to be measured against the
   // hardcore entry, which left the card that round — the curve is unchanged,
   // only the pair of points we quote on it.
   //
-  // ⚠ THE SIGN OF THIS CAN FLIP, and round 34 flipped it before catching it.
-  // The curve is superlinear, but land is paid in WHOLE tokens with a floor of
-  // 1, and at the cheap end the rounding can be worth more than the exponent.
-  // Moving the juvenile night to 9 GP pushed (9/8)^1.15 to 1.145, which `ceil`
-  // made TWO tokens — so for a few hours the discovery year paid 0.222 LT per
-  // GP against a real card's 0.167, i.e. the cheapest company in the game paid
-  // the best land in it. LAND.FEE_PER_TOKEN moved 8 → 9 to fix it at the
-  // source; see its note in config.
+  // ⚠ THE SIGN OF THIS ONCE FLIPPED, and round 36 removed the mechanism that
+  // let it. The history, because it explains why the branch below exists: land
+  // used to be minted in WHOLE tokens with a floor of 1, so `ceil` was
+  // load-bearing, and at the cheap end of a superlinear curve the rounding is
+  // worth more than the exponent. Moving the juvenile night to 9 GP pushed
+  // (9/8)^1.15 to 1.145, which `ceil` made TWO tokens — so the discovery year
+  // paid 0.222 LT per GP against a real card's 0.167, the cheapest company in
+  // the game paying the best land in it. Round 34 answered by moving
+  // LAND.FEE_PER_TOKEN 8 → 9, which fixed the direction but cost a ~13%
+  // haircut everywhere and would have broken again on the next fee change.
+  // Round 36 cured the cause: land mints in hundredths, the rounding error is
+  // two orders of magnitude smaller than the gap it was corrupting, and the
+  // ordering now falls out of the exponent by itself — pinned in
+  // lobbies.test.ts across every fee from 1 to 300. FEE_PER_TOKEN is back to 8
+  // and the haircut is handed back.
   //
-  // The branch below STAYS anyway, and deliberately. It was written when the
-  // sign really was inverted, and it is the right shape regardless: a page that
-  // asserts "fighting up pays more per peso" while the arithmetic says
-  // otherwise is exactly the confident nonsense the Handbook exists to prevent.
-  // Now it simply reads the true branch, and it will catch the next fee change
-  // that trips the same rounding boundary without anybody noticing.
+  // The branch below STAYS anyway, and deliberately. It is the right shape
+  // regardless: a page that asserts "fighting up pays more per peso" while the
+  // arithmetic says otherwise is exactly the confident nonsense the Handbook
+  // exists to prevent. It reads the true branch now, and it stays as the
+  // tripwire for whatever the next fee change does to a curve nobody re-checked.
   const realLandPerGp = landForFight(ECONOMY.REAL_ENTRY_FEE) / ECONOMY.REAL_ENTRY_FEE;
   const juvenileLandPerGp = landForFight(ECONOMY.JUVENILE_ENTRY_FEE) / ECONOMY.JUVENILE_ENTRY_FEE;
   const upFightingBonus = Math.round((realLandPerGp / juvenileLandPerGp - 1) * 100);
-  // What the curve would pay a real entry before whole-token rounding — the
-  // honest way to show that the exponent is doing its job even when the floor
-  // hides it at these two particular prices.
+  // What the curve pays a juvenile entry before any rounding at all — kept so
+  // the false branch can still show its work if the ordering ever inverts again.
   const juvenileRaw = Math.pow(ECONOMY.JUVENILE_ENTRY_FEE / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT);
   const juvenileBetterPct = Math.round((juvenileLandPerGp / realLandPerGp - 1) * 100);
   const crownLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
@@ -70,7 +87,10 @@ export default function LandPage() {
   const exampleClaimRakeCents = Math.round(exampleClaimTag * 100 * STAKER_FLOWS.CLAIM_RAKE);
   const exampleGachaCents = Math.round(ECONOMY.GACHA_ROLL_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE);
   const exampleBreedCents = Math.round(ECONOMY.BREED_FEE * 100 * BREED_SPLIT.STAKER_SHARE);
-  const exampleLandPurchaseGp = Math.ceil((LAND.DAILY_BUY_CAP * LAND.GP_PER_100_TOKENS) / 100);
+  // DAILY_BUY_CAP is in hundredths; the price is quoted per 100 WHOLE tokens,
+  // so the cap has to come back to tokens before it meets the price.
+  const dailyBuyCapTokens = LAND.DAILY_BUY_CAP / LT_CENTS;
+  const exampleLandPurchaseGp = Math.ceil((dailyBuyCapTokens * LAND.GP_PER_100_TOKENS) / 100);
   const exampleLandPurchaseCents = Math.round(
     exampleLandPurchaseGp * 100 * STAKER_FLOWS.LAND_PURCHASE_SHARE
   );
@@ -113,6 +133,25 @@ export default function LandPage() {
         <Link href="/wiki/card">The card</Link>), so a bird that fights its whole group is paid on
         the whole entry:
       </p>
+      <div className="callout tip">
+        <b>Land comes in fractions.</b> A night&apos;s fighting pays{" "}
+        {fmtLt(landForFight(ECONOMY.REAL_ENTRY_FEE))} LT, not 7 — awards are minted in hundredths of
+        a token, the same way GP is counted in centavos. That is new as of round 36, and it is there
+        to keep the curve honest: when land only came in whole tokens, the rounding at the cheap end
+        was worth more than the curve itself, and for one round the discovery year paid better land
+        per peso than a real card did. Hundredths make the rounding too small to matter.
+        <br />
+        <br />
+        The rule of thumb: <strong>you earn fractional land, you buy and stake round numbers</strong>
+        . Fighting, the gacha and the crowns all mint decimals. Buying land, staking it and
+        unstaking it are whole-token actions.
+      </div>
+      <p className="dim">
+        Every land award also went slightly <em>up</em> this round, by roughly a seventh. Round 34
+        had shaved them all — it raised the amount of GP one token costs, as a way of working
+        around the rounding problem above. With the cause cured properly, that haircut is handed
+        back.
+      </p>
       <div className="tablewrap">
         <table>
           <thead>
@@ -128,9 +167,9 @@ export default function LandPage() {
               <tr key={m.label}>
                 <td>{m.label}</td>
                 <td className="num">{m.fee} GP</td>
-                <td className="num">{landForFight(m.fee)} LT</td>
+                <td className="num">{fmtLt(landForFight(m.fee))} LT</td>
                 <td className="num">
-                  {landForFight(stakePerFight(m.fee) * (FIGHTS_PER_GROUP_BIRD - 1))} LT
+                  {fmtLt(landForFight(stakePerFight(m.fee) * (FIGHTS_PER_GROUP_BIRD - 1)))} LT
                 </td>
               </tr>
             ))}
@@ -146,15 +185,16 @@ export default function LandPage() {
         <p className="dim">
           A real entry costs {(ECONOMY.REAL_ENTRY_FEE / ECONOMY.JUVENILE_ENTRY_FEE).toFixed(1)}× a
           juvenile one, but it pays about {upFightingBonus}% more land <em>per GP staked</em>. That
-          is the curve: every step up in stakes pays more than its share. The steepest step of all
-          is the Pintakasi Majors, below.
+          is the curve: every step up in stakes pays more than its share, and since round 36 that
+          ordering holds at every price in the game — it is checked against every entry fee from 1
+          to 300 GP. The steepest step of all is the Pintakasi Majors, below.
         </p>
       ) : (
         <p className="dim">
-          One honest wrinkle, at these two particular prices. Land is minted in whole tokens and
-          never rounds below 1, and down at the cheap end that rounding is worth more than the
-          curve: the juvenile award works out at {juvenileRaw.toFixed(2)} before rounding and is
-          paid as {landForFight(ECONOMY.JUVENILE_ENTRY_FEE)} LT. So per GP staked, the discovery
+          One honest wrinkle, at these two particular prices. The rounding on the award is worth
+          more than the curve down at the cheap end: the juvenile award works out at{" "}
+          {juvenileRaw.toFixed(2)} before rounding and is paid as{" "}
+          {fmtLt(landForFight(ECONOMY.JUVENILE_ENTRY_FEE))} LT. So per GP staked, the discovery
           year is actually the <em>better</em> land deal right now — about {juvenileBetterPct}%
           better. The curve underneath is still superlinear, and it shows properly once the stakes
           are big enough for the rounding to stop mattering: the Pintakasi Majors, below, are the
@@ -165,7 +205,7 @@ export default function LandPage() {
       <h3>The Pintakasi Majors pay even steeper</h3>
       <p>
         Every round of a Pintakasi Major mints land on a steeper curve than the daily card —{" "}
-        {crownLand} LT to each fighter, per fight, measured against the {PINTAKASI.LAND_BASIS} GP
+        {fmtLt(crownLand)} LT to each fighter, per fight, measured against the {PINTAKASI.LAND_BASIS} GP
         stake the Majors represent. A bird that survives several rounds banks that amount again and
         again before it ever gets to the elimination grants below.
       </p>
@@ -185,7 +225,11 @@ export default function LandPage() {
             {ELIMINATION_STAGES.map((s) => (
               <tr key={s.label}>
                 <td>{s.label}</td>
-                <td className="num">{s.grant} LT</td>
+                {/* Grants live in the same hundredths as every other land
+                    figure since round 36 — the farm's balance is credited with
+                    this number directly, so it must be formatted, not printed
+                    raw. */}
+                <td className="num">{fmtLt(s.grant)} LT</td>
               </tr>
             ))}
           </tbody>
@@ -214,16 +258,16 @@ export default function LandPage() {
           <tbody>
             <tr>
               <td>Every gacha roll</td>
-              <td className="num">{LAND.PER_GACHA_ROLL} LT</td>
+              <td className="num">{wholeLt(LAND.PER_GACHA_ROLL)} LT</td>
               <td>Free or paid — every roll pays land, whatever else drops.</td>
             </tr>
             <tr>
               <td>Buying land outright</td>
               <td className="num">{LAND.GP_PER_100_TOKENS} GP per 100 LT</td>
               <td>
-                Capped at {LAND.DAILY_BUY_CAP.toLocaleString()} LT per farm per game-day (
-                {Math.ceil((LAND.DAILY_BUY_CAP * LAND.GP_PER_100_TOKENS) / 100).toLocaleString()} GP
-                to buy the whole cap).
+                Capped at {wholeLt(LAND.DAILY_BUY_CAP)} LT per farm per game-day (
+                {exampleLandPurchaseGp.toLocaleString()} GP to buy the whole cap). Buying is a
+                whole-token action — you cannot buy a fraction of a token, only earn one.
               </td>
             </tr>
           </tbody>
@@ -249,9 +293,9 @@ export default function LandPage() {
         barn changed that.
       </p>
       <div className="callout warn">
-        <b>Standing a rooster at stud costs {COVERS.STUD_LISTING_LT} LT.</b> Opening a retired
-        rooster&apos;s public cover slots for the first time spends {COVERS.STUD_LISTING_LT} Land
-        Tokens outright — not staked, not refundable, gone. Re-listing him later, after pulling him
+        <b>Standing a rooster at stud costs {wholeLt(COVERS.STUD_LISTING_LT)} LT.</b> Opening a
+        retired rooster&apos;s public cover slots for the first time spends{" "}
+        {wholeLt(COVERS.STUD_LISTING_LT)} Land Tokens outright — not staked, not refundable, gone. Re-listing him later, after pulling him
         from the barn, is free; the land bought the seat once, not a subscription. See{" "}
         <Link href="/wiki/breeding">Breeding</Link> for the full mechanic.
       </div>
@@ -310,8 +354,8 @@ export default function LandPage() {
               <td>Every land purchase</td>
               <td className="num">{(STAKER_FLOWS.LAND_PURCHASE_SHARE * 100).toFixed(0)}%</td>
               <td>
-                Buying the full {LAND.DAILY_BUY_CAP.toLocaleString()} LT daily cap costs{" "}
-                {exampleLandPurchaseGp} GP — all {fmtGp(exampleLandPurchaseCents)} GP of it goes
+                Buying the full {wholeLt(LAND.DAILY_BUY_CAP)} LT daily cap costs{" "}
+                {exampleLandPurchaseGp.toLocaleString()} GP — all {fmtGp(exampleLandPurchaseCents)} GP of it goes
                 straight to the pool. When someone buys land, the people already holding it get
                 paid for the dilution.
               </td>
@@ -347,6 +391,11 @@ export default function LandPage() {
         ever — to leave LT sitting unstaked in your barn. Every game-day it sits idle is a payout
         you didn&apos;t collect and can never get back. Stake it the moment you earn it.
       </div>
+      <p className="dim">
+        Staking and unstaking work in whole tokens, so the odd fraction on the end of your balance
+        stays liquid until the next award rounds it up past the next whole number. It is not lost —
+        it is just waiting to be staked with its neighbours.
+      </p>
 
       <h2>Why the flows got wider</h2>
       <p>

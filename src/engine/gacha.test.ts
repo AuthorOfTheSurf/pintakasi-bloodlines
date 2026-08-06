@@ -32,15 +32,15 @@ describe("gacha", () => {
   test("a roll costs GP and yields a rarity token plus a Land Token", () => {
     const { db, farmId } = fresh();
     const gacha = new Gacha(db, farmId, mulberry32(1));
-    const { token, pricePaid, landTokens, freePullUsed, collection } = gacha.roll();
+    const { token, pricePaid, landTokensCents, freePullUsed, collection } = gacha.roll();
     expect(GACHA_TOKENS).toContain(token);
     expect(pricePaid).toBe(ECONOMY.GACHA_ROLL_PRICE);
     expect(freePullUsed).toBe(false); // no check-in yet, no free pulls
-    expect(landTokens).toBe(LAND.PER_GACHA_ROLL);
+    expect(landTokensCents).toBe(LAND.PER_GACHA_ROLL);
     expect(collection[token]).toBe(1);
     const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
     expect(farm.gp).toBe(ECONOMY.STARTING_GP - ECONOMY.GACHA_ROLL_PRICE);
-    expect(farm.landTokens).toBe(LAND.PER_GACHA_ROLL);
+    expect(farm.landTokensCents).toBe(LAND.PER_GACHA_ROLL);
   });
 
   test("free pulls spend before GP", () => {
@@ -68,9 +68,10 @@ describe("gacha", () => {
     expect(c.White).toBeGreaterThan(c.Gold);
     expect(c.Green).toBeGreaterThan(c.Purple);
     expect(c.White + c.Green + c.Blue + c.Purple + c.Gold).toBe(500);
-    // 500 rolls = 500 land tokens, flat and unconditional.
+    // 500 rolls = 500 land tokens, flat and unconditional — in hundredths
+    // since round 36, hence PER_GACHA_ROLL rather than a bare 500.
     const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
-    expect(farm.landTokens).toBe(500);
+    expect(farm.landTokensCents).toBe(500 * LAND.PER_GACHA_ROLL);
   });
 
   test("Blue+ rolls drop a mystery egg — random element, hidden sex, hatches next Friday", () => {
@@ -178,7 +179,7 @@ describe("gacha", () => {
     const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
     expect(farm.gp).toBe(before - ECONOMY.BUNDLE_PRICE);
     // Every roll still pays its land, and the free pull is NOT consumed.
-    expect(farm.landTokens).toBe(ECONOMY.BUNDLE_ROLLS * LAND.PER_GACHA_ROLL);
+    expect(farm.landTokensCents).toBe(ECONOMY.BUNDLE_ROLLS * LAND.PER_GACHA_ROLL);
     expect(farm.freePulls).toBe(0);
     // The spend splits to the pools like any other paid roll.
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;

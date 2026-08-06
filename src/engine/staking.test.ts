@@ -4,7 +4,7 @@ import type { createDb } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
 import { Breeding } from "./breeding";
 import { splitBreedFee } from "./breeding";
-import { ECONOMY, LAND, STAKER_FLOWS } from "./config";
+import { ECONOMY, LAND, LT_CENTS, STAKER_FLOWS, landForFight } from "./config";
 import { Farms } from "./farms";
 import { mulberry32 } from "./rng";
 import { expectConserved, world } from "./testkit";
@@ -18,25 +18,49 @@ const COVER = splitBreedFee(ECONOMY.BREED_FEE);
 const OWN_STUD_NET_GP = ECONOMY.BREED_FEE - COVER.studOwnerCents / 100;
 
 describe("the single staking pool", () => {
+  // ⚠ THE COLUMNS ARE HUNDREDTHS, THE API IS WHOLE TOKENS (round 36). Every
+  // figure below is written as `n * LT_CENTS` for that reason: the argument
+  // passed to stake()/unstake() and the number the column moves by are in
+  // DIFFERENT UNITS, and the only thing keeping them honest is the single
+  // conversion inside farms.ts.
   test("stake and unstake move land between liquid and the pool", () => {
     const w = world({ rivalFlock: false });
-    w.db.update(farms).set({ landTokens: 100 }).where(eq(farms.id, w.devId)).run();
+    w.db.update(farms).set({ landTokensCents: 100 * LT_CENTS }).where(eq(farms.id, w.devId)).run();
     w.farms.stake(w.devId, 60);
-    expect(row(w.db, w.devId).landTokens).toBe(40);
-    expect(row(w.db, w.devId).stakedLand).toBe(60);
+    expect(row(w.db, w.devId).landTokensCents).toBe(40 * LT_CENTS);
+    expect(row(w.db, w.devId).stakedLandCents).toBe(60 * LT_CENTS);
     expect(() => w.farms.stake(w.devId, 41)).toThrow(/liquid/);
     w.farms.unstake(w.devId, 10);
-    expect(row(w.db, w.devId).landTokens).toBe(50);
-    expect(row(w.db, w.devId).stakedLand).toBe(50);
+    expect(row(w.db, w.devId).landTokensCents).toBe(50 * LT_CENTS);
+    expect(row(w.db, w.devId).stakedLandCents).toBe(50 * LT_CENTS);
     expect(() => w.farms.unstake(w.devId, 51)).toThrow(/staked/);
+  });
+
+  // The case that only exists because land is minted fractionally now: a barn
+  // that FOUGHT its way to 6.73 LT has more than 6 and less than 7, and the
+  // whole-token API has to round DOWN — staking 7 must fail, not silently
+  // overdraw the column into the negative. (A night's real card pays exactly
+  // this: landForFight(REAL_ENTRY_FEE) = 673.)
+  test("a fractional holding stakes down, never up: 6.73 LT cannot stake 7", () => {
+    const w = world({ rivalFlock: false });
+    const held = landForFight(ECONOMY.REAL_ENTRY_FEE); // 673 hundredths
+    expect(held % LT_CENTS).not.toBe(0); // the test is worthless if it lands whole
+    w.db.update(farms).set({ landTokensCents: held }).where(eq(farms.id, w.devId)).run();
+    expect(() => w.farms.stake(w.devId, Math.ceil(held / LT_CENTS))).toThrow(/liquid/);
+    w.farms.stake(w.devId, Math.floor(held / LT_CENTS)); // 6 is fine…
+    // …and the change stays put: the hundredths that didn't make a whole token
+    // are still liquid, not rounded away.
+    expect(row(w.db, w.devId).landTokensCents).toBe(held % LT_CENTS);
+    expect(row(w.db, w.devId).stakedLandCents).toBe(Math.floor(held / LT_CENTS) * LT_CENTS);
+    expect(() => w.farms.stake(w.devId, 1)).toThrow(/liquid/); // 0.73 is not 1
   });
 
   test("breed fees fill the pool; the tick pays stakers pro-rata, dust carries", () => {
     const w = world({ rivalFlock: false });
     // Stakes 3:1 — dev 75, rival 25. Chosen so the pool divides exactly and
     // the dust case gets its own test below.
-    w.db.update(farms).set({ stakedLand: 75 }).where(eq(farms.id, w.devId)).run();
-    w.db.update(farms).set({ stakedLand: 25 }).where(eq(farms.id, w.rivalId)).run();
+    w.db.update(farms).set({ stakedLandCents: 75 }).where(eq(farms.id, w.devId)).run();
+    w.db.update(farms).set({ stakedLandCents: 25 }).where(eq(farms.id, w.rivalId)).run();
     new Breeding(w.db, w.devId, mulberry32(5)).breed("starter-2", "starter-1");
     // Every figure below is DERIVED from the split (round 24). It used to be
     // a wall of literals — 800, 8, 7922 — and 7922 alone encoded five knobs:
@@ -61,8 +85,8 @@ describe("the single staking pool", () => {
 
   test("uneven weights leave dust in the pool — nothing is lost", () => {
     const w = world({ rivalFlock: false });
-    w.db.update(farms).set({ stakedLand: 1 }).where(eq(farms.id, w.devId)).run();
-    w.db.update(farms).set({ stakedLand: 2 }).where(eq(farms.id, w.rivalId)).run();
+    w.db.update(farms).set({ stakedLandCents: 1 }).where(eq(farms.id, w.devId)).run();
+    w.db.update(farms).set({ stakedLandCents: 2 }).where(eq(farms.id, w.rivalId)).run();
     w.db.update(gameState).set({ stakerPoolCents: 100 }).where(eq(gameState.id, 1)).run();
     Farms.distributeStaking(w.db);
     // 33 + 66 paid, 1 cent carries for tomorrow.
@@ -78,7 +102,7 @@ describe("the single staking pool", () => {
     expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(500);
     // Roll-over check: 250 cents onto 90 cents = +3 GP, 40 cents left.
     w.db.update(farms).set({ gpCents: 90 }).where(eq(farms.id, w.devId)).run();
-    w.db.update(farms).set({ stakedLand: 1 }).where(eq(farms.id, w.devId)).run();
+    w.db.update(farms).set({ stakedLandCents: 1 }).where(eq(farms.id, w.devId)).run();
     w.db.update(gameState).set({ stakerPoolCents: 250 }).where(eq(gameState.id, 1)).run();
     Farms.distributeStaking(w.db);
     expect(row(w.db, w.devId).gp).toBe(ECONOMY.STARTING_GP + 3);
@@ -87,8 +111,8 @@ describe("the single staking pool", () => {
 
   test("the tick runs the payout — and FarmView.gp goes decimal", () => {
     const w = world({ rivalFlock: false });
-    w.db.update(farms).set({ stakedLand: 1 }).where(eq(farms.id, w.devId)).run();
-    w.db.update(farms).set({ stakedLand: 2 }).where(eq(farms.id, w.rivalId)).run();
+    w.db.update(farms).set({ stakedLandCents: 1 }).where(eq(farms.id, w.devId)).run();
+    w.db.update(farms).set({ stakedLandCents: 2 }).where(eq(farms.id, w.rivalId)).run();
     w.db.update(gameState).set({ stakerPoolCents: 100 }).where(eq(gameState.id, 1)).run();
     const tick = w.game.tickDay();
     expect(tick.staking.stakers).toBe(2);
@@ -106,15 +130,16 @@ describe("the single staking pool", () => {
     expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(cost * 100);
     expect(row(w.db, w.devId).gp).toBe(ECONOMY.STARTING_GP - cost);
     expectConserved(w.db); // conserved to the cent, absolutely — not as a delta
-    expect(row(w.db, w.devId).landTokens).toBe(500);
+    expect(row(w.db, w.devId).landTokensCents).toBe(500 * LT_CENTS);
   });
 
   test("the daily land cap still holds, and the pool only takes what was paid", () => {
     const w = world({ rivalFlock: false });
-    expect(() => w.farms.buyLand(w.devId, LAND.DAILY_BUY_CAP + 1)).toThrow(/Daily land cap/);
-    w.farms.buyLand(w.devId, LAND.DAILY_BUY_CAP);
+    const capLt = LAND.DAILY_BUY_CAP / LT_CENTS; // the cap in whole tokens — buyLand's unit
+    expect(() => w.farms.buyLand(w.devId, capLt + 1)).toThrow(/Daily land cap/);
+    w.farms.buyLand(w.devId, capLt);
     expect(() => w.farms.buyLand(w.devId, 1)).toThrow(/left today/);
-    const paidCents = ((LAND.DAILY_BUY_CAP * LAND.GP_PER_100_TOKENS) / 100) * 100;
+    const paidCents = ((capLt * LAND.GP_PER_100_TOKENS) / 100) * 100;
     expect(w.db.select().from(gameState).get()!.stakerPoolCents).toBe(
       Math.round(paidCents * STAKER_FLOWS.LAND_PURCHASE_SHARE)
     );

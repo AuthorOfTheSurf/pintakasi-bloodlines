@@ -23,6 +23,7 @@ import {
   GACHA_TOKENS,
   JUVENILE_MAJOR,
   LAND,
+  LT_CENTS,
   PINTAKASI,
   STAKER_FLOWS,
   WEATHER,
@@ -149,7 +150,9 @@ describe("MCP docs carry the CURRENT config values", () => {
   // nothing about it, which meant an agent would try to list a stud with a
   // full LT balance and get an unexplained ⛔.
   test("list_stud mentions the LT cost of opening a rooster's public slots", () => {
-    expect(TOOL_DESCRIPTIONS.list_stud).toContain(`${COVERS.STUD_LISTING_LT} LT`);
+    // Whole tokens, not the hundredths the constant now holds (round 36) — a
+    // stud seat is ruled at 100 LT and must read as 100 LT.
+    expect(TOOL_DESCRIPTIONS.list_stud).toContain(`${COVERS.STUD_LISTING_LT / LT_CENTS} LT`);
   });
 
   // Missing entirely #1: the Juvenile Championship (JUVENILE_MAJOR) — the
@@ -196,7 +199,11 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(everything).toContain(`${ECONOMY.BREED_FEE} GP`);
     expect(everything).toContain(`${ECONOMY.GACHA_ROLL_PRICE} GP`);
     expect(instructions).toContain(`${PINTAKASI.QUALIFYING_POINTS} qualification points`);
-    expect(instructions).toContain(`${LAND.DAILY_BUY_CAP.toLocaleString()} LT`);
+    // ⚠ /LT_CENTS SINCE ROUND 36. The cap is STORED in hundredths (100,000)
+    // and RULED in whole tokens (1,000 a day) — the docs must quote the ruling,
+    // not the storage, or an agent reads a hundred-fold bigger allowance than
+    // buyLand will actually give it. Same conversion the prose does.
+    expect(instructions).toContain(`${(LAND.DAILY_BUY_CAP / LT_CENTS).toLocaleString()} LT`);
   });
 });
 

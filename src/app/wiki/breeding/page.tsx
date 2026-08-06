@@ -8,6 +8,7 @@ import {
   COVERS,
   DISTANCE_STATS,
   ECONOMY,
+  LT_CENTS,
   STARS,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
@@ -97,7 +98,9 @@ export default function BreedingPage() {
       </div>
       <div className="callout warn">
         <b>Listing costs land — the game&apos;s first Land Token sink.</b> Opening a rooster&apos;s
-        public slots for the first time costs a flat <strong>{COVERS.STUD_LISTING_LT} LT</strong>,
+        {/* Land figures are hundredths of a token since round 36. */}
+        public slots for the first time costs a flat{" "}
+        <strong>{(COVERS.STUD_LISTING_LT / LT_CENTS).toLocaleString()} LT</strong>,
         spent outright — not staked, not refundable. Pulling him from the barn and re-listing him
         later is free; the land bought the seat, not a subscription. Why this door: a stud is the
         best asset in the game — it earns on every outside cover, and its own owner still breeds

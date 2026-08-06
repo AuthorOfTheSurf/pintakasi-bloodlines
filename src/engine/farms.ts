@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { farms, gameState, type FarmRow } from "@/db/schema";
-import { ECONOMY, FARM_COLORS, LAND, STAKER_FLOWS, type FarmColor } from "./config";
+import { ECONOMY, FARM_COLORS, LAND, LT_CENTS, STAKER_FLOWS, fmtLt, type FarmColor } from "./config";
 import { emit, fmtGp } from "./events";
 
 export interface FarmView {
@@ -12,8 +12,8 @@ export interface FarmView {
   primaryColor: string;
   secondaryColor: string;
   gp: number; // decimal — whole GP + cents (staking yield goes fractional)
-  landTokens: number; // liquid land
-  stakedLand: number; // land in THE pool — earning the breed-fee cut daily
+  landTokensCents: number; // liquid land
+  stakedLandCents: number; // land in THE pool — earning the breed-fee cut daily
   freePulls: number;
   checkedInToday: boolean;
   // The FARM's own career record (real + hardcore), stamped at fight time.
@@ -115,7 +115,7 @@ export class Farms {
         secondaryColor: input.secondaryColor,
         apiKey,
         gp: ECONOMY.STARTING_GP,
-        landTokens: 0,
+        landTokensCents: 0,
         freePulls: 0,
         createdDay: this.today(),
       })
@@ -168,10 +168,19 @@ export class Farms {
     if (!Number.isInteger(amount) || amount <= 0) throw new Error("Buy a whole, positive number of Land Tokens");
     const farm = this.rowById(farmId);
     const today = this.today();
-    const boughtToday = farm.landBoughtDay === today ? farm.landBoughtToday : 0;
-    if (boughtToday + amount > LAND.DAILY_BUY_CAP)
+    // ⚠ THE PUBLIC API IS WHOLE TOKENS; THE COLUMN IS HUNDREDTHS (round 36).
+    // Land is minted fractionally now — a night's fighting pays 6.73 LT — but
+    // BUYING and STAKING are deliberately still whole-number player actions:
+    // nobody wants to purchase 6.73 tokens, and a cap ruled as "1,000 LT a
+    // day" should read as 1,000 at every surface a player touches. So the
+    // conversion happens here, at the one boundary, and every stored figure
+    // below this line is in hundredths.
+    const cents = amount * LT_CENTS;
+    const boughtTodayCents = farm.landBoughtDay === today ? farm.landBoughtToday : 0;
+    if (boughtTodayCents + cents > LAND.DAILY_BUY_CAP)
       throw new Error(
-        `Daily land cap is ${LAND.DAILY_BUY_CAP} LT — ${farm.name} has ${LAND.DAILY_BUY_CAP - boughtToday} left today`
+        `Daily land cap is ${LAND.DAILY_BUY_CAP / LT_CENTS} LT — ${farm.name} has ` +
+          `${(LAND.DAILY_BUY_CAP - boughtTodayCents) / LT_CENTS} left today`
       );
     const gpPaid = Math.ceil((amount * LAND.GP_PER_100_TOKENS) / 100);
     if (farm.gp < gpPaid) throw new Error(`${amount} LT costs ${gpPaid} GP — you have ${farm.gp}`);
@@ -179,9 +188,9 @@ export class Farms {
       .update(farms)
       .set({
         gp: farm.gp - gpPaid,
-        landTokens: farm.landTokens + amount,
+        landTokensCents: farm.landTokensCents + cents,
         landBoughtDay: today,
-        landBoughtToday: boughtToday + amount,
+        landBoughtToday: boughtTodayCents + cents,
       })
       .where(eq(farms.id, farmId))
       .run();
@@ -189,7 +198,7 @@ export class Farms {
       type: "buy_land",
       farmId,
       gpCents: -gpPaid * 100,
-      lt: amount,
+      lt: cents,
       message: `bought ${amount} LT for ${gpPaid} GP`,
     });
     // …and the payment goes to the people already staking (round 22). Before
@@ -209,7 +218,8 @@ export class Farms {
       farm: this.view(this.rowById(farmId)),
       bought: amount,
       gpPaid,
-      capLeftToday: LAND.DAILY_BUY_CAP - boughtToday - amount,
+      // Reported in WHOLE tokens, like the amount the caller asked for.
+      capLeftToday: (LAND.DAILY_BUY_CAP - boughtTodayCents - cents) / LT_CENTS,
     };
   }
 
@@ -222,17 +232,21 @@ export class Farms {
   stake(farmId: string, amount: number): { farm: FarmView; staked: number } {
     if (!Number.isInteger(amount) || amount <= 0) throw new Error("Stake a whole, positive number of Land Tokens");
     const farm = this.rowById(farmId);
-    if (farm.landTokens < amount)
-      throw new Error(`${farm.name} holds ${farm.landTokens} liquid LT — cannot stake ${amount}`);
+    // Whole tokens in, hundredths stored — see buyLand's note.
+    const cents = amount * LT_CENTS;
+    if (farm.landTokensCents < cents)
+      throw new Error(
+        `${farm.name} holds ${fmtLt(farm.landTokensCents)} liquid LT — cannot stake ${amount}`
+      );
     this.database
       .update(farms)
-      .set({ landTokens: farm.landTokens - amount, stakedLand: farm.stakedLand + amount })
+      .set({ landTokensCents: farm.landTokensCents - cents, stakedLandCents: farm.stakedLandCents + cents })
       .where(eq(farms.id, farmId))
       .run();
     emit(this.database, {
       type: "stake",
       farmId,
-      message: `staked ${amount} LT (now ${farm.stakedLand + amount} staked / ${farm.landTokens - amount} liquid)`,
+      message: `staked ${amount} LT (now ${fmtLt(farm.stakedLandCents + cents)} staked / ${fmtLt(farm.landTokensCents - cents)} liquid)`,
     });
     return { farm: this.view(this.rowById(farmId)), staked: amount };
   }
@@ -241,17 +255,18 @@ export class Farms {
   unstake(farmId: string, amount: number): { farm: FarmView; unstaked: number } {
     if (!Number.isInteger(amount) || amount <= 0) throw new Error("Unstake a whole, positive number of Land Tokens");
     const farm = this.rowById(farmId);
-    if (farm.stakedLand < amount)
-      throw new Error(`${farm.name} has ${farm.stakedLand} LT staked — cannot unstake ${amount}`);
+    const cents = amount * LT_CENTS;
+    if (farm.stakedLandCents < cents)
+      throw new Error(`${farm.name} has ${fmtLt(farm.stakedLandCents)} LT staked — cannot unstake ${amount}`);
     this.database
       .update(farms)
-      .set({ landTokens: farm.landTokens + amount, stakedLand: farm.stakedLand - amount })
+      .set({ landTokensCents: farm.landTokensCents + cents, stakedLandCents: farm.stakedLandCents - cents })
       .where(eq(farms.id, farmId))
       .run();
     emit(this.database, {
       type: "unstake",
       farmId,
-      message: `unstaked ${amount} LT (now ${farm.stakedLand - amount} staked / ${farm.landTokens + amount} liquid)`,
+      message: `unstaked ${amount} LT (now ${fmtLt(farm.stakedLandCents - cents)} staked / ${fmtLt(farm.landTokensCents + cents)} liquid)`,
     });
     return { farm: this.view(this.rowById(farmId)), unstaked: amount };
   }
@@ -265,20 +280,20 @@ export class Farms {
   static distributeStaking(database: DB): { paidGp: number; stakers: number } {
     const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     const pool = state.stakerPoolCents;
-    const stakers = database.select().from(farms).all().filter((f) => f.stakedLand > 0);
-    const totalStaked = stakers.reduce((s, f) => s + f.stakedLand, 0);
+    const stakers = database.select().from(farms).all().filter((f) => f.stakedLandCents > 0);
+    const totalStaked = stakers.reduce((s, f) => s + f.stakedLandCents, 0);
     if (pool <= 0 || totalStaked === 0) return { paidGp: 0, stakers: 0 };
 
     let paid = 0;
     for (const farm of stakers) {
-      const share = Math.floor((pool * farm.stakedLand) / totalStaked);
+      const share = Math.floor((pool * farm.stakedLandCents) / totalStaked);
       if (share > 0) {
         creditCents(database, farm.id, share);
         emit(database, {
           type: "staking_payout",
           farmId: farm.id,
           gpCents: share,
-          message: `staking yield +${fmtGp(share)} GP on ${farm.stakedLand} staked LT`,
+          message: `staking yield +${fmtGp(share)} GP on ${fmtLt(farm.stakedLandCents)} staked LT`,
         });
       }
       paid += share;
@@ -317,8 +332,8 @@ export class Farms {
       primaryColor: row.primaryColor,
       secondaryColor: row.secondaryColor,
       gp: row.gp + row.gpCents / 100,
-      landTokens: row.landTokens,
-      stakedLand: row.stakedLand,
+      landTokensCents: row.landTokensCents,
+      stakedLandCents: row.stakedLandCents,
       freePulls: row.freePulls,
       checkedInToday: row.lastCheckInDay === this.today(),
       wins: row.wins,
