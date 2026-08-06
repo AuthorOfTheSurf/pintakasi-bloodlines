@@ -29,7 +29,12 @@ export interface BotProfile {
   entryRate: number;
   /** Chance to place a claim on an appealing tagged bird (max 2/day). */
   claimAggression: number;
-  /** Chance to breed when a legal retired pair + the fee are on hand. */
+  /**
+   * DEPTH, not frequency (round 32): the share of this barn's retired hens it
+   * intends to cover each day. 0.9 works nearly the whole band, 0.3 works the
+   * best third. It used to be a daily coin flip in front of a one-cover cap,
+   * which left most hens barren — see BREEDING_PLAN.MIN_HENS_COVERED.
+   */
   breedDrive: number;
   /**
    * Which of the three BREEDING_SHAPES this barn breeds toward — an index
@@ -306,6 +311,44 @@ export const BREEDING_PLAN = {
    * distinguishable from one another.
    */
   OWN_SHAPE_MIN: 40,
+  /**
+   * The floor on how many hens a barn covers in a day, whatever its style
+   * (round 32 — see `breedTarget`). Ruled by Zane 2026-08-06 after the
+   * round-31 sim showed 73 of 154 retired hens had never bred once.
+   *
+   * ⚠ IT MUST STAY BELOW MAX_COVERS_PER_DAY, and the first cut of round 32 did
+   * not. With floor === cap the target collapses to `min(freeHens, cap)` for
+   * every barn that isn't the landlord, `breedDrive` stops being observable at
+   * all, and thirteen stables breed identically while the config comment
+   * cheerfully describes three different styles. A test pins the gap now.
+   *
+   * Three, not five: it is a floor on EFFORT, not a target. A barn with three
+   * hens free today works all three whatever its style, which is enough that
+   * no good hen rots, while leaving room above for a broodfarm to be visibly
+   * a broodfarm.
+   */
+  MIN_HENS_COVERED: 3,
+  /**
+   * The daily runaway guard — the most covers any barn buys in one day.
+   *
+   * Sized against the drip rather than against any observed barn: eight covers
+   * is 8 × BREED_FEE, comfortably above one day's DAILY_DRIP, so a barn that
+   * ever hits this is spending down its stake and something upstream is wrong.
+   * The real limiter is biology — one pregnancy per hen until her egg lays the
+   * following Friday — so a band of twenty supports under three covers a day
+   * and this cap should almost never bind. It is a brake against a bug.
+   */
+  MAX_COVERS_PER_DAY: 8,
+  /**
+   * How many hens beyond the day's target get priced anyway.
+   *
+   * A priced cover can still fail at the counter — kinship, a stud already
+   * covered out for the week, the hen already carrying. Without slack a barn
+   * whose top pick bounces simply buys fewer foals than it meant to, and the
+   * failures are invisible because `quietly` eats them. Three is roughly one
+   * spare per two intended covers at the observed failure rate.
+   */
+  HENS_PRICED_SLACK: 3,
 } as const;
 
 export const BOT_FARMS: BotProfile[] = [

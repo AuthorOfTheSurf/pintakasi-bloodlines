@@ -586,7 +586,8 @@ Round 30's runs measured 49.5%, 50.7% and 53.3% — the warning straddles its
 own bar, so it fires or doesn't on run-to-run variance. Either the bar wants
 moving or the measurement wants a wider sample; a health line that flips sign
 on noise teaches nobody anything. (It did not fire on the round-31 world, which
-is not evidence either way — that is the complaint.)
+is not evidence either way — that is the complaint. Round 32 read 57.0%, which
+is further from the bar and still does not tell you where the bar belongs.)
 
 ### 9. The odd bird out is structural, and the fix is scoped (round 31 → 32)
 
@@ -604,6 +605,13 @@ It is a wide change, not a knob: `CADENCE.FIGHTS_PER_BIRD_PER_DAY`, the
 single-`battleLogId` shape of `lobbyEntries` all move together. Zane's ruling
 on the money: **entry fees become divisible by 3** (40 → 42, 8 → 9) and the
 stake splits across the fights actually taken, refunding the remainder.
+
+**Round 32 update, and it goes the wrong way on purpose.** Opening the breeding
+barn roughly doubled the population, mean fill went **7.36 → 9.94** birds a
+lobby — and unmatched went **4.5% → 5.7%** anyway. That is not a regression in
+the card; it is the same odd-bird-out residue riding more entries, so more
+rooms close odd. Singletons held at 3.8%. Nothing about round 32 changes the
+diagnosis, it just raises the price of not fixing it.
 
 ### 10. Same-barn stranding has no cap any more (round 31, watch)
 
@@ -624,6 +632,21 @@ lobby's element composition, because the counter-meta is currently *unplayable*
 rather than merely weak — the field is fogged, so nobody can counter what they
 cannot see. PFL-style aging curves and carriage (Ground/Air, still data-only
 since round 23, and the natural second star axis) sit in the same queue.
+
+### 12. Selection pressure vs. band utilization (round 32, newly opened)
+
+Round 32 turned `breedDrive` into DEPTH — the share of a barn's retired hens it
+covers each day — and the broodmare band went from 47% ever-carried to 75.9%.
+The suite does not measure this and nothing here changed, but the trade-off
+belongs on the list: **covering more hens means covering less selectively**,
+because the marginal hen is by construction the worst one on the barn's ranked
+list. The mid-round sim, taken before `MIN_HENS_COVERED` and
+`MAX_COVERS_PER_DAY` were separated, showed gen-2 mean stat gain **falling to
++11.5** while home margin rose to +7.8; separating the knobs recovered it to
+**+30.0 / +6.9**. So the current setting sits on the right side of the curve,
+and nothing yet locates the peak. This is a doctor question (the BLOODLINES
+ladder, both columns) rather than a lab one, unless someone builds a case for
+it.
 
 ## Comment/code discrepancies
 

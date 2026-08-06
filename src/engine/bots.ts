@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
@@ -27,6 +27,7 @@ import { drawStarterNames } from "./naming";
 import { emit } from "./events";
 import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
+import { GameClock } from "./game-clock";
 import { Gacha } from "./gacha";
 import { canHardcore } from "./lifecycle";
 import { Lobbies, entryRefusal, type FightMode, type LobbySpec } from "./lobbies";
@@ -50,7 +51,7 @@ export interface BotDayReport {
   paidPulls: number; //  gacha rolls bought at price (round 22)
   landBought: number; // LT bought with GP — the landlord's daily play (round 23)
   studsListed: number; // retired roosters put up in the breeding barn
-  bred: string | null; // egg name, if a cover was bought (barn included)
+  bred: string[]; // egg names — a barn covers every hen it can, not one a day
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
   crowns: string[]; // birds registered for this week's championships
   claimsPlaced: number;
@@ -156,7 +157,7 @@ export class Bots {
       paidPulls: 0,
       landBought: 0,
       studsListed: 0,
-      bred: null,
+      bred: [],
       entered: [],
       crowns: [],
       claimsPlaced: 0,
@@ -229,15 +230,50 @@ export class Bots {
       quietly(() => void flock.rename(bird.id, drawStarterNames(db, 1, rng)[0]));
     }
 
-    // 3. Breed through the BARN, if the drive and a legal cover line up —
-    //    bots shop other farms' listed studs like anyone else.
+    // 3. Breed through the BARN — bots shop other farms' listed studs like
+    //    anyone else, and they shop with a PLAN (round 29: this loop used to
+    //    take the first legal cover off a shuffled list, which optimised for
+    //    nothing and bred the whole world flat — see BREEDING_PLAN).
     //
-    //    Round 29: they now shop with a PLAN. This loop used to take the first
-    //    legal cover off a shuffled list, which optimised for nothing and bred
-    //    the whole world flat (see BREEDING_PLAN). It prices every pair it can
-    //    afford to look at, then buys the best one.
-    if (rng() < bot.breedDrive && gp() > ECONOMY.BREED_FEE + RESERVE) {
-      const hens = flock.all().filter((b) => b.status === "retired" && b.sex === "female");
+    //    ROUND 32 LIFTED THE ONE-COVER-A-DAY CAP, and it was never a budget
+    //    rule. A cover is BREED_FEE, a hen can hold only one pregnancy until
+    //    her egg lays the following Friday, so ~10 retired hens want ~10
+    //    covers A WEEK — under a third of a day's DAILY_DRIP. The cap was
+    //    throwing away two thirds of the world's breeding capacity for
+    //    nothing, and the round-31 sim showed it plainly: 73 of 154 retired
+    //    hens never bred once, while eight hens carried nine foals each.
+    //
+    //    So `breedDrive` stops being a daily dice roll and becomes DEPTH —
+    //    the share of her hens a barn intends to work. Zane, 2026-08-06:
+    //    "I'd expect barns to either breed all of their hens, or their X best
+    //    hens each season." The stop is now money and biology, not a counter.
+    //
+    // ⚠ CARRYING HENS ARE FILTERED OUT BEFORE THE COUNT, and that is what makes
+    // `breedDrive` mean anything. A hen holds one pregnancy until her egg lays
+    // the following Friday, so on any given day most of a worked band is
+    // already carrying. Counting the whole band would set every barn's target
+    // at the daily cap and then spend the pricing budget on hens whose cover
+    // can only throw — swallowed by `quietly`, invisible. Depth is a share of
+    // the hens who can actually take a cover TODAY.
+    // Read off the db rather than `flock.all()`: BirdView exposes `eggStage`
+    // but not `motherId`, and the rule is specifically GESTATING — an egg
+    // already LAID leaves its dam free, which is the round-14 rule that lets a
+    // hen carry again while last week's egg waits to hatch.
+    const thisWeek = GameClock.weekOf(today);
+    const carrying = new Set(
+      db
+        .select()
+        .from(birds)
+        .where(and(eq(birds.farmId, bot.id), eq(birds.status, "egg")))
+        .all()
+        .filter((egg) => egg.motherId && egg.birthWeek > thisWeek)
+        .map((egg) => egg.motherId!)
+    );
+    const hens = flock
+      .all()
+      .filter((b) => b.status === "retired" && b.sex === "female" && !carrying.has(b.id));
+    const coverTarget = breedTarget(bot, hens.length);
+    if (coverTarget > 0 && gp() > ECONOMY.BREED_FEE + RESERVE) {
       // Round 30: the shape is chosen PER HEN, not per barn. Round 29 priced
       // every cover in the barn against one house axis, which meant half the
       // flock was being bred ACROSS its own grain — a deep-water hen dragged
@@ -247,9 +283,19 @@ export class Bots {
       // Priced up front rather than inside the try/buy loop: a legal cover can
       // still fail on kinship or a used-up slot, and the barn should fall to
       // its SECOND choice, not back to random.
+      //
+      // ⚠ THE HEN CAP IS THE ONE THAT MATTERS, and round 32 had to add it.
+      // The only cap here used to be MAX_PAIRS_PRICED against MAX_STUDS_PER_HEN
+      // studs each — 150 ÷ 40, so barely FOUR hens were ever priced in a day.
+      // Lifting the one-cover-a-day rule on its own would have changed nothing
+      // past the fourth hen, because there was nothing priced to buy. Count
+      // HENS, and let the pair cap go back to being a pure runaway guard.
       const priced: { henId: string; studId: string; score: number }[] = [];
+      let hensPriced = 0;
       for (const hen of shuffle(hens, rng)) {
+        if (hensPriced >= coverTarget + BREEDING_PLAN.HENS_PRICED_SLACK) break;
         if (priced.length >= BREEDING_PLAN.MAX_PAIRS_PRICED) break;
+        hensPriced++;
         // A retired hen's sheet is revealed (round 28), so this is public
         // information for a bot exactly as it is for a player reading her card.
         const dam = flock.byId(hen.id);
@@ -276,12 +322,27 @@ export class Bots {
           priced.push({ henId: hen.id, studId: stud.birdId, score: foalScore(dam, stud, shape) });
         }
       }
+      // Best pair first, then walk down. Sorting the PAIRS rather than the hens
+      // is what makes this "the barn's top X hens": a hen's rank is the rank of
+      // her best available cover, so a good hen with no good stud left standing
+      // quietly drops below a lesser hen who has one — which is the right call,
+      // since it is the FOAL the barn is buying, not the dam.
       priced.sort((a, b) => b.score - a.score);
+      const covered = new Set<string>();
       for (const pick of priced) {
+        if (covered.size >= coverTarget) break;
+        // One pregnancy per hen until her egg lays, so a second pair for a hen
+        // already covered today can only fail. Skip it rather than spend the
+        // attempt — `quietly` would swallow the throw and we would never know.
+        if (covered.has(pick.henId)) continue;
+        // MONEY IS THE REAL STOP, and it is checked per cover rather than once
+        // up front: a barn that can afford three covers must buy three and then
+        // halt, not commit to its target and overdraw toward the reserve.
+        if (gp() < ECONOMY.BREED_FEE + RESERVE) break;
         let eggName: string | null = null;
         if (quietly(() => (eggName = breeding.breed(pick.henId, pick.studId).egg.name))) {
-          report.bred = eggName;
-          break; // one cover a day is plenty
+          covered.add(pick.henId);
+          report.bred.push(eggName!);
         }
       }
     }
@@ -501,6 +562,36 @@ export function bestShape(sheet: Partial<Record<DistanceStat, number | null>>): 
 /**
  * Price one cover: what would the FOAL be worth to a barn breeding `shape`?
  *
+ * How many hens this barn intends to cover TODAY (round 32).
+ *
+ * `breedDrive` used to be a daily coin flip in front of a hard one-cover cap,
+ * which meant even a 0.9-drive broodfarm bought about one foal every other day
+ * and most of its band never carried at all. It is now DEPTH: the share of the
+ * barn's retired hens it works. 0.9 breeds nearly all of them, 0.3 breeds the
+ * best third — and since the pairs are ranked by expected foal, "the best
+ * third" means the best third, not a random third.
+ *
+ * THE FLOOR is the part Zane ruled directly (2026-08-06): "All barns should
+ * basically want to breed, except for the ones with specific non breeding
+ * strategies." A hen standing idle is a retired asset earning nothing, and at
+ * BREED_FEE a cover the money is never the reason — so every barn works at
+ * least MIN_HENS_COVERED of them regardless of style, and a barn with fewer
+ * hens than that simply works all of them.
+ *
+ * THE ONE EXEMPTION is a barn with a `landAppetite`, which pours its whole
+ * wallet into land every single day and genuinely cannot afford a floor. That
+ * is the "specific non-breeding strategy" the ruling carves out, and keying it
+ * off the appetite rather than a magic bot id means a future landlord inherits
+ * the exemption for the right reason.
+ */
+function breedTarget(bot: BotProfile, hens: number): number {
+  if (hens === 0) return 0;
+  const share = Math.ceil(hens * bot.breedDrive);
+  const floor = bot.landAppetite ? 0 : BREEDING_PLAN.MIN_HENS_COVERED;
+  return Math.min(hens, BREEDING_PLAN.MAX_COVERS_PER_DAY, Math.max(share, floor));
+}
+
+/**
  * Expected foal sheet is the parents' midpoint — BREEDING.STAT_VARIANCE is
  * symmetric noise around it and mutations are a 5% tail, so the midpoint is
  * the honest expectation and the whole plan stays arithmetic a player could
@@ -720,15 +811,65 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
   // One scout read per bird — the report is a battleLog aggregation, and a
   // juvenile field can be thirty birds wide.
   const scores = new Map(qualified.map((b) => [b.id, scoutScores(db, b.id)]));
+
+  // ⚠ EACH BIRD DECLARES FOR ONE CROWN FIRST — round 32 fixed a real bug here.
+  //
+  // This loop used to run BLADES on the outside, sending up to MAX_PER_BARN
+  // birds to b2 and only then looking at b4. But a bird may hold one
+  // championship entry per week (Tournaments.enter enforces it), so b2 — just
+  // by being checked first — took every barn's two best juveniles and b4 got
+  // whatever was left over. Measured across the round-31 sim: b2 fields of
+  // 16-27 against b4 fields of 1-8. Nothing about the birds caused that; it
+  // was the iteration order.
+  //
+  // The adult `chaseCrowns` below has always declared first for exactly this
+  // reason. Same structure here, and it is also what the juvenile stage is
+  // FOR — Zane, 2026-08-06: "The whole point of juvi season would be to at
+  // least determine which extreme they are good at (B1/B2 vs. B4/B5)." The
+  // crown a chick declares for IS that verdict.
+  const seated = new Set<string>();
+  const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
+  for (const [i, bird] of qualified.entries()) {
+    const s = scores.get(bird.id)!;
+    const top = Math.max(...blades.map((b) => s[b]));
+    // A TRUE B3 BIRD READS THE TWO CROWNS DEAD EVEN, and there is no crown at
+    // b3 to send it to — Zane: "if it's a true B3 bird, that's a wont-solve
+    // scenario and they'll simply opt into B2 or B4 based on the data
+    // available." So ties spread round-robin rather than falling to the first
+    // blade, which would rebuild the very imbalance this fix removes.
+    const tied = blades.filter((b) => s[b] === top);
+    declared.get(tied[i % tied.length])!.push(bird);
+  }
+
   for (const blade of blades) {
     let sent = 0;
-    for (const bird of qualified.sort(
-      (a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade]
-    )) {
+    for (const bird of declared
+      .get(blade)!
+      .sort((a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade])) {
       if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
       try {
         tournaments.enter(bird.id, blade, "juvenile");
         entered.push(bird.name);
+        seated.add(bird.id);
+        sent++;
+      } catch {
+        /* already in this week, barn cap, or not qualified */
+      }
+    }
+  }
+
+  // Then a SECOND pass over anyone who didn't get a seat at the crown they
+  // declared for — their barn was already full there. A qualified juvenile
+  // with a free crown standing empty should stand in it: the stage costs
+  // nothing and isn't hardcore, so a second-choice blade beats no blade.
+  for (const blade of blades) {
+    let sent = tournaments.myEntriesThisWeek(blade);
+    for (const bird of qualified.filter((b) => !seated.has(b.id))) {
+      if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
+      try {
+        tournaments.enter(bird.id, blade, "juvenile");
+        entered.push(bird.name);
+        seated.add(bird.id);
         sent++;
       } catch {
         /* already in this week, barn cap, or not qualified */

@@ -74,6 +74,20 @@ const DOCTOR = {
   FILL_WARN: 5,
   // Half a division's crowns cancelling means the field isn't there.
   CANCELLED_CROWNS_WARN: 0.5,
+  // Below this share of the SETTLED retired hens having ever carried, the
+  // breeding loop is leaving capacity on the floor (round 32). Deliberately
+  // well under 100%: the plan is SUPPOSED to reject hens, so a band where
+  // every mare carries would mean nobody is selecting. 0.7 was tight enough
+  // to have caught round 31, which measured 47%.
+  BRED_BAND_WARN: 0.7,
+  // How long a hen gets to come up in her barn's ranked list before her being
+  // barren counts against the world. A hen who retired on the last Hatch
+  // Friday has not been passed over — she has not had her turn — and the
+  // round-32 sim retired 32 in its final week, enough to read a real 76% as
+  // 64% and warn about nothing. One week would be the honest floor since
+  // covers are bought daily; two leaves room for a deep band to work through
+  // a backlog after a heavy Friday.
+  BRED_BAND_GRACE_WEEKS: 2,
   OFFENDER_SAMPLE: 5,
   // How far above pure chance the weather-timing rate has to sit before we
   // believe anyone is actually timing entries. 1.15 is loose on purpose: the
@@ -861,6 +875,27 @@ export interface BladeDiscovery {
  */
 export interface BreedingSelection {
   covers: number;
+  /**
+   * THE BROODMARE BAND — every retired hen in the world, and how many of them
+   * have ever carried (round 32).
+   *
+   * Added because the selection numbers below cannot see this. They grade the
+   * covers that HAPPENED and were healthy all along, while the round-31 sim
+   * was quietly leaving 73 of 154 retired hens barren for their whole lives —
+   * the bots broke after one cover a day and only ever reached the top four
+   * hens they had priced. A band that good with half of it idle is capacity
+   * the world is throwing away, and nothing reported it.
+   *
+   * ⚠ THE DENOMINATOR SKIPS THE NEWLY RETIRED — see BRED_BAND_GRACE_WEEKS. A
+   * hen who retired on the last Hatch Friday has not been passed over, she has
+   * not had her turn, and counting her reads a healthy band as a broken one.
+   * The round-32 sim retired 32 hens in its final week; leaving them in dragged
+   * a real 76% down to 64% and tripped a warning about nothing.
+   */
+  hens: number;
+  hensBred: number;
+  /** Foals carried by the single busiest hen — the concentration `hensBred` hides. */
+  busiestHen: number;
   /** Median own-best separation over EVERY bird — how shaped a bird is by accident. */
   flock: number;
   /** …over the dams actually covered. The raw material a barn had to work with. */
@@ -1067,8 +1102,27 @@ export function breedingSelection(db: DB): BreedingSelection | null {
     baseline.push(median(rows.map((b) => sep(b, aim))));
   }
   if (foals.length === 0) return null;
+  // Counted over EVERY retired hen, bot-owned or not, and over every foal
+  // regardless of whose barn bought the cover — this is a question about the
+  // world's capacity, not about whether the plan is selecting well.
+  const foalsPerDam = new Map<string, number>();
+  for (const b of rows) {
+    if (b.motherId) foalsPerDam.set(b.motherId, (foalsPerDam.get(b.motherId) ?? 0) + 1);
+  }
+  const week = GameClock.weekOf(
+    db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex
+  );
+  const band = rows.filter(
+    (b) =>
+      b.status === "retired" &&
+      b.sex === "female" &&
+      (b.retiredWeek ?? 0) <= week - DOCTOR.BRED_BAND_GRACE_WEEKS
+  );
   return {
     covers: foals.length,
+    hens: band.length,
+    hensBred: band.filter((h) => foalsPerDam.has(h.id)).length,
+    busiestHen: Math.max(0, ...[...foalsPerDam.values()]),
     flock: median(rows.map(ownBest)),
     dams: median(dams),
     sires: median(sires),
@@ -1098,12 +1152,17 @@ function discovery(d: BladeDiscovery): HealthSection {
   // The plan's adoption check — see BreedingSelection for why the line above
   // cannot answer this on its own.
   const sel = d.selection;
-  if (sel)
+  if (sel) {
     lines.push(
       `breeding  ${sel.covers} bot covers · hens carry ${signed(sel.dams)} of their own shape (any bird: ${signed(sel.flock)}) · ` +
         `the sires chosen reinforce it by ${signed(sel.sires)} (an unchosen sire: ${signed(sel.sireBaseline)}) · ` +
         `foals land at ${signed(sel.foals)}`
     );
+    lines.push(
+      `broodmare band  ${pct(sel.hensBred, sel.hens)} of ${sel.hens} settled retired hens have ever carried · ` +
+        `busiest hen ${sel.busiestHen} foals`
+    );
+  }
 
   const [juv, , vet] = d.buckets;
   // The trend verdict needs BOTH ends of the career to be readable — a
@@ -1133,6 +1192,12 @@ function discovery(d: BladeDiscovery): HealthSection {
     gradable && !teaching
       ? `the figures are not teaching: scout ranks ${pct(vet.clearScoutHits, vet.clearCovered)} on ` +
         `age-4+ birds with a real home, against ${(d.chance * 100).toFixed(1)}% by chance`
+      : undefined,
+    // Also not a scout failure: idle hens are foals never born, which shows up
+    // downstream as a thin population and a shallow generation ladder.
+    sel && sel.hens > 0 && sel.hensBred / sel.hens < DOCTOR.BRED_BAND_WARN
+      ? `only ${pct(sel.hensBred, sel.hens)} of the ${sel.hens} settled retired hens have ever carried — ` +
+        `the breeding loop is leaving broodmare capacity idle`
       : undefined,
     // Not a scout failure — a BREEDING failure, and it caps everything above.
     d.clearHomeShare < 0.5

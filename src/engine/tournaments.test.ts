@@ -3,13 +3,13 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { chaseCrowns } from "./bots";
-import { ECONOMY, PINTAKASI } from "./config";
+import { chaseCrowns, chaseJuvenileCrowns } from "./bots";
+import { ECONOMY, JUVENILE_MAJOR, PINTAKASI, SCOUT, type FightFormat } from "./config";
 import { Flock } from "./flock";
 import { mulberry32 } from "./rng";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
-import { onCard } from "./testkit";
+import { makeBird, onCard } from "./testkit";
 import { Tournaments } from "./tournaments";
 
 /** Two legacy farms — each carries two age-3+ birds (Sinag 3, Batong Buhay 5). */
@@ -433,5 +433,163 @@ describe("the crown-day resolution", () => {
     expect(() =>
       lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }))
     ).toThrow(/Pintakasi/);
+  });
+});
+
+/**
+ * THE JUVENILE CROWN CHASE (round 32) — every chick declares for one crown
+ * BEFORE anybody is sent anywhere.
+ *
+ * The bug this replaces was invisible in the code and glaring in the data.
+ * `chaseJuvenileCrowns` looped the week's blades on the OUTSIDE and sent up to
+ * MAX_PER_BARN birds to each in turn; because a bird may hold only one
+ * championship entry a week (`enter` above), whichever blade sat first in
+ * JUVENILE_MAJOR.BLADES took every barn's best juveniles and the other one got
+ * the leftovers. Measured across the round-31 sim: fields of 16-27 at the first
+ * blade against 1-8 at the second, with nothing about the birds causing it.
+ *
+ * So these tests are about ITERATION ORDER, not about birds. Each one is built
+ * so that the OLD loop and the new one disagree on where a barn's chicks end
+ * up, which is the only way to pin a fix whose output is otherwise identical.
+ */
+describe("the juvenile crown chase declares before it sends", () => {
+  // The order the old loop walked — `first` is the blade that used to win
+  // every argument simply by being checked first.
+  const [first, second] = Tournaments.juvenileBladesOfWeek(0);
+
+  /** A named, qualified age-1 chick in the dev barn — nothing else. */
+  const chick = (db: DB, name: string) =>
+    makeBird(db, { name, age: 1, wins: JUVENILE_MAJOR.QUALIFYING_WINS });
+
+  /**
+   * Teach the scout that this bird is good at one blade. Figures are the ONLY
+   * thing a stable may read since the fog came down (round 28), so a battle-log
+   * history at a blade is the whole of "reads better there". Both grades are
+   * pinned to the scout's own reference so `normalizedScoutFigure` is the
+   * identity and the arithmetic stays legible: MIN_READS figures of `figure`
+   * against a prior of PRIOR_FIGURE.
+   */
+  function readsWellAt(db: DB, farmId: string, birdId: string, format: FightFormat, figure = 90) {
+    for (let i = 0; i < SCOUT.MIN_READS; i++) {
+      db.insert(battleLog)
+        .values({
+          dayIndex: i, lobbyId: 1, farmId, birdId,
+          mode: "juvenile", format,
+          opponentBirdId: "ghost", opponentFarmId: "house", opponentName: "Sparring Ghost",
+          selfGrade: SCOUT.REFERENCE_GRADE, opponentGrade: SCOUT.REFERENCE_GRADE,
+          result: "win", pitFigure: figure, gpDeltaCents: 0, seed: i, playByPlay: "[]",
+        })
+        .run();
+    }
+  }
+
+  /** How many of this barn's birds are standing in one juvenile crown. */
+  const fieldAt = (db: DB, farmId: string, format: FightFormat) => {
+    const ids = db
+      .select()
+      .from(tournaments)
+      .all()
+      .filter((t) => t.division === "juvenile" && t.format === format)
+      .map((t) => t.id);
+    return db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .filter((e) => e.status === "pending" && e.farmId === farmId && ids.includes(e.tournamentId))
+      .length;
+  };
+
+  test("a barn whose chicks read better at the SECOND blade sends them there", () => {
+    const w = world();
+    // Three qualified juveniles, every one of them a clear read at the blade
+    // the old loop checked LAST. Three rather than two so the barn also has to
+    // overflow: MAX_PER_BARN seats two, and the third has nowhere to go at its
+    // declared crown.
+    for (const name of ["Alon", "Bagyo", "Sigwa"]) {
+      const row = chick(w.db, name);
+      readsWellAt(w.db, w.devId, row.id, second);
+    }
+    const entered = chaseJuvenileCrowns(w.db, w.devId, 0);
+    expect(entered.length).toBe(3);
+
+    // THE ASSERTION THAT FAILS AGAINST THE OLD LOOP: the crown they read best
+    // at gets the barn's full allowance, and the leftover — not the best two —
+    // is what lands in the other bracket. The old code returned exactly the
+    // mirror image of this, and for no reason except array order.
+    expect(fieldAt(w.db, w.devId, second)).toBe(JUVENILE_MAJOR.MAX_PER_BARN);
+    expect(fieldAt(w.db, w.devId, first)).toBe(3 - JUVENILE_MAJOR.MAX_PER_BARN);
+  });
+
+  test("…and the overflow really is the WEAKEST read, not whoever was first in the list", () => {
+    // The same shape as above, but the three chicks are separable: the second
+    // pass must be seating the bird with the poorest figures at that blade.
+    const w = world();
+    const ranked = [
+      ["Tanikala", 95],
+      ["Balaraw", 85],
+      ["Pungdol", 60],
+    ] as const;
+    for (const [name, figure] of ranked) {
+      const row = chick(w.db, name);
+      readsWellAt(w.db, w.devId, row.id, second, figure);
+    }
+    chaseJuvenileCrowns(w.db, w.devId, 0);
+    const secondIds = w.db
+      .select()
+      .from(tournaments)
+      .all()
+      .filter((t) => t.division === "juvenile" && t.format === second)
+      .map((t) => t.id);
+    const seatedAtSecond = w.db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .filter((e) => e.status === "pending" && secondIds.includes(e.tournamentId))
+      .map((e) => w.db.select().from(birds).where(eq(birds.id, e.birdId)).get()!.name);
+    expect(seatedAtSecond.sort()).toEqual(["Balaraw", "Tanikala"]);
+  });
+
+  test("chicks that read the two crowns DEAD EVEN split across both", () => {
+    // A true B3 bird reads B2 and B4 identically and there is no crown at B3 to
+    // send it to — Zane called that a won't-solve and ruled the chick simply
+    // opts into one of the two on the data it has. So the tie-break spreads
+    // round-robin by index instead of falling to the first blade, which would
+    // rebuild the very imbalance this round removed.
+    //
+    // Two unraced chicks read EVERY blade at the prior, so this is the tie in
+    // its purest form — and the old loop would have put both of them in the
+    // first crown, since MAX_PER_BARN has room for two.
+    const w = world();
+    chick(w.db, "Ulap");
+    chick(w.db, "Hangin");
+    expect(JUVENILE_MAJOR.MAX_PER_BARN).toBeGreaterThanOrEqual(2); // …or the split proves nothing
+
+    const entered = chaseJuvenileCrowns(w.db, w.devId, 0);
+    expect(entered.length).toBe(2);
+    expect(fieldAt(w.db, w.devId, first)).toBe(1);
+    expect(fieldAt(w.db, w.devId, second)).toBe(1);
+  });
+
+  test("a chick short of its qualifying wins never declares at all", () => {
+    // The declaration pass runs before any entry is attempted, so it is now
+    // possible to declare a bird the door would refuse and then quietly lose
+    // it in a catch. Pin that the gate is still checked up front: an unqualified
+    // chick is not merely unseated, it does not consume a declaration slot that
+    // a qualified barn-mate could have used.
+    const w = world();
+    const short = makeBird(w.db, {
+      name: "Mumunti",
+      age: 1,
+      wins: JUVENILE_MAJOR.QUALIFYING_WINS - 1,
+    });
+    readsWellAt(w.db, w.devId, short.id, second);
+    for (const name of ["Liwayway", "Tala", "Bituin"]) {
+      const row = chick(w.db, name);
+      readsWellAt(w.db, w.devId, row.id, second);
+    }
+    const entered = chaseJuvenileCrowns(w.db, w.devId, 0);
+    expect(entered).not.toContain("Mumunti");
+    expect(entered.length).toBe(3);
+    expect(fieldAt(w.db, w.devId, second)).toBe(JUVENILE_MAJOR.MAX_PER_BARN);
   });
 });

@@ -250,7 +250,11 @@ export class Tournaments {
       if (birdRow.crownPoints < PINTAKASI.QUALIFYING_POINTS)
         throw new Error(
           `${bird.name} holds ${birdRow.crownPoints} of the ${PINTAKASI.QUALIFYING_POINTS} qualification points a crown asks for — ` +
-            `campaign on the daily card first (a real win banks ${PINTAKASI.POINTS_FOR.real}, a hardcore ${PINTAKASI.POINTS_FOR.hardcore})`
+            // Round 31 took hardcore off the daily card, so POINTS_FOR.hardcore
+            // is unreachable and telling a player about it sends them looking
+            // for a lobby that no longer exists. The knob survives in config
+            // against a future per-entry risk choice; the ADVICE must not.
+            `campaign on the daily card first (a real win banks ${PINTAKASI.POINTS_FOR.real})`
         );
     }
 

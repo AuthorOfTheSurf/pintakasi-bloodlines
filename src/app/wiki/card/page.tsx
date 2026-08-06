@@ -15,7 +15,7 @@ import {
   cardOfDay,
   landForFight,
 } from "@/engine/config";
-import type { FightMode } from "@/engine/config";
+import type { FightFormat, FightMode } from "@/engine/config";
 import { fmtGp } from "@/engine/events";
 
 export const dynamic = "force-dynamic";
@@ -49,9 +49,34 @@ const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesd
  */
 const EXAMPLE_DAY = 0;
 
+/**
+ * The longest a bird ever waits for one particular blade in a division's open
+ * class — MEASURED off four weeks of real cards, not asserted.
+ *
+ * Round 32 widened CARD.juvenile.open to 3 for exactly this number (at 2 the
+ * worst gap was four days against a seven-day juvenile career), so the page
+ * reads the wait off the schedule itself. Move the slot count and the sentence
+ * moves with it; nobody has to remember to re-count.
+ */
+const GAP_WINDOW = 28;
+function worstBladeGap(mode: FightMode): number {
+  const lastSeen = new Map<FightFormat, number>();
+  let worst = 0;
+  for (let day = 0; day < GAP_WINDOW; day++) {
+    for (const key of cardOfDay(day)) {
+      if (key.mode !== mode || key.classType !== "open") continue;
+      const prev = lastSeen.get(key.format);
+      if (prev !== undefined) worst = Math.max(worst, day - prev);
+      lastSeen.set(key.format, day);
+    }
+  }
+  return worst;
+}
+
 export default function CardPage() {
   const exampleCard = cardOfDay(EXAMPLE_DAY);
   const crownDayCard = cardOfDay(PINTAKASI.DAY_OF_WEEK);
+  const juvenileGap = worstBladeGap("juvenile");
 
   // How big the space of POSSIBLE fights is, versus how much of it runs on any
   // one day. Both computed, so widening the blade dial or the tag ladder moves
@@ -148,6 +173,21 @@ export default function CardPage() {
         most for one-year-olds: the discovery year is only{" "}
         {CALENDAR.DAYS_PER_WEEK} game-days long, and a chick can&apos;t afford to wait out a blade
         that never shows.
+      </p>
+      <p>
+        Which is why the one-year-olds get the wider deal. The juvenile open class is dealt{" "}
+        {CARD.juvenile.open} of the {FORMAT_NAMES.length} blades every single night — as wide a
+        rotation as any class on the card gets. Do the arithmetic
+        and the reason is plain: a discovery year lasts {CALENDAR.DAYS_PER_WEEK} game-days, and no more than{" "}
+        {juvenileGap} days ever pass between two runnings of the same juvenile blade. Every chick
+        gets offered every distance while it is still young enough to try them.
+      </p>
+      <p className="dim">
+        It used to be a narrower deal, and the sums didn&apos;t work. A chick could reach its
+        second birthday having never once been offered two of the {FORMAT_NAMES.length} blades —
+        which means it spent the only year it is allowed to experiment in never finding out what it
+        was. That is the whole job of the discovery year, so the juvenile card was widened until
+        the wait fit inside a career.
       </p>
       <div className="callout tip">
         <b>{DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} is thinner on purpose.</b> That is the Pintakasi

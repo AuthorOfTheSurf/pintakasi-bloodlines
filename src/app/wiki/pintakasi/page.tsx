@@ -344,6 +344,27 @@ export default function PintakasiPage() {
         in a bracket capped at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s ceiling, sized for
         a stage about discovery, not the biggest purse in the game.
       </p>
+
+      <h3>Which of the two crowns?</h3>
+      <p>
+        The same rule the Majors use applies here: <strong>one championship per bird per week</strong>.
+        Both juvenile crowns run on the same day, so entering one spends the other. Your chick has
+        to declare.
+      </p>
+      <p>
+        Nothing stops you entering either one — there is no gate, and a chick with no form at all
+        may stand in whichever it likes. But the useful way to choose is to read the bird&apos;s{" "}
+        <Link href="/wiki/birds">scout report</Link> and send it to the blade it reads better at.{" "}
+        {FORMATS[JUVENILE_MAJOR.BLADES[0]].label} is the short end of the dial and{" "}
+        {FORMATS[JUVENILE_MAJOR.BLADES[1]].label} the long one, and working out which end a bird
+        belongs to is the entire point of the discovery year. The crown it declares for is that
+        verdict, said out loud.
+      </p>
+      <p className="dim">
+        And if the two read dead even? Then you have a middle-distance bird, no juvenile crown runs
+        at the middle, and there is no right answer — pick the softer field, take the result as one
+        more piece of data, and go and find its real distance on the daily card.
+      </p>
       <div className="callout warn">
         <b>The only championship in the game that isn&apos;t hardcore.</b> Every Major force-retires
         its losers. This one can&apos;t: the discovery year exists to find out what a bird actually
@@ -354,7 +375,7 @@ export default function PintakasiPage() {
       <p>
         Its purse comes out of the same juice pool the Majors draw from — a fixed{" "}
         {(JUVENILE_MAJOR.JUICE_SHARE * 100).toFixed(0)}% slice, taken before Thursday&apos;s Majors
-        get whatever&apos;s left, split across whichever of the two blades runs that week and paid
+        get whatever&apos;s left, split across the two crowns — both run every week — and paid
         out flatter than a Major&apos;s purse — a discovery-year stage rewards showing up with a
         live one, not just winning it all:
       </p>

@@ -215,14 +215,113 @@ age-1 answer coverage fell to 3.3%. Fewer posted keys means fewer graded
 decisions, so those buckets are noise-prone — recorded as something to watch,
 not as a result.
 
+### Round 32 — the broodmare band opens, and two schedules stop being lopsided
+
+Round 31 left the world with a healthy card and a half-idle breeding barn.
+Reading its doctor report, Zane found three things the round-31 work had not
+been looking at: the broodmare band was half idle, the two juvenile crowns were
+wildly lopsided, and juvenile open had headroom nobody was spending.
+
+**`breedDrive` becomes DEPTH, not frequency.** `Bots.playFarm` ended its
+breeding block with `break; // one cover a day is plenty`, behind a daily coin
+flip. The cap was never a budget rule: a cover is 160 GP and a hen holds one
+pregnancy until her egg lays the following Friday, so ~10 retired hens want ~10
+covers **a week** — 229 GP a day against an 800 GP drip, under 30% of income.
+The measured cost in the round-31 sim: **73 of 154 retired hens had never bred
+once, while eight hens carried nine foals each, and 81 dams produced all 280
+chicks.** `breedTarget(bot, hens)` now returns a SHARE of the barn's free hens
+— 0.9 works nearly the whole band, 0.3 the best third — floored at
+`MIN_HENS_COVERED` for every barn without a `landAppetite`, capped at
+`MAX_COVERS_PER_DAY`, with money checked per cover inside the loop.
+
+Two things nearly made it inert, and both are worth more than the change
+itself:
+
+- **The real cap was the PRICING budget, not the `break`.** `MAX_PAIRS_PRICED`
+  (150) against `MAX_STUDS_PER_HEN` (40) meant barely **four hens** were ever
+  priced in a day. Lifting the one-cover rule alone would have changed nothing
+  past the fourth hen — there was nothing priced left to buy. The loop counts
+  HENS now (`coverTarget + HENS_PRICED_SLACK`), and the pair cap goes back to
+  being a pure runaway guard.
+- **The first cut set `MIN_HENS_COVERED = MAX_COVERS_PER_DAY = 5`**, which
+  collapses `min(hens, cap, max(share, floor))` to `min(hens, cap)` and makes
+  `breedDrive` arithmetically **unobservable** for all thirteen non-landlord
+  barns — every stable breeding identically while the config described three
+  styles. The subagent writing the tests caught it, refused to write a vacuous
+  assertion, and pinned the config identity instead. Now 3 and 8, with a test
+  pinning the strict inequality.
+
+Carrying hens are filtered out before the count (read off the db — `BirdView`
+exposes `eggStage` but not `motherId`, and the rule is GESTATING, not laid), or
+every barn's target pins to the cap and the pricing budget is spent on covers
+that can only throw, swallowed by `quietly`.
+
+**The juvenile crown chase declares before it sends.** `chaseJuvenileCrowns`
+looped blades on the outside, but a bird may hold one championship entry a
+week, so b2 — merely by being checked first — took every barn's two best
+juveniles and b4 got the overflow. **b2 fields of 16–27 against b4 fields of
+1–8**, caused by nothing but iteration order. Birds declare first now (ties
+round-robin, so a true middle-distance chick doesn't pile onto the first
+blade), then a second pass seats anyone whose declared crown was full for their
+barn. **After: b2 22–24 against b4 16–22.**
+
+**A third juvenile open blade** (`CARD.juvenile.open` 2 → 3, so 12 keys a day).
+At two blades the worst gap between two appearances of a blade is four days and
+a juvenile career is exactly seven, so a chick could age out never having been
+offered two of the five blades. Paid for out of the fullest key on the board —
+juvenile open ran 8.41 birds a lobby against a 7.36 world mean.
+
+**Measured on a fresh 91-day world, 0 warnings and 0 invariant failures:**
+
+| | round 31 | round 32 |
+| --- | --- | --- |
+| broodmare band ever carried | 47% of 154 | **75.9% of 166 settled** |
+| bot covers / hatches | 238 / 501 | **533 / 761** |
+| active / retired birds | 172 / 329 | **341 / 420** |
+| gen 2 vs gen 0 mean stat | +23.4 | **+30.0** |
+| gen 2 vs gen 0 home margin | +3.1 | **+6.9** |
+| mean birds per lobby | 7.36 | **9.94** |
+| unmatched entries | 4.5% | **5.7%** |
+| Majors run / cancelled, field | 29 / 1, 11.0 | **30 / 0, 13.7** |
+| Juvenile Championship field | 10.3 | **14.0** |
+| birds clearing the 10-pt home bar | 53.0% | **57.0%** |
+| clear-home, age 2–3 / age 4+ | 53.4% / 36.3% | **57.9% / 52.7%** |
+
+`bun test src` 343 → **357 pass / 0 fail** (17,468 assertions across 25 files),
+`bunx tsc --noEmit` and `bun run build` clean, `bun run balance` unchanged at
+its standing 1 warning / 154 rows / 46 findings.
+
+**The one number that went the wrong way: unmatched 4.5% → 5.7%**, even as fill
+went 7.36 → 9.94. That is the odd-bird-out residue riding a much larger
+population — more entries means more rooms closing odd — and it is exactly the
+residue the group stage removes. It is the cost of the population the breeding
+change bought, and next round is where it gets paid back.
+
+**Not settled this round: selection pressure versus band utilization.** The
+mid-round sim, taken before the floor and the cap were separated and every barn
+was covering to the same target, showed gen-2 mean stat gain **falling to
++11.5** while home margin **rose to +7.8**. Covering more hens means covering
+less selectively — the marginal hen is by construction the worst on the barn's
+list. Separating the knobs recovered it to +30.0, so the current setting is on
+the right side of the trade, but nothing here locates the peak.
+
+New doctor section **`broodmare band`** (share of settled retired hens that
+have ever carried, plus the busiest hen's foal count, `BRED_BAND_WARN` 0.7).
+Honesty note: the first cut counted every retired hen and read a real 76% as
+**64%**, because the sim retired 32 hens in its final week who had not been
+passed over — they had not had a turn. `BRED_BAND_GRACE_WEEKS = 2` excludes
+them.
+
 ## Recommended next steps
 
-*Re-ordered after round 31. The old item 1 (explain the unmatched rate) is
-DONE and its hypothesis is disproved — see above and open item 7 in
-`BALANCE.md`. The old item 6 (revisit claimers, "still the thin ones") is done
-with it: the claimer ladder was thinned and hardcore left the card entirely.*
+*Re-ordered after round 32. The group stage stays at item 1 — round 32 raised
+the stakes on it rather than lowering them, since unmatched ticked 4.5% → 5.7%
+on a much larger population. Newly placed: Thursday opens up (item 2, scoped
+and approved), +5 bot farms (item 3, a one-liner that needs its own baseline),
+and selection pressure vs. band utilization joins the standing watch at the
+bottom.*
 
-1. **Multi-fight lobbies — the group stage.** The remaining ~4.5% unmatched is
+1. **Multi-fight lobbies — the group stage.** The remaining ~5.7% unmatched is
    the odd bird out, which is structural: unbounded lobbies make parity a coin
    flip where the old capacity of 8 was even on purpose. Round-robin across a
    room is impossible (30 birds = 435 fights), so partition each room into
@@ -232,40 +331,73 @@ with it: the claimer ladder was thinned and hardcore left the card entirely.*
    assumption, per-fight `landForFight` minting and the single-`battleLogId`
    shape of `lobbyEntries` move together. Zane's ruling on the money: entry
    fees become divisible by 3 (40 → 42, 8 → 9), and the stake splits across the
-   fights actually taken, refunding the remainder.
-2. **Re-measure discovery on the new card, with a proper denominator.** The
-   round-31 age-4+ and age-1 buckets are too thin to read. Until they are, no
-   claim about discovery getting better or worse under the card should be
+   fights actually taken, refunding the remainder. Round 32 made it more
+   urgent, not less: fill rose to 9.94 birds a lobby and unmatched rose WITH it
+   to 5.7%, because a bigger population closes more rooms odd. Partitioning is
+   the only thing that removes that residue.
+2. **Thursday opens up** (scoped and approved by Zane, after the group stage).
+   The Majors field gets seated automatically by the committee on **lifetime
+   earnings** — a RANK, not a fixed threshold, so it self-scales as the world
+   gets richer and never needs re-tuning. That removes registration, and
+   removing registration removes the only reason registrants are barred from
+   the Thursday daily card — which is the only reason
+   `CARD.CROWN_DAY_OPEN_BLADES` exists, so it becomes dead when this lands.
+   **Zane's ruling on agency: auto-QUALIFY, opt-in to STAND.** A hardcore
+   bracket force-retires its losers, so a bird is never entered into one
+   without its owner accepting. The plumbing is already there: `Lobbies.resolve`
+   runs BEFORE the tournaments in the same tick, so a bird going 3/3 on the
+   final Thursday card genuinely banks those earnings before the crowns seat,
+   and `committeeCards` already computes lifetime earnings off the battle log —
+   no schema change needed.
+3. **+5 bot farms (15 → 20)**, raised by Zane. One line of config, but it moves
+   population, so it takes its own commit and its own baseline rather than
+   contaminating somebody else's measurement.
+4. **Re-measure discovery with a proper denominator.** Round 32 helped by
+   accident — a bigger population means more graded decisions, and age 4+ went
+   36.3% → 52.7% clear-home — but the age-1 answer-coverage bucket is still
+   thin. Until it isn't, no claim about discovery under the card should be
    believed in either direction.
-3. **The element rework.** The wheel is additive, so it fades as the flock
+5. **The element rework.** The wheel is additive, so it fades as the flock
    breeds up; per-fight random weather; and show a lobby's element composition,
    because the counter-meta is currently unplayable rather than merely weak —
    the field is fogged, so nobody can counter what they cannot see.
-4. **Fix the flat-flock warning's bar.** 49.5 / 50.7 / 53.3% against a 50% bar
-   is a coin flip printed as a verdict. Either widen the sample or move the
-   bar to where it means something.
-5. **Run matched multi-seed worlds** comparing the current and end-first
+6. **Fix the flat-flock warning's bar.** 49.5 / 50.7 / 53.3% against a 50% bar
+   is a coin flip printed as a verdict. Round 32 moved the flock to 57.0%,
+   which is further from the bar but does not make the bar mean anything.
+   Either widen the sample or move it to where it does.
+7. **Run matched multi-seed worlds** comparing the current and end-first
    discovery policies. The audit is sound and the figure it reads has a unit,
    so a difference between policies is finally attributable to the policies —
-   but it wants item 2 first, or it will be measuring the denominator.
-6. **Element in the breeding score** (opened by round 30, deferred by Zane): a
+   but it wants item 4 first, or it will be measuring the denominator.
+8. **Element in the breeding score** (opened by round 30, deferred by Zane): a
    cross-element cover should cost star potential, so bots keep lines pure.
    Deferred on the suspicion that the population is too thin and the star
    incentive too weak for the effect to measure — which is itself testable.
-7. **Re-measure `SCOUT.PRIOR_FIGURE` when the BLOODLINES ladder moves a band.**
+   Round 32 roughly doubled the population, so the suspicion is now cheaper to
+   test than it was.
+9. **Re-measure `SCOUT.PRIOR_FIGURE` when the BLOODLINES ladder moves a band.**
    It is the flock's mean, not a constant of the engine, and it will drift up
    as the flock breeds up. Do not fit it to a formula it does not obey.
-8. **Carriage (Ground/Air) and PFL-style aging curves.** Carriage has been
-   data-only since round 23 and is the natural second star axis. Both are new
-   mechanics rather than repairs, so they queue behind the group stage.
-9. **Standing watch: same-barn stranding, now that nothing caps it.** Dropping
+10. **Carriage (Ground/Air) and PFL-style aging curves.** Carriage has been
+    data-only since round 23 and is the natural second star axis. Both are new
+    mechanics rather than repairs, so they queue behind the group stage.
+11. **Standing watch: selection pressure vs. band utilization** (new, round
+    32). Covering more hens means covering less selectively — the marginal hen
+    is by construction the worst one on the barn's list. The mid-round sim,
+    before the floor and the cap were separated, showed gen-2 mean stat gain
+    falling to **+11.5** while home margin rose to +7.8; separating them
+    recovered it to +30.0. `BREEDING_PLAN.MIN_HENS_COVERED` is now the dial
+    that trades one against the other, and nothing yet locates its peak. Watch
+    BOTH columns of the BLOODLINES ladder whenever it or `breedDrive` moves.
+12. **Standing watch: same-barn stranding, now that nothing caps it.** Dropping
    the capacity dropped the round-17 per-farm seating cap with it (it was
    `capacity / 2`), and it was not replaced — a barn that floods one key
    strands its own surplus and is refunded. 25 birds over 91 days, printed
    every run by LOBBY FILL. If it climbs, it needs a cap that works without a
    capacity.
-10. **Standing watch: does shape keep accumulating past generation 2?** The
-    ladder shows the first two nests compounding (+20.0 stat points, home
-    margin 8.1 → 11.2), but 13 weeks is roughly two selected generations and
+13. **Standing watch: does shape keep accumulating past generation 2?** The
+    ladder shows the first two nests compounding — round 32 read gen 2 at
+    **+30.0 mean stat points and +6.9 home margin** over gen 0, up from +23.4
+    and +3.1 — but 13 weeks is roughly two selected generations and
     `STAT_VARIANCE` regenerates most of the spread each time. A longer horizon
     is the only way to answer it.

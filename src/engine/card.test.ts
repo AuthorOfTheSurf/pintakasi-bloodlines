@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CALENDAR,
   CARD,
   CLAIMER,
   FORMAT_NAMES,
   LOBBIES,
   PINTAKASI,
+  SCOUT,
   cardOfDay,
   isOnCard,
   type CardKey,
@@ -187,6 +189,53 @@ describe("blade coverage — the discovery year is only seven days long", () => 
       // MEASURED at 3 — so a juvenile that cards daily meets every blade at
       // least twice inside its seven-day year.
       expect(worst).toBeLessThanOrEqual(3);
+    }
+  });
+
+  test("juvenile OPEN reaches every blade inside one deck's worth of days (round 32)", () => {
+    // ROUND 32 widened CARD.juvenile.open from two blades to three, and this
+    // is the claim that bought it — the whole-card test above is not enough on
+    // its own. The juvenile card as a whole reaches a blade every 3 days, but
+    // most of that reach lives in maiden and claimer, which a chick may not be
+    // eligible for (maiden closes the moment it wins) or may not want. Open is
+    // the class every juvenile can always enter, so OPEN's own rotation is
+    // what a discovery year actually gets to sample.
+    //
+    // The bound is derived, never typed: `bladeDeck` walks decks of
+    // FORMAT_NAMES.length blades CARD.juvenile.open at a time and guarantees
+    // every blade once per deck, so a deck lasts ceil(n / k) days and that is
+    // also the worst gap. At the old k = 2 it was 4 days (measured, and named
+    // in CARD's own comment) against a bound of 3 — this test fails there,
+    // which is the point. A SIXTH blade must widen the slot count rather than
+    // quietly stretching the discovery year.
+    const deckDays = Math.ceil(FORMAT_NAMES.length / CARD.juvenile.open);
+    // A juvenile is age 1 for exactly one game-week (canJuvenile is age === 1),
+    // so this is the window everything about the discovery year has to fit in.
+    expect(deckDays).toBeLessThan(CALENDAR.DAYS_PER_WEEK);
+    for (const blade of FORMAT_NAMES) {
+      expect(worstGap("juvenile", "open", blade)).toBeLessThanOrEqual(deckDays);
+    }
+  });
+
+  test("…so a chick gets enough cracks at every blade to actually READ one", () => {
+    // Why the gap above is the number that matters. One outing at a blade is
+    // not a read — SCOUT.MIN_READS is the number of figures a blade needs
+    // before the scout stops calling it unread, and an unread blade scores at
+    // the prior no matter how good the bird was. So the card must offer every
+    // blade at least that many times inside the seven days a bird is a
+    // juvenile, or the discovery year cannot finish its job for that blade.
+    //
+    // MEASURED at exactly SCOUT.MIN_READS in the worst window, which is also
+    // why this is stated as a floor rather than a comfortable margin.
+    for (const blade of FORMAT_NAMES) {
+      let worstWindow = Infinity;
+      for (let start = 0; start < DAYS * 4; start++) {
+        let seen = 0;
+        for (let day = start; day < start + CALENDAR.DAYS_PER_WEEK; day++)
+          if (of(day, "juvenile", "open").some((k) => k.format === blade)) seen++;
+        worstWindow = Math.min(worstWindow, seen);
+      }
+      expect(worstWindow).toBeGreaterThanOrEqual(SCOUT.MIN_READS);
     }
   });
 

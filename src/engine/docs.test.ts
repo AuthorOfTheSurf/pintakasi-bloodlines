@@ -4,15 +4,17 @@ import { join } from "node:path";
 import { MCP_INSTRUCTIONS, TOOL_DESCRIPTIONS } from "@/app/api/mcp/route";
 import { splitBreedFee } from "./breeding";
 import { fmtGp } from "./events";
-import type { FightMode } from "./config";
+import type { FightFormat, FightMode } from "./config";
 import {
   AGE,
   BATTLE,
+  CALENDAR,
   CARD,
   CLAIMER,
   COVERS,
   ECONOMY,
   FIGHT_MODES,
+  FORMATS,
   FORMAT_NAMES,
   LOBBIES,
   NW_CAP,
@@ -379,6 +381,70 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     expect(src).not.toMatch(/hardcoreWinsNeeded/);
     expect(src).not.toMatch(/POINTS_FOR\.hardcore/);
     expect(src).toMatch(/only thing that banks a point|only way/i);
+  });
+
+  // ── Round 32: the discovery year gets a wider deal ────────────────────────
+
+  test("every blade comes around inside a juvenile career, and the card page says so", () => {
+    // THE RULING, as an invariant rather than a number. Round 32 took
+    // CARD.juvenile.open from 2 to 3 because at 2 the worst gap between two
+    // runnings of one blade was FOUR days against a SEVEN-day juvenile career
+    // (canJuvenile is age 1 exactly), so a chick could age out never having
+    // been offered two of the five blades — the discovery year failing at the
+    // only job it has. Measured off real cards, so narrowing the slot count
+    // fails here instead of quietly costing a generation its coverage.
+    const lastSeen = new Map<FightFormat, number>();
+    let worst = 0;
+    for (let day = 0; day < 28; day++)
+      for (const key of cardOfDay(day)) {
+        if (key.mode !== "juvenile" || key.classType !== "open") continue;
+        const prev = lastSeen.get(key.format);
+        if (prev !== undefined) worst = Math.max(worst, day - prev);
+        lastSeen.set(key.format, day);
+      }
+    expect(worst).toBeLessThan(CALENDAR.DAYS_PER_WEEK);
+    // Every blade has to actually appear, not just appear often — a deck that
+    // dropped one entirely would post a worst gap of zero for the rest.
+    expect(lastSeen.size).toBe(FORMAT_NAMES.length);
+
+    const src = readWikiPage("card/page.tsx");
+    // The page states the wait. It must MEASURE it off cardOfDay (worstBladeGap)
+    // rather than quote the ruling: the ruling said "two days" and the deck
+    // walk's real worst case is three, so even the round that made the change
+    // would have typed the wrong number.
+    expect(src).toContain("worstBladeGap");
+    expect(src).toContain("CARD.juvenile.open");
+    // A hand-typed slot count in the prose would opt the sentence out of config
+    // — the exact failure the import rule exists to stop.
+    expect(src).not.toMatch(/\b(two|three|four|five) blades (a|every) night\b/i);
+  });
+
+  test("pintakasi page tells a chick how to pick between the two juvenile crowns", () => {
+    const src = readWikiPage("pintakasi/page.tsx");
+    // Round 27 fixed both juvenile blades to run EVERY week, but this page kept
+    // a sentence from the rotation era ("whichever of the two blades runs that
+    // week") — a computed number can't catch that, only a grep can.
+    expect(JUVENILE_MAJOR.BLADES.length).toBe(2);
+    expect(src).not.toMatch(/whichever of the two blades runs/i);
+    // The advice round 32 added: one championship a week means a chick DECLARES,
+    // and the scout report is how you choose. Not a new gate — nothing stops a
+    // player entering either crown — so the page must frame it as a read.
+    expect(src).toMatch(/one championship per bird per week/i);
+    expect(src).toMatch(/scout report/i);
+    expect(src).toMatch(/nothing stops you entering either/i);
+  });
+
+  test("an agent can actually enter the Juvenile Championship, and knows how to choose", () => {
+    // The stage was documented in MCP_INSTRUCTIONS long before any tool could
+    // reach it: enter_pintakasi hard-coded division "major", so only the bots
+    // ever stood a chick up. A door described but not built is worse than no
+    // door — the instructions were teaching a rule with no verb attached.
+    expect(TOOL_DESCRIPTIONS.enter_pintakasi).toMatch(/division "juvenile"/);
+    expect(TOOL_DESCRIPTIONS.pintakasi_board).toMatch(/division "juvenile"/);
+    expect(TOOL_DESCRIPTIONS.enter_pintakasi).toMatch(/scout report/i);
+    // Both juvenile blades named from config, never typed.
+    for (const blade of JUVENILE_MAJOR.BLADES)
+      expect(TOOL_DESCRIPTIONS.enter_pintakasi).toContain(FORMATS[blade].label);
   });
 
   test("pintakasi page documents the Juvenile Championship as non-hardcore", () => {

@@ -1007,11 +1007,20 @@ export const CLAIMER = {
 // blade is the DISCOVERY axis, so putting the shortage there makes the
 // wait-or-settle choice land on the most interesting question a player has.
 //
-// Sized against real traffic to fill each lobby ~6-7 deep: adult ~48 entries a
-// day over 7 keys, juvenile ~24 over 4.
+// Sized against real traffic. Round 31 aimed for ~6-7 deep; the measured world
+// came in fuller than that, which is what paid for round 32's third juvenile
+// open blade — 12 keys a day now, 7 adult and 5 juvenile.
 export const CARD = {
   real: { open: 3, maiden: 1, nw3: 1, claimer: 2 },
-  juvenile: { open: 2, maiden: 1, claimer: 1 },
+  // JUVENILE OPEN RUNS THREE BLADES, one more than the adults' share of their
+  // own division — widened in round 32 and the discovery year is the reason.
+  // At two blades the worst gap between two appearances of a blade is FOUR
+  // DAYS, and a juvenile career is SEVEN (canJuvenile is age 1 exactly), so a
+  // chick could finish the only year it is allowed to experiment in having
+  // never been offered two of the five blades. Three closes the gap to two
+  // days. It is affordable because juvenile open was the fullest key on the
+  // board — 8.41 birds a lobby in the round-31 sim against a 7.36 world mean.
+  juvenile: { open: 3, maiden: 1, claimer: 1 },
   // Thursday is the Majors' crown day and every registrant is barred from the
   // daily card that day (their crown IS their card), so the adult field thins
   // exactly when the card is widest. Drop one open blade to keep the rest full.
