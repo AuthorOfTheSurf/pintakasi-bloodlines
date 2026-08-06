@@ -730,15 +730,23 @@ export const ECONOMY = {
   // 2026-08-03): player-set stud pricing comes later; today every cover
   // costs exactly this, and it SPLITS (see BREED_SPLIT below).
   BREED_FEE: 160,
-  // Entries (winner takes the pooled pot = 2× entry):
-  REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
+  // Entries. ⚠ ROUND 34 nudged both of these off their round numbers, and the
+  // reason is arithmetic rather than balance: one entry now buys a GROUP of
+  // three fights and the stake splits across them (see stakePerFight), so the
+  // fee has to divide by three exactly or the books stop balancing to the
+  // cent. Zane's ruling: "we slightly tweak the entry fees so that they are
+  // divisible by 3." 40 → 42 and 8 → 9 are the nearest such numbers, a 5%
+  // and 12.5% rise that buys triple the fights — so the price PER FIGHT fell
+  // hard (13.33 GP and 3 GP a side), which is the point.
+  // The winner of one fight takes 2 × the per-fight stake, NOT 2 × the entry.
+  REAL_ENTRY_FEE: 42, //      $0.53 a side for the night — CAREER record
   // HARDCORE_ENTRY_FEE (120) lived here until round 31 took hardcore off the
   // daily card. There is no hardcore lobby left to charge for, and the Majors
   // — the only hardcore in the game now — are free to enter (PINTAKASI.
   // ENTRY_FEE). A fee constant for a fight nobody can card is a lie about the
   // rules, so it is gone rather than kept "just in case"; the land curve it
   // used to anchor is exercised against PINTAKASI.LAND_BASIS instead.
-  JUVENILE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
+  JUVENILE_ENTRY_FEE: 9, //   $0.11 a night (3 GP a side) — AMATEUR, discovery year
   // ROUND 23 — the gacha goes back UP to 80 GP, and stops being the cheap
   // way to fill a barn. Round 22 cut it to 16 so the bots would finally buy;
   // they did, and it worked so well that gacha out-supplied the breeding barn
@@ -805,15 +813,52 @@ export const STAKER_FLOWS = {
 // cut and land purchases — distributed daily at the tick. (Multiple pools —
 // breeding vs. arenas: later.)
 export const LAND = {
-  FEE_PER_TOKEN: 8, //        the linear base: 1 LT per 8 GP of entry fee…
+  // The linear base: 1 LT per this much GP risked… ⚠ 8 → 9 IN ROUND 34, and
+  // NOT for the reason it looks like. Round 34 moved the juvenile night from
+  // 8 GP to 9, which pushed it across a rounding boundary: (9/8)^1.15 = 1.145,
+  // and `ceil` made that TWO tokens. That quietly INVERTED the standing "fight
+  // up pays extra" ruling — the discovery year would have minted 0.222 LT per
+  // GP staked against a real card's 0.167, so the cheapest company in the game
+  // paid the best land in it. Moving the base to 9 puts a full juvenile night
+  // exactly on 1.0, back to a single token, and the direction is right again:
+  // 0.111 juvenile against 0.143 real.
+  //
+  // The cost, stated plainly: a full real night drops 7 LT → 6 and a Major's
+  // round 56 → 49. That is a ~13% haircut across the board, taken deliberately
+  // in preference to a 100% rise in juvenile land supply. If the yield gets
+  // thin, raise the exponent rather than dropping this back — the base is what
+  // keeps the floor from swallowing the curve at the cheap end.
+  //
+  // The `max(1, …)` floor still bites BELOW a full night: a juvenile that got
+  // only two of its three fights risks 6 GP and is floored at 1 LT, which is
+  // 0.167/GP — better than a real short card's 0.143. That is the floor doing
+  // its job (a fight always mints something) and it is not worth curing; the
+  // comparison the ruling is about is a full night against a full night.
+  FEE_PER_TOKEN: 9,
   FIGHT_EXPONENT: 1.15, //    …raised past linear — the "fight up" incentive
   PER_GACHA_ROLL: 1,
   GP_PER_100_TOKENS: 80, // $1 buys 100 LT
   DAILY_BUY_CAP: 1000, //  max LT purchasable per farm per game-day ($10 worth)
 } as const;
 
-// The land curve: juvenile (8 GP) → 1 LT · real/claimer (40 GP) → 7 LT ·
-// hardcore (120 GP) → 23 LT. Superlinear on purpose (7 > 5×1, 23 > 3×7·⅓).
+// The land curve, fed the TOTAL a bird risked in a night: a full juvenile
+// group (9 GP) → 1 LT · a full real/claimer group (42 GP) → 6 LT. Superlinear
+// on purpose — 6 is more than 4.7× the 1, so fighting up pays extra.
+//
+// Worth noting for balance: the group stage tripled the fights per entry while
+// LT per real night went 7 → 6, so this round TIGHTENS the land faucet per
+// fight considerably (7 per fight became 2 per fight). That is the intended
+// direction — land was never meant to be paid for showing up three times.
+//
+// ⚠ ROUND 34 MOVED THE CALL SITE, and that mattered more than the numbers.
+// Land used to be paid per FIGHT on the entry fee. With the group stage a bird
+// takes up to three fights on one fee, so paying per fight would have either
+// tripled the LT supply or, if fed the per-fight stake instead, flattened the
+// whole curve toward its floor (14 GP and 3 GP both sit near the bottom, where
+// superlinear is indistinguishable from linear). So land is paid ONCE per
+// entry at settle-up, on stake × fights actually taken. A bird that fought
+// twice of three gets landForFight(28) = 4 of the 6 — the curve keeps its
+// shape, and a short card is honestly paid short.
 export function landForFight(fee: number): number {
   return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT)));
 }
@@ -912,6 +957,51 @@ export const COVERS = {
 //
 // The old LOBBY.CAPACITY block lived here. Tournament brackets never used it —
 // they don't touch the lobbies table at all — so nothing inherited it.
+
+// ── THE GROUP STAGE (round 34) — one entry, three fights ───────────────────
+// The residue round 31 left behind, now collected. Unbounded lobbies pair
+// birds two at a time, so a lobby with an odd field strands one bird and a
+// lobby of one strands it entirely: 4.5% of entries in round 31, and 5.7% in
+// round 32 once the population nearly doubled. Better matchmaking cannot fix
+// that — with pairs, an odd number is odd.
+//
+// So a lobby no longer draws PAIRS, it deals GROUPS. Zane's framing was the
+// FIFA group stage: a lobby of thirty becomes seven groups of four plus one of
+// two, everybody fights everybody in their group, and NOBODY sits out unless
+// they were the only bird in the room. A group of four is three fights.
+//
+// Why four and not more: three fights is already a full evening for one bird,
+// the pit-figure read from three blades' worth of evidence in a night is the
+// discovery payoff, and every extra group member is quadratic in fights (a
+// group of six would be five fights a bird). Four is also the smallest size
+// that survives one same-barn collision and still gives everyone a card.
+//
+// ⚠ SIZE is load-bearing arithmetic, not a preference. Both entry fees must
+// divide evenly by SIZE - 1 (see stakePerFight, and the test that pins it),
+// because the stake splits across the fights and GP is kept to the cent.
+export const GROUP = {
+  SIZE: 4, //     four to a group — three fights a bird
+  MIN_SIZE: 2, // below this there is no fight to make: a lone entry refunds
+} as const;
+
+// FIGHTS a bird can take in one night: everyone else in its group.
+export const FIGHTS_PER_GROUP_BIRD = GROUP.SIZE - 1;
+
+// THE STAKE SPLITS (Zane's ruling): "just divide the total entry among them…
+// If the bird is the odd bird out and only gets two fights, then I'd expect
+// them to get refunded 20." One entry fee buys a night, not a fight — it is
+// escrowed whole at the door, spent a third at a time, and whatever the bird
+// never got to risk comes back at post time. So a 42 GP entry is three 14 GP
+// fights, and a bird whose group was short of a barn-mate fights twice, risks
+// 28 and is handed 14 back.
+//
+// The pot per fight is therefore 2 × this, NOT 2 × the entry fee — a fact that
+// is easy to get wrong in prose. Land is the other way round: it pays ONCE per
+// entry, on the TOTAL risked (see landForFight's note), so the superlinear
+// "fighting up pays extra" curve reads the night rather than the third.
+export function stakePerFight(fee: number): number {
+  return fee / FIGHTS_PER_GROUP_BIRD;
+}
 
 // ── The mode dial ───────────────────────────────────────────────────────────
 // Which SEASON a fight belongs to. Lived as a bare union in lobbies.ts until
@@ -1299,17 +1389,29 @@ export const PINTAKASI = {
 } as const;
 
 // The Majors' land curve — same shape as landForFight, steeper exponent.
-// On the 200 GP entry: (200/8)^1.25 ≈ 56 LT per fighter per fight.
+// On the 200 GP basis: (200/9)^1.25 ≈ 49 LT per fighter per fight. (It was 56
+// until round 34 moved FEE_PER_TOKEN off 8; see the note there. The Majors
+// took the same ~13% haircut as the daily card, which is the right outcome —
+// the two curves are meant to differ in STEEPNESS, not in their base.)
 export function landForTournamentFight(fee: number): number {
   return Math.max(1, Math.ceil(Math.pow(fee / LAND.FEE_PER_TOKEN, PINTAKASI.LAND_EXPONENT)));
 }
 
 // ── Fight cadence ───────────────────────────────────────────────────────────
-// One fight per bird per GAME-DAY — a hard count, deliberately NOT a 24-hour
+// One CARD per bird per GAME-DAY — a hard count, deliberately NOT a 24-hour
 // cooldown (fight at 11 PM, fight again at 12:01 AM; fine). Real-time
 // complexity stays out until the scheduler arrives.
+//
+// ⚠ RENAMED IN ROUND 34, because the old name became a lie the moment the
+// group stage landed. It was FIGHTS_PER_BIRD_PER_DAY: 1, and both the entry
+// gate and the doctor's invariant counted lobby ENTRIES against it — which was
+// the same number only while one entry meant one fight. Now one entry means up
+// to three, so the cap has to say what it actually caps. Leaving the old name
+// would have been worse than cosmetic: the entry gate compares a bird's
+// battleLog rows for the day against this, and a bird that had just fought its
+// group would show 3 — still correctly over a cap of 1, but only by accident.
 export const CADENCE = {
-  FIGHTS_PER_BIRD_PER_DAY: 1,
+  ENTRIES_PER_BIRD_PER_DAY: 1,
 } as const;
 
 // ── Farms (stables — every player + agent runs one) ────────────────────────

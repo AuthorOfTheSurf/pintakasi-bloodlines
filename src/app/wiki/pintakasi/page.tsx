@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   AGE,
   ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
   FIGHT_MODES,
   FORMATS,
   JUVENILE_MAJOR,
@@ -143,6 +144,12 @@ export default function PintakasiPage() {
         {realWinsNeeded} real wins on the daily card. It also has to be old enough to be allowed to
         risk its career: age {AGE.FORK}+.
       </p>
+      <p className="dim">
+        One entry is a group of up to {FIGHTS_PER_GROUP_BIRD} fights now (see{" "}
+        <Link href="/wiki/card">The card</Link>), and every win in that group banks its own points.
+        So a bird that sweeps a full group can be most of the way to a Major after a single night —
+        campaigning is a matter of a few good cards, not a month of them.
+      </p>
       <div className="callout warn">
         <b>A lobby win is the only thing that banks a point.</b> Winning a championship banks none —
         not the Majors, not the Juvenile Championship. There is no shortcut and no second route: the
@@ -252,9 +259,10 @@ export default function PintakasiPage() {
         Purses go to the birds still standing. Land goes the other way —{" "}
         <strong>weighted to the fallen</strong>. Every fight in the bracket mints{" "}
         <Link href="/wiki/land">Land Tokens (LT)</Link> to both birds, on a steeper curve than an
-        ordinary daily-card fight: the dearest fight on the regular card mints {dailyRealLand} LT
-        per fighter; a Pintakasi fight mints {crownFightLand} LT per fighter, every round, no matter
-        who wins.
+        ordinary daily-card fight. The regular card pays land once per entry, at settle-up — a
+        dear bird that fights its whole group takes {dailyRealLand} LT for the night. A Pintakasi
+        fight mints {crownFightLand} LT per fighter <em>every single round</em>, no matter who
+        wins, and a bird that keeps winning keeps collecting it.
       </p>
       <p>
         On top of that, elimination itself pays a grant — and the grant gets bigger the{" "}

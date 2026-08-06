@@ -116,8 +116,8 @@ CREATE TABLE IF NOT EXISTS lobby_entries (
   fee INTEGER NOT NULL,
   day_entered INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','fought','unmatched')),
-  opponent_entry_id INTEGER,
-  battle_log_id INTEGER,
+  group_no INTEGER,
+  fights INTEGER NOT NULL DEFAULT 0,
   claimed_by_farm_id TEXT
 );
 

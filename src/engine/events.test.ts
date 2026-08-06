@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { events, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding, splitBreedFee } from "./breeding";
-import { ECONOMY } from "./config";
+import { ECONOMY, FIGHTS_PER_GROUP_BIRD, stakePerFight } from "./config";
 import { Farms } from "./farms";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
@@ -74,33 +74,61 @@ describe("the unified ledger", () => {
     });
   });
 
-  test("a fight day: entries escrow, the fight is one world row, the odd bird refunds", () => {
+  test("a fight day: entries escrow, each fight is one world row, each entry settles", () => {
     const w = world();
     const spec = onCard(w.db, { mode: "real", classType: "open" });
     w.game.lobbies.enter("starter-6", spec, 77); // Alab
-    w.game.lobbies.enter("starter-7", spec); // Sinag — barn-mate, will go unmatched
+    w.game.lobbies.enter("starter-7", spec); // Sinag — Alab's barn-mate
     const rivalLobbies = new Game(w.db, w.rivalId).lobbies;
     rivalLobbies.enter("rival-6", spec); // rival Alab
     w.game.tickDay();
 
     const entries = ofType(w.db, "entry");
     expect(entries.length).toBe(3);
-    expect(entries[0].gpCents).toBe(-ECONOMY.REAL_ENTRY_FEE * 100);
+    expect(entries[0].gpCents).toBe(-ECONOMY.REAL_ENTRY_FEE * 100); // the WHOLE fee escrows
     expect(entries[0].message).toContain("OPEN"); // "REAL" is the unsaid default (round 20)
 
+    // ⚠ ROUND 34 REWROTE THE SECOND HALF OF THIS TEST, and the old shape can't
+    // be recovered: three entries used to mean one pair and one stranded
+    // barn-mate, so there was a `refund` row to assert. The group stage puts
+    // all three in one group, and the two dev birds each get a card off the
+    // visitor — nobody is stranded, so nothing refunds in full. What every
+    // entry gets instead is a `card_settled` row.
+    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
     const fights = ofType(w.db, "fight");
-    expect(fights.length).toBe(1); // one row per fight, not per side
+    expect(fights.length).toBe(2); // one row per fight, not per side
     expect(fights[0].farmId).toBeNull();
     expect(fights[0].message).toContain(" def. ");
-    // Back to a pure pot in round 23 — the rake went to zero, so the line
-    // says the whole 80 and mentions no rake at all.
-    expect(fights[0].message).toContain(`pot ${ECONOMY.REAL_ENTRY_FEE * 2} GP`);
+    // The pot is two STAKES, not two fees (round 34) — and the rake has been
+    // zero since round 23, so the line mentions no rake at all.
+    expect(fights[0].message).toContain(`pot ${stake * 2} GP`);
     expect(fights[0].message).not.toContain("to stakers");
+    expect(fights[0].message).toContain("group 1");
 
+    expect(ofType(w.db, "refund").length).toBe(0); // nobody drew nobody
+    const settled = ofType(w.db, "card_settled");
+    expect(settled.length).toBe(3);
+    // The dev birds fought once of three and are handed the rest back; the
+    // visitor fought twice. All three lines say what came home.
+    const devSettled = settled.filter((e) => e.farmId === w.devId);
+    expect(devSettled.length).toBe(2);
+    expect(devSettled.every((e) => e.gpCents === (ECONOMY.REAL_ENTRY_FEE - stake) * 100)).toBe(true);
+    expect(devSettled[0].message).toContain("GP unfought and returned");
+    const rivalSettled = settled.find((e) => e.farmId === w.rivalId)!;
+    expect(rivalSettled.gpCents).toBe((ECONOMY.REAL_ENTRY_FEE - 2 * stake) * 100);
+    expect(rivalSettled.message).toContain(`2 of ${FIGHTS_PER_GROUP_BIRD} fights`);
+  });
+
+  test("a bird alone in a room still refunds in full — the one case groups can't fix", () => {
+    const w = world();
+    w.game.lobbies.enter("starter-6", onCard(w.db, { mode: "real", classType: "open" }), 77);
+    w.game.tickDay();
     const refunds = ofType(w.db, "refund");
     expect(refunds.length).toBe(1);
     expect(refunds[0].farmId).toBe(w.devId);
     expect(refunds[0].gpCents).toBe(ECONOMY.REAL_ENTRY_FEE * 100);
+    expect(refunds[0].message).toContain("drew nobody");
+    expect(ofType(w.db, "card_settled").length).toBe(0); // land is for fighting
   });
 
   test("staking writes both sides: the stake and the daily yield", () => {

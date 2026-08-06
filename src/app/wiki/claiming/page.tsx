@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CLAIMER, ECONOMY, STAKER_FLOWS } from "@/engine/config";
+import { CLAIMER, ECONOMY, FIGHTS_PER_GROUP_BIRD, STAKER_FLOWS } from "@/engine/config";
 import { fmtGp } from "@/engine/events";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +19,15 @@ export default function ClaimingPage() {
         Entering a claimer costs the same entry fee as any ordinary fight for that season —{" "}
         {ECONOMY.REAL_ENTRY_FEE} GP for a grown bird, {ECONOMY.JUVENILE_ENTRY_FEE} GP for a
         juvenile — plus you set a separate tag price from the matching ladder below. The fee buys
-        the fight; the tag is what you&apos;re willing to sell the bird for if somebody wants it.
-        Anyone else&apos;s farm may then pay that exact tag to claim it.
+        the night&apos;s fights; the tag is what you&apos;re willing to sell the bird for if
+        somebody wants it. Anyone else&apos;s farm may then pay that exact tag to claim it.
+      </p>
+      <p>
+        A claimer runs the group stage like every other lobby (see{" "}
+        <Link href="/wiki/card">The card</Link>): your bird is dealt into a group and fights up to{" "}
+        {FIGHTS_PER_GROUP_BIRD} birds before anybody takes it home. So a claim is placed on a bird
+        that is about to be tested three times, not once — and the claimant is buying it on that
+        evidence.
       </p>
 
       <h2>The tag ladder</h2>
@@ -104,9 +111,13 @@ export default function ClaimingPage() {
           Other farms place <strong>sealed claims</strong> — the tag amount escrows immediately,
           and you don&apos;t know how many claims are in, or from whom, until post time.
         </li>
-        <li>The card goes off. Your bird fights for <strong>you</strong>, its original owner.</li>
         <li>
-          You keep any prize money from the fight, win or lose — the claim hasn&apos;t settled yet.
+          The card goes off. Your bird fights its whole group for <strong>you</strong>, its original
+          owner.
+        </li>
+        <li>
+          You keep any prize money from those fights, win or lose — the claim hasn&apos;t settled
+          yet.
         </li>
         <li>
           Only <strong>after</strong> the fight does the bird change hands. If nobody claimed it,
@@ -161,10 +172,13 @@ export default function ClaimingPage() {
       <h2>Two more rules</h2>
       <ul>
         <li>
-          <strong>No fight, no claim.</strong> If your bird draws no opponent — the odd bird out —
-          the whole thing calls off: its entry fee refunds, and so does every claim standing on
-          it, in full. The sale needs the fight to actually happen; a bird that never fought never
-          proved anything worth buying.
+          <strong>No fight, no claim — but one fight is enough.</strong> If your bird draws nobody
+          at all — it was the only bird in the room — the whole thing calls off: its entry fee
+          refunds, and so does every claim standing on it, in full. A sale needs a fight to actually
+          happen; a bird that never fought never proved anything worth buying. But if the group came
+          up short and your bird fought once or twice instead of {FIGHTS_PER_GROUP_BIRD} times, the
+          sale goes through as normal — a short card is the lobby&apos;s fault, not the bird&apos;s,
+          and voiding a sale over it would punish the seller for the draw.
         </li>
         <li>
           <strong>You can&apos;t claim your own bird, and the house never claims.</strong> Every

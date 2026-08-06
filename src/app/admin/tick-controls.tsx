@@ -9,11 +9,20 @@
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FIGHTS_PER_GROUP_BIRD } from "@/engine/config";
 
 interface TickSummary {
   clock: { dayIndex: number; date: string; isHatchFriday: boolean };
   fridays: { hatched: unknown[] }[];
-  card: { fights: unknown[]; unmatched: unknown[]; claims: unknown[] }[];
+  // One line per ENTRY since round 34 — a lobby entry buys a group of up to
+  // three fights, so "how many fights went off" and "how many birds got a
+  // full evening" are different questions and the toast answers both.
+  card: {
+    fights: unknown[];
+    settlements: { fights: number; refunded: number }[];
+    unmatched: unknown[];
+    claims: unknown[];
+  }[];
   pintakasi: { label: string; cancelled: boolean; champion: { bird: string } | null }[];
   staking: { paidGp: number; stakers: number };
   error?: string;
@@ -34,13 +43,22 @@ export function TickControls() {
         return;
       }
       const fights = t.card.reduce((s, l) => s + l.fights.length, 0);
+      // Read off the settlements, not `unmatched`: the two agree on the birds
+      // that fought nothing, but only the settlements can tell a FULL card
+      // from a SHORT one, and the short count is the round-34 number.
+      const settlements = t.card.flatMap((l) => l.settlements ?? []);
+      const full = settlements.filter((s) => s.fights >= FIGHTS_PER_GROUP_BIRD).length;
+      const short = settlements.filter(
+        (s) => s.fights > 0 && s.fights < FIGHTS_PER_GROUP_BIRD
+      ).length;
       const unmatched = t.card.reduce((s, l) => s + l.unmatched.length, 0);
       const hatched = t.fridays.reduce((s, f) => s + f.hatched.length, 0);
       const crowns = (t.pintakasi ?? [])
         .map((p) => (p.cancelled ? `${p.label} cancelled` : `${p.champion?.bird} 👑 ${p.label}`))
         .join(", ");
       setLast(
-        `${t.clock.date} — ${fights} fights, ${unmatched} unmatched, ` +
+        `${t.clock.date} — ${fights} fights · ${full} full cards, ${short} short, ` +
+          `${unmatched} drew nobody · ` +
           `staking paid ${t.staking.paidGp.toFixed(2)} GP to ${t.staking.stakers}` +
           (t.fridays.length ? ` · HATCH FRIDAY (${hatched} hatched)` : "") +
           (crowns ? ` · PINTAKASI: ${crowns}` : "")

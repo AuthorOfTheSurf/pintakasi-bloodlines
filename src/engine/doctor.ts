@@ -17,6 +17,7 @@ import {
   BREEDING_SHAPES,
   CADENCE,
   ELEMENTS,
+  FIGHTS_PER_GROUP_BIRD,
   FORMAT_NAMES,
   FORMATS,
   SCOUT,
@@ -62,7 +63,30 @@ import {
 /** Tooling thresholds — NOT game balance, which is why they aren't in config. */
 const DOCTOR = {
   // Past this, matchmaking is failing rather than merely being unlucky.
-  UNMATCHED_WARN: 0.15,
+  //
+  // Tightened 0.15 -> 0.05 by the round-34 group stage. Under PAIRS an entry
+  // went home for three different reasons — it was alone in its lobby, its
+  // only company was a barn-mate, or it was the odd bird out of an odd field —
+  // and round 31 measured those at roughly a third each of a 4.5% rate (5.7%
+  // in round 32). Groups delete the third one outright: a field is dealt into
+  // groups of up to four, so there is no such thing as an odd bird any more.
+  // The two structural causes remain, so the honest expectation is ~2%, not 0.
+  // 0.05 sits under what used to be NORMAL while still leaving 2.5× headroom —
+  // a thin early world full of one-bird lobbies should be caught by FILL_WARN,
+  // which names the actual cause, rather than tripping this one first.
+  UNMATCHED_WARN: 0.05,
+  // Below this share of settled entries getting the FULL card, the deal is
+  // failing (round 34). Deliberately well under 100%, because the levelling
+  // rule in dealGroups CAPS what is reachable: nine entries become 3+3+3 on
+  // purpose, so that lobby scores zero full cards while being dealt perfectly.
+  // Walking the achievable share for a lobby of n = 4…16 (the birds sitting in
+  // a group of exactly GROUP.SIZE, over n) gives 1, 0, 0, .57, 1, 0, .40, .73,
+  // 1, .31, .57, .80, 1 — an average near 0.49, and higher once weighted by
+  // entries since the big lobbies are the ones full of fours. Barn-mate
+  // collisions shave a little more off. So a healthy world reads around a
+  // half; 0.35 is comfortably below that and still far above a deal that has
+  // genuinely stopped grouping.
+  FULL_CARD_WARN: 0.35,
   // A lobby key needs this many entries before its rate means anything — a
   // key with one entry is always either 0% or 100%.
   KEY_MIN_SAMPLE: 8,
@@ -265,6 +289,10 @@ function checkNoInversions(db: DB): Invariant {
   const log = db.select().from(battleLog).all();
   // One bird meets one opponent at most once inside a lobby or a bracket, so
   // this key is unique — which is what makes finding the mirror row exact.
+  // Still true after the group stage (round 34): a bird now has up to three
+  // opponents in one lobby, but each is a DISTINCT bird met once, because a
+  // group is a round-robin over a set. Only a repeat PAIRING would collide,
+  // and nothing deals one.
   const key = (r: (typeof log)[number], self: string, other: string) =>
     `${r.lobbyId ?? `t${r.tournamentId}`}|${self}|${other}`;
   const byKey = new Map(log.map((r) => [key(r, r.birdId, r.opponentBirdId), r]));
@@ -325,8 +353,21 @@ function checkPursesSettle(db: DB): Invariant {
  * One card a day per bird. Tournament rows are excluded deliberately — a
  * bracket legitimately runs one bird six times in an afternoon, which is the
  * ruled back-to-back marathon, not a cap violation.
+ *
+ * ⚠ THE MEASUREMENT SURVIVED THE GROUP STAGE; THE NAME DID NOT (round 34).
+ * This used to read `CADENCE.FIGHTS_PER_BIRD_PER_DAY`, and that knob was
+ * renamed to ENTRIES_PER_BIRD_PER_DAY because one entry stopped meaning one
+ * fight — a bird dealt into a group of four fights three times in a night.
+ * What this function counts, though, has always been LOBBY ENTRIES bucketed by
+ * (bird, day), never battle-log rows, so it was measuring the card and not the
+ * fight all along and needed no change beyond the two names.
+ *
+ * It also matters more than it did. Battle-log rows now legitimately arrive in
+ * threes, so no other check can tell a double-card from a full group: this is
+ * the ONLY thing standing between a bird entered twice and a silent second
+ * night's worth of stake.
  */
-function checkFightCap(db: DB): Invariant {
+function checkCardCap(db: DB): Invariant {
   // Every entry, whatever became of it — a bird that went home unmatched
   // still spent its slot that day, so counting only the pending ones would
   // let a historical double-card vanish the moment the card resolved.
@@ -337,12 +378,64 @@ function checkFightCap(db: DB): Invariant {
     buckets.set(k, (buckets.get(k) ?? 0) + 1);
   }
   const offenders = [...buckets.entries()]
-    .filter(([, n]) => n > CADENCE.FIGHTS_PER_BIRD_PER_DAY)
+    .filter(([, n]) => n > CADENCE.ENTRIES_PER_BIRD_PER_DAY)
     .map(([k, n]) => `${k.split("|")[0]} has ${n} entries on day ${k.split("|")[1]}`);
   return {
     name: "one card per bird per day",
     passed: offenders.length === 0,
     detail: `${entries.length} entries across ${buckets.size} bird-days · ${offenders.length} over cap`,
+    offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE),
+  };
+}
+
+/**
+ * THE FIGHT COUNT IS THE MONEY (round 34's sixth invariant).
+ *
+ * Under the group stage `lobbyEntries.fights` stopped being a description and
+ * became arithmetic: the refund is `fee - stakePerFight(fee) * fights`, so a
+ * miscount hands the wrong number of GP back to a real wallet. And the failure
+ * is INVISIBLE to everything else here — GP conservation would still pass,
+ * because a bad refund does not print or burn money, it merely pays it to the
+ * wrong party out of an escrow that balances either way. Round 22's silent
+ * `buyLand` burn is the cautionary tale; this is the same class of bug with
+ * the conservation proof unable to see it.
+ *
+ * Before round 34 this could not go wrong: `battle_log_id` was a POINTER, and
+ * a pointer is either right or null. A counter can be quietly off by one.
+ *
+ * Two claims, both cheap to check against the battle log, which is the
+ * independent record of what actually happened:
+ *   1. a settled entry's `fights` equals its battle-log rows for that lobby;
+ *   2. no entry exceeds FIGHTS_PER_GROUP_BIRD — a group cannot be bigger than
+ *      it is, so this catches a broken deal as well as a broken count.
+ */
+function checkFightCounts(db: DB): Invariant {
+  const settled = db
+    .select()
+    .from(lobbyEntries)
+    .all()
+    .filter((e) => e.status !== "pending");
+  // One pass over the log, keyed the way the entries are — a per-entry query
+  // would be O(entries) round-trips on a 91-day world.
+  const logged = new Map<string, number>();
+  for (const row of db.select().from(battleLog).all()) {
+    if (row.lobbyId === null) continue; // bracket fights belong to no entry
+    const k = `${row.lobbyId}|${row.birdId}`;
+    logged.set(k, (logged.get(k) ?? 0) + 1);
+  }
+  const offenders: string[] = [];
+  for (const e of settled) {
+    const actual = logged.get(`${e.lobbyId}|${e.birdId}`) ?? 0;
+    if (e.fights !== actual)
+      offenders.push(`entry #${e.id} (${e.birdId}) claims ${e.fights} fights, log has ${actual}`);
+    else if (e.fights > FIGHTS_PER_GROUP_BIRD)
+      offenders.push(`entry #${e.id} (${e.birdId}) took ${e.fights} fights, over the group cap`);
+  }
+  const totalFights = settled.reduce((s, e) => s + e.fights, 0);
+  return {
+    name: "fight counts match the log",
+    passed: offenders.length === 0,
+    detail: `${settled.length} settled entries · ${totalFights} fights claimed · ${offenders.length} mismatched`,
     offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE),
   };
 }
@@ -372,6 +465,91 @@ export function cardHealth(db: DB): {
     pending: byStatus.pending,
     lobbies: db.select().from(lobbies).all().length,
     unmatchedRate: settled === 0 ? 0 : byStatus.unmatched / settled,
+  };
+}
+
+/**
+ * DID THE GROUP STAGE ACTUALLY DEAL? (round 34)
+ *
+ * The number this round exists to move, and nothing reported it. `cardHealth`
+ * answers "did the bird fight at all", which was the whole question while an
+ * entry bought a single pairing; now an entry buys a NIGHT of up to
+ * FIGHTS_PER_GROUP_BIRD fights and the interesting failure is no longer a bird
+ * going home — it is a bird going home early with two thirds of its stake
+ * refunded, which every other section in this report scores as a clean fought
+ * entry.
+ *
+ * Three readings, in the order they diagnose:
+ *   · FULL CARDS — the headline. The promise of the round.
+ *   · SHORT CARDS — fought, but fewer than a full card. This is the
+ *     interesting middle, and its dominant cause is a BARN-MATE landing in the
+ *     same group, since matchmaking still refuses to pair two birds of one
+ *     farm. (The other cause is honest: a lobby of 5 levels to 3+2 and nobody
+ *     in it can have three fights.) If this share climbs while lobby fill
+ *     holds, `dealGroups`'s barn-spreading is what needs work — it deals the
+ *     biggest barn first precisely so this stays small.
+ *   · GROUP SIZES — mean size, and the count of groups of ONE. A group of one
+ *     should be EXACTLY the lobbies that drew a single entry; the levelling
+ *     rule forbids any other (nine entries are 3+3+3, never 4+4+1), so a
+ *     group of one inside a lobby that had company is a levelling bug and is
+ *     called out as one.
+ *
+ * Read off `lobbyEntries.fights`, which resolution counts rather than assumes
+ * — deriving it from the battle log would double-count nothing but would also
+ * quietly lose the unmatched entries, which are the zero the mean needs.
+ */
+export function groupStage(db: DB): HealthSection {
+  const entries = db.select().from(lobbyEntries).all();
+  const settled = entries.filter((e) => e.status !== "pending");
+  if (settled.length === 0)
+    return { title: "GROUP STAGE", lines: ["no cards have gone off yet"] };
+
+  const full = settled.filter((e) => e.fights === FIGHTS_PER_GROUP_BIRD).length;
+  const short = settled.filter((e) => e.fights > 0 && e.fights < FIGHTS_PER_GROUP_BIRD).length;
+  const none = settled.filter((e) => e.fights === 0).length;
+  const meanFights = settled.reduce((s, e) => s + e.fights, 0) / settled.length;
+
+  // Groups are reconstructed from (lobby, groupNo) — the deal is stored on the
+  // entries, not in a table of its own. Undealt entries (a lobby still open)
+  // carry a null and are skipped: they have not been dealt yet, so counting
+  // them as a group of one would report every open lobby as a bug.
+  const groupSize = new Map<string, number>();
+  const lobbySize = new Map<number, number>();
+  for (const e of entries) {
+    if (e.groupNo === null) continue;
+    groupSize.set(`${e.lobbyId}|${e.groupNo}`, (groupSize.get(`${e.lobbyId}|${e.groupNo}`) ?? 0) + 1);
+    lobbySize.set(e.lobbyId, (lobbySize.get(e.lobbyId) ?? 0) + 1);
+  }
+  const sizes = [...groupSize.entries()];
+  const meanGroup = sizes.length
+    ? sizes.reduce((s, [, n]) => s + n, 0) / sizes.length
+    : 0;
+  const ones = sizes.filter(([, n]) => n === 1);
+  const loneEntries = ones.filter(([k]) => lobbySize.get(Number(k.split("|")[0])) === 1).length;
+  const bugs = ones.length - loneEntries;
+
+  const fullShare = full / settled.length;
+  return {
+    title: "GROUP STAGE",
+    lines: [
+      `fights per settled entry  mean ${meanFights.toFixed(2)} of ${FIGHTS_PER_GROUP_BIRD} · ` +
+        `${settled.length} settled entries`,
+      `full cards  ${full} (${pct(full, settled.length)}) took all ${FIGHTS_PER_GROUP_BIRD} · ` +
+        `short ${short} (${pct(short, settled.length)}) fought 1–${FIGHTS_PER_GROUP_BIRD - 1} · ` +
+        `${none} (${pct(none, settled.length)}) never fought`,
+      `groups  ${sizes.length} dealt · mean ${meanGroup.toFixed(2)} birds · ` +
+        `${ones.length} of one (${loneEntries} were the lobby's only entry` +
+        (bugs > 0 ? `, ⚠ ${bugs} LEVELLING BUG${bugs === 1 ? "" : "S"}` : "") +
+        ")",
+    ],
+    warn:
+      bugs > 0
+        ? `${bugs} group(s) of one were dealt out of a lobby that had company — dealGroups is not levelling`
+        : fullShare < DOCTOR.FULL_CARD_WARN
+          ? `only ${pct(full, settled.length)} of settled entries got a full ${FIGHTS_PER_GROUP_BIRD}-fight card ` +
+            `(mean ${meanFights.toFixed(2)}) — either the lobbies are too thin to fill a group, ` +
+            `or barn-mates are colliding inside them`
+          : undefined,
   };
 }
 
@@ -1221,7 +1399,8 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkNoNegatives(db),
     checkNoInversions(db),
     checkPursesSettle(db),
-    checkFightCap(db),
+    checkCardCap(db),
+    checkFightCounts(db),
   ];
 
   const weather = weatherLine(db);
@@ -1246,6 +1425,10 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
       ],
       warn: cardWarns.length ? cardWarns.join(" · ") : undefined,
     },
+    // Directly under CARD HEALTH: that section counts entries that fought at
+    // all, this one counts how much of a night each of them actually got. The
+    // two are the same question asked before and after the group stage.
+    groupStage(db),
     lobbyFill(db),
     fragmentation(db),
     population(db, topline),

@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { CLAIMER, ECONOMY, LAND, PINTAKASI, STAKER_FLOWS } from "@/engine/config";
+import {
+  CLAIMER,
+  ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
+  LAND,
+  PINTAKASI,
+  STAKER_FLOWS,
+  stakePerFight,
+} from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { fmtGp } from "@/engine/events";
 
@@ -78,18 +86,30 @@ export default function MoneyPage() {
               <td className="num">${usd(ECONOMY.DAILY_DRIP)}</td>
             </tr>
             <tr>
-              <td>A real-fight entry</td>
+              <td>A real-fight entry (a night of up to {FIGHTS_PER_GROUP_BIRD} fights)</td>
               <td className="num">{ECONOMY.REAL_ENTRY_FEE}</td>
               <td className="num">${usd(ECONOMY.REAL_ENTRY_FEE)}</td>
+            </tr>
+            <tr>
+              <td>…which is, per fight</td>
+              <td className="num">{stakePerFight(ECONOMY.REAL_ENTRY_FEE)}</td>
+              <td className="num">${usd(stakePerFight(ECONOMY.REAL_ENTRY_FEE))}</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p>
         So a new farm opens with about ${usd(ECONOMY.STARTING_GP)} to play with, and logging in
-        every day tops that up by about ${usd(ECONOMY.DAILY_DRIP)} — plenty to keep fighting real
-        cards at ${usd(ECONOMY.REAL_ENTRY_FEE)} a side, forever, without ever touching a wallet.
+        every day tops that up by about ${usd(ECONOMY.DAILY_DRIP)} — plenty to keep carding real
+        birds at ${usd(ECONOMY.REAL_ENTRY_FEE)} a night, forever, without ever touching a wallet.
       </p>
+      <div className="callout tip">
+        <b>An entry is a night, not a fight.</b> One entry buys your bird a group of up to{" "}
+        {FIGHTS_PER_GROUP_BIRD} fights, and the fee splits evenly across them — so a real bird risks{" "}
+        {stakePerFight(ECONOMY.REAL_ENTRY_FEE)} GP a fight, a juvenile{" "}
+        {stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE)} GP, and whatever it never got to risk is
+        refunded when the card settles. See <Link href="/wiki/card">The card</Link>.
+      </div>
 
       <h2>The one rule</h2>
       <div className="callout">
@@ -216,7 +236,7 @@ export default function MoneyPage() {
           </thead>
           <tbody>
             <tr>
-              <td>Daily-card fight pot (both entries)</td>
+              <td>Daily-card fight pot (both stakes)</td>
               <td className="num">{(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%</td>
               <td className="num">—</td>
             </tr>
@@ -273,12 +293,14 @@ export default function MoneyPage() {
         until the fight (or the claim draw) resolves. GP sitting in escrow still counts as GP in
         the game — it just isn&apos;t anyone&apos;s to spend yet.
       </p>
-      <p>Escrow comes back to you, in full, in three cases:</p>
+      <p>Escrow comes back to you in three cases:</p>
       <ul>
         <li>
-          <strong>An unmatched bird.</strong> If your bird is the odd one out when a lobby closes,
-          it draws no fight — your entry fee refunds in full. See{" "}
-          <Link href="/wiki/card">The card</Link>.
+          <strong>Fights your bird never got.</strong> The entry escrows whole, but it is spent one
+          share at a time, one share per fight. If your bird&apos;s group came up short — it drew
+          nobody at all, or its group held one of your own barn-mates, who it will never be matched
+          against — the unspent shares come straight back when the card settles. A bird that drew
+          nobody gets the whole entry back. See <Link href="/wiki/card">The card</Link>.
         </li>
         <li>
           <strong>A lost claim draw.</strong> Several farms can claim the same bird at once; only
@@ -317,8 +339,10 @@ export default function MoneyPage() {
       <h2>How to not go broke</h2>
       <p>
         The daily drip alone covers about <strong>{realFightsPerDrip} real-fight entries</strong>{" "}
-        a day (or {juvenileFightsPerDrip} juvenile ones) — you cannot actually run out of GP to
-        play with as long as you check in. The cheapest way to keep new birds coming without
+        a day (or {juvenileFightsPerDrip} juvenile ones) — and each of those entries is a night of
+        up to {FIGHTS_PER_GROUP_BIRD} fights, so that is really{" "}
+        {realFightsPerDrip * FIGHTS_PER_GROUP_BIRD} fights a day out of the drip alone. You cannot
+        actually run out of GP to play with as long as you check in. The cheapest way to keep new birds coming without
         touching your wallet is the free gacha pull that check-in also grants: it costs nothing,
         it always mints a little land, and on the better tokens it drops a whole mystery egg. See{" "}
         <Link href="/wiki/gacha">The gacha</Link>. Save paid rolls and covers for when you&apos;re

@@ -203,9 +203,13 @@ export const lobbies = sqliteTable("lobbies", {
   dayOpened: integer("day_opened").notNull(),
 });
 
-// One bird on the card. The entry fee escrows at entry time; the entry is
-// BINDING and uses the bird's fight for the day. `unmatched` = odd bird out
-// (fee refunded, no land — land is for fighting).
+// One bird on the card — and since round 34, one bird's whole NIGHT. The entry
+// fee escrows at entry time; the entry is BINDING and uses the bird's card for
+// the day. At close the lobby deals its field into groups (groupNo); at post
+// every pair inside a group that isn't two birds of one barn fights, so an
+// entry yields up to GROUP.SIZE - 1 battleLog rows. `fights` records how many
+// it actually got: the stake is spent a share per fight and the rest refunds.
+// `unmatched` = fights 0, the bird alone in its room (whole fee back, no land).
 export const lobbyEntries = sqliteTable("lobby_entries", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   lobbyId: integer("lobby_id").notNull(),
@@ -216,10 +220,19 @@ export const lobbyEntries = sqliteTable("lobby_entries", {
   status: text("status", { enum: ["pending", "fought", "unmatched"] })
     .notNull()
     .default("pending"),
-  // The draw — set when the lobby CLOSES (matchups revealed); null after
-  // close = no opponent this card (refunds when the lobby completes).
-  opponentEntryId: integer("opponent_entry_id"),
-  battleLogId: integer("battle_log_id"), // this side's row, set at resolution
+  // THE DRAW — set when the lobby CLOSES: which group this bird was dealt
+  // into. Null while open. Round 34 replaced a single `opponent_entry_id`
+  // with this: the draw is no longer one opponent but a table of up to three,
+  // and the group number is the whole of it — everyone sharing a groupNo in
+  // this lobby fights everyone else in it (barn-mates excepted).
+  groupNo: integer("group_no"),
+  // How many fights the bird actually got, filled at resolution. Below
+  // GROUP.SIZE - 1 means its group was short, or held a barn-mate; the unused
+  // share of the stake refunds. Zero = unmatched. Round 34 replaced a single
+  // `battle_log_id` with this — the rows are found by (lobbyId, birdId) in
+  // battleLog, which is where they always lived; the pointer only ever held
+  // one of what is now several.
+  fights: integer("fights").notNull().default(0),
   claimedByFarmId: text("claimed_by_farm_id"), // claimer entries: set if a claim won
 });
 

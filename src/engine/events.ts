@@ -29,6 +29,7 @@ export type EventType =
   | "entry" // a bird onto tonight's card (fee escrowed)
   | "fight" // one fight going off (world — both sides in the message)
   | "refund" // unmatched at post time — escrow home
+  | "card_settled" // round 34: a bird's NIGHT settles — land earned, unfought stake home
   | "claim" // a sealed claim placed (tag escrowed)
   | "claim_won" // the tag wins — the bird changes barns
   | "claim_refund" // a losing claim's escrow home

@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { BARN, ECONOMY, JUVENILE_MAJOR, LAND, PINTAKASI, STATS } from "@/engine/config";
+import {
+  BARN,
+  ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
+  JUVENILE_MAJOR,
+  LAND,
+  PINTAKASI,
+  STATS,
+} from "@/engine/config";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +39,9 @@ export default function WikiHome() {
         </li>
         <li>
           <strong>Card them.</strong> Each day posts a short list of fights — a blade, a class,
-          sometimes a price. Pick one of those and enter. At the day&apos;s end every lobby pairs
-          off at random and the fights run.
+          sometimes a price. Pick one of those and enter. At the day&apos;s end every lobby deals
+          its birds into small groups, and each bird fights everyone else in its group — up to{" "}
+          {FIGHTS_PER_GROUP_BIRD} fights off one entry.
         </li>
         <li>
           <strong>Bank the land.</strong> Win or lose, both fighters earn Land Tokens. Stake them and

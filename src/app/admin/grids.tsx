@@ -425,7 +425,7 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   farmCol("farm", "farm", "farm"),
   { field: "sex", width: 95 },
   { field: "age", type: "rightAligned", width: 75 },
-  { field: "total", headerName: "Overall", type: "rightAligned", width: 120, sort: "desc", cellRenderer: TotalCell },
+  { field: "total", headerName: "Overall", type: "rightAligned", width: 120, cellRenderer: TotalCell },
   { field: "element", width: 115, cellRenderer: ElementCell },
   { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
   statCol("agility"),
@@ -439,12 +439,20 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
     colId: "record",
     headerName: "Record",
     valueGetter: (p) => p.data ? `${p.data.wins}-${p.data.losses}` : "",
+    comparator: (_a, _b, nodeA, nodeB) => {
+      const a = nodeA.data as BirdRowUI | undefined;
+      const b = nodeB.data as BirdRowUI | undefined;
+      if (!a || !b) return 0;
+      return a.wins - b.wins || b.losses - a.losses;
+    },
     type: "rightAligned",
     width: 90,
   },
   {
     field: "netGp",
     headerName: "net GP",
+    sort: "desc",
+    sortIndex: 0,
     type: "rightAligned",
     width: 110,
     cellRenderer: TokenAmountCell,
@@ -683,7 +691,7 @@ export function AdminTabs({
           </button>
         ))}
       </nav>
-      {pane("Farms", 420, <AgGridReact<FarmRowUI> theme={officeTheme} rowData={farms} columnDefs={FARM_COLS} defaultColDef={base} />)}
+      {pane("Farms", 720, <AgGridReact<FarmRowUI> theme={officeTheme} rowData={farms} columnDefs={FARM_COLS} defaultColDef={base} />)}
       {pane("Fights", 640, <AgGridReact<FightRowUI> theme={officeTheme} rowData={fights} columnDefs={FIGHT_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
       {pane("Birds", 640, <AgGridReact<BirdRowUI> theme={officeTheme} rowData={birds} columnDefs={BIRD_COLS} defaultColDef={{ ...base, floatingFilter: true }} rowHeight={38} />)}
       {pane("Breeding", 640, <AgGridReact<BreedingRowUI> theme={officeTheme} rowData={breeding} columnDefs={BREEDING_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}

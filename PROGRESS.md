@@ -401,3 +401,27 @@ bottom.*
     and +3.1 — but 13 weeks is roughly two selected generations and
     `STAT_VARIANCE` regenerates most of the spread each time. A longer horizon
     is the only way to answer it.
+14. **Standing watch: SHORT CARDS, and whether `GROUP.SIZE` is right.** Round
+    34's group stage deals levelled groups, so a field that doesn't divide by
+    four produces groups of three — two fights instead of three. 33.6% of
+    entries got a short card in the 91-day world (full cards 65.4%, never
+    fought 0.9%). The unfought stake refunds in full, so this costs nobody
+    money, but it does mean a third of entries buy less evidence than the
+    mechanic advertises. The lever is `GROUP.SIZE`, NOT the levelling rule —
+    packing to 4+4+1 buys full cards by stranding a bird again, which is the
+    trade round 34 explicitly refused.
+15. **OPEN QUESTION, and the one number round 34 made worse: gen-2 mean stat
+    gain fell +30.0 → +19.8** while home margin rose +6.9 → +8.7 and stars
+    +0.4 → +0.1★. Nothing about breeding changed in round 34. The plausible
+    mechanism is that tripling the fights tripled the spread in lifetime
+    earnings, which is an input to which birds the bots choose to breed — so
+    this may be item 11 (selection pressure vs. band utilization) reading from
+    the other side. It is NOT diagnosed. Look before stacking another round on
+    it: a 34% fall in the headline bloodline number is worth one sim aimed
+    directly at it.
+16. **Watch: Major cancellations went 0 → 3 while fields GREW (13.7 → 17.0).**
+    Every fight in a group banks qualification points separately, so a sweep
+    is three points in one night and birds qualify roughly three times faster.
+    Bigger fields with more cancellations most likely means the early weeks
+    are still thin while the later ones are full — but it is an average hiding
+    a distribution, and nothing currently prints the per-week field sizes.

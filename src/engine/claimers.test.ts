@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { birds, claims, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { CLAIMER, ECONOMY, STAKER_FLOWS } from "./config";
+import { CLAIMER, ECONOMY, STAKER_FLOWS, stakePerFight } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
@@ -110,14 +110,18 @@ describe("post time (claims settle after the fights)", () => {
     // Both take a 2% staker rake since round 22, so the books only balance to
     // the CENT.
     const devWon = card.fights[0].winnerFarm === "Bukidnon Farms";
-    const potRake = Math.round(FEE * 200 * STAKER_FLOWS.FIGHT_RAKE);
+    // ROUND 34: two birds are a group of two, so it is still one fight — but
+    // the wager is a SHARE of the entry, not the entry, and the other two
+    // thirds are refunded at settle-up. So the swing is the stake, not the fee.
+    const STAKE = stakePerFight(FEE);
+    const potRake = Math.round(STAKE * 200 * STAKER_FLOWS.FIGHT_RAKE);
     const tagNet = TAG * 100 - Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
     expect(gpCents(w.db, w.devId)).toBe(
-      ECONOMY.STARTING_GP * 100 + (devWon ? FEE * 100 - potRake : -FEE * 100) + tagNet
+      ECONOMY.STARTING_GP * 100 + (devWon ? STAKE * 100 - potRake : -STAKE * 100) + tagNet
     );
     // Claimant economics: own entry ± pot, minus the tag (the bird is the value).
     expect(gpCents(w.db, w.rivalId)).toBe(
-      ECONOMY.STARTING_GP * 100 + (devWon ? -FEE * 100 : FEE * 100 - potRake) - TAG * 100
+      ECONOMY.STARTING_GP * 100 + (devWon ? -STAKE * 100 : STAKE * 100 - potRake) - TAG * 100
     );
   });
 

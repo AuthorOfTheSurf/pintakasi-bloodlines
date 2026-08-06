@@ -17,8 +17,10 @@ import {
   CADENCE,
   CLAIMER,
   ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
   FORMATS,
   FORMAT_NAMES,
+  GROUP,
   NW_CAP,
   SCOUT,
   PINTAKASI,
@@ -26,6 +28,7 @@ import {
   cardOfDay,
   isOnCard,
   landForFight,
+  stakePerFight,
   weatherOfDay,
   type CardKey,
   type Element,
@@ -123,9 +126,12 @@ export interface EntryCard {
     formatRecords: Partial<Record<FightFormat, FormatRecord>>;
   };
   mine: boolean; // your own entry — you cannot claim it
-  // The draw, once the lobby has CLOSED: who this bird fights tonight.
-  // Absent while open; null after close = no opponent (refunds at post).
-  drew?: { bird: string; farm: string } | null;
+  // THE DRAW, once the lobby has CLOSED: the bird's GROUP — everyone it
+  // fights tonight, up to GROUP.SIZE - 1 of them. Absent while the lobby is
+  // open; an EMPTY ARRAY after close means the bird drew nobody and refunds at
+  // post. (Round 34: this was a single opponent or null, back when a lobby
+  // drew pairs. Consumers that showed "drew: null" should now test length.)
+  drew?: { bird: string; farm: string }[];
   // Claims on claimer entries are SEALED — no count shown until post time.
 }
 
@@ -154,11 +160,33 @@ export interface FightReport {
   winner: string; // bird name
   winnerFarm: string;
   figures: [number, number];
-  landEach: number;
+  groupNo: number; //  which group in the lobby this fight came out of (round 34)
+  stake: number; //    GP a side for THIS fight — a share of the entry, not the whole
   // Always EMPTY from a daily-card fight since round 31 (hardcore left the
   // card). Kept because the Majors still fill it and the shape is public API.
   forcedRetirements: string[];
   playByPlay: string;
+  // `landEach` lived here until round 34. Land is no longer a per-fight award
+  // — it pays once per entry on the night's total risk, so it belongs to a
+  // settlement, not a fight. See EntrySettlement.land.
+}
+
+/**
+ * HOW ONE BIRD'S NIGHT ADDED UP (round 34). Under the group stage an entry is
+ * a night, not a fight: the fee escrows whole, a share is risked per fight,
+ * and whatever the bird never got to risk comes home. One of these per entry,
+ * always — a full card, a short one and an unmatched bird are the same shape
+ * with different numbers, which is deliberate: the interesting case is the
+ * SHORT card (a group that held a barn-mate, or a lobby that didn't divide
+ * evenly) and it would be invisible if only the extremes were reported.
+ */
+export interface EntrySettlement {
+  farm: string;
+  bird: string;
+  fights: number; //   0 … FIGHTS_PER_GROUP_BIRD
+  staked: number; //   GP actually put at risk
+  refunded: number; // the unfought share, handed back
+  land: number; //     LT for the night, on the curve, off the total staked
 }
 
 /** One lobby going off at the tick — a public event. */
@@ -166,7 +194,11 @@ export interface LobbyResolution {
   lobbyId: number;
   label: string;
   fights: FightReport[];
-  unmatched: { farm: string; bird: string; refunded: number }[]; // odd birds out
+  settlements: EntrySettlement[]; // every entry, one line each (round 34)
+  // The birds that got no fight at all — settlements with `fights: 0`, kept as
+  // its own list because "how many entries drew nobody" is the health number
+  // this whole round exists to drive down, and it should stay one `.length`.
+  unmatched: { farm: string; bird: string; refunded: number }[];
   claims: { bird: string; from: string; to: string; price: number; losingClaimsRefunded: number }[];
 }
 
@@ -183,7 +215,9 @@ export interface LobbyResolution {
  *      discovery axis instead. There is exactly ONE lobby per posted key and
  *      it grows without limit — no capacity, no duplicates, so a late entrant
  *      can never find the door shut. Entries are BINDING (fee escrowed, the
- *      bird's daily fight spent).
+ *      bird's card for the day spent) — and ONE ENTRY BUYS A GROUP OF UP TO
+ *      THREE FIGHTS (round 34), not one fight. The fee splits across them and
+ *      the unfought share comes home.
  *   2. The board is public but FOGGED — you see every lobby and how full it
  *      is, never whose birds are in it (no dodging; judging a lobby's
  *      likely strength is the skill). The one exception is claimer lobbies:
@@ -191,18 +225,22 @@ export interface LobbyResolution {
  *      per farm; never your own bird) are placed on specific birds before
  *      post time. Fighting for a tag is choosing to be seen.
  *   3. The card runs PFL's three states (ruled 2026-08-03). CLOSE locks the
- *      entries and DRAWS THE MATCHUPS — randomly, NEVER two from the same
- *      barn (enter several birds; matchmaking keeps them apart) — and the
- *      fog lifts: the full field and who drew whom go public. Claimers
+ *      entries and DEALS THE GROUPS — the field is cut into fours, barn-mates
+ *      spread apart, and everyone fights everyone inside their own group
+ *      (still NEVER two from the same barn) — and the fog lifts: the full
+ *      field and each bird's group go public. Claimers
  *      close hours before post (6 PM PH) so claiming happens informed;
  *      normal lobbies close minutes before. Claims keep flowing until the
  *      lobby COMPLETES — a last-second claim either makes it or it's too
  *      late.
- *   4. COMPLETE fires the fights: birds with no draw (odd bird out, or
- *      barn-mates with nobody else) refund — no fight, no land. Winners
- *      take the pooled pot; both fighters earn land scaled superlinearly
- *      to the fee (fighting up pays extra). Nothing on the daily card can
- *      force-retire a bird any more — hardcore lives only in the Majors.
+ *   4. COMPLETE fires every fight in every group, then SETTLES UP one bird at
+ *      a time: the winner of each fight takes that fight's pooled pot, and
+ *      then each entry gets back whatever share of its fee it never risked,
+ *      plus land scaled superlinearly to the total it DID risk (fighting up
+ *      pays extra; a short card pays less). A bird alone in its room fights
+ *      nothing, gets everything back and earns no land — land is for
+ *      fighting. Nothing on the daily card can force-retire a bird any more
+ *      — hardcore lives only in the Majors.
  *      Then claims settle: one wins per entry (RNG), the owner banks the
  *      tag, the bird transfers, losers refund in full. NO FIGHT, NO CLAIM
  *      (re-ruled round 23 — this used to let a sale go through on an
@@ -251,7 +289,7 @@ export class Lobbies {
           `Check the board (or get_state's card) for what's running today and tomorrow.`
       );
 
-    this.checkFightCap(bird.id, bird.name, today);
+    this.checkCardCap(bird.id, bird.name, today);
 
     // A championship registrant fights normal cards all week — except on ITS
     // OWN crown day, when the championship IS its card (round 18; Thursday
@@ -262,7 +300,7 @@ export class Lobbies {
     // WITHOUT filtering by division. Two bugs in one:
     //   · Wednesday's Juvenile Championship registrants were never blocked, so
     //     a juvenile entered a normal lobby AND its crown on the same day. The
-    //     cap at checkFightCap could not see it: the tournament writes its
+    //     cap at checkCardCap could not see it: the tournament writes its
     //     battleLog rows at THURSDAY's day index (tournaments.ts), and the
     //     lobby card resolves before resolveCrownDay in Game.tick, so both
     //     fights really happened and nothing counted them together.
@@ -469,32 +507,43 @@ export class Lobbies {
   }
 
   /**
-   * The daily fight cap — a hard count, not a cooldown. A PENDING entry
+   * The daily CARD cap — a hard count, not a cooldown. A PENDING entry
    * counts: the bird is committed to tonight's card.
+   *
+   * ⚠ REWRITTEN ROUND 34, and the old shape would have been wrong rather than
+   * merely stale. It summed today's battleLog rows with the bird's pending
+   * entries and compared the total to a cap of 1 — which read as "one fight a
+   * day" only because one entry meant one fight. Under the group stage a
+   * settled card leaves THREE battleLog rows, so the sum stopped meaning
+   * anything countable. What the rule was always about is CARDS: a bird may be
+   * on one lobby card a day, and it may not also have been in a bracket that
+   * day. Those are two different questions, so they are asked separately now.
    */
-  checkFightCap(birdId: string, name: string, today: number): void {
-    const fought = this.database
+  checkCardCap(birdId: string, name: string, today: number): void {
+    const carded = this.database
+      .select()
+      .from(lobbyEntries)
+      .where(and(eq(lobbyEntries.birdId, birdId), eq(lobbyEntries.dayEntered, today)))
+      .all().length;
+    if (carded >= CADENCE.ENTRIES_PER_BIRD_PER_DAY)
+      throw new Error(`${name} is already on tonight's card — entries are binding until the day turns`);
+    // A bracket fight also spends the day. Tournament rows are the ones with
+    // no lobbyId (see Tournaments.runFight); lobby rows are already counted
+    // above, by their entry, so counting them here again would double.
+    const bracketed = this.database
       .select()
       .from(battleLog)
       .where(and(eq(battleLog.birdId, birdId), eq(battleLog.dayIndex, today)))
-      .all().length;
-    const committed = this.database
-      .select()
-      .from(lobbyEntries)
-      .where(and(eq(lobbyEntries.birdId, birdId), eq(lobbyEntries.status, "pending")))
-      .all().length;
-    if (fought + committed >= CADENCE.FIGHTS_PER_BIRD_PER_DAY)
-      throw new Error(
-        committed > 0
-          ? `${name} is already on tonight's card — entries are binding until the day turns`
-          : `${name} already fought today — one fight per bird per game-day (tick a day)`
-      );
+      .all()
+      .filter((r) => r.lobbyId === null).length;
+    if (bracketed > 0)
+      throw new Error(`${name} already fought today — one card per bird per game-day (tick a day)`);
   }
 
   /**
-   * CLOSE — entries lock, matchups are drawn, the fog lifts. Claimers
+   * CLOSE — entries lock, THE GROUPS ARE DEALT, the fog lifts. Claimers
    * close early (6 PM PH) for the claiming window; "all" is the pre-post
-   * sweep. The draw is seeded by the lobby, so a replayed close replays.
+   * sweep. The deal is seeded by the lobby, so a replayed close replays.
    */
   static close(database: DB, which: "claimers" | "all"): number {
     let closedCount = 0;
@@ -506,11 +555,10 @@ export class Lobbies {
         .from(lobbyEntries)
         .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
         .all();
-      const { pairs } = Lobbies.matchmake(entries, rng);
-      for (const [a, b] of pairs) {
-        database.update(lobbyEntries).set({ opponentEntryId: b.id }).where(eq(lobbyEntries.id, a.id)).run();
-        database.update(lobbyEntries).set({ opponentEntryId: a.id }).where(eq(lobbyEntries.id, b.id)).run();
-      }
+      Lobbies.dealGroups(entries, rng).forEach((group, groupNo) => {
+        for (const e of group)
+          database.update(lobbyEntries).set({ groupNo }).where(eq(lobbyEntries.id, e.id)).run();
+      });
       database.update(lobbies).set({ status: "closed" }).where(eq(lobbies.id, lobby.id)).run();
       closedCount++;
     }
@@ -538,33 +586,92 @@ export class Lobbies {
         .all();
 
       const label = labelOf(lobby);
-      const event: LobbyResolution = { lobbyId: lobby.id, label, fights: [], unmatched: [], claims: [] };
+      const event: LobbyResolution = {
+        lobbyId: lobby.id,
+        label,
+        fights: [],
+        settlements: [],
+        unmatched: [],
+        claims: [],
+      };
       // The card goes off under the day's ascendant element (round 24) —
       // every lobby posted on the same day shares one weather.
       const weather = weatherOfDay(lobby.dayOpened);
 
-      // The drawn pairs fight, in draw order.
-      for (const entry of entries) {
-        const other = entries.find((e) => e.id === entry.opponentEntryId);
-        if (!other || other.id < entry.id) continue; // fight once per pair
-        event.fights.push(Lobbies.runFight(database, lobby, entry, other, label, rng, week, weather));
+      // THE GROUP STAGE (round 34). Inside a group everybody fights everybody
+      // — except two birds of the same barn, who are still never matched. That
+      // exception is why a group of four does not always mean three fights,
+      // and why `fights` is counted rather than assumed.
+      const groups = new Map<number, typeof entries>();
+      for (const e of entries) {
+        const g = e.groupNo ?? 0;
+        const bucket = groups.get(g);
+        if (bucket) bucket.push(e);
+        else groups.set(g, [e]);
+      }
+      const taken = new Map<number, number>(entries.map((e) => [e.id, 0]));
+      for (const [groupNo, group] of [...groups].sort((a, b) => a[0] - b[0])) {
+        for (let i = 0; i < group.length; i++) {
+          for (let j = i + 1; j < group.length; j++) {
+            const [a, b] = [group[i], group[j]];
+            if (a.farmId === b.farmId) continue; // matchmaking never pairs barn-mates
+            const stake = stakePerFight(a.fee);
+            event.fights.push(
+              Lobbies.runFight(database, lobby, a, b, label, rng, week, weather, stake, groupNo)
+            );
+            taken.set(a.id, taken.get(a.id)! + 1);
+            taken.set(b.id, taken.get(b.id)! + 1);
+          }
+        }
       }
 
-      // The drawless — the odd bird out, or barn-mates with nobody else
-      // to fight. Fee back, no fight, no land.
-      for (const odd of entries.filter((e) => e.opponentEntryId === null)) {
-        const farm = database.select().from(farms).where(eq(farms.id, odd.farmId)).get()!;
-        database.update(farms).set({ gp: farm.gp + odd.fee }).where(eq(farms.id, odd.farmId)).run();
-        database.update(lobbyEntries).set({ status: "unmatched" }).where(eq(lobbyEntries.id, odd.id)).run();
-        const bird = database.select().from(birds).where(eq(birds.id, odd.birdId)).get()!;
-        emit(database, {
-          type: "refund",
-          farmId: odd.farmId,
-          birdId: odd.birdId,
-          gpCents: odd.fee * 100,
-          message: `${bird.name} drew nobody in ${label} — ${odd.fee} GP refunded`,
-        });
-        event.unmatched.push({ farm: farm.name, bird: bird.name, refunded: odd.fee });
+      // SETTLE UP, one line per bird. The fee escrowed whole at the door; the
+      // fights above consumed a share each. Whatever was never risked comes
+      // home, and land pays once on what was — so a bird alone in its room
+      // gets everything back and no land (land is for FIGHTING), and a bird
+      // whose group was short gets the difference back and a smaller award.
+      for (const entry of entries) {
+        const fights = taken.get(entry.id)!;
+        const staked = stakePerFight(entry.fee) * fights;
+        const refunded = entry.fee - staked;
+        const land = fights > 0 ? landForFight(staked) : 0;
+        const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+        database
+          .update(farms)
+          .set({ gp: farm.gp + refunded, landTokens: farm.landTokens + land })
+          .where(eq(farms.id, entry.farmId))
+          .run();
+        database
+          .update(lobbyEntries)
+          .set({ status: fights > 0 ? "fought" : "unmatched", fights })
+          .where(eq(lobbyEntries.id, entry.id))
+          .run();
+        const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+        event.settlements.push({ farm: farm.name, bird: bird.name, fights, staked, refunded, land });
+        if (fights === 0) {
+          emit(database, {
+            type: "refund",
+            farmId: entry.farmId,
+            birdId: entry.birdId,
+            gpCents: refunded * 100,
+            message: `${bird.name} drew nobody in ${label} — ${refunded} GP refunded`,
+          });
+          event.unmatched.push({ farm: farm.name, bird: bird.name, refunded });
+        } else {
+          emit(database, {
+            type: "card_settled",
+            farmId: entry.farmId,
+            birdId: entry.birdId,
+            gpCents: refunded * 100,
+            lt: land,
+            message:
+              `${bird.name} finished ${label} — ${fights} of ${FIGHTS_PER_GROUP_BIRD} fights, ` +
+              `${staked} GP risked, +${land} LT` +
+              // Say nothing about a refund of nothing: a full card is the
+              // normal case and "0 GP back" reads as a bug in the ledger.
+              (refunded > 0 ? ` · ${refunded} GP unfought and returned` : ""),
+          });
+        }
       }
 
       // Claims settle last — after the fights. Prize money stayed with the
@@ -578,7 +685,12 @@ export class Lobbies {
       // technicality. If the card doesn't happen, nothing happens.
       if (lobby.classType === "claimer") {
         for (const entry of entries) {
-          if (entry.opponentEntryId === null) {
+          // ONE fight is enough to make the sale (round 34). The rule is that
+          // a tag needs the bird to have proven something that night, not that
+          // it filled its whole group — a short card is the lobby's fault, not
+          // the bird's, and voiding a sale over it would punish the seller for
+          // the draw.
+          if ((taken.get(entry.id) ?? 0) === 0) {
             Lobbies.refundClaims(database, entry.id, "the bird drew no opponent");
             continue;
           }
@@ -606,44 +718,82 @@ export class Lobbies {
   // ── internals ─────────────────────────────────────────────────────────────
 
   /**
-   * Random pairing that NEVER matches barn-mates. Shuffle for randomness,
-   * group by farm, then repeatedly pair off the two largest groups (ties
-   * broken by the rng) — the classic greedy that maximizes cross-barn
-   * matches. Whatever remains is one farm's birds with nobody left to
-   * fight (or the plain odd bird out): they go home refunded.
+   * THE DEAL (round 34) — a lobby's field is cut into GROUPS of at most
+   * GROUP.SIZE, and everybody fights everybody inside their own group.
+   *
+   * This replaced a greedy pair-matcher, and the reason is arithmetic. Pairing
+   * an unbounded lobby strands the odd bird whenever the field is odd, and
+   * strands EVERYONE when a room holds one entry — no matchmaker can fix that,
+   * because odd is odd. Dealing groups strands a bird only when it was alone.
+   *
+   * Two properties the deal has to have, in this order of importance:
+   *
+   *   1. NO GROUP OF ONE while the lobby has two or more birds. The sizes are
+   *      levelled rather than packed: nine entries become 3+3+3, not 4+4+1.
+   *      A group of two or three is a real, if short, night; a group of one is
+   *      the failure this round exists to delete.
+   *   2. BARN-MATES SPREAD OUT. Matchmaking still never pairs two birds of one
+   *      barn, so a group holding two of them yields fewer fights and both
+   *      birds get part of their stake back. So the biggest barn in the room
+   *      is dealt FIRST, while there is still room to spread it — placing the
+   *      easy singletons first would fill the groups and force the collisions.
+   *
+   * Ties are broken on the rng so the deal is seeded and a replayed close
+   * replays exactly.
    */
-  private static matchmake(
+  private static dealGroups(
     entries: (typeof lobbyEntries.$inferSelect)[],
     rng: Rng
-  ): {
-    pairs: [typeof lobbyEntries.$inferSelect, typeof lobbyEntries.$inferSelect][];
-    leftovers: (typeof lobbyEntries.$inferSelect)[];
-  } {
+  ): (typeof lobbyEntries.$inferSelect)[][] {
+    const n = entries.length;
+    if (n === 0) return [];
+
     const shuffled = [...entries];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = randInt(rng, 0, i);
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
+    // As few groups as will hold the field, then sizes levelled across them —
+    // this is what guarantees property 1. With n < GROUP.MIN_SIZE there is one
+    // group and it is a lone bird; it refunds, which is correct and the only
+    // case that still can.
+    const count = Math.ceil(n / GROUP.SIZE);
+    const caps = Array.from(
+      { length: count },
+      (_, i) => Math.floor(n / count) + (i < n % count ? 1 : 0)
+    );
+    const groups: (typeof lobbyEntries.$inferSelect)[][] = caps.map(() => []);
+
     const byFarm = new Map<string, (typeof lobbyEntries.$inferSelect)[]>();
     for (const e of shuffled) {
-      const group = byFarm.get(e.farmId);
-      if (group) group.push(e);
+      const bucket = byFarm.get(e.farmId);
+      if (bucket) bucket.push(e);
       else byFarm.set(e.farmId, [e]);
     }
+    const biggestBarnFirst = [...byFarm.values()].sort((a, b) => b.length - a.length).flat();
 
-    const pairs: [typeof lobbyEntries.$inferSelect, typeof lobbyEntries.$inferSelect][] = [];
-    for (;;) {
-      const groups = [...byFarm.values()].filter((g) => g.length > 0);
-      if (groups.length < 2) return { pairs, leftovers: groups.flat() };
-      groups.sort((a, b) => b.length - a.length);
-      const tiedA = groups.filter((g) => g.length === groups[0].length);
-      const groupA = tiedA[randInt(rng, 0, tiedA.length - 1)];
-      const rest = groups.filter((g) => g !== groupA);
-      const tiedB = rest.filter((g) => g.length === rest[0].length);
-      const groupB = tiedB[randInt(rng, 0, tiedB.length - 1)];
-      pairs.push([groupA.pop()!, groupB.pop()!]);
+    for (const entry of biggestBarnFirst) {
+      let best = -1;
+      let bestKey: [number, number, number] | null = null;
+      for (let i = 0; i < groups.length; i++) {
+        if (groups[i].length >= caps[i]) continue;
+        const mates = groups[i].filter((x) => x.farmId === entry.farmId).length;
+        // Fewest barn-mates wins, then emptiest, then the coin.
+        const key: [number, number, number] = [mates, groups[i].length, randInt(rng, 0, 1 << 20)];
+        if (
+          bestKey === null ||
+          key[0] < bestKey[0] ||
+          (key[0] === bestKey[0] && key[1] < bestKey[1]) ||
+          (key[0] === bestKey[0] && key[1] === bestKey[1] && key[2] < bestKey[2])
+        ) {
+          best = i;
+          bestKey = key;
+        }
+      }
+      groups[best].push(entry); // caps sum to n, so a seat always exists
     }
+    return groups;
   }
 
   private static runFight(
@@ -654,7 +804,13 @@ export class Lobbies {
     label: string,
     rng: Rng,
     week: number,
-    weather: Element
+    weather: Element,
+    // ROUND 34: what each side is risking on THIS fight — a share of the
+    // entry fee, not the fee. Passed in rather than derived here so the split
+    // rule lives in exactly one place (config.stakePerFight) and the fight
+    // never has to know how many fights the night holds.
+    stake: number,
+    groupNo: number
   ): FightReport {
     const simSeed = randInt(rng, 1, 2 ** 31 - 1);
     const rowA = database.select().from(birds).where(eq(birds.id, ea.birdId)).get()!;
@@ -672,13 +828,16 @@ export class Lobbies {
       { entry: ea, row: rowA, won: sim.winner === 0, figure: sim.figures[0] },
       { entry: eb, row: rowB, won: sim.winner === 1, figure: sim.figures[1] },
     ];
-    const landEach = landForFight(ea.fee);
-    // The staker rake (round 22): 2% off the pooled pot, paid to the Land
-    // Token pool before the winner is. On a 40 GP card that's 1.60 of the
-    // 80 GP pot and the winner banks 78.40. This reverses the old zero-rake
-    // ruling deliberately (Zane's call — widen every LT inflow); no GP is
-    // printed or burned, it lands in the pool instead of the wallet.
-    const potCents = ea.fee * 200;
+    // The staker rake (round 22): a slice off the pooled pot, paid to the Land
+    // Token pool before the winner is. Standing at 0 since round 23 — the
+    // plumbing stays wired so a future season is one number, not a rebuild.
+    // No GP is printed or burned; the rake lands in the pool, not the wallet.
+    //
+    // ⚠ THE POT IS TWO STAKES, NOT TWO FEES (round 34). It read `ea.fee * 200`
+    // until the group stage split the entry across three fights; leaving it
+    // would have paid a winner three times over out of escrow that was never
+    // put up, and the conservation proof would have caught it — after a sim.
+    const potCents = stake * 200;
     const rakeCents = Math.round(potCents * STAKER_FLOWS.FIGHT_RAKE);
     const forcedRetirements: string[] = [];
     const logIds: number[] = [];
@@ -688,17 +847,15 @@ export class Lobbies {
       const other = sides[1 - i];
       const farm = database.select().from(farms).where(eq(farms.id, side.entry.farmId)).get()!;
       farmNames.push(farm.name);
-      // Escrow settle: winner takes the pooled pot (own stake back + the
-      // other side's), loser's escrow is the pot. Land pays both fighters.
+      // Escrow settle: winner takes this fight's pooled pot (own stake back +
+      // the other side's), the loser's stake is what fed it. Land does NOT
+      // pay here any more (round 34) — it settles once per entry, on the
+      // night's total risk, back in `complete`.
       // The FARM's record moves here too — it can't be derived from owned
       // birds later, because birds transfer. ONE record (ruled round 15):
       // juvenile fights count toward the lifetime record like any other.
       const farmRecord = side.won ? { wins: farm.wins + 1 } : { losses: farm.losses + 1 };
-      database
-        .update(farms)
-        .set({ landTokens: farm.landTokens + landEach, ...farmRecord })
-        .where(eq(farms.id, side.entry.farmId))
-        .run();
+      database.update(farms).set(farmRecord).where(eq(farms.id, side.entry.farmId)).run();
       // The pot, less the rake — through creditCents because 78.40 GP isn't
       // a whole number and the books are kept to the cent.
       if (side.won) creditCents(database, side.entry.farmId, potCents - rakeCents);
@@ -745,19 +902,17 @@ export class Lobbies {
           result: side.won ? "win" : "loss",
           pitFigure: side.figure,
           // Net to the bird's barn, in cents: the winner keeps the other
-          // side's stake less the rake; the loser drops its whole entry.
-          gpDeltaCents: side.won ? side.entry.fee * 100 - rakeCents : -side.entry.fee * 100,
+          // side's stake less the rake; the loser drops its own. Round 34: the
+          // stake, not the entry fee — one fight is a third of the night.
+          gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
           seed: simSeed,
           playByPlay: sim.playByPlay,
         })
         .returning({ id: battleLog.id })
         .get();
       logIds.push(inserted.id);
-      database
-        .update(lobbyEntries)
-        .set({ status: "fought", battleLogId: inserted.id })
-        .where(eq(lobbyEntries.id, side.entry.id))
-        .run();
+      // The entry's status and fight count are set once, at settle-up in
+      // `complete` — a bird may be in the middle of its group here.
     }
 
     const winnerSide = sides[sim.winner];
@@ -771,9 +926,9 @@ export class Lobbies {
         `${label} · figures ${winnerSide.figure}/${loserSide.figure} · pot ${fmtGp(potCents - rakeCents)} GP` +
         // The rake is 0 since round 23 — say nothing rather than "(0.00 to stakers)".
         (rakeCents > 0 ? ` (${fmtGp(rakeCents)} to stakers)` : "") +
-        ` · +${landEach} LT each` +
+        ` · group ${groupNo + 1}` +
         (forcedRetirements.length ? ` · ${forcedRetirements.join(", ")} force-retired` : ""),
-      data: { lobbyId: lobby.id, battleLogIds: logIds, figures: sim.figures, pot: ea.fee * 2, landEach },
+      data: { lobbyId: lobby.id, battleLogIds: logIds, figures: sim.figures, pot: stake * 2, groupNo },
     });
     return {
       battleLogIds: [logIds[0], logIds[1]],
@@ -782,7 +937,8 @@ export class Lobbies {
       winner: winnerSide.row.name,
       winnerFarm: farmNames[sim.winner],
       figures: sim.figures,
-      landEach,
+      groupNo,
+      stake,
       forcedRetirements,
       playByPlay: sim.playByPlay,
     };
@@ -996,14 +1152,22 @@ export class Lobbies {
       mine: entry.farmId === this.farmId,
     };
     if (field) {
-      const opponent = field.find((e) => e.id === entry.opponentEntryId);
-      if (!opponent) {
-        view.drew = null; // no draw — refunds at post time
-      } else {
-        const oppBird = this.database.select().from(birds).where(eq(birds.id, opponent.birdId)).get()!;
-        const oppFarm = this.database.select().from(farms).where(eq(farms.id, opponent.farmId)).get()!;
-        view.drew = { bird: oppBird.name, farm: oppFarm.name };
-      }
+      // THE GROUP IS THE DRAW (round 34). Everyone sharing this entry's group
+      // number, minus itself and minus its own barn-mates — matchmaking never
+      // makes that fight, so listing a barn-mate here would promise a card
+      // that will not happen. An empty list = drew nobody, refunds at post.
+      view.drew = field
+        .filter(
+          (e) =>
+            entry.groupNo !== null && // undealt (shouldn't happen once closed) — nulls must not match
+            e.id !== entry.id &&
+            e.groupNo === entry.groupNo &&
+            e.farmId !== entry.farmId
+        )
+        .map((e) => ({
+          bird: this.database.select().from(birds).where(eq(birds.id, e.birdId)).get()!.name,
+          farm: this.database.select().from(farms).where(eq(farms.id, e.farmId)).get()!.name,
+        }));
     }
     return view;
   }

@@ -4,11 +4,13 @@ import { TickControls } from "./tick-controls";
 import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, tournamentEntries, tournaments } from "@/db/schema";
 import {
   ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
   FORMATS,
   PINTAKASI,
   landForFight,
   landForTournamentFight,
   cardOfDay,
+  stakePerFight,
   weatherOfDay,
   type CardKey,
   type FightFormat,
@@ -193,8 +195,8 @@ function buildBracket(
 // 2^r of them, which is what makes a CSS grid line it up as a real tree with
 // zero JS: a Quarterfinal card centers itself exactly between the two
 // Round-of-16 cards that fed it, because it spans both their row ranges.
-const BRACKET_ROW_UNIT = "1.85rem";
-const BRACKET_COL_WIDTH = "192px";
+const BRACKET_ROW_UNIT = "3.25rem";
+const BRACKET_COL_WIDTH = "clamp(250px, 22vw, 320px)";
 
 /**
  * The bracket tree for one completed championship — round columns left to
@@ -265,19 +267,27 @@ function Bracket({
               style={{ gridColumn: round, gridRow: `${mi * span + 1} / span ${span}` }}
             >
               <div className={`bfighter ${m.a.won ? "won" : "lost"}`}>
-                <span className="bidentity">{fighterName(m.a)}</span>
-                <span className="bfarm">{m.a.farm}</span>
-                {awards(m.a)}
-                {m.a.figure !== null && <span className="bfig">{m.a.figure}</span>}
+                <div className="btop">
+                  <span className="bidentity">{fighterName(m.a)}</span>
+                  {m.a.figure !== null && <span className="bfig">PF {m.a.figure}</span>}
+                </div>
+                <div className="bmeta">
+                  <span className="bfarm">{m.a.farm}</span>
+                  {awards(m.a)}
+                </div>
               </div>
               {m.isBye ? (
                 <div className="bfighter bye">— bye —</div>
               ) : (
                 <div className={`bfighter ${m.b!.won ? "won" : "lost"}`}>
-                  <span className="bidentity">{fighterName(m.b!)}</span>
-                  <span className="bfarm">{m.b!.farm}</span>
-                  {awards(m.b!)}
-                  {m.b!.figure !== null && <span className="bfig">{m.b!.figure}</span>}
+                  <div className="btop">
+                    <span className="bidentity">{fighterName(m.b!)}</span>
+                    {m.b!.figure !== null && <span className="bfig">PF {m.b!.figure}</span>}
+                  </div>
+                  <div className="bmeta">
+                    <span className="bfarm">{m.b!.farm}</span>
+                    {awards(m.b!)}
+                  </div>
                 </div>
               )}
             </div>
@@ -288,8 +298,10 @@ function Bracket({
           style={{ gridColumn: columns, gridRow: `1 / span ${bracketSize}` }}
         >
           <div className="bfighter won champ">
-            🏆 <span className="bidentity">{fighterName(champion)}</span>
-            <span className="bfarm">{champion.farm}</span>
+            <div className="btop">
+              🏆 <span className="bidentity">{fighterName(champion)}</span>
+            </div>
+            <div className="bmeta"><span className="bfarm">{champion.farm}</span></div>
           </div>
           <div className="bpurse">
             <GpIcon size={11} /> +{gpFmt(champion.wonCents)}
@@ -326,6 +338,7 @@ const TYPE_LABELS: Record<string, string> = {
   stud_unlisted: "stud unlisted",
   entry: "entry",
   fight: "fight",
+  card_settled: "night settled", // round 34: one entry, up to three fights
   refund: "refund",
   claim: "claim",
   claim_won: "claim won",
@@ -420,14 +433,50 @@ export default function Admin() {
     .filter((l) => l.dayOpened === cardDay)
     .map((l) => {
       const entries = allEntries.filter((e) => e.lobbyId === l.id);
+      // THE GROUP STAGE (round 34). `group_no` is stamped on the entry at
+      // CLOSE, so it is the only thing that says which room a fight came out
+      // of — battle_log never learned about groups. The bird → group map lets
+      // the bouts below be filed under the room that produced them, which is
+      // the whole point of showing a group stage rather than a list of fights.
+      const groupOfBird = new Map(entries.map((e) => [e.birdId, e.groupNo]));
       const bouts = log
         .filter((r) => r.lobbyId === l.id && r.result === "win")
         .map((w) => ({
+          group: groupOfBird.get(w.birdId) ?? 0,
           winner: birdCard(w.birdId),
           winnerFarm: fname(w.farmId),
+          winnerFarmP: fcolors(w.farmId).P,
+          winnerFarmS: fcolors(w.farmId).S,
           loser: birdCard(w.opponentBirdId),
           loserFarm: fname(w.opponentFarmId),
+          loserFarmP: fcolors(w.opponentFarmId).P,
+          loserFarmS: fcolors(w.opponentFarmId).S,
           figures: [w.pitFigure, log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0] as const,
+        }));
+      // Bouts filed by room, rooms in dealt order. A group with no bouts at
+      // all can exist — two barn-mates alone together — and it is worth
+      // showing empty, because a silent gap in the numbering reads as a bug.
+      const groupNos = [...new Set(entries.map((e) => e.groupNo).filter((g): g is number => g !== null))].sort((a, b) => a - b);
+      const groups = groupNos.map((n) => ({
+        no: n,
+        size: entries.filter((e) => e.groupNo === n).length,
+        bouts: bouts.filter((b) => b.group === n),
+      }));
+      // HOW THE NIGHT ADDED UP, one line per entry — the round-34 shape. A
+      // full card is FIGHTS_PER_GROUP_BIRD fights; anything less refunds the
+      // unfought share of the fee (stakePerFight × the fights it missed), and
+      // zero refunds all of it. The SHORT card is the number to watch: it is
+      // what a barn-mate collision or a group of two or three actually costs,
+      // and it did not exist as a category before this round.
+      const settled = entries.filter((e) => e.status !== "pending");
+      const short = settled
+        .filter((e) => e.fights > 0 && e.fights < FIGHTS_PER_GROUP_BIRD)
+        .map((e) => ({
+          bird: bname(e.birdId),
+          farm: fname(e.farmId),
+          group: e.groupNo,
+          fights: e.fights,
+          refunded: e.fee - stakePerFight(e.fee) * e.fights,
         }));
       return {
         id: l.id,
@@ -440,15 +489,41 @@ export default function Admin() {
         // so the fill count is a bare number with nothing to divide it by.
         filled: entries.length,
         bouts,
+        groups,
+        full: settled.filter((e) => e.fights >= FIGHTS_PER_GROUP_BIRD).length,
+        short,
         unmatched: entries
           .filter((e) => e.status === "unmatched")
-          .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId), fee: e.fee })),
+          // Nothing was risked, so the whole fee comes home — `fee`, not a
+          // share of it. (Kept as the refund rather than the fee so the line
+          // says what the barn was PAID, same as the short-card line above.)
+          .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId), refunded: e.fee })),
         pending: entries
           .filter((e) => e.status === "pending")
-          .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId) })),
+          .map((e) => ({
+            bird: bname(e.birdId),
+            farm: fname(e.farmId),
+            group: e.groupNo,
+            // THE REVEAL, once the lobby has closed: the bird's group minus
+            // itself and minus its own barn-mates — i.e. exactly who it fights
+            // tonight, which is what EntryCard.drew reports to a player. An
+            // EMPTY list is meaningful (alone in the room, refunds at post)
+            // and must not render as an empty bullet.
+            drew:
+              e.groupNo === null
+                ? null
+                : entries
+                    .filter(
+                      (o) => o.groupNo === e.groupNo && o.id !== e.id && o.farmId !== e.farmId
+                    )
+                    .map((o) => ({ bird: bname(o.birdId), farm: fname(o.farmId) })),
+          })),
       };
     });
   const cardFights = cardLobbies.reduce((s, l) => s + l.bouts.length, 0);
+  const cardGroups = cardLobbies.reduce((s, l) => s + l.groups.length, 0);
+  const cardFull = cardLobbies.reduce((s, l) => s + l.full, 0);
+  const cardShort = cardLobbies.reduce((s, l) => s + l.short.length, 0);
   const cardCancelled = cardLobbies.reduce((s, l) => s + l.unmatched.length, 0);
   const cardPending = cardLobbies.reduce((s, l) => s + l.pending.length, 0);
   // The all-time view of the same question, from the engine — so `bun run
@@ -546,7 +621,11 @@ export default function Admin() {
       loserFarmS: fcolors(w.opponentFarmId).S ?? "",
       winFigure: w.pitFigure,
       loseFigure: mirror?.pitFigure ?? 0,
-      // What the winner actually banked — the pot net of the 2% staker rake.
+      // The POT for this one fight, net of the staker rake — derived from the
+      // winner's signed delta rather than from a fee, which is what keeps it
+      // honest after round 34: a daily-card pot is now TWO STAKES (a third of
+      // each side's entry), not two entry fees, and a Major's is still two
+      // fees. The delta knows which; a fee lookup here would not.
       pot: (w.gpDeltaCents * 2) / 100,
       element: weatherOfDay(w.dayIndex),
       winnerGrade: w.selfGrade as Grade,
@@ -571,31 +650,32 @@ export default function Admin() {
   // GP: pots won less entries lost on the daily card (gpDeltaCents is already
   // the signed net, rake deducted), plus any Pintakasi purse — free entry
   // since round 22, so a registration costs the bird nothing either way.
-  // LT: the land its fights minted (both fighters are paid, win or lose)
-  // plus the championship's elimination grant. Entry fees are stored on the
-  // entry rows; daily fees are fixed per mode, so they derive exactly.
-  // Keyed by battleLog.mode, which still carries "hardcore" — but since round
-  // 31 those rows can only be Pintakasi Majors, and a Major is FREE to enter
-  // (PINTAKASI.ENTRY_FEE). The daily card runs no hardcore at all. This used to
-  // read ECONOMY.HARDCORE_ENTRY_FEE and was already conflating the two.
-  const FEE_BY_MODE: Record<string, number> = {
-    juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
-    real: ECONOMY.REAL_ENTRY_FEE,
-    hardcore: PINTAKASI.ENTRY_FEE,
-  };
+  // LT: the land the bird's NIGHTS minted (both fighters are paid, win or
+  // lose) plus the championship's elimination grant.
+  //
+  // ⚠ ROUND 34 MOVED THIS OFF THE BATTLE LOG, and it had to. The column used
+  // to add landForFight(fee-for-the-mode) per battle_log row — one award per
+  // fight, on the whole entry fee. Under the group stage BOTH halves are
+  // wrong: land pays ONCE PER ENTRY, and it pays on what the bird actually
+  // risked (stakePerFight × fights), not on the fee. A bird with a full card
+  // would have been credited three awards at three times the basis. There is
+  // no honest per-fight land figure to show any more, so the LT for a daily
+  // card is now summed off the ENTRY rows — which carry their own fee and
+  // their own fight count, so this reproduces the engine's settle-up exactly
+  // (see Lobbies.complete) rather than re-deriving a fee from the mode.
+  // Tournament land stays per fight: the Majors never joined the group stage.
   const netGpCents = new Map<string, number>();
   const netLt = new Map<string, number>();
   const bump = (map: Map<string, number>, key: string, by: number) =>
     map.set(key, (map.get(key) ?? 0) + by);
   for (const r of log) {
     bump(netGpCents, r.birdId, r.gpDeltaCents); // 0 on Pintakasi rows — the purse settles below
-    bump(
-      netLt,
-      r.birdId,
-      r.tournamentId
-        ? landForTournamentFight(PINTAKASI.LAND_BASIS) // free entry, fixed basis (round 22)
-        : landForFight(FEE_BY_MODE[r.mode])
-    );
+    if (r.tournamentId)
+      bump(netLt, r.birdId, landForTournamentFight(PINTAKASI.LAND_BASIS)); // free entry, fixed basis (round 22)
+  }
+  for (const e of allEntries) {
+    if (e.fights === 0) continue; // unmatched, or not posted yet — land is for FIGHTING
+    bump(netLt, e.birdId, landForFight(stakePerFight(e.fee) * e.fights));
   }
   for (const e of allTEntries) {
     if (e.status === "refunded" || e.status === "bumped") continue; // fee came back
@@ -830,8 +910,11 @@ export default function Admin() {
           <div className="big">
             {now.cancelled.toLocaleString()} {delta("cancelled")}
           </div>
-          <div className="label">cancelled fights</div>
-          <div className="sub">birds without a matchup — fee refunded, no land</div>
+          <div className="label">entries that drew nobody</div>
+          {/* Round 34: a bird sits out only if it was ALONE in its group —
+              a short card still fought, and settles as a partial refund
+              rather than a cancellation. */}
+          <div className="sub">alone in the room — whole fee refunded, no land</div>
         </div>
         <div className="card">
           <div className="big">
@@ -942,8 +1025,23 @@ export default function Admin() {
                       under this element. */}
                   <b>{cardWeather}</b> ascendant ·{" "}
                   {cardPending > 0
-                    ? `${cardPending} awaiting post time`
-                    : `went off at the last tick · ${cardFights} fights · ${cardCancelled} cancelled`}
+                    ? `${cardPending} awaiting post time` +
+                      // Between CLOSE and COMPLETE the groups are dealt but no
+                      // fight has run — that window is the reveal, and worth
+                      // saying out loud. Before close there is nothing to say.
+                      (cardGroups > 0 ? ` · ${cardGroups} groups dealt` : "")
+                    : `went off at the last tick · ${cardGroups} groups · ${cardFights} fights`}
+                  {/* THE ROUND-34 NUMBER (not the fight count): how many birds
+                      got a whole evening. Three-of-three is the design; a
+                      short card means a barn-mate landed in the group or the
+                      room was small, and the unfought stake went home. */}
+                  {cardPending === 0 && (
+                    <>
+                      {" · "}
+                      <b>{cardFull}</b> full cards ({FIGHTS_PER_GROUP_BIRD} fights) ·{" "}
+                      <b>{cardShort}</b> short · <b>{cardCancelled}</b> drew nobody
+                    </>
+                  )}
                   {" · all time: "}
                   {(card.unmatchedRate * 100).toFixed(1)}% of entries never drew an opponent
                 </span>
@@ -959,43 +1057,110 @@ export default function Admin() {
                       ))}
                       {l.label}
                       <span className="fill">
-                        {l.filled} in · #{l.id}
+                        {l.filled} entrants
+                        {/* The groups don't exist until the lobby CLOSES, so
+                            an open room says nothing about them rather than
+                            claiming zero of each. */}
+                        {l.groups.length > 0 && (
+                          <>
+                            {" · "}
+                            {l.groups.length} group{l.groups.length === 1 ? "" : "s"} ·{" "}
+                            {l.bouts.length} fights
+                          </>
+                        )}{" "}
+                        · #{l.id}
                       </span>
                     </div>
-                    {l.bouts.map((b, i) => (
-                      <div className="bout" key={i}>
-                        ✓{" "}
-                        <b>
-                          <span className="grade" style={{ color: gradeColor(b.winner.grade) }}>
-                            {b.winner.grade}
-                          </span>{" "}
-                          {b.winner.name} <ElementSprite element={b.winner.element} size={12} /> {b.winner.stars}★
-                        </b>{" "}
-                        ({b.winnerFarm}) def.{" "}
-                        <span>
-                          <span className="grade" style={{ color: gradeColor(b.loser.grade) }}>
-                            {b.loser.grade}
-                          </span>{" "}
-                          {b.loser.name} <ElementSprite element={b.loser.element} size={12} /> {b.loser.stars}★
-                        </span>{" "}
-                        ({b.loserFarm}){" "}
-                        <span className="figs">
-                          figures {b.figures[0]}/{b.figures[1]}
-                          {/* No force-retirement note here any more (round 31):
-                              the daily card has no hardcore mode, so nothing on
-                              this page can end a career. The Majors do — that
-                              note lives on the Pintakasi section below. */}
-                        </span>
+                    {/* ONE BLOCK PER GROUP (round 34). The lobby no longer
+                        draws pairs, so a flat list of bouts hides the thing
+                        worth reading: which room a fight came out of, and
+                        whether that room gave everyone in it a full card. */}
+                    {l.groups.map((g) => (
+                      <div className="card-group" key={g.no}>
+                        <div className="group-head">
+                          GROUP {g.no + 1}
+                          <span className="dim">
+                            {" "}
+                            {g.size} bird{g.size === 1 ? "" : "s"} · {g.bouts.length} fight
+                            {g.bouts.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <div className="card-bouts">
+                      {g.bouts.map((b, i) => (
+                        <div className="card-bout" key={i}>
+                          <div className="card-fighter winner">
+                            <div className="card-birdline">
+                              <span className="card-bird">
+                                <span className="grade" style={{ color: gradeColor(b.winner.grade) }}>
+                                  {b.winner.grade}
+                                </span>{" "}
+                                {b.winner.name} <ElementSprite element={b.winner.element} size={12} /> {b.winner.stars}★
+                              </span>
+                              <span className="card-figure">PF {b.figures[0]}</span>
+                            </div>
+                            <div className="card-farm">
+                              <span
+                                className="dot"
+                                style={{ background: b.winnerFarmP, borderColor: b.winnerFarmS }}
+                              />
+                              {b.winnerFarm}
+                            </div>
+                          </div>
+                          <div className="card-fighter loser">
+                            <div className="card-birdline">
+                              <span className="card-bird">
+                                <span className="grade" style={{ color: gradeColor(b.loser.grade) }}>
+                                  {b.loser.grade}
+                                </span>{" "}
+                                {b.loser.name} <ElementSprite element={b.loser.element} size={12} /> {b.loser.stars}★
+                              </span>
+                              <span className="card-figure">PF {b.figures[1]}</span>
+                            </div>
+                            <div className="card-farm">
+                              <span
+                                className="dot"
+                                style={{ background: b.loserFarmP, borderColor: b.loserFarmS }}
+                              />
+                              {b.loserFarm}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                        </div>
+                      </div>
+                    ))}
+                    {/* THE SHORT CARD — fought, but not a full evening. The
+                        refund is the mechanic made visible: the entry fee
+                        escrows whole and only the fought share is ever at
+                        risk, so the difference comes home the same night. */}
+                    {l.short.map((s, i) => (
+                      <div className="bout short" key={i}>
+                        ▵ {s.bird} ({s.farm}) — group {(s.group ?? 0) + 1}: {s.fights} of{" "}
+                        {FIGHTS_PER_GROUP_BIRD} fights, {s.refunded} GP unfought and returned
                       </div>
                     ))}
                     {l.unmatched.map((u, i) => (
                       <div className="bout cancelled" key={i}>
-                        ✗ {u.bird} ({u.farm}) — drew nobody, {u.fee} GP refunded
+                        ✗ {u.bird} ({u.farm}) — drew nobody, {u.refunded} GP refunded
                       </div>
                     ))}
                     {l.pending.map((p, i) => (
                       <div className="bout pending" key={i}>
-                        … {p.bird} ({p.farm}) — on the card, awaiting post
+                        … {p.bird} ({p.farm}) —{" "}
+                        {p.drew === null ? (
+                          // Still OPEN: the groups aren't dealt until close,
+                          // so there is no draw to reveal yet.
+                          "on the card, awaiting the draw"
+                        ) : p.drew.length === 0 ? (
+                          // CLOSED and alone in the room — the empty list is
+                          // the answer, not a missing one.
+                          <>group {(p.group ?? 0) + 1}: drew nobody, refunds at post</>
+                        ) : (
+                          <>
+                            group {(p.group ?? 0) + 1}, drew{" "}
+                            {p.drew.map((o) => `${o.bird} (${o.farm})`).join(" · ")}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1104,7 +1269,7 @@ const CSS = `
   .cards.stakecards { margin-top: 0; margin-bottom: 1rem; }
   .cardday h2 { color: #e8b64c; font-size: 1rem; margin: 0 0 .6rem; }
   .cardday .cardsum { color: #9a8f78; font-weight: 400; font-size: .85em; margin-left: .5em; }
-  .lobbies { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: .6rem; }
+  .lobbies { display: flex; flex-direction: column; gap: .75rem; }
   /* Stacked, not columned (round 24) — a bracket tree is much wider than the
      old text list, so each championship now takes the full row and scrolls
      its own bracket sideways (.bracket-wrap) instead of squeezing three
@@ -1121,6 +1286,26 @@ const CSS = `
   .fight-chip.juvenile { color: #9add9a; background: #1c3020; border-color: #3d6b45; }
   .fight-chip.nw3 { color: #f2d675; background: #3b341b; border-color: #756629; }
   .fight-chip.maiden { color: #efacd0; background: #40243a; border-color: #81506f; }
+  /* One block per GROUP (round 34) — the rooms a lobby was dealt into. The
+     rule down the left is the cheapest way to say "these fights belong
+     together" without boxing every group in another border. */
+  .card-group { margin-top: .5rem; padding-left: .5rem; border-left: 2px solid #2b271f; }
+  .group-head { color: #9a8f78; font-size: .78em; letter-spacing: .06em; }
+  .card-bouts { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: .45rem; margin-top: .3rem; }
+  .card-bout { background: #171410; border: 1px solid #3a342a; border-radius: 5px;
+    padding: .3rem .45rem; }
+  .card-fighter { padding: .2rem .35rem; }
+  .card-fighter + .card-fighter { border-top: 1px solid #2b271f; margin-top: .15rem; padding-top: .35rem; }
+  .card-fighter.winner { border-left: 2px solid #e8b64c; }
+  .card-fighter.winner .card-bird { color: #e8b64c; font-weight: 600; }
+  .card-fighter.loser { color: #6a6252; }
+  .card-birdline, .card-farm { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+  .card-birdline { justify-content: space-between; }
+  .card-bird { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-figure { color: #9a8f78; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .card-farm { color: #9a8f78; font-size: .82em; margin-top: .18rem; }
+  .card-farm .dot { margin-right: 0; }
   /* The major/juvenile pill (round 24) — same shape as .world-badge, its own
      two colors: gold for the hardcore stage, green for the discovery one. */
   .division-tag { font-size: .68em; vertical-align: middle; margin-left: .5em; padding: .1em .5em;
@@ -1131,6 +1316,9 @@ const CSS = `
   .bout b { color: #f4e9d0; }
   .bout .figs { color: #9a8f78; }
   .bout.cancelled { color: #e07a6a; }
+  /* Amber, between the red of "no fight at all" and the plain white of a full
+     card: a short card is a partial miss, and it should read as one. */
+  .bout.short { color: #e8b64c; }
   .bout.pending { color: #9fd3f0; }
   /* ── The bracket tree (round 24) ─────────────────────────────────────────
      One CSS grid, no JS: BRACKET_ROW_UNIT-tall rows, one per leaf SEAT (not
@@ -1143,7 +1331,7 @@ const CSS = `
     padding-bottom: .3rem; margin-bottom: .3rem; border-bottom: 1px solid #3a342a; }
   .bracket-head > div.final { color: #e8b64c; font-weight: 600; }
   .bmatch { align-self: center; position: relative; background: #171410; border: 1px solid #3a342a;
-    border-radius: 5px; padding: .2rem .5rem; overflow: hidden; }
+    border-radius: 5px; padding: .35rem .55rem; overflow: hidden; }
   /* The connector stubs — cheap CSS-only gesture at the lines a real bracket
      draws between rounds; on-path turns them gold so the champion's run is
      traceable at a glance across every column it touches. */
@@ -1152,23 +1340,26 @@ const CSS = `
   .bmatch.has-prev::before { left: -1.1rem; }
   .bmatch.has-next::after { right: -1.1rem; }
   .bmatch.on-path.has-prev::before, .bmatch.on-path.has-next::after { background: #e8b64c; height: 2px; }
-  .bfighter { display: flex; align-items: baseline; gap: .4em; font-size: .82em; line-height: 1.5;
-    white-space: nowrap; }
+  .bfighter { display: block; font-size: .82em; line-height: 1.45; min-width: 0; }
+  .bfighter + .bfighter { border-top: 1px solid #2b271f; margin-top: .2rem; padding-top: .25rem; }
+  .bfighter .btop, .bfighter .bmeta { display: flex; align-items: center; gap: .45em; min-width: 0; }
+  .bfighter .btop { justify-content: space-between; }
+  .bfighter .bmeta { margin-top: .08rem; }
   .bfighter.won { color: #f4e9d0; }
   .bfighter.won .bname { color: #e8b64c; font-weight: 600; }
   .bfighter.lost { color: #6a6252; }
   .bfighter.bye { color: #6a6252; font-style: italic; }
-  .bfighter .bidentity { overflow: hidden; text-overflow: ellipsis; }
+  .bfighter .bidentity { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bfighter .belement { color: #9a8f78; }
   .bfighter .bfarm { color: #9a8f78; overflow: hidden; text-overflow: ellipsis; flex: 1; }
   .bfighter.lost .bfarm { color: #524b3d; }
-  .bfighter .bfig { color: #9a8f78; font-variant-numeric: tabular-nums; }
+  .bfighter .bfig { color: #9a8f78; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
   .bfighter .bawards { display: inline-flex; align-items: center; gap: .25em; color: #7fc97f;
     font-variant-numeric: tabular-nums; }
   /* The winner's side gets the gold rail the ask asked for; a bye still
      shows one (it IS the winner, just an unopposed one). */
   .bfighter.won { border-left: 2px solid #e8b64c; padding-left: .35em; margin-left: -.35em; }
-  .bmatch.bchamp { display: flex; flex-direction: column; align-items: flex-start; gap: .25rem;
+  .bmatch.bchamp { display: flex; flex-direction: column; align-items: stretch; gap: .25rem;
     justify-content: center; padding: .5rem .6rem; }
   .bfighter.champ { font-size: .95em; border-left: none; padding-left: 0; margin-left: 0; }
   .bfighter.champ .bname { font-size: 1.05em; }
@@ -1185,5 +1376,6 @@ const CSS = `
   @media (max-width: 620px) {
     .office { padding-left: 1rem; padding-right: 1rem; }
     .cards.topline { grid-template-columns: 1fr; }
+    .card-bouts { grid-template-columns: 1fr; }
   }
 `;

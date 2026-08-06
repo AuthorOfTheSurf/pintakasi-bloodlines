@@ -3,11 +3,22 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, lobbyEntries } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { ECONOMY, FORMAT_NAMES, PINTAKASI, SCOUT, STAKER_FLOWS, landForFight, landForTournamentFight } from "./config";
+import {
+  ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
+  FORMAT_NAMES,
+  GROUP,
+  PINTAKASI,
+  SCOUT,
+  STAKER_FLOWS,
+  landForFight,
+  landForTournamentFight,
+  stakePerFight,
+} from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
-import { onCard } from "./testkit";
+import { expectConserved, makeBird, onCard } from "./testkit";
 
 /**
  * Tonight's adult open key. The blade is no longer the test's to choose — the
@@ -80,13 +91,21 @@ const RIVAL_SLOT: Record<string, number> = {
 };
 const rivalId = (name: string) => `rival-${RIVAL_SLOT[name]}`;
 
-/** Both farms card the same starter slot; the lobby seed decides the night. */
+/**
+ * Both farms card the same starter slot; the lobby seed decides the night.
+ *
+ * TWO BIRDS IS A GROUP OF TWO (round 34), so this is still exactly one fight —
+ * which is why every test built on `duel` survived the group stage. What it is
+ * NOT any more is a full night: each side risks `stakePerFight(fee)` and gets
+ * the other two thirds back, so `lobby.settlements` is now returned alongside
+ * the fight and the money assertions read from there.
+ */
 function duel(w: ReturnType<typeof world>, name: string, spec: LobbySpec, seed: number) {
   w.dev.enter(byName(w.devFlock, name).id, spec, seed);
   w.rival.enter(rivalId(name), spec);
   const tick = w.game.tickDay();
   const lobby = tick.card.find((l) => l.fights.length > 0)!;
-  return { tick, fight: lobby.fights[0] };
+  return { tick, lobby, fight: lobby.fights[0] };
 }
 
 describe("entry rules (the door)", () => {
@@ -234,21 +253,36 @@ describe("the card goes off (pure PvP)", () => {
   test("pooled settle both ways, mirrored logs, superlinear land, records move", () => {
     const w = world();
     const before = totalGp(w.db);
-    const { fight } = duel(w, "Alab", REAL(w.db), 7001);
+    const { lobby, fight } = duel(w, "Alab", REAL(w.db), 7001);
 
     const fee = ECONOMY.REAL_ENTRY_FEE;
+    // ⚠ ROUND 34: a two-bird lobby is a group of two, so this is still one
+    // fight — but the fee no longer IS the wager. A third of it is (the night
+    // was three fights long and only one of them existed), and the other two
+    // thirds come home at settle-up.
+    const stake = stakePerFight(fee);
+    expect(fight.stake).toBe(stake);
+    expect(fight.groupNo).toBe(0);
     const winnerId = fight.winnerFarm === "Bukidnon Farms" ? w.devId : w.rivalId;
     const loserId = winnerId === w.devId ? w.rivalId : w.devId;
-    // Win +entry, lose −entry — the pot is pooled and pure again (round 23).
-    const rakeCents = Math.round(fee * 200 * STAKER_FLOWS.FIGHT_RAKE);
-    expect(gpCents(w.db, winnerId)).toBe(ECONOMY.STARTING_GP * 100 + fee * 100 - rakeCents);
-    expect(gp(w.db, loserId)).toBe(ECONOMY.STARTING_GP - fee);
+    // Win +stake, lose −stake — the pot is pooled and pure again (round 23).
+    const rakeCents = Math.round(stake * 200 * STAKER_FLOWS.FIGHT_RAKE);
+    expect(gpCents(w.db, winnerId)).toBe(ECONOMY.STARTING_GP * 100 + stake * 100 - rakeCents);
+    expect(gp(w.db, loserId)).toBe(ECONOMY.STARTING_GP - stake);
     // No GP printed, none burned — the pot just moved.
     expect(totalGp(w.db)).toBe(before);
-    // Land pays BOTH fighters, scaled superlinearly to the fee.
-    expect(fight.landEach).toBe(landForFight(fee));
-    expect(land(w.db, w.devId)).toBe(landForFight(fee));
-    expect(land(w.db, w.rivalId)).toBe(landForFight(fee));
+    // Every entry settles, whatever happened to it: one fight of three, a
+    // third risked, two thirds refunded.
+    expect(lobby.settlements.length).toBe(2);
+    for (const s of lobby.settlements) {
+      expect(s.fights).toBe(1);
+      expect(s.staked).toBe(stake);
+      expect(s.refunded).toBe(fee - stake);
+    }
+    // Land pays BOTH fighters, ONCE, on what the night actually risked —
+    // not on the fee the bird only partly got to use.
+    expect(land(w.db, w.devId)).toBe(landForFight(stake));
+    expect(land(w.db, w.rivalId)).toBe(landForFight(stake));
     // Two mirrored log rows: same fight, opposite results, cross-referenced.
     const rows = w.db.select().from(battleLog).all();
     expect(rows.length).toBe(2);
@@ -312,7 +346,12 @@ describe("the card goes off (pure PvP)", () => {
     expect(w.db.select().from(birds).where(eq(birds.id, loser.birdId)).get()!.crownPoints).toBe(0);
   });
 
-  test("an odd lobby strands one bird: fee back, no land, no fight", () => {
+  test("an ODD lobby strands nobody any more — the odd bird is a group-mate", () => {
+    // ⚠ THE CONTRACT INVERTED IN ROUND 34, and this test is the reason the
+    // round exists. It used to assert "an odd lobby strands one bird: fee
+    // back, no land, no fight" — three entries meant one pair and a leftover.
+    // Groups have no leftover: three birds in one room are one group of
+    // three, and the two rivals simply never meet each other.
     const w = world();
     const before = totalGp(w.db);
     w.dev.enter(byName(w.devFlock, "Alab").id, REAL(w.db), 555);
@@ -320,18 +359,27 @@ describe("the card goes off (pure PvP)", () => {
     w.rival.enter(rivalId("Sinag"), REAL(w.db));
     const tick = w.game.tickDay();
     const lobby = tick.card[0];
-    expect(lobby.fights.length).toBe(1);
-    expect(lobby.unmatched.length).toBe(1);
-    expect(lobby.unmatched[0].refunded).toBe(ECONOMY.REAL_ENTRY_FEE);
-    expect(totalGp(w.db)).toBe(before); // refund + pooled pot conserve GP exactly
+    // Two of the three possible pairings happen; the rival pair is barred.
+    expect(lobby.fights.length).toBe(2);
+    expect(lobby.unmatched.length).toBe(0);
+    const dev = lobby.settlements.find((s) => s.farm === "Bukidnon Farms")!;
+    expect(dev.fights).toBe(2); // the only bird everyone can fight
+    expect(dev.refunded).toBe(stakePerFight(ECONOMY.REAL_ENTRY_FEE)); // one unfought third
+    for (const s of lobby.settlements.filter((s) => s.farm === "Rival Gamefarm"))
+      expect(s.fights).toBe(1);
+    expect(totalGp(w.db)).toBe(before); // refunds + pooled pots conserve GP exactly
     const statuses = w.db.select().from(lobbyEntries).all().map((e) => e.status).sort();
-    expect(statuses).toEqual(["fought", "fought", "unmatched"]);
+    expect(statuses).toEqual(["fought", "fought", "fought"]);
   });
 
   test("juvenile cards count toward the ONE lifetime record, at juvenile stakes", () => {
     const w = world();
-    const { fight } = duel(w, "Kidlat", onCard(w.db, { mode: "juvenile", classType: "open" }), 31);
-    expect(fight.landEach).toBe(landForFight(ECONOMY.JUVENILE_ENTRY_FEE));
+    const { lobby, fight } = duel(w, "Kidlat", onCard(w.db, { mode: "juvenile", classType: "open" }), 31);
+    expect(fight.stake).toBe(stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE));
+    // One fight of a possible three, so the land is on that one stake.
+    expect(lobby.settlements[0].land).toBe(
+      landForFight(stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE))
+    );
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins + kidlat.losses).toBe(1); // one record, ruled round 15
   });
@@ -347,13 +395,15 @@ describe("the card goes off (pure PvP)", () => {
     // The mechanic is not gone, it MOVED: the Pintakasi Majors are hardcore
     // throughout, and juvenile.test.ts / tournaments.test.ts cover that path.
     const w = world();
-    const { fight } = duel(w, "Sinag", REAL(w.db), 99);
+    const { lobby, fight } = duel(w, "Sinag", REAL(w.db), 99);
     expect(fight.forcedRetirements).toEqual([]);
     const devSinag = byName(w.devFlock, "Sinag");
     const rivalSinag = w.rivalFlock.byId(rivalId("Sinag"));
     expect(devSinag.status).toBe("active");
     expect(rivalSinag.status).toBe("active"); // both walk away, win or lose
-    expect(fight.landEach).toBe(landForFight(ECONOMY.REAL_ENTRY_FEE));
+    // …and both are paid for turning up, on the one stake they risked.
+    for (const s of lobby.settlements)
+      expect(s.land).toBe(landForFight(stakePerFight(ECONOMY.REAL_ENTRY_FEE)));
   });
 
   test("same lobby seed → identical night (replayable)", () => {
@@ -396,21 +446,29 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
     expect(theirView.entries[0].mine).toBe(false);
   });
 
-  test("matchmaking never pairs barn-mates — the excess goes home refunded", () => {
+  test("matchmaking never pairs barn-mates — the lone visitor fights all three", () => {
     const w = world();
     const before = totalGp(w.db);
-    // Three dev birds against one rival bird: only ONE cross-barn fight is
-    // possible; the two leftover dev birds must not meet each other.
+    // Three dev birds against one rival bird. Under PAIRS that was one fight
+    // and two stranded barn-mates; under GROUPS (round 34) it is one group of
+    // four, and the rival's bird is the only opponent any of them has — so it
+    // takes all three fights and the dev birds take one each. The barn-mate
+    // rule is unchanged: no dev bird ever meets another.
     for (const name of ["Alab", "Sinag", "Batong Buhay"]) {
       w.dev.enter(byName(w.devFlock, name).id, REAL(w.db), 808);
     }
     w.rival.enter(rivalId("Alab"), REAL(w.db));
     const lobby = w.game.tickDay().card[0];
-    expect(lobby.fights.length).toBe(1);
-    expect(lobby.fights[0].farms.sort()).toEqual(["Bukidnon Farms", "Rival Gamefarm"]);
-    expect(lobby.unmatched.length).toBe(2);
-    expect(lobby.unmatched.every((u) => u.farm === "Bukidnon Farms")).toBe(true);
-    expect(totalGp(w.db)).toBe(before); // both refunds conserve GP exactly
+    expect(lobby.fights.length).toBe(3);
+    for (const f of lobby.fights) expect(f.farms.sort()).toEqual(["Bukidnon Farms", "Rival Gamefarm"]);
+    expect(lobby.unmatched.length).toBe(0); // nobody goes home empty any more
+    const rival = lobby.settlements.find((s) => s.farm === "Rival Gamefarm")!;
+    expect(rival.fights).toBe(FIGHTS_PER_GROUP_BIRD); // a full night
+    expect(rival.refunded).toBe(0);
+    expect(rival.staked).toBe(ECONOMY.REAL_ENTRY_FEE);
+    for (const s of lobby.settlements.filter((s) => s.farm === "Bukidnon Farms"))
+      expect(s.fights).toBe(1); // one apiece — the visitor is their only door
+    expect(totalGp(w.db)).toBe(before); // every refund and pot conserves GP exactly
   });
 
   test("two birds apiece, many seeds — every draw is cross-barn", () => {
@@ -421,10 +479,13 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
       w.rival.enter(rivalId("Alab"), REAL(w.db));
       w.rival.enter(rivalId("Sinag"), REAL(w.db));
       const lobby = w.game.tickDay().card[0];
-      expect(lobby.fights.length).toBe(2);
+      // A group of four, less the two same-barn pairings it refuses: four
+      // fights, two apiece. (Under pairs this was two fights, one apiece.)
+      expect(lobby.fights.length).toBe(4);
       for (const f of lobby.fights) {
         expect(f.farms[0]).not.toBe(f.farms[1]);
       }
+      for (const s of lobby.settlements) expect(s.fights).toBe(2);
     }
   });
 });
@@ -441,7 +502,9 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     expect(view.status).toBe("closed");
     expect(view.entries.length).toBe(2);
     const mine = view.entries.find((e) => e.mine)!;
-    expect(mine.drew).toEqual({ bird: "Alab", farm: "Bukidnon Farms" });
+    // The draw is a LIST since round 34 — the bird's whole group, which here
+    // is the one other bird in the room.
+    expect(mine.drew).toEqual([{ bird: "Alab", farm: "Bukidnon Farms" }]);
 
     // Entries are locked — a latecomer opens a FRESH lobby, not this one.
     const late = w.rival.enter(rivalId("Sinag"), REAL(w.db));
@@ -453,7 +516,8 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     const w = world();
     w.dev.enter(byName(w.devFlock, "Alab").id, REAL(w.db), 313);
     Lobbies.close(w.db, "all");
-    expect(live(w.dev)[0].entries[0].drew).toBeNull();
+    // Drew NOBODY is an empty list now, not a null (round 34).
+    expect(live(w.dev)[0].entries[0].drew).toEqual([]);
     expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - ECONOMY.REAL_ENTRY_FEE); // still escrowed
     Lobbies.complete(w.db);
     expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP); // fee home at post time
@@ -576,15 +640,251 @@ describe("the land curve (fight up)", () => {
     // more — the daily card runs none, and the Majors are free — so the curve's
     // top end is now exercised against the tournament land basis, which is what
     // actually pays a bird for fighting up.
+    //
+    // ⚠ ROUND 34 CHANGED WHAT THE ARGUMENT MEANS. It used to be the entry fee
+    // of a single fight; it is now the TOTAL a bird risked across its group,
+    // which for a full night is the whole fee and for a short one is less. The
+    // rungs below are therefore the FULL-NIGHT rungs.
     expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBe(1);
-    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBe(7);
+    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBe(6);
     expect(landForTournamentFight(PINTAKASI.LAND_BASIS)).toBeGreaterThan(
       landForFight(ECONOMY.REAL_ENTRY_FEE)
     );
+
+    // THE DIRECTION OF THE WHOLE RULING, and round 34 nearly lost it. Dearer
+    // company must pay MORE LAND PER GP RISKED, not just more land. Moving the
+    // juvenile night to 9 GP first pushed it to 2 LT (0.222/GP against a real
+    // card's 0.167) — the cheapest fight in the game paying the best land in
+    // it — which is why LAND.FEE_PER_TOKEN moved with it. Pin the ratio, not
+    // the rungs: the rungs above will drift, this must not.
+    const perGp = (fee: number) => landForFight(fee) / fee;
+    expect(perGp(ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(perGp(ECONOMY.JUVENILE_ENTRY_FEE));
+
+    // WHY LAND PAYS ONCE ON THE NIGHT rather than once per fight. Not because
+    // it pays better — at the real rungs the two happen to land on the same
+    // number — but because paying per fight would feed the curve three small
+    // stakes, and a small stake sits on the `max(1, …)` FLOOR where the
+    // exponent does nothing. A juvenile is the case that shows it: three 3 GP
+    // fights would each floor to 1 LT and mint 3 for a 9 GP night that is
+    // worth exactly 1. Per-fight payment doesn't reward fighting, it rewards
+    // being cheap. So the rule is: never more than per-fight, often much less.
+    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
+    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBeLessThanOrEqual(
+      FIGHTS_PER_GROUP_BIRD * landForFight(stake)
+    );
+    const juvStake = stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE);
+    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBeLessThan(
+      FIGHTS_PER_GROUP_BIRD * landForFight(juvStake)
+    );
+    expect(landForFight(2 * stake)).toBeLessThan(landForFight(ECONOMY.REAL_ENTRY_FEE));
+    expect(landForFight(stake)).toBeLessThan(landForFight(2 * stake));
     // 3× the fee pays MORE than 3× the land — the "fight up" incentive, which
     // is the property the whole curve exists for.
     expect(landForFight(3 * ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(
       3 * landForFight(ECONOMY.REAL_ENTRY_FEE)
     );
+  });
+});
+
+/**
+ * THE GROUP STAGE (round 34). One entry buys a night of up to
+ * FIGHTS_PER_GROUP_BIRD fights, not one fight.
+ *
+ * These pin the four things the round is actually made of, in the order they
+ * matter: the arithmetic (the fee must divide), the DEAL (sizes levelled so
+ * nobody sits out), the SPLIT (you risk a share per fight and the rest comes
+ * home), and the fact that land moved from the fight to the night.
+ */
+describe("the group stage (round 34 — one entry, a group of fights)", () => {
+  /**
+   * n barns, one fresh two-year-old apiece — the clean case where nothing but
+   * the deal decides who fights whom. Every existing fixture in this file has
+   * two barns with eight birds each, which is exactly the wrong shape for
+   * testing a matchmaker: barn-mate collisions dominate.
+   */
+  function soloBarns(w: ReturnType<typeof world>, n: number) {
+    return Array.from({ length: n }, (_, i) => {
+      const { farm } = w.game.farms.register({
+        name: `Group Barn ${i + 1}`,
+        primaryColor: "blue",
+        secondaryColor: "white",
+      });
+      const bird = makeBird(w.db, { farmId: farm.id, name: `Grouper ${i + 1}` });
+      return { farmId: farm.id, name: farm.name, lobbies: new Lobbies(w.db, farm.id), birdId: bird.id };
+    });
+  }
+
+  /** Every solo barn cards its bird into one room; the first fixes the seed. */
+  function cardThemAll(w: ReturnType<typeof world>, barns: ReturnType<typeof soloBarns>, seed = 4242) {
+    const spec = REAL(w.db);
+    barns.forEach((b, i) => b.lobbies.enter(b.birdId, spec, i === 0 ? seed : undefined));
+    return spec;
+  }
+
+  test("THE ARITHMETIC: both entry fees divide evenly by the fights in a group", () => {
+    // ⚠ THE LOAD-BEARING CONSTRAINT OF THE WHOLE ROUND, which is why it is
+    // asserted against config and not against 42 and 9. The fee is escrowed
+    // whole and spent a share at a time; if the share were fractional the
+    // refund would be too, and GP is kept to the cent by an invariant that
+    // does not bend. Change GROUP.SIZE and this is what breaks first.
+    for (const fee of [ECONOMY.REAL_ENTRY_FEE, ECONOMY.JUVENILE_ENTRY_FEE]) {
+      expect(fee % FIGHTS_PER_GROUP_BIRD).toBe(0);
+      expect(stakePerFight(fee)).toBe(fee / FIGHTS_PER_GROUP_BIRD);
+      expect(Number.isInteger(stakePerFight(fee))).toBe(true);
+      expect(stakePerFight(fee) * FIGHTS_PER_GROUP_BIRD).toBe(fee);
+    }
+  });
+
+  test("a full group: four barns, six fights, three apiece", () => {
+    const w = world();
+    const barns = soloBarns(w, GROUP.SIZE);
+    cardThemAll(w, barns);
+    const lobby = w.game.tickDay().card.find((l) => l.settlements.length === GROUP.SIZE)!;
+    // Everyone fights everyone: C(4,2) = 6.
+    expect(lobby.fights.length).toBe((GROUP.SIZE * (GROUP.SIZE - 1)) / 2);
+    expect(lobby.fights.every((f) => f.groupNo === 0)).toBe(true);
+    expect(lobby.unmatched.length).toBe(0);
+    for (const s of lobby.settlements) {
+      expect(s.fights).toBe(FIGHTS_PER_GROUP_BIRD);
+      expect(s.staked).toBe(ECONOMY.REAL_ENTRY_FEE); // the whole entry got used
+      expect(s.refunded).toBe(0);
+    }
+    expectConserved(w.db);
+  });
+
+  test("THE LEVELLING: nine birds deal 3+3+3, and nobody sits out", () => {
+    // ⚠ THIS IS THE PROPERTY, not the fight count. Naive packing would deal
+    // 4+4+1 and strand the ninth bird alone in a room — the exact failure the
+    // group stage exists to delete. So the assertion that matters is that NO
+    // entry ends the night with zero fights.
+    const w = world();
+    const barns = soloBarns(w, 9);
+    cardThemAll(w, barns, 777);
+    const lobby = w.game.tickDay().card.find((l) => l.settlements.length === 9)!;
+    expect(lobby.unmatched.length).toBe(0);
+    expect(lobby.settlements.every((s) => s.fights > 0)).toBe(true);
+    // Three groups of three: three fights each, nine in all, two a bird.
+    expect(lobby.fights.length).toBe(9);
+    expect(new Set(lobby.fights.map((f) => f.groupNo)).size).toBe(3);
+    for (const s of lobby.settlements) {
+      expect(s.fights).toBe(2);
+      expect(s.staked).toBe(2 * stakePerFight(ECONOMY.REAL_ENTRY_FEE));
+      expect(s.refunded).toBe(stakePerFight(ECONOMY.REAL_ENTRY_FEE));
+    }
+    expectConserved(w.db);
+  });
+
+  test("a lobby of ONE still strands its bird — full refund, no land", () => {
+    // The only case groups cannot fix, and it is the honest one: a bird alone
+    // in a room has nobody to fight. Land is for FIGHTING, so it earns none.
+    const w = world();
+    const [only] = soloBarns(w, 1);
+    const before = totalGp(w.db); // AFTER the barn registers — a new farm is a faucet
+    cardThemAll(w, [only]);
+    const lobby = w.game.tickDay().card.find((l) => l.settlements.length === 1)!;
+    expect(lobby.fights.length).toBe(0);
+    expect(lobby.unmatched.length).toBe(1);
+    expect(lobby.settlements[0]).toEqual({
+      farm: only.name,
+      bird: "Grouper 1",
+      fights: 0,
+      staked: 0,
+      refunded: ECONOMY.REAL_ENTRY_FEE,
+      land: 0,
+    });
+    expect(land(w.db, only.farmId)).toBe(0);
+    expect(gp(w.db, only.farmId)).toBe(ECONOMY.STARTING_GP);
+    expect(totalGp(w.db)).toBe(before);
+    expectConserved(w.db);
+  });
+
+  test("THE STAKE SPLIT: two fights of three refunds exactly one stake", () => {
+    // Zane's ruling, in its original words: "If the bird is the odd bird out
+    // and only gets two fights, then I'd expect them to get refunded 20." The
+    // shape that produces a short card is a SAME-BARN COLLISION inside a
+    // group — two birds of one farm never meet, so each loses one pairing.
+    const w = world();
+    const [a, b, c] = soloBarns(w, 3);
+    const second = makeBird(w.db, { farmId: a.farmId, name: "Grouper 1B" });
+    const before = totalGp(w.db); // AFTER the barns register — a new farm is a faucet
+    const spec = REAL(w.db);
+    a.lobbies.enter(a.birdId, spec, 31337);
+    a.lobbies.enter(second.id, spec);
+    b.lobbies.enter(b.birdId, spec);
+    c.lobbies.enter(c.birdId, spec);
+
+    const lobby = w.game.tickDay().card.find((l) => l.settlements.length === GROUP.SIZE)!;
+    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
+    // Six pairings less the one barn-mate pairing that is never made.
+    expect(lobby.fights.length).toBe(5);
+    expect(lobby.fights.every((f) => f.stake === stake)).toBe(true);
+    for (const s of lobby.settlements.filter((s) => s.farm === a.name)) {
+      expect(s.fights).toBe(2);
+      expect(s.staked).toBe(2 * stake);
+      expect(s.refunded).toBe(stake); // the fight that could not be made
+    }
+    // …while the two singletons got everyone, and nothing came home.
+    for (const s of lobby.settlements.filter((s) => s.farm !== a.name)) {
+      expect(s.fights).toBe(FIGHTS_PER_GROUP_BIRD);
+      expect(s.refunded).toBe(0);
+    }
+    expect(totalGp(w.db)).toBe(before); // the pots and the refunds both balance
+    expectConserved(w.db);
+  });
+
+  test("LAND PAYS ONCE, on the night's total risk — not per fight, not on the fee", () => {
+    // Three ways to get this wrong, all of them tempting, all of them here:
+    // paying per fight (3× the LT), paying on the fee when the card was short
+    // (over-paying a bird that never risked it), and paying on the per-fight
+    // stake (which flattens the curve into its floor).
+    const w = world();
+    const [a, b, c] = soloBarns(w, 3);
+    const second = makeBird(w.db, { farmId: a.farmId, name: "Grouper 1B" });
+    const spec = REAL(w.db);
+    a.lobbies.enter(a.birdId, spec, 31337);
+    a.lobbies.enter(second.id, spec);
+    b.lobbies.enter(b.birdId, spec);
+    c.lobbies.enter(c.birdId, spec);
+    const lobby = w.game.tickDay().card.find((l) => l.settlements.length === GROUP.SIZE)!;
+    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
+
+    for (const s of lobby.settlements) {
+      expect(s.land).toBe(landForFight(s.staked));
+      expect(s.land).toBeLessThan(s.fights * landForFight(stake) + landForFight(stake)); // not per-fight
+    }
+    const short = lobby.settlements.find((s) => s.farm === a.name)!;
+    const full = lobby.settlements.find((s) => s.farm !== a.name)!;
+    expect(short.land).toBe(landForFight(2 * stake));
+    expect(short.land).toBeLessThan(full.land); // a short card is paid less…
+    expect(full.land).toBe(landForFight(ECONOMY.REAL_ENTRY_FEE)); // …and a full one on the whole fee
+    // The wallet agrees with the report: barn A holds both of its birds' awards.
+    expect(land(w.db, a.farmId)).toBe(2 * short.land);
+    expect(land(w.db, b.farmId)).toBe(full.land);
+  });
+
+  test("the draw is the GROUP: every group-mate, never a barn-mate", () => {
+    const w = world();
+    const [a, b, c] = soloBarns(w, 3);
+    const second = makeBird(w.db, { farmId: a.farmId, name: "Grouper 1B" });
+    const spec = REAL(w.db);
+    a.lobbies.enter(a.birdId, spec, 31337);
+    a.lobbies.enter(second.id, spec);
+    b.lobbies.enter(b.birdId, spec);
+    c.lobbies.enter(c.birdId, spec);
+    Lobbies.close(w.db, "all");
+
+    const view = live(a.lobbies).find((l) => l.filled === GROUP.SIZE)!;
+    expect(view.status).toBe("closed");
+    const mine = view.entries.filter((e) => e.mine);
+    expect(mine.length).toBe(2);
+    for (const e of mine) {
+      // Its two opponents, and NOT the barn-mate it will never be matched
+      // with — listing that would promise a fight the matchmaker refuses.
+      expect(e.drew!.map((d) => d.farm).sort()).toEqual([b.name, c.name]);
+      expect(e.drew!.every((d) => d.farm !== a.name)).toBe(true);
+    }
+    // And the singletons see all three of theirs, barn-mates being irrelevant.
+    const theirs = view.entries.find((e) => e.farm.name === b.name)!;
+    expect(theirs.drew!.length).toBe(FIGHTS_PER_GROUP_BIRD);
   });
 });

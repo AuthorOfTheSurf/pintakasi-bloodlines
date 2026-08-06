@@ -37,7 +37,20 @@ export interface Topline {
   landStaked: number;
   landLiquid: number;
   fights: number; // fights fought, all time
-  cancelled: number; // entries that found no opponent (fee refunded)
+  // Card entries that found NO opponent at all and were refunded in full.
+  //
+  // ⚠ ROUND 34 changed how this is counted, because the old way stopped being
+  // honest. It counted every `refund` EVENT — but a scratched championship
+  // emits one too, so the figure was always "unmatched birds plus tournament
+  // scratches" wearing a label that named only the first. That was tolerable
+  // while unmatched ran in the hundreds and drowned the scratches out. The
+  // group stage takes unmatched to near zero, which would have left a counter
+  // labelled "drew nobody" reporting mostly championship scratches — a number
+  // that gets MORE wrong exactly as the thing it names gets better.
+  //
+  // Counting the entries themselves is both exact and simpler: `unmatched` is
+  // a terminal status written once at settle-up, and it means precisely this.
+  cancelled: number;
   covers: number;
   rolls: number;
   birds: number;
@@ -82,7 +95,7 @@ export function computeTopline(db: DB): Topline {
     landStaked,
     landLiquid,
     fights: db.select().from(battleLog).all().filter((r) => r.result === "win").length,
-    cancelled: db.select().from(events).all().filter((e) => e.type === "refund").length,
+    cancelled: db.select().from(lobbyEntries).all().filter((e) => e.status === "unmatched").length,
     covers: allBirds.filter((b) => b.motherId !== null).length,
     rolls: db.select().from(gachaTokens).all().length,
     birds: allBirds.length,

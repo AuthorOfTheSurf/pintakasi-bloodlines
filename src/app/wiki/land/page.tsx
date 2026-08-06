@@ -4,11 +4,13 @@ import {
   CLAIMER,
   COVERS,
   ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
   LAND,
   PINTAKASI,
   STAKER_FLOWS,
   landForFight,
   landForTournamentFight,
+  stakePerFight,
 } from "@/engine/config";
 import { fmtGp } from "@/engine/events";
 
@@ -36,9 +38,30 @@ export default function LandPage() {
   // two modes the daily card actually runs. It used to be measured against the
   // hardcore entry, which left the card that round — the curve is unchanged,
   // only the pair of points we quote on it.
+  //
+  // ⚠ THE SIGN OF THIS CAN FLIP, and round 34 flipped it before catching it.
+  // The curve is superlinear, but land is paid in WHOLE tokens with a floor of
+  // 1, and at the cheap end the rounding can be worth more than the exponent.
+  // Moving the juvenile night to 9 GP pushed (9/8)^1.15 to 1.145, which `ceil`
+  // made TWO tokens — so for a few hours the discovery year paid 0.222 LT per
+  // GP against a real card's 0.167, i.e. the cheapest company in the game paid
+  // the best land in it. LAND.FEE_PER_TOKEN moved 8 → 9 to fix it at the
+  // source; see its note in config.
+  //
+  // The branch below STAYS anyway, and deliberately. It was written when the
+  // sign really was inverted, and it is the right shape regardless: a page that
+  // asserts "fighting up pays more per peso" while the arithmetic says
+  // otherwise is exactly the confident nonsense the Handbook exists to prevent.
+  // Now it simply reads the true branch, and it will catch the next fee change
+  // that trips the same rounding boundary without anybody noticing.
   const realLandPerGp = landForFight(ECONOMY.REAL_ENTRY_FEE) / ECONOMY.REAL_ENTRY_FEE;
   const juvenileLandPerGp = landForFight(ECONOMY.JUVENILE_ENTRY_FEE) / ECONOMY.JUVENILE_ENTRY_FEE;
   const upFightingBonus = Math.round((realLandPerGp / juvenileLandPerGp - 1) * 100);
+  // What the curve would pay a real entry before whole-token rounding — the
+  // honest way to show that the exponent is doing its job even when the floor
+  // hides it at these two particular prices.
+  const juvenileRaw = Math.pow(ECONOMY.JUVENILE_ENTRY_FEE / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT);
+  const juvenileBetterPct = Math.round((juvenileLandPerGp / realLandPerGp - 1) * 100);
   const crownLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
 
   // Every worked number below is computed from the live config, not typed —
@@ -78,8 +101,17 @@ export default function LandPage() {
       <h2>Every way to get land</h2>
       <p>
         Land is unconditional on the result — you get paid whether you win or lose — but it scales
-        with the stakes, and it scales <strong>more than proportionally</strong>. Fighting &ldquo;up&rdquo;
-        into dearer company pays disproportionately more land, not just more money.
+        with what was at stake, and the curve underneath it is{" "}
+        <strong>steeper than a straight line</strong>. Fighting &ldquo;up&rdquo; into dearer company
+        is meant to pay disproportionately more land, not just more money — and at the big-money
+        end, where the Majors live, it plainly does.
+      </p>
+      <p>
+        On the daily card it is paid <strong>once per entry</strong>, when the night settles, and it
+        is measured on the total your bird actually risked — not on what you paid at the door. One
+        entry now buys a group of up to {FIGHTS_PER_GROUP_BIRD} fights (see{" "}
+        <Link href="/wiki/card">The card</Link>), so a bird that fights its whole group is paid on
+        the whole entry:
       </p>
       <div className="tablewrap">
         <table>
@@ -87,7 +119,8 @@ export default function LandPage() {
             <tr>
               <th>Mode</th>
               <th className="num">Entry fee</th>
-              <th className="num">LT, per fighter (win or lose)</th>
+              <th className="num">Full card of {FIGHTS_PER_GROUP_BIRD}</th>
+              <th className="num">Short card of {FIGHTS_PER_GROUP_BIRD - 1}</th>
             </tr>
           </thead>
           <tbody>
@@ -96,17 +129,38 @@ export default function LandPage() {
                 <td>{m.label}</td>
                 <td className="num">{m.fee} GP</td>
                 <td className="num">{landForFight(m.fee)} LT</td>
+                <td className="num">
+                  {landForFight(stakePerFight(m.fee) * (FIGHTS_PER_GROUP_BIRD - 1))} LT
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="dim">
-        A real entry costs {Math.round(ECONOMY.REAL_ENTRY_FEE / ECONOMY.JUVENILE_ENTRY_FEE)}× a
-        juvenile one, but it pays about {upFightingBonus}% more land <em>per GP staked</em>. That is
-        the curve: every step up in stakes pays more than its share. The steepest step of all is the
-        Pintakasi Majors, below.
+        A short card pays less, and honestly so — the bird risked less. It happens when your
+        bird&apos;s group held one of your own barn-mates, since two birds of one farm are never
+        matched against each other and that fight is simply skipped.
       </p>
+      {upFightingBonus > 0 ? (
+        <p className="dim">
+          A real entry costs {(ECONOMY.REAL_ENTRY_FEE / ECONOMY.JUVENILE_ENTRY_FEE).toFixed(1)}× a
+          juvenile one, but it pays about {upFightingBonus}% more land <em>per GP staked</em>. That
+          is the curve: every step up in stakes pays more than its share. The steepest step of all
+          is the Pintakasi Majors, below.
+        </p>
+      ) : (
+        <p className="dim">
+          One honest wrinkle, at these two particular prices. Land is minted in whole tokens and
+          never rounds below 1, and down at the cheap end that rounding is worth more than the
+          curve: the juvenile award works out at {juvenileRaw.toFixed(2)} before rounding and is
+          paid as {landForFight(ECONOMY.JUVENILE_ENTRY_FEE)} LT. So per GP staked, the discovery
+          year is actually the <em>better</em> land deal right now — about {juvenileBetterPct}%
+          better. The curve underneath is still superlinear, and it shows properly once the stakes
+          are big enough for the rounding to stop mattering: the Pintakasi Majors, below, are the
+          steepest step of all. Card your one-year-olds; the land is cheap there.
+        </p>
+      )}
 
       <h3>The Pintakasi Majors pay even steeper</h3>
       <p>
@@ -181,9 +235,10 @@ export default function LandPage() {
       </p>
 
       <div className="callout warn">
-        <b>The one exception: an unmatched bird earns nothing.</b> If your lobby closes odd and your
-        bird is the one left without an opponent, its entry fee is refunded — but it earns zero
-        land. Land is for fighting, not queueing.
+        <b>The one exception: a bird that never fights earns nothing.</b> If your bird was the only
+        one entered in its lobby, it draws nobody, its entry fee is refunded in full — and it earns
+        zero land. Land is for fighting, not queueing. That is the only way to come away with
+        nothing now; any bird that got even one fight is paid on what it risked.
       </div>
 
       <h2>Spending it — the first sink</h2>

@@ -5,15 +5,18 @@ import {
   CARD,
   CLAIMER,
   ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
   FIGHT_MODES,
   FORMATS,
   FORMAT_NAMES,
+  GROUP,
   LOBBIES,
   NW_CAP,
   PINTAKASI,
   STAKER_FLOWS,
   cardOfDay,
   landForFight,
+  stakePerFight,
 } from "@/engine/config";
 import type { FightFormat, FightMode } from "@/engine/config";
 import { fmtGp } from "@/engine/events";
@@ -48,6 +51,25 @@ const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesd
  * schedule the engine posts, not an illustration of one.
  */
 const EXAMPLE_DAY = 0;
+
+/**
+ * How a field of N birds is cut up, using the engine's own levelling rule
+ * (Lobbies.dealGroups): as FEW groups as will hold the field, then the sizes
+ * levelled across them. Written out here rather than typed as "3+3+3" so the
+ * worked example below re-deals itself if GROUP.SIZE ever moves.
+ */
+function dealSizes(n: number): number[] {
+  const count = Math.ceil(n / GROUP.SIZE);
+  return Array.from({ length: count }, (_, i) => Math.floor(n / count) + (i < n % count ? 1 : 0));
+}
+
+/** The example fields the group-stage table walks through. */
+const EXAMPLE_FIELDS = [
+  GROUP.SIZE,
+  GROUP.SIZE * 2 + 1,
+  GROUP.SIZE * 3 + 2,
+  GROUP.SIZE * 7 + 2,
+];
 
 /**
  * The longest a bird ever waits for one particular blade in a division's open
@@ -94,7 +116,9 @@ export default function CardPage() {
         Every game-day the stewards <strong>post a card</strong> — a short list of the fights
         running tonight. Each line on it is a lobby, named by division, class and blade (plus a tag
         price, for claimers). You enter birds into the lobbies you like; when the day ends, every
-        lobby pairs its birds off at random and the fights run.
+        lobby deals its birds into small <strong>groups</strong>, and inside a group everybody
+        fights everybody. One entry buys your bird a whole night — up to{" "}
+        {FIGHTS_PER_GROUP_BIRD} fights, not one.
       </p>
 
       <h2>Tonight&apos;s card, and tomorrow&apos;s</h2>
@@ -109,6 +133,12 @@ export default function CardPage() {
         always existed, because you invented it by asking, and so did everybody else. Birds spread
         themselves across dozens of near-empty rooms, and roughly one entry in six never drew an
         opponent at all. No matchmaker can fix that. Only crowding can.
+      </p>
+      <p className="dim">
+        Crowding got it down to about one entry in twenty, and the last of it was arithmetic rather
+        than a shortage of birds: while fights were drawn in <em>pairs</em>, a room holding an odd
+        number of birds always sent one home. The group stage below finished the job. Nobody sits
+        out any more unless they were the only bird in the room.
       </p>
       <p>
         So now the day picks the fights and you pick from the day. If tonight has nothing perfect
@@ -202,8 +232,12 @@ export default function CardPage() {
       <p>
         There is exactly <strong>one lobby per posted fight</strong>, and it has no size limit.
         Everybody who enters that fight tonight is in the same room. Entering is binding: the fee is
-        escrowed the moment you enter, and the bird&apos;s one fight for the day is spent. There is
+        escrowed the moment you enter, and the bird&apos;s one entry for the day is spent. There is
         no cancelling.
+      </p>
+      <p className="dim">
+        One <em>entry</em> a day, note — not one fight. A bird may be carded once per game-day, and
+        that single card is what buys it its group of fights below.
       </p>
       <p>
         Lobbies used to cap out, and a second room opened on the same fight once the first was full.
@@ -213,12 +247,134 @@ export default function CardPage() {
         is nothing to wait for. You can always get in, and the number of birds you see in a lobby
         only ever goes up.
       </p>
+      <h2>The group stage</h2>
+      <p className="lede">
+        This is the newest rule in the game, and the one that changes the shape of a night. When a
+        lobby closes, it does not draw pairs. It deals its birds into <strong>groups</strong> of at
+        most {GROUP.SIZE}. Everybody in a group fights everybody else in that group. So one entry
+        buys your bird up to <strong>{FIGHTS_PER_GROUP_BIRD} fights in a night</strong>.
+      </p>
+      <p>
+        Three fights is a real evening of evidence. One figure is an opinion; three, at the same
+        blade, on the same night, is something you can actually read a bird by — which is the whole
+        point of the discovery year and most of the point of carding a grown bird at all. See{" "}
+        <Link href="/wiki/fighting">Fighting</Link> for how to read the figures it hands you.
+      </p>
+
+      <h3>How the groups are dealt</h3>
+      <p>
+        The sizes are <strong>levelled</strong>, not packed. The lobby uses as few groups as will
+        hold the field and then spreads the birds evenly across them, so a field of nine becomes
+        three groups of three rather than {GROUP.SIZE}+{GROUP.SIZE}+1. That is the rule that makes
+        the old problem go away: there is no leftover bird, because there is no leftover.
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="num">Birds in the lobby</th>
+              <th>Groups dealt</th>
+              <th className="num">Fights each bird gets</th>
+            </tr>
+          </thead>
+          <tbody>
+            {EXAMPLE_FIELDS.map((n) => {
+              const sizes = dealSizes(n);
+              return (
+                <tr key={n}>
+                  <td className="num">{n}</td>
+                  <td>{sizes.join(" + ")}</td>
+                  <td className="num">
+                    {sizes[0] === sizes[sizes.length - 1]
+                      ? sizes[0] - 1
+                      : `${sizes[sizes.length - 1] - 1}–${sizes[0] - 1}`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        A group of {GROUP.SIZE} is {FIGHTS_PER_GROUP_BIRD} fights. A group of three is two fights, a
+        group of two is one. Below {GROUP.MIN_SIZE} birds there is no fight to make at all — a bird
+        alone in an empty room is the one case left where nobody gets carded, and it is refunded in
+        full.
+      </p>
+      <div className="callout tip">
+        <b>Why {GROUP.SIZE} and not eight.</b> Every extra bird in a group costs everyone else
+        another fight, and it climbs fast: a group of six would be five fights a bird in one night. A
+        group of {GROUP.SIZE} is already a full evening — enough evidence to read a bird by, without
+        a single card deciding its whole career.
+      </div>
+
+      <h3>Barn-mates are kept apart</h3>
+      <p>
+        Two birds from the same farm never fight each other. That rule has always held, and the deal
+        works to protect it: the biggest barn in the room is dealt out first, while there is still
+        room to spread it across groups. Enter five birds into one lobby and the deal will do its
+        best to put all five in different groups.
+      </p>
+      <p>
+        Sometimes it can&apos;t — a room where most of the birds are yours has nowhere to spread
+        them. Then two of your birds share a group, that pairing is simply skipped, and both of them
+        fight one fewer time. Nothing is lost: they only pay for the fights they got (below).
+      </p>
+
+      <h3>You pay per fight, and the rest comes back</h3>
+      <p>
+        The entry fee is the price of the <em>night</em>, and it splits evenly across the{" "}
+        {FIGHTS_PER_GROUP_BIRD} fights the night can hold. It escrows whole when you enter; each
+        fight risks one share; anything your bird never got to risk is handed straight back when the
+        card settles.
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th className="num">Entry fee</th>
+              <th className="num">Risked per fight</th>
+              <th className="num">Full card of {FIGHTS_PER_GROUP_BIRD}</th>
+              <th className="num">Short card of {FIGHTS_PER_GROUP_BIRD - 1}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FIGHT_MODES.map((mode) => {
+              const fee = MODE_FEE[mode];
+              const stake = stakePerFight(fee);
+              return (
+                <tr key={mode}>
+                  <td>{MODE_LABEL[mode]}</td>
+                  <td className="num">{fee} GP</td>
+                  <td className="num">{stake} GP</td>
+                  <td className="num">{stake * FIGHTS_PER_GROUP_BIRD} GP risked, 0 back</td>
+                  <td className="num">
+                    {stake * (FIGHTS_PER_GROUP_BIRD - 1)} GP risked, {stake} GP back
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="callout tip">
+        <b>The fee went up and the price of a fight went down.</b> A real entry costs{" "}
+        {ECONOMY.REAL_ENTRY_FEE} GP and a juvenile one {ECONOMY.JUVENILE_ENTRY_FEE} GP — both a
+        little dearer than they were, and both now buying {FIGHTS_PER_GROUP_BIRD} times the fights.
+        Per fight your bird is risking {stakePerFight(ECONOMY.REAL_ENTRY_FEE)} GP and{" "}
+        {stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE)} GP a side. The fees are the numbers they are so
+        that they divide by {FIGHTS_PER_GROUP_BIRD} exactly, with no fraction of a peso left over.
+      </div>
       <div className="callout warn">
-        <b>The catch: an odd lobby still strands one bird.</b> The old cap was an even number on
-        purpose — a full room paired everybody. A room with no limit closes on whatever number of
-        birds walked in, and if that number is odd, one bird goes home unmatched. It gets its entry
-        fee back and earns nothing else: no land, no points, no fight.{" "}
-        <strong>Land is for fighting, not queueing.</strong>
+        <b>Land is paid once, on what you actually risked.</b> Not once per fight. When the card
+        settles, your bird earns Land Tokens on the total it put up that night — a full card of{" "}
+        {FIGHTS_PER_GROUP_BIRD} real fights mints {landForFight(ECONOMY.REAL_ENTRY_FEE)} LT, a short
+        card of {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
+        {landForFight(stakePerFight(ECONOMY.REAL_ENTRY_FEE) * (FIGHTS_PER_GROUP_BIRD - 1))} LT. A
+        bird that drew nobody at all earns none.{" "}
+        <strong>Land is for fighting, not queueing.</strong> See{" "}
+        <Link href="/wiki/land">Land Tokens</Link>.
       </div>
 
       <h2>The board</h2>
@@ -241,7 +397,7 @@ export default function CardPage() {
               <th>Mode</th>
               <th className="num">Entry fee</th>
               <th>Who may enter</th>
-              <th className="num">Land minted, per fighter</th>
+              <th className="num">Land, for a full card of {FIGHTS_PER_GROUP_BIRD}</th>
             </tr>
           </thead>
           <tbody>
@@ -366,10 +522,13 @@ export default function CardPage() {
 
       <h2>The pot</h2>
       <p>
-        Both sides post the entry fee.{" "}
+        Every fight has its own pot, and it is built from <strong>stakes, not entry fees</strong>.
+        Both birds put up one share of their entry — {stakePerFight(ECONOMY.REAL_ENTRY_FEE)} GP each
+        in a real fight — so the pot for one fight is two shares, not two entries. Win all{" "}
+        {FIGHTS_PER_GROUP_BIRD} and you take {FIGHTS_PER_GROUP_BIRD} pots.{" "}
         {STAKER_FLOWS.FIGHT_RAKE === 0
-          ? "The daily card takes no cut at all: the winner banks the whole pooled pot, and the loser loses exactly its entry — nothing more, nothing less."
-          : `The winner takes the pooled pot, less a ${(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% rake that goes to the farms staking Land Tokens, not to the house.`}{" "}
+          ? "The daily card takes no cut at all: the winner banks the whole pot, and the loser loses exactly its stake — nothing more, nothing less."
+          : `The winner takes the pot, less a ${(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% rake that goes to the farms staking Land Tokens, not to the house.`}{" "}
         No GP is ever printed or destroyed here.
       </p>
       <div className="tablewrap">
@@ -377,17 +536,20 @@ export default function CardPage() {
           <thead>
             <tr>
               <th>Mode</th>
-              <th className="num">Pot (2× entry)</th>
+              <th className="num">Stake, per fight</th>
+              <th className="num">Pot (2 stakes)</th>
               <th className="num">Winner banks</th>
             </tr>
           </thead>
           <tbody>
             {FIGHT_MODES.map((mode) => {
-              const potCents = MODE_FEE[mode] * 2 * 100;
+              const stake = stakePerFight(MODE_FEE[mode]);
+              const potCents = stake * 2 * 100;
               const rakeCents = Math.round(potCents * STAKER_FLOWS.FIGHT_RAKE);
               return (
                 <tr key={mode}>
                   <td>{MODE_LABEL[mode]}</td>
+                  <td className="num">{stake} GP</td>
                   <td className="num">{fmtGp(potCents)} GP</td>
                   <td className="num">{fmtGp(potCents - rakeCents)} GP</td>
                 </tr>
@@ -405,10 +567,17 @@ export default function CardPage() {
         </p>
       ) : (
         <p className="dim">
-          The rake is {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% of the whole pot, both entries
-          combined — the loser still loses its full entry either way.
+          The rake is {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% of the whole pot, both stakes
+          combined — the loser still loses its full stake either way.
         </p>
       )}
+      <p className="dim">
+        So a real bird that sweeps its group turns {ECONOMY.REAL_ENTRY_FEE} GP into{" "}
+        {stakePerFight(ECONOMY.REAL_ENTRY_FEE) * 2 * FIGHTS_PER_GROUP_BIRD} GP, and one that loses
+        all {FIGHTS_PER_GROUP_BIRD} is out its entry and nothing more. Every fight in between just
+        adds up. A night is now a small run of results rather than a single coin flip, which is
+        exactly the point: one bad draw no longer decides what you learned about your bird.
+      </p>
 
       <h2>The fog</h2>
       <p>
@@ -441,18 +610,17 @@ export default function CardPage() {
         tag means accepting the exposure.
       </p>
 
-      <h2>Matchmaking</h2>
+      <h2>The draw</h2>
       <p>
-        When a lobby closes, its birds are paired off at random — but never two birds from the same
-        barn. If you enter several birds into one lobby, the draw actively keeps them apart from
-        each other.
+        When a lobby closes, the deal happens and the fog lifts together. You see the whole field,
+        and you see your bird&apos;s group — the birds it is about to fight, all{" "}
+        {FIGHTS_PER_GROUP_BIRD} of them if the group filled. Your own barn-mates are not on that
+        list, because your bird will never be matched against them.
       </p>
       <p>
-        That guarantee has a cost: if a lobby fills unevenly, the surplus from the biggest barn can
-        run out of opponents. Whatever&apos;s left over after every cross-barn pair is drawn goes
-        home as the odd bird out — fee refunded in full, but no land. A crowded card is the fix for
-        that, which is most of why the card exists at all: fewer, fuller lobbies mean far fewer
-        birds standing around with nobody to fight.
+        An empty list means your bird drew nobody: it was alone in the room. That is the only way a
+        card comes to nothing now, and it refunds in full when the day settles. A crowded card is
+        still the fix — the fuller the lobby, the fuller everybody&apos;s group.
       </p>
 
       <h2>After the win</h2>
@@ -461,7 +629,10 @@ export default function CardPage() {
         {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s Pintakasi Majors — {PINTAKASI.POINTS_FOR.real} for
         a real win, {PINTAKASI.POINTS_FOR.juvenile} for juvenile practice. A bird needs{" "}
         {PINTAKASI.QUALIFYING_POINTS} of them to stand in a Major, and a lobby win is the{" "}
-        <strong>only</strong> way to earn one — winning a championship banks none. See{" "}
+        <strong>only</strong> way to earn one — winning a championship banks none. Each fight is
+        counted on its own, so a bird that sweeps a full group banks{" "}
+        {PINTAKASI.POINTS_FOR.real * FIGHTS_PER_GROUP_BIRD} points in a single night, and every
+        fight goes on its lifetime record too. See{" "}
         <Link href="/wiki/pintakasi">The Pintakasi</Link> for the full bracket.
       </p>
 

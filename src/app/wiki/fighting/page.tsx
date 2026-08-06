@@ -3,6 +3,7 @@ import { gradeOf } from "@/engine/grades";
 import {
   BATTLE,
   ELEMENTS,
+  FIGHTS_PER_GROUP_BIRD,
   FIGURE,
   FORMATS,
   FORMAT_NAMES,
@@ -487,6 +488,12 @@ export default function FightingPage() {
         <Link href="/wiki/birds">Birds &amp; stats</Link>) so you can read the pattern at a
         glance. Reading figures — yours and everyone else&apos;s — <em>is</em> the skill of the
         game.
+      </p>
+      <p>
+        One entry hands you up to {FIGHTS_PER_GROUP_BIRD} of them in a night, all at the same blade
+        against different birds (see <Link href="/wiki/card">The card</Link>). That is the cheapest
+        evidence in the game: one figure is an opinion, three in one evening is a read. If a
+        bird&apos;s three figures at one blade sit close together, believe them.
       </p>
 
       <div className="next">
