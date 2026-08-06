@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS battle_log (
   opponent_bird_id TEXT NOT NULL,
   opponent_farm_id TEXT NOT NULL,
   opponent_name TEXT NOT NULL,
+  self_grade TEXT NOT NULL DEFAULT 'B+',
+  opponent_grade TEXT NOT NULL DEFAULT 'B+',
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
   pit_figure INTEGER NOT NULL,
   gp_delta_cents INTEGER NOT NULL,

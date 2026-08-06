@@ -16,6 +16,7 @@ import { emit, fmtGp } from "./events";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile } from "./lifecycle";
+import { overallGradeOf } from "./grades";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
 
 /**
@@ -788,6 +789,8 @@ export class Tournaments {
           opponentBirdId: other.row.id,
           opponentFarmId: other.entry.farmId,
           opponentName: other.row.name,
+          selfGrade: overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition),
+          opponentGrade: overallGradeOf(other.row.agility + other.row.sight + other.row.stamina + other.row.gameness + other.row.station + other.row.condition),
           result: side.won ? "win" : "loss",
           pitFigure: side.figure,
           gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle

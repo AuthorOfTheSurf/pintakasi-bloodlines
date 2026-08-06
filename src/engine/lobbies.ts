@@ -21,6 +21,7 @@ import {
 import { emit, fmtGp } from "./events";
 import { creditCents, payStakers } from "./farms";
 import { overallGradeOf } from "./grades";
+import { normalizedScoutFigure } from "./scout";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile, canRealFight } from "./lifecycle";
@@ -335,13 +336,20 @@ export class Lobbies {
    */
   scoutReport(birdId: string): ScoutReport {
     const records = this.formatRecords(birdId);
+    const normalizedTotals = Object.fromEntries(FORMAT_NAMES.map((f) => [f, 0])) as Record<FightFormat, number>;
+    for (const row of this.database.select().from(battleLog).where(eq(battleLog.birdId, birdId)).all())
+      normalizedTotals[row.format] += normalizedScoutFigure(
+        row.pitFigure,
+        row.selfGrade as import("./grades").Grade,
+        row.opponentGrade as import("./grades").Grade
+      );
     const blades = {} as Record<FightFormat, ScoutBlade>;
     let totalFights = 0;
     for (const f of FORMAT_NAMES) {
       const rec = records[f] ?? { fights: 0, wins: 0, losses: 0, avgFigure: 0, bestFigure: 0 };
       totalFights += rec.fights;
       const score =
-        (rec.avgFigure * rec.fights + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
+        (normalizedTotals[f] + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
         (rec.fights + SCOUT.PRIOR_WEIGHT);
       blades[f] = { ...rec, score: Math.round(score * 10) / 10 };
     }
@@ -643,6 +651,8 @@ export class Lobbies {
           opponentBirdId: other.row.id,
           opponentFarmId: other.entry.farmId,
           opponentName: other.row.name,
+          selfGrade: overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition),
+          opponentGrade: overallGradeOf(other.row.agility + other.row.sight + other.row.stamina + other.row.gameness + other.row.station + other.row.condition),
           result: side.won ? "win" : "loss",
           pitFigure: side.figure,
           // Net to the bird's barn, in cents: the winner keeps the other

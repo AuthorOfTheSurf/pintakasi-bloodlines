@@ -255,6 +255,14 @@ export default function BirdsPage() {
         never as &ldquo;bad.&rdquo; No evidence is not bad evidence.
       </p>
       <p>
+        The scout also makes a small, public-context correction before it compares blades. A higher
+        letter grade is expected to post a louder figure, and better company lifts both birds&apos;
+        numbers. Those broad expectations are taken out using the grades printed on the old card.
+        The win, the beaten lengths, and the blade itself stay in the score. That way the report
+        asks &ldquo;where did this bird exceed expectations?&rdquo;, not merely &ldquo;where did
+        it meet tougher company?&rdquo;
+      </p>
+      <p>
         A blade stays marked <strong>unread</strong> until the bird has at least {SCOUT.MIN_READS}{" "}
         figures there — one reading, however loud, isn&apos;t a verdict. Unread blades are
         exploration targets: the only way to fill in the report is to card the bird there and pay

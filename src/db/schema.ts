@@ -150,6 +150,10 @@ export const battleLog = sqliteTable("battle_log", {
   opponentBirdId: text("opponent_bird_id").notNull(),
   opponentFarmId: text("opponent_farm_id").notNull(),
   opponentName: text("opponent_name").notNull(),
+  // Public-card grade snapshots keep scout normalization historical even
+  // after retirement reveals a sheet or a later ruleset changes the ladder.
+  selfGrade: text("self_grade").notNull().default("B+"),
+  opponentGrade: text("opponent_grade").notNull().default("B+"),
   result: text("result", { enum: ["win", "loss"] }).notNull(),
   // The Pit Figure — banded performance rating, format-normalized. The
   // discovery signal: compare figures ACROSS formats to type the bird.

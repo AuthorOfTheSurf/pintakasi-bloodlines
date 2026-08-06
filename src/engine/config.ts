@@ -505,6 +505,13 @@ export const FIGURE = {
 // Bayesian prior sized in pseudo-fights. Players (get_bird), auto-play and
 // the bots all read this same report; nobody reads the sheet.
 export const SCOUT = {
+  // Pit Figures are public performance, not a pure blade read: a higher
+  // public grade and stronger public company predict a louder number before
+  // the blade tells us anything. The scout removes only those coarse
+  // expectations, centered on B+, and leaves result and beaten lengths in.
+  REFERENCE_GRADE: "B+" as const,
+  OWN_GRADE_STEP: 15,
+  OPPONENT_GRADE_STEP: 5,
   // An unread blade scores the even-starter figure — the same ~50 that
   // GHOST_PACE is tuned to. Reading "nothing known" as "average" is what
   // stops a single lucky 80 from looking like a destiny.

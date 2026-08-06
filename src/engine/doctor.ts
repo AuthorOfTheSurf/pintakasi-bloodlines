@@ -24,6 +24,7 @@ import {
 } from "./config";
 import { GameClock } from "./game-clock";
 import { ageOf } from "./lifecycle";
+import { normalizedScoutFigure } from "./scout";
 import {
   computeTopline,
   gpFromFaucetsCents,
@@ -694,7 +695,11 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
       if (withinOne(scoutBest)) bucket.scoutNearHits++;
     }
     records[r.format].fights++;
-    records[r.format].figureTotal += r.pitFigure;
+    records[r.format].figureTotal += normalizedScoutFigure(
+      r.pitFigure,
+      r.selfGrade as import("./grades").Grade,
+      r.opponentGrade as import("./grades").Grade
+    );
     history.set(bird.id, records);
   }
   return {
