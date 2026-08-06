@@ -3,9 +3,16 @@
 import { useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
-import { PINTAKASI } from "@/engine/config";
-import { gradeColor, gradeOf, overallGradeOf } from "@/engine/grades";
-import { BASE_COAT_HEX, BirdSprite, EggSprite, ElementSprite, TOKEN_EGG_HEX } from "./sprites";
+import { gradeColor, gradeOf, overallGradeOf, type Grade } from "@/engine/grades";
+import {
+  BASE_COAT_HEX,
+  BirdSprite,
+  EggSprite,
+  ElementSprite,
+  GpIcon,
+  LtIcon,
+  TOKEN_EGG_HEX,
+} from "./sprites";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -46,11 +53,15 @@ export interface FarmRowUI {
 export interface FightRowUI {
   day: number;
   card: string;
+  pintakasiRound: string;
+  element: string;
   winner: string;
+  winnerGrade: Grade;
   winnerFarm: string;
   winnerFarmP: string;
   winnerFarmS: string;
   loser: string;
+  loserGrade: Grade;
   loserFarm: string;
   loserFarmP: string;
   loserFarmS: string;
@@ -61,6 +72,7 @@ export interface FightRowUI {
 
 export interface BirdRowUI {
   name: string;
+  grade: Grade;
   farm: string;
   farmP: string;
   farmS: string;
@@ -87,25 +99,23 @@ export interface BirdRowUI {
   // fights minted. The answer to "was this bird worth feeding?"
   netGp: number;
   netLt: number;
-  // Qualification points toward a Pintakasi crown (round 22) — the crowns
-  // are free, so this is the currency that actually gets a bird in.
-  crownPoints: number;
 }
 
 export interface BreedingRowUI {
   seq: number;
   conceived: number; // day the cover was bought
   egg: string;
+  eggGrade: Grade;
   hen: string;
+  henGrade: Grade;
   rooster: string;
+  roosterGrade: Grade;
   studFarm: string;
   studFarmP: string;
   studFarmS: string;
   nestFarm: string;
   nestFarmP: string;
   nestFarmS: string;
-  lays: number; // day index of the lay Friday
-  hatches: number; // day index of the hatch Friday
   stage: string; // pregnant · in the nest · hatched
   fee: number;
   studShare: number;
@@ -178,6 +188,49 @@ const deltaClasses = {
   down: (p: { value: number | null }) => (p.value ?? 0) < 0,
 };
 
+/** A bird name led by its colored overall grade. */
+function GradedNameCell(props: {
+  value?: string;
+  data?: Record<string, unknown>;
+  gradeField?: string;
+}) {
+  const grade = props.gradeField
+    ? (props.data?.[props.gradeField] as Grade | undefined)
+    : undefined;
+  if (!props.value) return null;
+  return (
+    <span>
+      {grade ? (
+        <>
+          <b className="grade" style={{ color: gradeColor(grade) }}>{grade}</b>{" "}
+        </>
+      ) : null}
+      {props.value}
+    </span>
+  );
+}
+
+/** A numeric token amount with the currency icon kept beside the value. */
+function TokenAmountCell(props: {
+  value?: number | null;
+  token: "gp" | "lt";
+  display?: "signed" | "positive" | "plain";
+  dp?: number;
+}) {
+  if (props.value == null) return null;
+  const text = props.display === "signed"
+    ? signed(props.value)
+    : props.display === "positive"
+      ? (props.value ? `+${num(props.value, props.dp ?? 0)}` : "")
+      : num(props.value, props.dp);
+  if (!text) return null;
+  return (
+    <span>
+      {props.token === "gp" ? <GpIcon size={14} /> : <LtIcon size={14} />} {text}
+    </span>
+  );
+}
+
 /**
  * The farm chip — name + the two-color dot, wherever a farm is shown.
  * cellRendererParams name the fields holding the colors (and, optionally,
@@ -215,15 +268,34 @@ const farmCol = (field: string, header: string, prefix: string): ColDef => ({
 const FARM_COLS: ColDef<FarmRowUI>[] = [
   {
     field: "name",
-    headerName: "farm",
+    headerName: "name",
     cellRenderer: FarmCell,
     cellRendererParams: { p: "farmP", s: "farmS", bot: "bot" },
-    flex: 1,
-    minWidth: 220,
+    width: 190,
   },
-  { field: "gp", headerName: "GP", type: "rightAligned", valueFormatter: (p) => num(p.value), sort: "desc", width: 120 },
-  { field: "wins", headerName: "W", type: "rightAligned", width: 80 },
-  { field: "losses", headerName: "L", type: "rightAligned", width: 80 },
+  {
+    field: "gp",
+    headerName: "GP",
+    type: "rightAligned",
+    cellRenderer: TokenAmountCell,
+    cellRendererParams: { token: "gp" },
+    width: 120,
+  },
+  {
+    colId: "record",
+    headerName: "record",
+    valueGetter: (p) => p.data ? `${p.data.wins}-${p.data.losses}` : "",
+    comparator: (_a, _b, nodeA, nodeB) => {
+      const a = nodeA.data as FarmRowUI | undefined;
+      const b = nodeB.data as FarmRowUI | undefined;
+      if (!a || !b) return 0;
+      return a.wins - b.wins || b.losses - a.losses;
+    },
+    sort: "desc",
+    sortIndex: 0,
+    type: "rightAligned",
+    width: 90,
+  },
   { field: "liquidLt", headerName: "LT liquid", type: "rightAligned", width: 110 },
   { field: "stakedLt", headerName: "LT staked", type: "rightAligned", width: 110 },
   { field: "birds", headerName: "birds", type: "rightAligned", width: 90 },
@@ -233,9 +305,20 @@ const FARM_COLS: ColDef<FarmRowUI>[] = [
 const FIGHT_COLS: ColDef<FightRowUI>[] = [
   { field: "day", type: "rightAligned", width: 80, sort: "desc" },
   { field: "card", width: 200 },
-  { field: "winner", width: 140 },
+  { field: "pintakasiRound", headerName: "Pintakasi round", width: 145 },
+  {
+    field: "winner",
+    width: 165,
+    cellRenderer: GradedNameCell,
+    cellRendererParams: { gradeField: "winnerGrade" },
+  },
   farmCol("winnerFarm", "winner's farm", "winnerFarm"),
-  { field: "loser", width: 140 },
+  {
+    field: "loser",
+    width: 165,
+    cellRenderer: GradedNameCell,
+    cellRendererParams: { gradeField: "loserGrade" },
+  },
   farmCol("loserFarm", "loser's farm", "loserFarm"),
   {
     headerName: "figures",
@@ -245,6 +328,7 @@ const FIGHT_COLS: ColDef<FightRowUI>[] = [
     sortable: false,
   },
   { field: "pot", headerName: "pot GP", type: "rightAligned", width: 95 },
+  { field: "element", width: 115, cellRenderer: ElementCell },
 ];
 
 /** The profile photo — egg sprite while in the shell, coat + trim after. */
@@ -261,7 +345,7 @@ function BirdAvatarCell(props: { data?: BirdRowUI }) {
  * A green · S purple · O amber) — raw number in secondary grey.
  */
 function GradeCell(props: { value?: number }) {
-  if (props.value == null) return null;
+  if (props.value == null) return <span className="statnum">?</span>;
   const grade = gradeOf(props.value);
   return (
     <span>
@@ -309,7 +393,7 @@ function GachaEggCell(props: { value?: string; data?: GachaRowUI }) {
 const STAT_COL_WIDTH = 130;
 const statCol = (field: keyof BirdRowUI): ColDef<BirdRowUI> => ({
   field,
-  headerName: field,
+  headerName: field.charAt(0).toUpperCase() + field.slice(1),
   type: "rightAligned",
   width: STAT_COL_WIDTH,
   minWidth: STAT_COL_WIDTH,
@@ -331,14 +415,19 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
     // showing an overflow ellipsis beside it.
     cellStyle: { padding: 0, display: "flex", alignItems: "center", justifyContent: "center" },
   },
-  { field: "name", minWidth: 150, pinned: "left" },
+  {
+    field: "name",
+    minWidth: 175,
+    pinned: "left",
+    cellRenderer: GradedNameCell,
+    cellRendererParams: { gradeField: "grade" },
+  },
   farmCol("farm", "farm", "farm"),
   { field: "sex", width: 95 },
   { field: "age", type: "rightAligned", width: 75 },
-  // Element first, then its star rating — the type, then how much of it.
+  { field: "total", headerName: "Overall", type: "rightAligned", width: 120, sort: "desc", cellRenderer: TotalCell },
   { field: "element", width: 115, cellRenderer: ElementCell },
   { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
-  { field: "total", headerName: "Overall", type: "rightAligned", width: 120, sort: "desc", cellRenderer: TotalCell },
   statCol("agility"),
   statCol("sight"),
   statCol("stamina"),
@@ -346,29 +435,29 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   statCol("station"),
   statCol("condition"),
   { field: "status", width: 150 },
-  { field: "wins", headerName: "W", type: "rightAligned", width: 70 },
-  { field: "losses", headerName: "L", type: "rightAligned", width: 70 },
+  {
+    colId: "record",
+    headerName: "Record",
+    valueGetter: (p) => p.data ? `${p.data.wins}-${p.data.losses}` : "",
+    type: "rightAligned",
+    width: 90,
+  },
   {
     field: "netGp",
     headerName: "net GP",
     type: "rightAligned",
     width: 110,
-    valueFormatter: (p) => signed(p.value),
+    cellRenderer: TokenAmountCell,
+    cellRendererParams: { token: "gp", display: "signed" },
     cellClassRules: deltaClasses,
-  },
-  {
-    field: "crownPoints",
-    headerName: "crown pts",
-    type: "rightAligned",
-    width: 120,
-    cellClassRules: { up: (p: { value: number | null }) => (p.value ?? 0) >= PINTAKASI.QUALIFYING_POINTS },
   },
   {
     field: "netLt",
     headerName: "net LT",
     type: "rightAligned",
     width: 110,
-    valueFormatter: (p) => (p.value ? `+${num(p.value, 0)}` : ""),
+    cellRenderer: TokenAmountCell,
+    cellRendererParams: { token: "lt", display: "positive", dp: 0 },
     cellClass: "up",
   },
   // Unimportant — parked at the far end (ruled round 15).
@@ -379,13 +468,26 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
 const BREEDING_COLS: ColDef<BreedingRowUI>[] = [
   { field: "seq", hide: true, sort: "desc" },
   { field: "conceived", headerName: "day", type: "rightAligned", width: 80 },
-  { field: "egg", minWidth: 170 },
-  { field: "hen", width: 140 },
-  { field: "rooster", width: 140 },
+  {
+    field: "egg",
+    minWidth: 190,
+    cellRenderer: GradedNameCell,
+    cellRendererParams: { gradeField: "eggGrade" },
+  },
+  {
+    field: "hen",
+    width: 165,
+    cellRenderer: GradedNameCell,
+    cellRendererParams: { gradeField: "henGrade" },
+  },
+  {
+    field: "rooster",
+    width: 165,
+    cellRenderer: GradedNameCell,
+    cellRendererParams: { gradeField: "roosterGrade" },
+  },
   farmCol("studFarm", "stud's farm", "studFarm"),
   farmCol("nestFarm", "nest (egg's farm)", "nestFarm"),
-  { field: "lays", headerName: "lays (day)", type: "rightAligned", width: 100 },
-  { field: "hatches", headerName: "hatches (day)", type: "rightAligned", width: 120 },
   { field: "stage", width: 120 },
   { field: "fee", headerName: "fee GP", type: "rightAligned", width: 90 },
   { field: "studShare", headerName: "stud share GP", type: "rightAligned", width: 125 },
@@ -411,7 +513,8 @@ const GP_COLS: ColDef<GpRowUI>[] = [
     headerName: "GP",
     type: "rightAligned",
     width: 120,
-    valueFormatter: (p) => signed(p.value),
+    cellRenderer: TokenAmountCell,
+    cellRendererParams: { token: "gp", display: "signed" },
     cellClassRules: deltaClasses,
   },
 ];

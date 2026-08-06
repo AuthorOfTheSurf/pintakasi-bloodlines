@@ -15,11 +15,12 @@ import {
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
+import { gradeColor, overallGradeOf, type Grade } from "@/engine/grades";
 import { ageOf } from "@/engine/lifecycle";
 import { baselineBefore, computeTopline, stakingBook, type Topline } from "@/engine/snapshots";
 import { cardHealth } from "@/engine/doctor";
 import { DIVISION_RULES, roundName, seedPlacement, type Division } from "@/engine/tournaments";
-import { GpIcon, LtIcon } from "./sprites";
+import { ElementSprite, GpIcon, LtIcon } from "./sprites";
 import {
   AdminTabs,
   type BirdRowUI,
@@ -44,9 +45,6 @@ export const dynamic = "force-dynamic";
 
 const LEDGER_LIMIT = 3000;
 const FIGHT_LIMIT = 1000;
-
-/** Who carried the day's ascendant element, in one character on the card label. */
-const EDGE_MARK = { winner: "→W", loser: "→L", both: "→both", none: "" } as const;
 
 function gpFmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -81,7 +79,12 @@ type LogRow = typeof battleLog.$inferSelect;
 interface BracketFighter {
   bird: string;
   farm: string;
+  grade: Grade;
+  element: string;
+  stars: number;
   figure: number | null; // null on a bye — nobody threw a blade
+  gpWonCents: number;
+  landGranted: number;
   won: boolean;
 }
 interface BracketMatch {
@@ -111,7 +114,7 @@ function buildBracket(
   field: EntryRow[],
   log: LogRow[],
   tournamentId: number,
-  bname: (id: string) => string,
+  birdCard: (id: string) => { name: string; grade: Grade; element: string; stars: number },
   fname: (id: string | null) => string,
   championBirdId: string | null
 ): BracketRound[] {
@@ -129,12 +132,25 @@ function buildBracket(
   const figureOf = (birdId: string, oppId: string): number | null =>
     log.find((r) => r.tournamentId === tournamentId && r.birdId === birdId && r.opponentBirdId === oppId)
       ?.pitFigure ?? null;
-  const fighter = (e: EntryRow, won: boolean, figure: number | null): BracketFighter => ({
-    bird: bname(e.birdId),
-    farm: fname(e.farmId),
-    figure,
-    won,
-  });
+  const fighter = (
+    e: EntryRow,
+    won: boolean,
+    figure: number | null,
+    showAwards = false
+  ): BracketFighter => {
+    const card = birdCard(e.birdId);
+    return {
+      bird: card.name,
+      farm: fname(e.farmId),
+      grade: card.grade,
+      element: card.element,
+      stars: card.stars,
+      figure,
+      gpWonCents: showAwards ? e.gpWonCents : 0,
+      landGranted: showAwards ? e.landGranted : 0,
+      won,
+    };
+  };
 
   const rounds: BracketRound[] = [];
   for (let round = 1; round <= totalRounds; round++) {
@@ -156,8 +172,10 @@ function buildBracket(
         const winner = a.eliminatedRound === round ? b : a;
         matches.push({
           isBye: false,
-          a: fighter(a, winner === a, figureOf(a.birdId, b.birdId)),
-          b: fighter(b, winner === b, figureOf(b.birdId, a.birdId)),
+          // Awards settle at the participant's final matchup: the loser
+          // exits here, while the champion receives theirs after the final.
+          a: fighter(a, winner === a, figureOf(a.birdId, b.birdId), winner !== a || round === totalRounds),
+          b: fighter(b, winner === b, figureOf(b.birdId, a.birdId), winner !== b || round === totalRounds),
           onPath: winner.birdId === championBirdId,
         });
         next.push(winner);
@@ -190,9 +208,31 @@ function Bracket({
   bracketSize,
 }: {
   rounds: BracketRound[];
-  champion: { bird: string; farm: string; wonCents: number };
+  champion: {
+    bird: string;
+    farm: string;
+    grade: Grade;
+    element: string;
+    stars: number;
+    wonCents: number;
+    landGranted: number;
+  };
   bracketSize: number;
 }) {
+  const fighterName = (f: Pick<BracketFighter, "bird" | "grade" | "element" | "stars">) => (
+    <>
+      <b className="grade" style={{ color: gradeColor(f.grade) }}>{f.grade}</b>{" "}
+      <span className="bname">{f.bird}</span>{" "}
+      <span className="belement"><ElementSprite element={f.element} size={12} /> {f.stars}★</span>
+    </>
+  );
+  const awards = (f: Pick<BracketFighter, "gpWonCents" | "landGranted">) =>
+    f.gpWonCents > 0 || f.landGranted > 0 ? (
+      <span className="bawards">
+        {f.gpWonCents > 0 && <><GpIcon size={11} /> +{gpFmt(f.gpWonCents)}</>}
+        {f.landGranted > 0 && <><LtIcon size={11} /> +{f.landGranted}</>}
+      </span>
+    ) : null;
   const totalRounds = rounds.length;
   const columns = totalRounds + 1; // + the champion's own column
   const colTemplate = `repeat(${columns}, ${BRACKET_COL_WIDTH})`;
@@ -225,16 +265,18 @@ function Bracket({
               style={{ gridColumn: round, gridRow: `${mi * span + 1} / span ${span}` }}
             >
               <div className={`bfighter ${m.a.won ? "won" : "lost"}`}>
-                <span className="bname">{m.a.bird}</span>
+                <span className="bidentity">{fighterName(m.a)}</span>
                 <span className="bfarm">{m.a.farm}</span>
+                {awards(m.a)}
                 {m.a.figure !== null && <span className="bfig">{m.a.figure}</span>}
               </div>
               {m.isBye ? (
                 <div className="bfighter bye">— bye —</div>
               ) : (
                 <div className={`bfighter ${m.b!.won ? "won" : "lost"}`}>
-                  <span className="bname">{m.b!.bird}</span>
+                  <span className="bidentity">{fighterName(m.b!)}</span>
                   <span className="bfarm">{m.b!.farm}</span>
+                  {awards(m.b!)}
                   {m.b!.figure !== null && <span className="bfig">{m.b!.figure}</span>}
                 </div>
               )}
@@ -246,10 +288,13 @@ function Bracket({
           style={{ gridColumn: columns, gridRow: `1 / span ${bracketSize}` }}
         >
           <div className="bfighter won champ">
-            🏆 <span className="bname">{champion.bird}</span>
+            🏆 <span className="bidentity">{fighterName(champion)}</span>
             <span className="bfarm">{champion.farm}</span>
           </div>
-          <div className="bpurse">+{gpFmt(champion.wonCents)} GP</div>
+          <div className="bpurse">
+            <GpIcon size={11} /> +{gpFmt(champion.wonCents)}
+            {champion.landGranted > 0 && <> · <LtIcon size={11} /> +{champion.landGranted}</>}
+          </div>
         </div>
       </div>
     </div>
@@ -323,6 +368,18 @@ export default function Admin() {
   const pendingEntries = allEntries.filter((e) => e.status === "pending");
   const pendingClaims = d.select().from(claims).all().filter((c) => c.status === "pending");
   const allEvents = d.select().from(events).all();
+  const birdCard = (id: string) => {
+    const bird = birdById.get(id);
+    const total = bird
+      ? bird.agility + bird.sight + bird.stamina + bird.gameness + bird.station + bird.condition
+      : 0;
+    return {
+      name: bird?.name ?? id,
+      grade: overallGradeOf(total),
+      element: bird?.element ?? "",
+      stars: (bird?.halfStars ?? 0) / 2,
+    };
+  };
 
   // Farm display helpers — name + the two colors, everywhere a farm shows.
   const fname = (id: string | null) => (id ? (farmById.get(id)?.name ?? id) : "— world —");
@@ -358,23 +415,7 @@ export default function Admin() {
   const cardDay = allLobbies.length ? Math.max(...allLobbies.map((l) => l.dayOpened)) : null;
   // One element for the whole card — every lobby below ran under it.
   const cardWeather = cardDay === null ? null : weatherOfDay(cardDay);
-  const bname = (id: string) => birdById.get(id)?.name ?? id;
-  /**
-   * Which side of a bout was fighting in its OWN weather. Recovered, never
-   * stored: battle_log carries the day and weatherOfDay is pure, so this
-   * works for every fight ever run — including the ones fought in worlds
-   * seeded before the weather existed.
-   */
-  const birdEdge = (
-    day: number,
-    winnerId: string,
-    loserId: string
-  ): "winner" | "loser" | "both" | null => {
-    const ascendant = weatherOfDay(day);
-    const w = birdById.get(winnerId)?.element === ascendant;
-    const l = birdById.get(loserId)?.element === ascendant;
-    return w && l ? "both" : w ? "winner" : l ? "loser" : null;
-  };
+  const bname = (id: string) => birdCard(id).name;
   const cardLobbies = allLobbies
     .filter((l) => l.dayOpened === cardDay)
     .map((l) => {
@@ -382,22 +423,19 @@ export default function Admin() {
       const bouts = log
         .filter((r) => r.lobbyId === l.id && r.result === "win")
         .map((w) => ({
-          winner: bname(w.birdId),
+          winner: birdCard(w.birdId),
           winnerFarm: fname(w.farmId),
-          loser: w.opponentName,
+          loser: birdCard(w.opponentBirdId),
           loserFarm: fname(w.opponentFarmId),
           figures: [w.pitFigure, log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0] as const,
-          // Which side (if either) was fighting in its own weather — the
-          // figures printed beside it are inflated for whoever carries it,
-          // and the steward reading this page is the one person who should
-          // never mistake a good day for a good bird.
-          edge: birdEdge(w.dayIndex, w.birdId, w.opponentBirdId),
         }));
       return {
         id: l.id,
-        label:
-          cardLabel(l.mode, l.classType) +
-          `${l.price ? ` @ ${l.price} GP tag` : ""} · ${FORMATS[l.format as FightFormat].label}`,
+        tags: [
+          ...(l.mode === "juvenile" ? [{ label: "JUVENILE", kind: "juvenile" }] : []),
+          { label: l.classType.toUpperCase(), kind: l.classType },
+        ],
+        label: `${l.price ? `${l.price} GP tag · ` : ""}${FORMATS[l.format as FightFormat].label}`,
         // No capacity any more (round 31): one unbounded lobby per posted key,
         // so the fill count is a bare number with nothing to divide it by.
         filled: entries.length,
@@ -437,8 +475,9 @@ export default function Admin() {
       // boxes fall back to the plain states below.
       const rounds =
         t.status === "completed" && t.bracketSize
-          ? buildBracket(t.bracketSize, totalRounds, fieldEntries, log, t.id, bname, fname, champion?.birdId ?? null)
+          ? buildBracket(t.bracketSize, totalRounds, fieldEntries, log, t.id, birdCard, fname, champion?.birdId ?? null)
           : [];
+      const championCard = champion ? birdCard(champion.birdId) : null;
       return {
         id: t.id,
         weekIndex: t.weekIndex,
@@ -450,7 +489,15 @@ export default function Admin() {
         pending: entries.filter((e) => e.status === "pending").length,
         purseCents: t.purseCents,
         champion: champion
-          ? { bird: bname(champion.birdId), farm: fname(champion.farmId), wonCents: champion.gpWonCents }
+          ? {
+              bird: championCard!.name,
+              farm: fname(champion.farmId),
+              grade: championCard!.grade,
+              element: championCard!.element,
+              stars: championCard!.stars,
+              wonCents: champion.gpWonCents,
+              landGranted: champion.landGranted,
+            }
           : null,
         rounds,
       };
@@ -486,15 +533,9 @@ export default function Admin() {
     );
     return {
       day: w.dayIndex,
-      // The weather rides on the card label rather than a column of its own:
-      // it is the same for every fight on a day, so it reads as context for
-      // the figures two columns over, not as data to sort on. "wx Fire→W"
-      // means Fire was ascendant and the WINNER was the Fire bird — its
-      // figure is a touch flattered.
       card:
         (w.tournamentId ? "🏆 PINTAKASI" : cardLabel(w.mode, w.lobby)) +
-        `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}` +
-        ` · wx ${weatherOfDay(w.dayIndex)}${EDGE_MARK[birdEdge(w.dayIndex, w.birdId, w.opponentBirdId) ?? "none"]}`,
+        `${w.claimPrice ? ` @${w.claimPrice}` : ""} · ${w.format}`,
       winner: birdById.get(w.birdId)?.name ?? w.birdId,
       winnerFarm: fname(w.farmId),
       winnerFarmP: fcolors(w.farmId).P ?? "",
@@ -507,6 +548,22 @@ export default function Admin() {
       loseFigure: mirror?.pitFigure ?? 0,
       // What the winner actually banked — the pot net of the 2% staker rake.
       pot: (w.gpDeltaCents * 2) / 100,
+      element: weatherOfDay(w.dayIndex),
+      winnerGrade: w.selfGrade as Grade,
+      loserGrade: w.opponentGrade as Grade,
+      pintakasiRound: (() => {
+        if (!w.tournamentId) return "";
+        const tournament = allTournaments.find((t) => t.id === w.tournamentId);
+        const loser = allTEntries.find(
+          (e) => e.tournamentId === w.tournamentId && e.birdId === w.opponentBirdId
+        );
+        if (!tournament?.bracketSize || !loser?.eliminatedRound) return "";
+        return roundName(
+          loser.eliminatedRound,
+          Math.log2(tournament.bracketSize),
+          tournament.bracketSize
+        );
+      })(),
     };
   });
 
@@ -547,12 +604,15 @@ export default function Admin() {
   }
 
   const birdRows: BirdRowUI[] = allBirds.map((b) => {
-    // An egg keeps its stats to itself (round 20) — element and stars show
-    // from the moment it's laid, everything else waits for the hatch.
+    // The public book keeps the six-stat sheet sealed until retirement.
+    // Overall grade, element, and stars remain visible as the bird's card.
     const inShell = b.status === "egg";
-    const stat = (v: number) => (inShell ? null : v);
+    const retired = b.status === "retired";
+    const total = b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
+    const stat = (v: number) => (retired ? v : null);
     return {
     name: b.name,
+    grade: overallGradeOf(total),
     farm: fname(b.farmId),
     farmP: fcolors(b.farmId).P ?? "",
     farmS: fcolors(b.farmId).S ?? "",
@@ -568,7 +628,7 @@ export default function Admin() {
     gameness: stat(b.gameness),
     station: stat(b.station),
     condition: stat(b.condition),
-    total: stat(b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition),
+    total,
     status: inShell
       ? "Egg" // the hen is pregnant; the bird is an egg (round 20)
       : b.listedStud
@@ -578,7 +638,6 @@ export default function Admin() {
     losses: b.losses,
     netGp: (netGpCents.get(b.id) ?? 0) / 100,
     netLt: netLt.get(b.id) ?? 0,
-    crownPoints: b.crownPoints,
     };
   });
 
@@ -590,16 +649,17 @@ export default function Admin() {
       seq: i,
       conceived: b.birthDay,
       egg: b.name,
+      eggGrade: overallGradeOf(b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition),
       hen: (b.motherId && birdById.get(b.motherId)?.name) || b.motherId || "?",
+      henGrade: b.motherId ? birdCard(b.motherId).grade : overallGradeOf(0),
       rooster: father?.name ?? b.fatherId ?? "?",
+      roosterGrade: b.fatherId ? birdCard(b.fatherId).grade : overallGradeOf(0),
       studFarm: fname(studFarmId),
       studFarmP: fcolors(studFarmId).P ?? "",
       studFarmS: fcolors(studFarmId).S ?? "",
       nestFarm: fname(b.farmId),
       nestFarmP: fcolors(b.farmId).P ?? "",
       nestFarmS: fcolors(b.farmId).S ?? "",
-      lays: b.birthWeek * 7,
-      hatches: (b.birthWeek + 1) * 7,
       stage: b.status === "egg" ? (b.birthWeek > week ? "pregnant" : "in the nest") : "hatched",
       fee: split.feeGp,
       studShare: split.studOwnerCents / 100,
@@ -706,7 +766,7 @@ export default function Admin() {
       <style>{CSS}</style>
       <header>
         <h1>
-          🐓 Pintakasi — Stewards&apos; Office{" "}
+          <img className="office-mark" src="/icon.svg" alt="" /> Pintakasi — Stewards&apos; Office{" "}
           <span className={`world-badge ${isSimWorld ? "sim" : "live"}`}>
             {isSimWorld ? "SIM WORLD" : "LIVE WORLD"}
           </span>
@@ -740,7 +800,7 @@ export default function Admin() {
         <TickControls />
       </header>
 
-      <section className="cards">
+      <section className="cards topline">
         <div className="card">
           <div className="big">
             <GpIcon size={22} /> {gpFmt(now.gpCents)} GP {delta("gpCents", { cents: true })}
@@ -748,23 +808,6 @@ export default function Admin() {
           <div className="label">Golden Pesos in circulation</div>
           <div className="sub">
             wallets {gpFmt(now.walletCents)} · escrow {gpFmt(now.escrowCents)}
-          </div>
-        </div>
-        <div className="card">
-          <div className="big">
-            <GpIcon size={22} /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
-          </div>
-          <div className="label">juice pool (fight schedule)</div>
-          <div className="sub">breed cuts + paid gacha — the Pintakasi spends it every Thursday</div>
-        </div>
-        <div className="card">
-          <div className="big">
-            <GpIcon size={22} /> {gpFmt(now.stakerCents)} GP {delta("stakerCents", { cents: true })}
-          </div>
-          <div className="label">staker pool (undistributed)</div>
-          <div className="sub">
-            fight + claim rakes · gacha share · breed cut · land bought —{" "}
-            {gpFmt(totalStakingPaidCents)} GP paid to date
           </div>
         </div>
         <div className="card">
@@ -811,6 +854,23 @@ export default function Admin() {
           <div className="label">birds</div>
           <div className="sub">
             {now.eggs} eggs · {now.active} active · {now.retired} retired · {now.farms} farms
+          </div>
+        </div>
+        <div className="card">
+          <div className="big">
+            <GpIcon size={22} /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
+          </div>
+          <div className="label">juice pool (fight schedule)</div>
+          <div className="sub">breed cuts + paid gacha — the Pintakasi spends it every Thursday</div>
+        </div>
+        <div className="card">
+          <div className="big">
+            <GpIcon size={22} /> {gpFmt(now.stakerCents)} GP {delta("stakerCents", { cents: true })}
+          </div>
+          <div className="label">staker pool (undistributed)</div>
+          <div className="sub">
+            fight + claim rakes · gacha share · breed cut · land bought —{" "}
+            {gpFmt(totalStakingPaidCents)} GP paid to date
           </div>
         </div>
       </section>
@@ -892,6 +952,11 @@ export default function Admin() {
                 {cardLobbies.map((l) => (
                   <div className="lobby" key={l.id}>
                     <div className="lobby-head">
+                      {l.tags.map((tag) => (
+                        <span className={`fight-chip ${tag.kind}`} key={`${tag.kind}-${tag.label}`}>
+                          {tag.label}
+                        </span>
+                      ))}
                       {l.label}
                       <span className="fill">
                         {l.filled} in · #{l.id}
@@ -899,15 +964,23 @@ export default function Admin() {
                     </div>
                     {l.bouts.map((b, i) => (
                       <div className="bout" key={i}>
-                        ✓ <b>{b.winner}</b> ({b.winnerFarm}) def. {b.loser} ({b.loserFarm}){" "}
+                        ✓{" "}
+                        <b>
+                          <span className="grade" style={{ color: gradeColor(b.winner.grade) }}>
+                            {b.winner.grade}
+                          </span>{" "}
+                          {b.winner.name} <ElementSprite element={b.winner.element} size={12} /> {b.winner.stars}★
+                        </b>{" "}
+                        ({b.winnerFarm}) def.{" "}
+                        <span>
+                          <span className="grade" style={{ color: gradeColor(b.loser.grade) }}>
+                            {b.loser.grade}
+                          </span>{" "}
+                          {b.loser.name} <ElementSprite element={b.loser.element} size={12} /> {b.loser.stars}★
+                        </span>{" "}
+                        ({b.loserFarm}){" "}
                         <span className="figs">
                           figures {b.figures[0]}/{b.figures[1]}
-                          {/* Only worth saying when somebody actually held it:
-                              on most bouts the day's element belongs to
-                              neither bird and the figures stand as read. */}
-                          {b.edge
-                            ? ` · ${b.edge === "both" ? "both birds" : b.edge} carried the ${cardWeather} edge`
-                            : ""}
                           {/* No force-retirement note here any more (round 31):
                               the daily card has no hardcore mode, so nothing on
                               this page can end a career. The Majors do — that
@@ -996,6 +1069,7 @@ const CSS = `
   .office { font-family: ui-monospace, Menlo, monospace; background: #12100d; color: #e8e0d0;
     min-height: 100vh; padding: 1.5rem 2rem 4rem; font-size: 13px; }
   .office h1 { color: #e8b64c; font-size: 1.3rem; margin: 0 0 .25rem; }
+  .office-mark { width: 1.15em; height: 1.15em; vertical-align: -.2em; object-fit: contain; }
   .world-badge { font-size: .55em; vertical-align: middle; padding: .2em .6em; border-radius: 4px;
     letter-spacing: .08em; border: 1px solid; }
   .world-badge.sim { color: #9fd3f0; background: #1e3542; border-color: #3d6a85; }
@@ -1008,6 +1082,7 @@ const CSS = `
     border-radius: 4px; padding: .15rem .5rem; }
   .handbook:hover { background: #1c1914; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; margin-top: 1.25rem; }
+  .cards.topline { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .card { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px; padding: .75rem .9rem; }
   .card .big { font-size: 1.35rem; color: #f4e9d0; }
   .card .label { color: #e8b64c; margin-top: .15rem; }
@@ -1039,6 +1114,13 @@ const CSS = `
   .lobby { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px; padding: .55rem .75rem; }
   .lobby-head { color: #e8b64c; margin-bottom: .3rem; }
   .lobby-head .fill { color: #9a8f78; float: right; }
+  .fight-chip { display: inline-block; color: #e8e0d0; border: 1px solid; border-radius: 999px;
+    font-size: .72em; letter-spacing: .04em; margin-right: .45rem; padding: .08rem .42rem; }
+  .fight-chip.claimer { color: #c8c2b7; background: #34312d; border-color: #625d55; }
+  .fight-chip.open { color: #9fd3f0; background: #1e3542; border-color: #3d6a85; }
+  .fight-chip.juvenile { color: #9add9a; background: #1c3020; border-color: #3d6b45; }
+  .fight-chip.nw3 { color: #f2d675; background: #3b341b; border-color: #756629; }
+  .fight-chip.maiden { color: #efacd0; background: #40243a; border-color: #81506f; }
   /* The major/juvenile pill (round 24) — same shape as .world-badge, its own
      two colors: gold for the hardcore stage, green for the discovery one. */
   .division-tag { font-size: .68em; vertical-align: middle; margin-left: .5em; padding: .1em .5em;
@@ -1076,9 +1158,13 @@ const CSS = `
   .bfighter.won .bname { color: #e8b64c; font-weight: 600; }
   .bfighter.lost { color: #6a6252; }
   .bfighter.bye { color: #6a6252; font-style: italic; }
+  .bfighter .bidentity { overflow: hidden; text-overflow: ellipsis; }
+  .bfighter .belement { color: #9a8f78; }
   .bfighter .bfarm { color: #9a8f78; overflow: hidden; text-overflow: ellipsis; flex: 1; }
   .bfighter.lost .bfarm { color: #524b3d; }
   .bfighter .bfig { color: #9a8f78; font-variant-numeric: tabular-nums; }
+  .bfighter .bawards { display: inline-flex; align-items: center; gap: .25em; color: #7fc97f;
+    font-variant-numeric: tabular-nums; }
   /* The winner's side gets the gold rail the ask asked for; a bye still
      shows one (it IS the winner, just an unopposed one). */
   .bfighter.won { border-left: 2px solid #e8b64c; padding-left: .35em; margin-left: -.35em; }
@@ -1093,4 +1179,11 @@ const CSS = `
   .dot { display: inline-block; width: .65em; height: .65em; border-radius: 50%; border: 2px solid; margin-right: .4em; }
   .bot { color: #12100d; background: #9a8f78; border-radius: 3px; font-size: .7em; padding: 0 .3em; margin-left: .45em; vertical-align: middle; }
   .world { color: #9a8f78; font-style: italic; }
+  @media (max-width: 1100px) {
+    .cards.topline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 620px) {
+    .office { padding-left: 1rem; padding-right: 1rem; }
+    .cards.topline { grid-template-columns: 1fr; }
+  }
 `;
