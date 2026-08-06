@@ -8,6 +8,7 @@ import { ECONOMY } from "./config";
 import { Farms } from "./farms";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
+import { onCard } from "./testkit";
 
 /**
  * The unified ledger: every money/land/lifecycle touchpoint appends a
@@ -75,7 +76,7 @@ describe("the unified ledger", () => {
 
   test("a fight day: entries escrow, the fight is one world row, the odd bird refunds", () => {
     const w = world();
-    const spec = { mode: "real", classType: "open", format: "b2" } as const;
+    const spec = onCard(w.db, { mode: "real", classType: "open" });
     w.game.lobbies.enter("starter-6", spec, 77); // Alab
     w.game.lobbies.enter("starter-7", spec); // Sinag — barn-mate, will go unmatched
     const rivalLobbies = new Game(w.db, w.rivalId).lobbies;

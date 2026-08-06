@@ -7,10 +7,16 @@ import { CLAIMER, ECONOMY, STAKER_FLOWS } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
+import { onCard } from "./testkit";
 
 const FEE = ECONOMY.REAL_ENTRY_FEE;
-const TAG = CLAIMER.PRICES[2]; // 200 GP — $2.50, first rung above the breed floor
-const SPEC: LobbySpec = { mode: "real", classType: "claimer", format: "b2", price: TAG };
+/**
+ * Tonight's grown claimer — blade AND tag. Since round 31 the tag is part of
+ * what the day POSTS (one cheap rung, one dear), so a test can no longer pick
+ * a rung off the ladder and expect a lobby to exist for it. Everything these
+ * tests assert about money is derived from `spec.price`, never from a literal.
+ */
+const SPEC = (db: DB): LobbySpec => onCard(db, { mode: "real", classType: "claimer" });
 
 function world() {
   const db = createDb(":memory:");
@@ -49,36 +55,34 @@ describe("carding a claimer", () => {
   test("tags come off the ladder; claims only land on claimer entries", () => {
     const w = world();
     const alab = byName(w.devFlock, "Alab");
-    expect(() => w.dev.enter(alab.id, { ...SPEC, price: 123 })).toThrow(/claiming tag/);
+    const spec = SPEC(w.db);
+    expect(() => w.dev.enter(alab.id, { ...spec, price: 123 })).toThrow(/claiming tag/);
     // Round 20: the juvenile door now checks the age first — Alab is 2, so
     // it never reaches the class rule. Kidlat (1) does.
-    expect(() => w.dev.enter(alab.id, { ...SPEC, mode: "juvenile" as never })).toThrow(/discovery year only/);
+    expect(() => w.dev.enter(alab.id, { ...spec, mode: "juvenile" as never })).toThrow(/discovery year only/);
     // Juveniles CAN card a claimer since round 23 — on their own, cheaper
-    // ladder. The grown 200 GP tag isn't one of their rungs.
+    // ladder. A grown tag isn't one of their rungs.
     expect(() =>
-      w.dev.enter(byName(w.devFlock, "Kidlat").id, { ...SPEC, mode: "juvenile" as never })
-    ).toThrow(/25 \/ 50 \/ 100/);
+      w.dev.enter(byName(w.devFlock, "Kidlat").id, { ...spec, mode: "juvenile" as never })
+    ).toThrow(new RegExp(CLAIMER.JUVENILE_PRICES.join(" / ")));
     expect(() =>
-      w.dev.enter(byName(w.devFlock, "Kidlat").id, {
-        ...SPEC,
-        mode: "juvenile" as never,
-        price: CLAIMER.JUVENILE_PRICES[0],
-      })
+      w.dev.enter(byName(w.devFlock, "Kidlat").id, onCard(w.db, { mode: "juvenile", classType: "claimer" }))
     ).not.toThrow();
     // An open entry takes no claims.
-    const open = w.dev.enter(alab.id, { mode: "real", classType: "open", format: "b2" });
+    const open = w.dev.enter(alab.id, onCard(w.db, { mode: "real", classType: "open" }));
     const openEntry = open.lobby.entries[0].entryId;
     expect(() => w.rival.claim(openEntry)).toThrow(/Only claimer entries/);
   });
 
   test("not your own bird, one claim per farm, tag escrowed now", () => {
     const w = world();
-    const { lobby } = w.dev.enter(byName(w.devFlock, "Alab").id, SPEC);
+    const tag = SPEC(w.db).price!;
+    const { lobby } = w.dev.enter(byName(w.devFlock, "Alab").id, SPEC(w.db));
     const entryId = lobby.entries[0].entryId;
     expect(() => w.dev.claim(entryId)).toThrow(/your own bird/);
     const placed = w.rival.claim(entryId);
-    expect(placed.escrowed).toBe(TAG);
-    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - TAG);
+    expect(placed.escrowed).toBe(tag);
+    expect(gp(w.db, w.rivalId)).toBe(ECONOMY.STARTING_GP - tag);
     expect(() => w.rival.claim(entryId)).toThrow(/already have a claim/);
     expect(() => w.rival.claim(999)).toThrow(/No open entry/);
   });
@@ -88,12 +92,14 @@ describe("post time (claims settle after the fights)", () => {
   test("a claimed bird fights for its owner, then transfers — prize AND tag to the owner", () => {
     const w = world();
     const devAlab = byName(w.devFlock, "Alab");
-    const { lobby } = w.dev.enter(devAlab.id, SPEC, 606);
-    w.rival.enter("rival-6", SPEC); // the opponent, same tag
+    const spec = SPEC(w.db);
+    const TAG = spec.price!;
+    const { lobby } = w.dev.enter(devAlab.id, spec, 606);
+    w.rival.enter("rival-6", spec); // the opponent, same tag
     w.rival.claim(lobby.entries[0].entryId);
 
     const tick = w.game.tickDay();
-    const card = tick.card[0];
+    const card = tick.card.find((l) => l.fights.length > 0)!;
     expect(card.fights.length).toBe(1);
     expect(card.claims).toEqual([
       { bird: "Alab", from: "Bukidnon Farms", to: "Rival Gamefarm", price: TAG, losingClaimsRefunded: 0 },
@@ -101,8 +107,8 @@ describe("post time (claims settle after the fights)", () => {
     // The bird now lives in the rival barn — with the record it just earned.
     expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
     // Owner economics: entry ± pot, plus the tag — regardless of result.
-    // Both take a 2% staker rake since round 22 (pot 78.40 of 80; tag 196 of
-    // 200), so the books only balance to the CENT.
+    // Both take a 2% staker rake since round 22, so the books only balance to
+    // the CENT.
     const devWon = card.fights[0].winnerFarm === "Bukidnon Farms";
     const potRake = Math.round(FEE * 200 * STAKER_FLOWS.FIGHT_RAKE);
     const tagNet = TAG * 100 - Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
@@ -119,7 +125,7 @@ describe("post time (claims settle after the fights)", () => {
   test("an unmatched claimer does NOT sell — the fee and every claim refund", () => {
     const w = world();
     const devAlab = byName(w.devFlock, "Alab");
-    const { lobby } = w.dev.enter(devAlab.id, SPEC, 33); // alone on the card — odd bird out
+    const { lobby } = w.dev.enter(devAlab.id, SPEC(w.db), 33); // alone on the card — odd bird out
     w.rival.claim(lobby.entries[0].entryId);
     const tick = w.game.tickDay();
     expect(tick.card[0].fights.length).toBe(0);
@@ -140,13 +146,18 @@ describe("post time (claims settle after the fights)", () => {
   test("the claim rake: the selling barn banks 98% of the tag, the stakers 2%", () => {
     const w = world();
     const devAlab = byName(w.devFlock, "Alab");
-    const { lobby } = w.dev.enter(devAlab.id, SPEC, 33);
-    w.rival.enter("rival-6", SPEC); // an opponent, so the fight actually runs
+    const spec = SPEC(w.db);
+    const TAG = spec.price!;
+    const { lobby } = w.dev.enter(devAlab.id, spec, 33);
+    w.rival.enter("rival-6", spec); // an opponent, so the fight actually runs
     const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
     w.rival.claim(lobby.entries[0].entryId);
     w.game.tickDay();
     const rake = Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
-    expect(rake).toBe(400); // 4.00 GP of a 200 GP tag
+    // The published share, stated two ways so neither can drift alone: 2% of
+    // the tag, which in cents is exactly twice the tag in GP.
+    expect(STAKER_FLOWS.CLAIM_RAKE).toBe(0.02);
+    expect(rake).toBe(TAG * 2);
     const state = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     expect(state.stakerPoolCents - poolBefore).toBe(rake);
   });
@@ -169,8 +180,10 @@ describe("post time (claims settle after the fights)", () => {
     });
     seedStarterFlock(w.db, opponentFarm.id, { seed: 99, idPrefix: "opp", shape: "legacy" });
     const devAlab = byName(w.devFlock, "Alab");
-    const { lobby } = w.dev.enter(devAlab.id, SPEC, 77);
-    new Lobbies(w.db, opponentFarm.id).enter("opp-6", SPEC);
+    const spec = SPEC(w.db);
+    const TAG = spec.price!;
+    const { lobby } = w.dev.enter(devAlab.id, spec, 77);
+    new Lobbies(w.db, opponentFarm.id).enter("opp-6", spec);
     const entryId = lobby.entries[0].entryId;
     w.rival.claim(entryId);
     thirdLobbies.claim(entryId);

@@ -30,8 +30,9 @@ export default function WikiHome() {
           &ldquo;Egg of…&rdquo;. That&apos;s a real rule, enforced at the door.
         </li>
         <li>
-          <strong>Card them.</strong> Pick a lobby — a blade, a class, a price — and enter. At the
-          day&apos;s end every lobby pairs off at random and the fights run.
+          <strong>Card them.</strong> Each day posts a short list of fights — a blade, a class,
+          sometimes a price. Pick one of those and enter. At the day&apos;s end every lobby pairs
+          off at random and the fights run.
         </li>
         <li>
           <strong>Bank the land.</strong> Win or lose, both fighters earn Land Tokens. Stake them and
@@ -44,10 +45,11 @@ export default function WikiHome() {
       </ol>
 
       <div className="callout warn">
-        <b>The one rule that will hurt you.</b> Hardcore fights and every Pintakasi Major are{" "}
-        <strong>force-retire</strong>: the loser&apos;s career ends on the spot. It keeps its stats
-        and can still breed — but it will never fight again. (The one exception in the whole game:
-        the Juvenile Championship, which never force-retires.) Nobody is ever entered into a
+        <b>The one rule that will hurt you.</b> Every bout of a Pintakasi Major is{" "}
+        <strong>hardcore</strong> — the loser&apos;s career ends on the spot. It keeps its stats and
+        can still breed, but it will never fight again. The Majors are the only place in the game
+        that happens: there is no hardcore fight on the ordinary daily card. (And the Juvenile
+        Championship, the one other crown, never force-retires.) Nobody is ever entered into a
         force-retire fight by accident, and you should never enter one casually.
       </div>
 
@@ -94,7 +96,7 @@ export default function WikiHome() {
             </tr>
             <tr>
               <td>Sat–Tue</td>
-              <td>Ordinary cards: juvenile, real, hardcore, claimers</td>
+              <td>Ordinary cards: juvenile and real fights, maidens, conditions, claimers</td>
             </tr>
             <tr>
               <td>{DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]}</td>
@@ -115,7 +117,8 @@ export default function WikiHome() {
       </div>
       <p className="dim">
         A game-day ends at midnight Philippine time. Everything you entered that day goes off at
-        once.
+        once. An ordinary card is posted <em>every</em> day, including the two championship days —
+        but which fights are on it changes daily. See <Link href="/wiki/card">The card</Link>.
       </p>
 
       <h2>Where to go next</h2>

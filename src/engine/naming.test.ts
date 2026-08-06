@@ -6,6 +6,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { roman, uniqueName } from "./naming";
+import { onCard } from "./testkit";
 import { BARN } from "./config";
 
 /** Bird names are unique across the WORLD — ruled 2026-08-03 (round 12). */
@@ -55,7 +56,9 @@ describe("the naming law (round 14)", () => {
     const flock = new Flock(db, farmId);
     expect(flock.byId(egg.id).status).toBe("active");
 
-    const spec = { mode: "juvenile", classType: "open", format: "b2" } as const;
+    // Two Hatch Fridays have gone by, so the card must be read from where the
+    // world now stands — not from the day the test opened on.
+    const spec = onCard(db, { mode: "juvenile", classType: "open" });
     expect(() => game.lobbies.enter(egg.id, spec)).toThrow(/name a bird before its first fight/);
 
     flock.rename(egg.id, "Maelstrom");

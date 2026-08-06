@@ -4,12 +4,19 @@ import { join } from "node:path";
 import { MCP_INSTRUCTIONS, TOOL_DESCRIPTIONS } from "@/app/api/mcp/route";
 import { splitBreedFee } from "./breeding";
 import { fmtGp } from "./events";
+import type { FightMode } from "./config";
 import {
   AGE,
   BATTLE,
+  CARD,
   CLAIMER,
   COVERS,
   ECONOMY,
+  FIGHT_MODES,
+  FORMAT_NAMES,
+  LOBBIES,
+  NW_CAP,
+  cardOfDay,
   GACHA_BIRDS,
   GACHA_TOKENS,
   JUVENILE_MAJOR,
@@ -170,10 +177,22 @@ describe("MCP docs carry the CURRENT config values", () => {
   // future balance change trips a test instead of teaching a lie silently.
   test("age gates, entry fees, and qualification points are all live-read", () => {
     expect(instructions).toContain(`${AGE.CHICK} = juvenile only`);
+    // ⚠ RE-POINTED IN ROUND 31. This used to also demand HARDCORE_ENTRY_FEE,
+    // back when hardcore was a mode you could card any night. It isn't one any
+    // more (see FIGHT_MODES) — but the INTENT of the pin was never "hardcore
+    // specifically", it was "a fee a player pays must never vanish from the
+    // docs". So it now walks FIGHT_MODES, which is the list of things a farm
+    // can actually be charged to enter: drop a mode and this stops asking for
+    // it; add one and it starts, without anybody remembering to.
+    const modeFees: Record<FightMode, number> = {
+      juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
+      real: ECONOMY.REAL_ENTRY_FEE,
+    };
     // Entry fees live on enter_lobby / enter_claimer's own tool descriptions.
-    expect(everything).toContain(`${ECONOMY.JUVENILE_ENTRY_FEE} GP`);
-    expect(everything).toContain(`${ECONOMY.REAL_ENTRY_FEE} GP`);
-    expect(everything).toContain(`${ECONOMY.HARDCORE_ENTRY_FEE} GP`);
+    for (const mode of FIGHT_MODES) expect(everything).toContain(`${modeFees[mode]} GP`);
+    // The other two prices a farm pays, pinned for the same reason.
+    expect(everything).toContain(`${ECONOMY.BREED_FEE} GP`);
+    expect(everything).toContain(`${ECONOMY.GACHA_ROLL_PRICE} GP`);
     expect(instructions).toContain(`${PINTAKASI.QUALIFYING_POINTS} qualification points`);
     expect(instructions).toContain(`${LAND.DAILY_BUY_CAP.toLocaleString()} LT`);
   });
@@ -286,6 +305,80 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     // plan around it at all.
     expect(TOOL_DESCRIPTIONS.get_state).toMatch(/ascendant|weather/i);
     expect(TOOL_DESCRIPTIONS.get_state).toContain("Element");
+  });
+
+  // ── Round 31: THE CARD ────────────────────────────────────────────────────
+  // Four reversals landed at once, and each one leaves a SENTENCE behind that a
+  // computed number can't fix. These pin the sentences.
+
+  test("card page teaches the daily card, and renders a real one from cardOfDay", () => {
+    const src = readWikiPage("card/page.tsx");
+    // The headline mechanic of the round. A page that doesn't call cardOfDay is
+    // a page illustrating the schedule by hand — the exact thing that rots.
+    expect(src).toContain("cardOfDay");
+    expect(src).toMatch(/only enter a fight that is posted/i);
+    // The card is small on purpose: a page claiming everything runs every night
+    // is describing the pre-round-31 world.
+    expect(cardOfDay(0).length).toBeLessThan(
+      FORMAT_NAMES.length * (LOBBIES.length + CLAIMER.PRICES.length)
+    );
+  });
+
+  test("card page no longer teaches a lobby capacity", () => {
+    const src = readWikiPage("card/page.tsx");
+    // LOBBY.CAPACITY was DELETED from config in round 31, so a stale reference
+    // would fail to compile — but the prose around it ("an even number, so a
+    // full lobby pairs every bird") would not, and it is now false twice over.
+    expect(src).not.toMatch(/LOBBY\.CAPACITY/);
+    expect(src).not.toMatch(/capacity of/i);
+    expect(src).toMatch(/no size limit|without limit|unbounded/i);
+    // The trade the removal made: parity is now a coin flip.
+    expect(src).toMatch(/odd/i);
+  });
+
+  test("no wiki page still lists hardcore as a mode on the daily card", () => {
+    expect(FIGHT_MODES).not.toContain("hardcore" as FightMode);
+    for (const page of ["card/page.tsx", "land/page.tsx", "money/page.tsx"]) {
+      const src = readWikiPage(page);
+      // The fee itself is the tell: quoting it in a table of what a farm pays
+      // to card a bird means the page still thinks hardcore is enterable.
+      expect(src).not.toMatch(/ECONOMY\.HARDCORE_ENTRY_FEE/);
+    }
+    // And the card page must say so out loud, not merely omit the row.
+    expect(readWikiPage("card/page.tsx")).toMatch(/no hardcore fight on the daily card/i);
+  });
+
+  test("no wiki page still lists the nw2 class the round merged away", () => {
+    expect(LOBBIES).not.toContain("nw2" as (typeof LOBBIES)[number]);
+    expect(NW_CAP).toBe(3); // the class is NAMED after this — see config
+    for (const page of ["card/page.tsx", "claiming/page.tsx", "page.tsx"])
+      expect(readWikiPage(page)).not.toMatch(/\bnw2\b/);
+  });
+
+  test("claiming page counts the tag rungs from CLAIMER.PRICES, not by hand", () => {
+    const src = readWikiPage("claiming/page.tsx");
+    // Round 31 cut the ladder from five rungs to three, which flipped the
+    // "two below the breed fee, three above" sentence. Computing both sides
+    // means the next thinning fixes the page by itself.
+    expect(src).not.toMatch(/five rungs/i);
+    expect(src).toContain("CLAIMER.PRICES.filter");
+    expect(CLAIMER.PRICES.filter((p) => p < ECONOMY.BREED_FEE).length).toBe(1);
+    // The card posts one cheap + one dear tag a night — a player who doesn't
+    // know that will try to enter a rung that isn't running.
+    expect(src).toMatch(/tonight(?:'|&apos;)s card/i);
+    expect(CARD.real.claimer).toBe(2);
+  });
+
+  test("pintakasi page teaches ONE qualification route: real wins on the card", () => {
+    const src = readWikiPage("pintakasi/page.tsx");
+    // POINTS_FOR.hardcore is unreachable now — crown points come only from a
+    // lobby fight (lobbies.ts stamps PINTAKASI.POINTS_FOR[lobby.mode]) and a
+    // tournament win banks none. "Three real wins OR two hardcore wins" was the
+    // sentence, and it is now simply wrong.
+    expect(FIGHT_MODES).not.toContain("hardcore" as FightMode);
+    expect(src).not.toMatch(/hardcoreWinsNeeded/);
+    expect(src).not.toMatch(/POINTS_FOR\.hardcore/);
+    expect(src).toMatch(/only thing that banks a point|only way/i);
   });
 
   test("pintakasi page documents the Juvenile Championship as non-hardcore", () => {

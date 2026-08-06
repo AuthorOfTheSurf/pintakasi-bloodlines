@@ -8,6 +8,7 @@ import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
 import { Tournaments, type Division } from "./tournaments";
+import { onCard } from "./testkit";
 
 /**
  * Round 23 shipped the Juvenile Championship with zero test references — this
@@ -264,13 +265,13 @@ describe("the crown-day door knows which crown", () => {
     // Monday — days away from its crown, it cards freely.
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3
     expect(() =>
-      lobbies.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b3" })
+      lobbies.enter(kidlat.id, onCard(w.db, { mode: "juvenile", classType: "open" }))
     ).not.toThrow();
     // Wednesday — the Juvenile Championship's day.
     for (let i = 0; i < 2; i++) w.game.tickDay(); // → day 5
     expect(Tournaments.isJuvenileCrownDay(5)).toBe(true);
     expect(() =>
-      lobbies.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b3" })
+      lobbies.enter(kidlat.id, onCard(w.db, { mode: "juvenile", classType: "open" }))
     ).toThrow(/Pintakasi/);
   });
 
@@ -291,7 +292,7 @@ describe("the crown-day door knows which crown", () => {
       .filter((e) => e.birdId === kidlat.id && e.status === "pending").length;
     expect(stillPending).toBe(0); // the juvenile crown resolved on Wednesday
     expect(() =>
-      lobbies.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b3" })
+      lobbies.enter(kidlat.id, onCard(w.db, { mode: "juvenile", classType: "open" }))
     ).not.toThrow();
   });
 });

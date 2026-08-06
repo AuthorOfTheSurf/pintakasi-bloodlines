@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS battle_log (
   bird_id TEXT NOT NULL,
   mode TEXT NOT NULL CHECK (mode IN ('juvenile','real','hardcore')),
   format TEXT NOT NULL CHECK (format IN ('b1','b2','b3','b4','b5')),
-  lobby TEXT NOT NULL DEFAULT 'open' CHECK (lobby IN ('open','maiden','nw2','nw3','claimer')),
+  lobby TEXT NOT NULL DEFAULT 'open' CHECK (lobby IN ('open','maiden','nw3','claimer')),
   claim_price INTEGER,
   opponent_bird_id TEXT NOT NULL,
   opponent_farm_id TEXT NOT NULL,
@@ -99,11 +99,10 @@ CREATE TABLE IF NOT EXISTS battle_log (
 
 CREATE TABLE IF NOT EXISTS lobbies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  mode TEXT NOT NULL CHECK (mode IN ('juvenile','real','hardcore')),
-  class_type TEXT NOT NULL CHECK (class_type IN ('open','maiden','nw2','nw3','claimer')),
+  mode TEXT NOT NULL CHECK (mode IN ('juvenile','real')),
+  class_type TEXT NOT NULL CHECK (class_type IN ('open','maiden','nw3','claimer')),
   format TEXT NOT NULL CHECK (format IN ('b1','b2','b3','b4','b5')),
   price INTEGER,
-  capacity INTEGER NOT NULL DEFAULT 8,
   seed INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed','completed')),
   day_opened INTEGER NOT NULL

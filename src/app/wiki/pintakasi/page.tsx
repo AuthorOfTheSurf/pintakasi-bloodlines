@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   AGE,
   ECONOMY,
+  FIGHT_MODES,
   FORMATS,
   JUVENILE_MAJOR,
   LAND,
@@ -18,7 +19,6 @@ const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesd
 const POINT_LABELS: Record<string, string> = {
   juvenile: "Juvenile win (discovery year)",
   real: "Real win",
-  hardcore: "Hardcore win",
 };
 
 const PURSE_LABELS: Record<string, string> = {
@@ -50,8 +50,11 @@ function classicSeedPairs(bracketSize: number): string {
 
 export default function PintakasiPage() {
   const realWinsNeeded = Math.ceil(PINTAKASI.QUALIFYING_POINTS / PINTAKASI.POINTS_FOR.real);
-  const hardcoreWinsNeeded = Math.ceil(PINTAKASI.QUALIFYING_POINTS / PINTAKASI.POINTS_FOR.hardcore);
-  const dailyHardcoreLand = landForFight(ECONOMY.HARDCORE_ENTRY_FEE);
+  // Only the modes the daily card actually runs can bank a point (round 31 took
+  // hardcore off the card, and a tournament win banks none), so the table below
+  // is filtered to FIGHT_MODES rather than showing every rung in POINTS_FOR.
+  const earnablePoints = FIGHT_MODES.map((mode) => [mode, PINTAKASI.POINTS_FOR[mode] ?? 0] as const);
+  const dailyRealLand = landForFight(ECONOMY.REAL_ENTRY_FEE);
   const crownFightLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
   const exampleBracket = 16;
   const juvenilePurseTotal = Object.values(JUVENILE_MAJOR.PURSE_SHARES).reduce((a, b) => a + b, 0);
@@ -115,8 +118,7 @@ export default function PintakasiPage() {
         There is no entry fee. A bird gets in by <strong>campaigning</strong>: every win on the
         ordinary daily card banks qualification points toward a Major. A juvenile win banks zero of{" "}
         <em>these</em> points — the discovery year has its own, separate ladder toward its own
-        championship (see below). Real fights and hardcore fights bank points here, and hardcore
-        pays double, because that bird wagered its career to win the point.
+        championship (see below). So real wins, in real lobbies, are the whole route in.
       </p>
       <div className="tablewrap">
         <table>
@@ -127,7 +129,7 @@ export default function PintakasiPage() {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(PINTAKASI.POINTS_FOR).map(([mode, points]) => (
+            {earnablePoints.map(([mode, points]) => (
               <tr key={mode}>
                 <td>{POINT_LABELS[mode] ?? mode}</td>
                 <td className="num">{points}</td>
@@ -137,11 +139,16 @@ export default function PintakasiPage() {
         </table>
       </div>
       <p>
-        A bird needs <strong>{PINTAKASI.QUALIFYING_POINTS} points</strong> to stand in a Major —
-        roughly {realWinsNeeded} real wins, or {hardcoreWinsNeeded} hardcore
-        {hardcoreWinsNeeded === 1 ? " win" : " wins"}, in any mix that adds up. It also has to be
-        old enough to fight hardcore at all: age {AGE.FORK}+.
+        A bird needs <strong>{PINTAKASI.QUALIFYING_POINTS} points</strong> to stand in a Major —{" "}
+        {realWinsNeeded} real wins on the daily card. It also has to be old enough to be allowed to
+        risk its career: age {AGE.FORK}+.
       </p>
+      <div className="callout warn">
+        <b>A lobby win is the only thing that banks a point.</b> Winning a championship banks none —
+        not the Majors, not the Juvenile Championship. There is no shortcut and no second route: the
+        only way onto the biggest stage in the game is to go and win real fights on the ordinary
+        card, week in and week out.
+      </div>
       <div className="callout tip">
         <b>Why this way, not a price tag.</b> Buying a seat would just mean the deepest wallet wins
         the biggest purse in the game. Earning a seat means the field is exactly the birds that have
@@ -150,7 +157,8 @@ export default function PintakasiPage() {
 
       <h2>Hardcore throughout</h2>
       <div className="callout warn">
-        <b>Every loss in a Major ends a career.</b> Win or go home — permanently. A bird that
+        <b>Every loss in a Major ends a career.</b> This is the only place in the game a hardcore
+        fight happens — the ordinary daily card has none. Win or go home, permanently. A bird that
         falls in round one is done fighting for life. It keeps its stats and its bloodline, its
         hidden sheet reveals on the spot (a hardcore loss counts as a retirement), and it can
         still <Link href="/wiki/breeding">breed</Link> — but it will never fight again. Don&apos;t
@@ -244,7 +252,7 @@ export default function PintakasiPage() {
         Purses go to the birds still standing. Land goes the other way —{" "}
         <strong>weighted to the fallen</strong>. Every fight in the bracket mints{" "}
         <Link href="/wiki/land">Land Tokens (LT)</Link> to both birds, on a steeper curve than an
-        ordinary daily-card fight: a hardcore fight on the regular card mints {dailyHardcoreLand} LT
+        ordinary daily-card fight: the dearest fight on the regular card mints {dailyRealLand} LT
         per fighter; a Pintakasi fight mints {crownFightLand} LT per fighter, every round, no matter
         who wins.
       </p>

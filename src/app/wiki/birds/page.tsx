@@ -404,7 +404,7 @@ export default function BirdsPage() {
               <th>Egg</th>
               <th>Juvenile card</th>
               <th>Real card</th>
-              <th>Hardcore card</th>
+              <th>The Majors</th>
               <th>Can retire</th>
               <th>Force-retires</th>
             </tr>
@@ -429,9 +429,11 @@ export default function BirdsPage() {
         <strong>discovery year</strong>, a closed division of juvenile-only fights against other
         chicks, so a five-year veteran can never drop down and bully a chick. From age{" "}
         {AGE.REAL_STAKES} a bird is in <strong>real</strong> company and starts a career record.
-        From age {AGE.FORK} two things unlock together — <strong>hardcore</strong> cards (where a
-        loss ends a career on the spot) and <strong>manual retirement</strong> (so a farm can pull
-        a good bird out to stud before it&apos;s forced to). At age {AGE.FIGHTING_CAP} a bird
+        From age {AGE.FORK} two things unlock together — the{" "}
+        <Link href="/wiki/pintakasi">Pintakasi Majors</Link>, the only <strong>hardcore</strong>{" "}
+        fights in the game (where a loss ends a career on the spot), and{" "}
+        <strong>manual retirement</strong> (so a farm can pull a good bird out to stud before
+        it&apos;s forced to). At age {AGE.FIGHTING_CAP} a bird
         force-retires — the natural end of a compressed lifespan, not a punishment.
       </p>
       <div className="callout">

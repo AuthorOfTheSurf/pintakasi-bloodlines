@@ -732,7 +732,12 @@ export const ECONOMY = {
   BREED_FEE: 160,
   // Entries (winner takes the pooled pot = 2× entry):
   REAL_ENTRY_FEE: 40, //      $0.50 a side — CAREER record
-  HARDCORE_ENTRY_FEE: 120, // $1.50 a side — and the loser's career (the key rule)
+  // HARDCORE_ENTRY_FEE (120) lived here until round 31 took hardcore off the
+  // daily card. There is no hardcore lobby left to charge for, and the Majors
+  // — the only hardcore in the game now — are free to enter (PINTAKASI.
+  // ENTRY_FEE). A fee constant for a fight nobody can card is a lie about the
+  // rules, so it is gone rather than kept "just in case"; the land curve it
+  // used to anchor is exercised against PINTAKASI.LAND_BASIS instead.
   JUVENILE_ENTRY_FEE: 8, //   $0.10 a side — AMATEUR record, discovery year
   // ROUND 23 — the gacha goes back UP to 80 GP, and stops being the cheap
   // way to fill a barn. Round 22 cut it to 16 so the bots would finally buy;
@@ -885,21 +890,64 @@ export const COVERS = {
 // that key, or opens a fresh one when it's full. At the day tick every
 // lobby goes off — its birds are RANDOMLY PAIRED and fight each other.
 //
-// Size is LOCKED at 8 (an even number): if a lobby fills, every bird in it
-// is guaranteed a fight. A lobby that closes odd strands one bird — the
-// odd bird out refunds its entry and earns nothing. That risk is accepted:
-// it's up to the players to judge their birds' strength and pick where
-// they should be fighting. Tournaments later = capacities of 16/32/64 run
-// as back-to-back elimination brackets with separately engineered prizes.
-export const LOBBY = {
-  CAPACITY: 8,
-} as const;
+// ⚠ THE CAPACITY IS GONE (round 31). A lobby grows without limit.
+//
+// It was LOCKED at 8, an even number, so that a full lobby guaranteed every
+// bird a fight — and when it filled, the next entrant opened a SECOND lobby on
+// the same key. That duplication was quietly working against the thing lobbies
+// are for. Round 31 posts a small daily card precisely to make entries collide;
+// splitting a hot key back into two half-empty rooms undid the concentration in
+// the same breath. Zane: "no more 8-max and then duplicating the lobby. Just
+// let it grow infinitely."
+//
+// It also removes any reason to CAMP. Under a cap, a late entrant could find
+// the room full and be shunted into a duplicate with a different field, so
+// watching and waiting paid. Unbounded, you can always get in and the fill
+// count you saw only ever grows — which is what we want, since the whole round
+// is about encouraging entries.
+//
+// The trade, stated plainly: 8 was even ON PURPOSE. Unbounded means parity is a
+// coin flip, so roughly half of lobbies strand one bird. That residue is what
+// the next round's group stage removes; see cardOfDay's note below.
+//
+// The old LOBBY.CAPACITY block lived here. Tournament brackets never used it —
+// they don't touch the lobbies table at all — so nothing inherited it.
+
+// ── The mode dial ───────────────────────────────────────────────────────────
+// Which SEASON a fight belongs to. Lived as a bare union in lobbies.ts until
+// round 31 and was re-typed literally in four other places; it belongs here
+// with the rest of the dials, and cardOfDay needs it below.
+//
+// HARDCORE IS NOT ON THIS LIST ANY MORE (round 31, Zane: "There should be 0
+// hardcore fights outside the Finals. This is a regression in the fight
+// schedule. Accomplishes nothing and further fragments participation and isn't
+// balanced by the heavy +EV nature of the Finals."). It measured exactly that:
+// 201 entries across a 91-day world producing 55 fights — a 45.3% unmatched
+// rate, the worst of any mode, for under one fight a day. Hardcore survives
+// where it earns its keep: the Pintakasi Majors, which are tournaments and
+// never open a lobby. `battleLog.mode` therefore still carries "hardcore" —
+// that is where those fights are recorded.
+export const FIGHT_MODES = ["juvenile", "real"] as const;
+export type FightMode = (typeof FIGHT_MODES)[number];
 
 // The class dial. Entry restrictions self-sort the fields (no matchmaker):
-// maidens take never-winners, win-caps take light records, claimers put a
+// maidens take never-winners, the win-cap takes light records, claimers put a
 // price on every bird entered.
-export const LOBBIES = ["open", "maiden", "nw2", "nw3", "claimer"] as const;
+//
+// `nw2` was MERGED INTO `nw3` in round 31. The two differed by a single win
+// and the measurement was damning: of 181 active birds, nw2's exclusive
+// constituency — past maiden but under two wins — was 10 birds, and nw3's was
+// 18. Two whole classes, ten lobby keys, separating 28 birds. One conditioned
+// rung between maiden and open now serves all 148 birds under three wins.
+//
+// The classes NEST: maiden ⊂ nw3 ⊂ open. That property is load-bearing for the
+// daily card — see cardOfDay.
+export const LOBBIES = ["open", "maiden", "nw3", "claimer"] as const;
 export type Lobby = (typeof LOBBIES)[number];
+
+// How many stakes wins graduate a bird out of the conditioned class. Named
+// because the class is called "nw3" after it — change one and the label lies.
+export const NW_CAP = 3;
 
 // Claimers (re-ruled 2026-08-03): FARM-TO-FARM, escrowed, pre-fight.
 // Enter a bird at a tag price; the entry sits on the public board for the
@@ -909,19 +957,205 @@ export type Lobby = (typeof LOBBIES)[number];
 // the fight. Multiple claims → RNG picks one, the rest refund. The house
 // never claims — bot farms with claim-heavy playstyles are the liquidity.
 //
-// The tag ladder brackets the 160 GP breed floor on purpose: two rungs
-// below it (claim cheaper than breeding) and three above. It self-balances:
-// a dear tag = safer from claims but dearer company and a real entry at
-// risk; a cheap tag = claimable, but win-and-get-claimed is an income spike.
+// The tag ladder still brackets the 160 GP breed floor: ONE rung below it
+// (claim cheaper than breeding) and two above. It self-balances: a dear tag =
+// safer from claims but dearer company and a real entry at risk; a cheap tag =
+// claimable, but win-and-get-claimed is an income spike.
+//
+// ⚠ THINNED IN ROUND 31, and this was the single biggest fragmentation fix
+// available anywhere in the game. The tag is part of a lobby's KEY, so a b3
+// claimer at 200 and a b3 claimer at 400 never merge — which meant claimers
+// alone accounted for 40 of the 75 possible keys, 53% of the whole space, off
+// one axis. Measured over 91 days: 13.1 claimer entries a day divided into 0.33
+// entries per key. The dear rungs were not thin, they were dead — b3@400 drew
+// TWO entries in 84 days. At three grown rungs and two juvenile the same
+// traffic concentrates about 13× and the marketplace gets healthier, not
+// smaller.
 export const CLAIMER = {
-  PRICES: [50, 100, 200, 400, 600], // $0.625 · $1.25 · $2.50 · $5 · $7.50
+  PRICES: [50, 200, 600], // $0.625 · $2.50 · $7.50 — 50 under the breed floor, 200/600 over
   // The DISCOVERY-YEAR ladder (round 23): juveniles get their own, cheaper
   // rungs. A one-year-old is an unproven animal — pricing it against the
   // grown-bird ladder would mean nobody dares tag one, and the whole point of
   // opening claimers in the juvenile season is to get birds CHANGING HANDS
   // while they're still a guess.
-  JUVENILE_PRICES: [25, 50, 100], // $0.31 · $0.625 · $1.25
+  JUVENILE_PRICES: [25, 100], // $0.31 · $1.25
 } as const;
+
+// ── THE CARD (round 31) — a published daily schedule ────────────────────────
+// Until now lobbies were CONJURED ON DEMAND: entering created the lobby if it
+// did not exist, so every fight type was available every day and the perfect
+// fight always existed because you invented it by asking. Zane: "The on-demand
+// lobbies of perfect fights is crazy lol. Never intended that."
+//
+// What it cost, measured over 91 days: 74 live keys taking ~70 entries a day —
+// an average of 2.9 birds per lobby — and 16.3% of all entries never drawing an
+// opponent. That unmatched rate decomposed as 35% sole entrant in a lobby
+// nobody else joined, 31% two barn-mates alone (matchmaking never pairs
+// same-barn birds), 34% odd bird out. The first two are pure key-space damage:
+// no matchmaker can fix them, only collision can.
+//
+// So each day now POSTS a small card and entries must land on it. The PFL
+// rhythm Zane wanted: "if you just wanted to wait for a perfect race, you might
+// have to wait 3-4 days, this causes players to settle for close-to-ideal races
+// which is great and increases fills and softens competition."
+//
+// WHERE THE SCARCITY GOES, and this is the whole design. Every CLASS appears
+// every day in both divisions; what rotates is which BLADES each class runs.
+// Two reasons. First, the classes nest (maiden ⊂ nw3 ⊂ open) and 33 of 181
+// active birds are open-only, so an adult open lobby must exist daily or
+// veterans have nowhere to card — nothing may ever be stranded. Second, the
+// blade is the DISCOVERY axis, so putting the shortage there makes the
+// wait-or-settle choice land on the most interesting question a player has.
+//
+// Sized against real traffic to fill each lobby ~6-7 deep: adult ~48 entries a
+// day over 7 keys, juvenile ~24 over 4.
+export const CARD = {
+  real: { open: 3, maiden: 1, nw3: 1, claimer: 2 },
+  juvenile: { open: 2, maiden: 1, claimer: 1 },
+  // Thursday is the Majors' crown day and every registrant is barred from the
+  // daily card that day (their crown IS their card), so the adult field thins
+  // exactly when the card is widest. Drop one open blade to keep the rest full.
+  CROWN_DAY_OPEN_BLADES: 2,
+  // The salt for this schedule's shuffle, a sibling of WEATHER.SALT. Distinct
+  // so the card and the weather never correlate — a blade must not reliably
+  // arrive on its own element's day.
+  SALT: 0x3fb17e59,
+} as const;
+
+/** One posted fight on the day's card — a lobby key. */
+export type CardKey = {
+  mode: FightMode;
+  classType: Lobby;
+  format: FightFormat;
+  price?: number; // claimer tag
+};
+
+/**
+ * The blades a given (mode, class) runs on a given day — a ROTATING DECK, not
+ * independent random draws.
+ *
+ * Independent draws would let a blade vanish for a week or more by luck, and a
+ * juvenile's whole discovery year is SEVEN DAYS (canJuvenile is age === 1
+ * exactly, a closed division), so a bad run of luck would cost a generation its
+ * coverage. Instead: walk a cursor `dayIndex * k` through decks of every blade,
+ * each deck a shuffle seeded from its own index. Every blade is therefore
+ * guaranteed once per deck, and the walk only ever moves forward.
+ *
+ * Written against FORMAT_NAMES.length rather than a literal 5 — a sixth blade
+ * must widen the guarantee, not silently break it.
+ */
+function bladeDeck(dayIndex: number, key: string, count: number): FightFormat[] {
+  const n = FORMAT_NAMES.length;
+  const want = Math.min(count, n); // never ask for more blades than exist
+  const out: FightFormat[] = [];
+  // Walk forward, SKIPPING a blade already posted today. Without the skip a
+  // slot group that straddles a deck boundary can draw the same blade twice —
+  // deck d's tail and deck d+1's head are independently shuffled — and the card
+  // would post a duplicate key, silently costing that day a lobby.
+  for (let pos = dayIndex * want; out.length < want; pos++) {
+    const blade = shuffledBlades(Math.floor(pos / n), key)[pos % n];
+    if (!out.includes(blade)) out.push(blade);
+  }
+  return out;
+}
+
+/** One deck: a Fisher-Yates shuffle of every blade, seeded and reproducible. */
+function shuffledBlades(deckIndex: number, key: string): FightFormat[] {
+  const deck = [...FORMAT_NAMES];
+  const rng = saltedRng(deckIndex, key);
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+
+/**
+ * The same one-step mulberry32 weatherOfDay uses, mixed with a string key so
+ * each (division, class) rotates independently. Inlined rather than imported
+ * because config.ts deliberately depends on nothing.
+ */
+function saltedRng(n: number, key: string): () => number {
+  let h = CARD.SALT >>> 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h ^ key.charCodeAt(i), 0x01000193) + 1) >>> 0;
+  let a = (Math.imul(n + 1, 0x9e3779b9) + h) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * TONIGHT'S CARD — every lobby key on offer for a given day.
+ *
+ * Pure and derived from dayIndex alone, exactly like weatherOfDay: no schema,
+ * no storage, reproducible for any past day, and `cardOfDay(day + 1)` is free
+ * so tomorrow is public and a stable can plan around it.
+ *
+ * NOTE ON THE ODD BIRD OUT: concentrating entries kills the sole-entrant and
+ * barn-mate halves of the unmatched rate, but each lobby still strands its odd
+ * bird — expect single digits, not zero. Removing that residue is the next
+ * round's job (a group stage inside each lobby, which unbounded lobbies make
+ * natural: a room of 30 becomes seven groups of four plus one of two, and
+ * everybody fights).
+ */
+export function cardOfDay(dayIndex: number): CardKey[] {
+  const keys: CardKey[] = [];
+  // `take` exists so the crown-day thinning DROPS a blade rather than walking
+  // the deck with a different stride. The cursor is `dayIndex * count`, so
+  // asking for 2 instead of 3 on one day lands somewhere else in the rotation
+  // entirely and desyncs it — measured as a jump in the worst blade gap. Walk
+  // the full count always; slice afterwards.
+  const add = (
+    mode: FightMode,
+    classType: Lobby,
+    count: number,
+    opts: { prices?: number[]; take?: number } = {}
+  ) => {
+    bladeDeck(dayIndex, `${mode}:${classType}`, count)
+      .slice(0, opts.take ?? count)
+      .forEach((format, i) => {
+        keys.push({ mode, classType, format, ...(opts.prices ? { price: opts.prices[i] } : {}) });
+      });
+  };
+
+  // Adult open thins on the Majors' crown day — see CARD.CROWN_DAY_OPEN_BLADES.
+  const crownDay = dayIndex % CALENDAR.DAYS_PER_WEEK === PINTAKASI.DAY_OF_WEEK;
+  add("real", "open", CARD.real.open, {
+    take: crownDay ? CARD.CROWN_DAY_OPEN_BLADES : CARD.real.open,
+  });
+  add("real", "maiden", CARD.real.maiden);
+  add("real", "nw3", CARD.real.nw3);
+  // CLAIMER TAGS ARE DRAWN ONE CHEAP, ONE DEAR — deliberately, not as two free
+  // draws. A day that happened to post only dear tags would put the bots' claim
+  // gate at tag + reserve (1000 GP at the 600 rung) and price half the field
+  // out of the marketplace entirely; a day of only cheap tags would waste the
+  // ladder. One of each means the cheap rung — where nearly all the volume is —
+  // is always available, and the dear rungs rotate above it.
+  add("real", "claimer", CARD.real.claimer, {
+    prices: [CLAIMER.PRICES[0], CLAIMER.PRICES[1 + (dayIndex % (CLAIMER.PRICES.length - 1))]],
+  });
+
+  add("juvenile", "open", CARD.juvenile.open);
+  add("juvenile", "maiden", CARD.juvenile.maiden);
+  add("juvenile", "claimer", CARD.juvenile.claimer, {
+    prices: [CLAIMER.JUVENILE_PRICES[dayIndex % CLAIMER.JUVENILE_PRICES.length]],
+  });
+  return keys;
+}
+
+/** Is this exact key posted today? The card is matched on all four axes. */
+export function isOnCard(dayIndex: number, spec: CardKey): boolean {
+  return cardOfDay(dayIndex).some(
+    (k) =>
+      k.mode === spec.mode &&
+      k.classType === spec.classType &&
+      k.format === spec.format &&
+      (k.price ?? null) === (spec.price ?? null)
+  );
+}
 
 // ── The Juvenile Championship (ruled round 23) ──────────────────────────────
 // Zane: "Can we make the Juvenile schedule more interesting? I'd want maidens,

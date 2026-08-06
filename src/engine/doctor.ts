@@ -66,6 +66,12 @@ const DOCTOR = {
   // A lobby key needs this many entries before its rate means anything — a
   // key with one entry is always either 0% or 100%.
   KEY_MIN_SAMPLE: 8,
+  // Below this many birds per lobby the card is spread too thin to pair
+  // reliably. Sized off the round-31 measurement: conjure-on-demand lobbies
+  // averaged 2.9 and leaked 16.3% unmatched; the daily card took the same
+  // traffic to 7.27 and 5.7%. 5 sits between the two, so a regression toward
+  // the old fragmentation warns before the unmatched rate has to.
+  FILL_WARN: 5,
   // Half a division's crowns cancelling means the field isn't there.
   CANCELLED_CROWNS_WARN: 0.5,
   OFFENDER_SAMPLE: 5,
@@ -432,6 +438,70 @@ function weatherLine(db: DB): { line: string; warn?: string } {
  * entries home. When the population is thin, this is the number that explains
  * a quiet card, and it's the one to watch as blades are added.
  */
+/**
+ * HOW DEEP DO LOBBIES ACTUALLY FILL? — the number round 31 was built to move.
+ *
+ * Fill is the whole mechanism behind the unmatched rate, and nothing reported
+ * it. Before the daily card, 74 keys took ~70 entries a day and the average
+ * lobby held 2.9 birds against a capacity of 8: a third of unmatched entries
+ * were SOLE entrants in a lobby nobody else ever joined, and another third were
+ * two barn-mates alone (matchmaking never pairs same-barn birds). Neither is
+ * fixable by a better matchmaker — only by making entries collide.
+ *
+ * So three numbers, and the last two are the diagnosis rather than the symptom:
+ *   · mean fill — the headline
+ *   · SINGLETONS — a lobby of one is a bird that paid, waited and fought
+ *     nobody, and is pure key-space damage
+ *   · SAME-BARN-ONLY — every bird in it came from one farm, so all of them
+ *     strand. This is also the round-31 watch item: dropping the capacity
+ *     removed the round-17 rule capping a farm at half a lobby, and that rule
+ *     had no denominator once lobbies became unbounded. If this climbs, the
+ *     cap needs replacing with something that works without a capacity.
+ */
+function lobbyFill(db: DB): HealthSection {
+  const entries = db.select().from(lobbyEntries).all();
+  const byLobby = new Map<number, Set<string>>();
+  const size = new Map<number, number>();
+  for (const e of entries) {
+    size.set(e.lobbyId, (size.get(e.lobbyId) ?? 0) + 1);
+    const farms = byLobby.get(e.lobbyId) ?? new Set<string>();
+    farms.add(e.farmId);
+    byLobby.set(e.lobbyId, farms);
+  }
+  const sizes = [...size.values()];
+  if (sizes.length === 0) return { title: "LOBBY FILL", lines: ["no lobbies yet"] };
+  const mean = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+  const singletons = sizes.filter((n) => n === 1).length;
+  const sameBarn = [...byLobby.entries()].filter(([id, f]) => f.size === 1 && (size.get(id) ?? 0) > 1);
+  const stranded = sameBarn.reduce((n, [id]) => n + (size.get(id) ?? 0), 0);
+  // A histogram in buckets — the shape matters as much as the mean, because a
+  // healthy card is a stack of deep lobbies and not a long tail of thin ones.
+  const buckets: [string, (n: number) => boolean][] = [
+    ["1", (n) => n === 1],
+    ["2-3", (n) => n >= 2 && n <= 3],
+    ["4-7", (n) => n >= 4 && n <= 7],
+    ["8-15", (n) => n >= 8 && n <= 15],
+    ["16+", (n) => n >= 16],
+  ];
+  const bars = buckets.map(([label, test]) => {
+    const n = sizes.filter(test).length;
+    return `${label.padStart(5)} ${"█".repeat(Math.round((n / sizes.length) * 24)).padEnd(24)} ${pct(n, sizes.length)}`;
+  });
+  return {
+    title: "LOBBY FILL",
+    lines: [
+      `mean ${mean.toFixed(2)} birds per lobby · ${sizes.length} lobbies · ` +
+        `${singletons} held a single bird (${pct(singletons, sizes.length)})`,
+      ...bars,
+      `same-barn-only lobbies ${sameBarn.length} · ${stranded} birds stranded with no cross-barn opponent`,
+    ],
+    warn:
+      mean < DOCTOR.FILL_WARN
+        ? `lobbies are averaging ${mean.toFixed(1)} birds — the card is spread too thin to pair reliably`
+        : undefined,
+  };
+}
+
 function fragmentation(db: DB): HealthSection {
   const all = db.select().from(lobbies).all();
   const entries = db.select().from(lobbyEntries).all();
@@ -1111,6 +1181,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
       ],
       warn: cardWarns.length ? cardWarns.join(" · ") : undefined,
     },
+    lobbyFill(db),
     fragmentation(db),
     population(db, topline),
     // Right after POPULATION: that section counts the flock, this one asks

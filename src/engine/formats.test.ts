@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
+import { gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { converge, duel, flat, LAB, type Convergence } from "./balance/lab";
 import {
@@ -22,6 +24,7 @@ import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
 import { mulberry32 } from "./rng";
+import { dayWithKey, onCard } from "./testkit";
 
 // Round 30 removed FIGURE.MAX — Zane ruled the 0–150 clamp out ("I don't
 // think it's helpful to cap pit figures like this"), because a bred monster
@@ -235,16 +238,31 @@ describe("format records (the past-performance lines)", () => {
     const alab = game.flock.all().find((b) => b.name === "Alab")!;
     const rivalAlab = rivalFlock.byId("rival-6"); // the Alab slot — names are world-unique now
 
-    const nights = ["b1", "b1", "b4"] as const;
-    for (const [i, format] of nights.entries()) {
-      game.lobbies.enter(alab.id, { mode: "real", classType: "open", format }, 100 + i);
-      rival.enter(rivalAlab.id, { mode: "real", classType: "open", format });
+    // The blade is the card's to pick now (round 31), so the test WAITS for
+    // the one it wants instead of naming three nights in a row — which is
+    // exactly the wait-or-settle choice the card put in front of a player.
+    const today = () => db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    const night = (format: (typeof FORMAT_NAMES)[number], seed: number) => {
+      const want = { mode: "real", classType: "open", format } as const;
+      while (today() < dayWithKey(today(), want)) game.tickDay();
+      const spec = onCard(db, want);
+      game.lobbies.enter(alab.id, spec, seed);
+      rival.enter(rivalAlab.id, spec);
       game.tickDay();
-    }
+    };
+    // Two nights at one blade, one at another, and a third blade never
+    // carded — the shape the aggregate has to separate.
+    const twice = onCard(db, { mode: "real", classType: "open" }).format;
+    const once = FORMAT_NAMES.find((f) => f !== twice)!;
+    const never = FORMAT_NAMES.find((f) => f !== twice && f !== once)!;
+    night(twice, 100);
+    night(twice, 101);
+    night(once, 102);
+
     const records = game.lobbies.formatRecords(alab.id);
-    expect(records.b1?.fights).toBe(2);
-    expect(records.b4?.fights).toBe(1);
-    expect(records.b3).toBeUndefined();
+    expect(records[twice]?.fights).toBe(2);
+    expect(records[once]?.fights).toBe(1);
+    expect(records[never]).toBeUndefined();
     for (const rec of Object.values(records)) {
       expect(rec.wins + rec.losses).toBe(rec.fights);
       expect(rec.bestFigure).toBeGreaterThanOrEqual(rec.avgFigure - FIGURE.BAND); // avg rounds

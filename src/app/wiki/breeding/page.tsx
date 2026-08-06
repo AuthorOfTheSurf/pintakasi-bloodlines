@@ -45,15 +45,15 @@ export default function BreedingPage() {
         Breeding needs a hen and a rooster, and both must be <strong>retired</strong>. An active
         fighter — no matter how good — cannot sit at the nest. A bird reaches the barn one of three
         ways: it hits the age cap (age {AGE.FIGHTING_CAP}), it&apos;s pulled voluntarily once
-        retirement unlocks at age {AGE.FORK}, or it loses a hardcore fight, which force-retires it
-        on the spot (see <Link href="/wiki/fighting">Fighting</Link>).
+        retirement unlocks at age {AGE.FORK}, or it loses a bout in a{" "}
+        <Link href="/wiki/pintakasi">Pintakasi Major</Link>, which force-retires it on the spot.
       </p>
       <p>
         That&apos;s the loop, and it&apos;s deliberate: a fighting career <strong>ends</strong>{" "}
-        and a breeding life <strong>begins</strong> — the same bird, a second job. Hardcore losses
-        and age retirements don&apos;t delete a bird from the game, they feed it into the barn. A
-        bird you lost with hardcore, or aged out, is still worth exactly as much to your bloodline
-        as one you never risked.
+        and a breeding life <strong>begins</strong> — the same bird, a second job. A lost crown and
+        an age retirement don&apos;t delete a bird from the game, they feed it into the barn. A bird
+        you lost in a Major, or aged out, is still worth exactly as much to your bloodline as one
+        you never risked.
       </p>
 
       <h2>The bloodline restriction</h2>

@@ -5,7 +5,7 @@ import { shopAllClaimers } from "./auto-play";
 import { Bots, type BotDayReport, type DiscoveryPolicy } from "./bots";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
-import { BARN, weatherOfDay, type Element } from "./config";
+import { BARN, cardOfDay, weatherOfDay, type CardKey, type Element } from "./config";
 import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
@@ -19,6 +19,9 @@ export interface GameStateView {
   barn: { count: number; capacity: number };
   // The day's ascendant element + tomorrow's, so the client can plan (round 24).
   weather: { today: Element; tomorrow: Element };
+  // Tonight's posted card + tomorrow's (round 31). Lobbies are no longer
+  // conjured on demand: a key is enterable only if the day posted it.
+  card: { today: CardKey[]; tomorrow: CardKey[] };
 }
 
 export interface TickView {
@@ -67,6 +70,11 @@ export class Game {
       farm: this.farms.view(this.farms.rowById(this.farmId)),
       barn: { count: this.flock.barnCount(), capacity: BARN.CAPACITY },
       weather: { today: weatherOfDay(row.dayIndex), tomorrow: weatherOfDay(row.dayIndex + 1) },
+      // TONIGHT'S CARD and tomorrow's (round 31), exactly parallel to weather
+      // above: both are pure functions of the day index, so one day of
+      // foresight is free and deliberately PUBLIC — a stable plans around what
+      // is coming, and holding a bird back for tomorrow's blade is a real play.
+      card: { today: cardOfDay(row.dayIndex), tomorrow: cardOfDay(row.dayIndex + 1) },
     };
   }
 

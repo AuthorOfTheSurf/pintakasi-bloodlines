@@ -19,14 +19,18 @@ import {
   ECONOMY,
   FORMATS,
   FORMAT_NAMES,
-  LOBBY,
+  NW_CAP,
   SCOUT,
   PINTAKASI,
   STAKER_FLOWS,
+  cardOfDay,
+  isOnCard,
   landForFight,
   weatherOfDay,
+  type CardKey,
   type Element,
   type FightFormat,
+  type FightMode,
   type Lobby,
 } from "./config";
 import { emit, fmtGp } from "./events";
@@ -35,16 +39,17 @@ import { overallGradeOf } from "./grades";
 import { normalizedScoutFigure } from "./scout";
 import { simulatePair, type Combatant } from "./fight-sim";
 import { Flock } from "./flock";
-import { canHardcore, canJuvenile, canRealFight } from "./lifecycle";
+import { canJuvenile, canRealFight } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
 import { Tournaments } from "./tournaments";
 
-export type FightMode = "juvenile" | "real" | "hardcore";
+// Re-exported: FightMode moved to config in round 31 (it is a dial like any
+// other, and cardOfDay needs it), but every consumer imports it from here.
+export type { FightMode };
 
 const MODE_FEES: Record<FightMode, number> = {
   juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
   real: ECONOMY.REAL_ENTRY_FEE,
-  hardcore: ECONOMY.HARDCORE_ENTRY_FEE,
 };
 
 /** The card line for a lobby — shared by resolutions and the ledger. */
@@ -54,8 +59,8 @@ function labelOf(lobby: {
   format: FightFormat;
   price: number | null;
 }): string {
-  // "REAL" is the default and goes unsaid (round 20) — only juvenile and
-  // hardcore cards announce their mode.
+  // "REAL" is the default and goes unsaid (round 20) — only a juvenile card
+  // announces its mode.
   const parts: string[] = [];
   if (lobby.mode !== "real") parts.push(lobby.mode.toUpperCase());
   if (lobby.classType !== "open") parts.push(lobby.classType.toUpperCase());
@@ -125,15 +130,18 @@ export interface EntryCard {
 }
 
 export interface LobbyView {
-  lobbyId: number;
+  // null on a PHANTOM — a key today's card posted that nobody has entered yet.
+  // Explicitly paired with `offered` rather than left as a bare null, so a
+  // consumer branches on intent instead of on the absence of an id.
+  lobbyId: number | null;
+  offered?: true;
   status: "open" | "closed"; // completed lobbies leave the board
   mode: FightMode;
   classType: Lobby;
   format: FightFormat;
   price: number | null; // claimer tag
   fee: number; // entry fee a side
-  filled: number; // ALWAYS public — how full, never who
-  capacity: number;
+  filled: number; // ALWAYS public — how many are in, never who. No ceiling (round 31).
   // OPEN: fogged — your own entries, plus the full field in claimer
   // lobbies only. CLOSED: the reveal — every entry, with its draw.
   entries: EntryCard[];
@@ -147,7 +155,9 @@ export interface FightReport {
   winnerFarm: string;
   figures: [number, number];
   landEach: number;
-  forcedRetirements: string[]; // hardcore losers, by bird name
+  // Always EMPTY from a daily-card fight since round 31 (hardcore left the
+  // card). Kept because the Majors still fill it and the shape is public API.
+  forcedRetirements: string[];
   playByPlay: string;
 }
 
@@ -164,11 +174,16 @@ export interface LobbyResolution {
  * Lobbies — PURE PvP fight selection (re-ruled 2026-08-03). The house
  * supplies nobody; every fight is between barns. The shape of a fight day:
  *
- *   1. During the game-day, owners ENTER birds. An entry joins the open
- *      lobby for its (mode, class, format[, tag]) key — or opens a fresh
- *      one when that lobby is full. Size is LOCKED at 8: even, so a full
- *      lobby guarantees every bird a fight. Entries are BINDING (fee
- *      escrowed, the bird's daily fight spent).
+ *   1. Each game-day PUBLISHES A CARD (round 31): about eleven lobby keys out
+ *      of the fifty possible, from config.cardOfDay. A bird may be entered
+ *      only into a key the day posted — everything else is refused at the
+ *      door. Every CLASS runs every day in both divisions; what rotates is
+ *      which BLADES each class runs, so nothing is ever stranded (the classes
+ *      nest, and adult open is always up) and the shortage lands on the
+ *      discovery axis instead. There is exactly ONE lobby per posted key and
+ *      it grows without limit — no capacity, no duplicates, so a late entrant
+ *      can never find the door shut. Entries are BINDING (fee escrowed, the
+ *      bird's daily fight spent).
  *   2. The board is public but FOGGED — you see every lobby and how full it
  *      is, never whose birds are in it (no dodging; judging a lobby's
  *      likely strength is the skill). The one exception is claimer lobbies:
@@ -186,7 +201,8 @@ export interface LobbyResolution {
  *   4. COMPLETE fires the fights: birds with no draw (odd bird out, or
  *      barn-mates with nobody else) refund — no fight, no land. Winners
  *      take the pooled pot; both fighters earn land scaled superlinearly
- *      to the fee (fighting up pays extra). Hardcore losers force-retire.
+ *      to the fee (fighting up pays extra). Nothing on the daily card can
+ *      force-retire a bird any more — hardcore lives only in the Majors.
  *      Then claims settle: one wins per entry (RNG), the owner banks the
  *      tag, the bird transfers, losers refund in full. NO FIGHT, NO CLAIM
  *      (re-ruled round 23 — this used to let a sale go through on an
@@ -220,10 +236,21 @@ export class Lobbies {
       throw new Error(
         `${bird.name} hasn't been given a real name — name a bird before its first fight`
       );
-    this.checkGate(bird.name, bird.age, spec.mode);
-    this.checkClass(bird, spec);
-
     const today = this.today();
+    this.checkEligible(bird, spec);
+    // THE CARD IS THE DOOR (round 31). A lobby key exists tonight only if the
+    // day posted it — see cardOfDay. This throw is a BACKSTOP, not the
+    // mechanism: both entry paths wrap `enter` in `quietly()`, so if the
+    // choosers were allowed to propose off-card specs and be refused here, the
+    // fill rate would collapse without one error surfacing anywhere. The
+    // choosers pick FROM the card; this is what stops a hand-written call (a
+    // player, an agent, a test) opening a lobby nobody else can find.
+    if (!isOnCard(today, spec))
+      throw new Error(
+        `That fight isn't on tonight's card — ${labelOf({ ...spec, price: spec.price ?? null })}. ` +
+          `Check the board (or get_state's card) for what's running today and tomorrow.`
+      );
+
     this.checkFightCap(bird.id, bird.name, today);
 
     // A championship registrant fights normal cards all week — except on ITS
@@ -290,13 +317,46 @@ export class Lobbies {
    * The public board — every OPEN lobby (fogged) and every CLOSED one
    * (revealed: full field + the draw). Completed lobbies are history.
    */
+  /**
+   * THE BOARD IS THE CARD (round 31). Every lobby that exists, plus a PHANTOM
+   * row for every key today posted that nobody has entered yet.
+   *
+   * Before the card, an unopened key was invisible — a lobby only existed once
+   * someone conjured it by entering, so the board could never answer "what can
+   * I run tonight?". Now the card is published in advance, and an empty room on
+   * it is real information: it is a fight you could be the first into. A
+   * phantom carries `lobbyId: null` and `offered: true`; consumers that act on
+   * a lobby must skip it, and the two that iterate the board (the bots'
+   * liquidity pass and the claim shoppers) do — a phantom has no entries and an
+   * even fill of zero.
+   */
   board(): LobbyView[] {
-    return this.database
+    const real = this.database
       .select()
       .from(lobbies)
       .all()
       .filter((l) => l.status === "open" || l.status === "closed")
       .map((l) => this.viewLobby(l.id));
+    const sameKey = (a: LobbyView, b: CardKey) =>
+      a.mode === b.mode &&
+      a.classType === b.classType &&
+      a.format === b.format &&
+      a.price === (b.price ?? null);
+    const phantoms: LobbyView[] = cardOfDay(this.today())
+      .filter((k) => !real.some((l) => l.status === "open" && sameKey(l, k)))
+      .map((k) => ({
+        lobbyId: null,
+        offered: true,
+        status: "open" as const,
+        mode: k.mode,
+        classType: k.classType,
+        format: k.format,
+        price: k.price ?? null,
+        fee: MODE_FEES[k.mode],
+        filled: 0,
+        entries: [],
+      }));
+    return [...real, ...phantoms];
   }
 
   /**
@@ -658,23 +718,14 @@ export class Lobbies {
         )
         .where(eq(birds.id, side.row.id))
         .run();
-      // The key rule's teeth — in PvP both owners signed up for it.
-      if (lobby.mode === "hardcore" && !side.won) {
-        database
-          .update(birds)
-          .set({ status: "retired", retiredBy: "hardcore", retiredWeek: week })
-          .where(eq(birds.id, side.row.id))
-          .run();
-        forcedRetirements.push(side.row.name);
-        emit(database, {
-          type: "retire",
-          farmId: side.entry.farmId,
-          birdId: side.row.id,
-          // The hardest reveal in the game: the autopsy comes with the loss.
-          message: `${side.row.name} lost a hardcore — force-retired (${side.row.wins}–${side.row.losses + 1}). The sheet is public: ${overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition)} overall.`,
-          data: { by: "hardcore" },
-        });
-      }
+      // The key rule's teeth used to live here. Round 31 took hardcore off the
+      // daily card entirely (Zane: "There should be 0 hardcore fights outside
+      // the Finals"), so nothing in a lobby force-retires any more — the only
+      // hardcore in the game is the Pintakasi Majors, and Tournaments owns that
+      // path (see Flock.hardcoreRetire, which both used to share). The
+      // `forcedRetirements` field on a FightReport stays, always empty from
+      // here, because the resolution shape is public API and the Majors still
+      // fill it.
       const inserted = database
         .insert(battleLog)
         .values({
@@ -855,21 +906,26 @@ export class Lobbies {
       )
       .all()
       .filter((l) => l.price === (spec.price ?? null));
-    for (const lobby of open) {
-      const entries = this.database
-        .select()
-        .from(lobbyEntries)
-        .where(eq(lobbyEntries.lobbyId, lobby.id))
-        .all();
-      if (entries.length >= lobby.capacity) continue;
-      // The matchmaker's seating rule (round 17): no farm may hold more than
-      // half a lobby. Matchmaking never draws barn-mates, so a lobby that is
-      // mostly one farm's birds strands the surplus — capped at half, a FULL
-      // lobby always admits a perfect cross-barn matching.
-      const mine = entries.filter((e) => e.farmId === this.farmId).length;
-      if (mine >= lobby.capacity / 2) continue;
-      return lobby;
-    }
+    // EXACTLY ONE LOBBY PER KEY PER DAY (round 31). Two changes from the old
+    // find-or-open, and they go together:
+    //
+    //  · `dayOpened` is now MATCHED, not just written. It was always written
+    //    and never read, which was harmless only because `resolve` closes every
+    //    open lobby on every tick. The moment anything closes selectively — the
+    //    real-time clock closes claimers early — a stale lobby could seat
+    //    tomorrow's entrants on a key that is no longer posted. The card has to
+    //    be authoritative, so the day is part of the lookup.
+    //  · No capacity, so no duplicate. The old code skipped a full lobby and
+    //    opened another on the same key, which split a hot key back into two
+    //    half-empty rooms — the exact opposite of what the card is for. The
+    //    round-17 per-farm seating cap (no farm may hold more than half a
+    //    lobby) went with it: it was defined as capacity/2 and has no
+    //    denominator any more. A barn that pours its whole roster into one key
+    //    now strands its own surplus, refunded in full — self-correcting, and
+    //    the doctor watches same-barn stranding so we find out rather than
+    //    assume.
+    const existing = open.find((l) => l.dayOpened === today);
+    if (existing) return existing;
     return this.database
       .insert(lobbies)
       .values({
@@ -877,7 +933,6 @@ export class Lobbies {
         classType: spec.classType,
         format: spec.format,
         price: spec.price ?? null,
-        capacity: LOBBY.CAPACITY,
         seed: seed ?? freshSeed(),
         dayOpened: today,
       })
@@ -909,7 +964,6 @@ export class Lobbies {
       price: lobby.price,
       fee: MODE_FEES[lobby.mode],
       filled: entries.length,
-      capacity: lobby.capacity,
       entries: visible.map((e) => this.card(e, closed ? entries : undefined)),
     };
   }
@@ -954,60 +1008,74 @@ export class Lobbies {
     return view;
   }
 
-  private checkGate(name: string, age: number, mode: FightMode): void {
-    const gates: Record<FightMode, [ok: boolean, rule: string]> = {
-      juvenile: [canJuvenile(age), "the juvenile division is the discovery year only — age 1"],
-      real: [canRealFight(age), "real stakes open at age 2"],
-      hardcore: [canHardcore(age), "hardcore opens at age 3 (and ends at the cap)"],
-    };
-    const [ok, rule] = gates[mode];
-    if (!ok) throw new Error(`${name} is ${age} — ${rule}`);
+  /** The gate + ladder, as a throw. One rule, shared with `entryRefusal`. */
+  private checkEligible(bird: ReturnType<Flock["byId"]>, spec: LobbySpec): void {
+    const refusal = entryRefusal(bird, spec);
+    if (refusal) throw new Error(refusal);
   }
+}
 
-  /** Class (ladder) eligibility — entry restrictions self-sort the fields. */
-  private checkClass(bird: ReturnType<Flock["byId"]>, spec: LobbySpec): void {
-    const { mode, classType, price } = spec;
-    if (mode === "hardcore" && classType !== "open")
-      throw new Error("Hardcore runs in the open only — the key rule needs no ladder");
-    // THE DISCOVERY-YEAR LADDER (round 23). The juvenile season used to be
-    // one flat open division, which gave a chick nowhere to climb. It now
-    // runs maidens, stakes (open) and claimers of its own — the same shape
-    // the grown card has, so a bird learns the ladder in the year its
-    // results don't count against it. The conditions classes (nw2/nw3) stay
-    // out: a one-year-old hasn't the record to sort by.
-    if (mode === "juvenile" && classType !== "open" && classType !== "maiden" && classType !== "claimer")
-      throw new Error("Juvenile lobbies are open, maiden or claimer");
+/**
+ * IS THIS BIRD ALLOWED IN THIS LOBBY? Returns the reason it is not, or null.
+ *
+ * ⚠ ONE RULE, TWO CALLERS, ON PURPOSE (round 31). `Lobbies.enter` calls this
+ * and throws; the bots' chooser calls it and FILTERS, because with a daily card
+ * the chooser has to know what a bird is eligible for before it picks. The
+ * ladder was already encoded twice — here and in `ladderClass` — and a third
+ * copy inside the chooser would have been the drift that kills us: both entry
+ * paths wrap `enter` in `quietly()`, so a chooser proposing specs the enforcer
+ * rejects would show up as nothing at all except a fill rate that quietly
+ * collapsed. Returning a reason rather than a boolean keeps the player-facing
+ * error text in one place too.
+ */
+export function entryRefusal(
+  bird: { name: string; age: number; wins: number; stakesWins: number },
+  spec: CardKey
+): string | null {
+  const { mode, classType, price } = spec;
 
-    // WHICH record the ladder reads depends on the season, and this is the
-    // subtle part. Grown classes read the STAKES record (round 19) — juvenile
-    // practice wins must not graduate a maiden, or the class never opens. But
-    // inside the discovery year a bird has NO stakes record at all, so a
-    // juvenile maiden reads its juvenile wins instead. Same rule, measured
-    // against the season the bird is actually in.
-    const ladderWins = mode === "juvenile" ? bird.wins : bird.stakesWins;
-    if (classType === "maiden" && ladderWins > 0)
-      throw new Error(
-        mode === "juvenile"
-          ? `${bird.name} has already won in the discovery year — juvenile maidens take never-winners`
-          : `${bird.name} has won at stakes — maidens take never-winners only`
-      );
-    if (classType === "nw2" && bird.stakesWins >= 2)
-      throw new Error(`${bird.name} has ${bird.stakesWins} stakes wins — nw2 takes fewer than 2`);
-    if (classType === "nw3" && bird.stakesWins >= 3)
-      throw new Error(`${bird.name} has ${bird.stakesWins} stakes wins — nw3 takes fewer than 3`);
-    if (classType === "claimer") {
-      if (mode === "hardcore") throw new Error("A hardcore bird isn't for sale — no claimers");
-      // Juveniles claim on their own, cheaper ladder — an unproven bird
-      // priced against grown stock would never be tagged at all.
-      const ladder = (
-        mode === "juvenile" ? CLAIMER.JUVENILE_PRICES : CLAIMER.PRICES
-      ) as readonly number[];
-      if (!price || !ladder.includes(price))
-        throw new Error(`Pick a claiming tag: ${ladder.join(" / ")} GP`);
-    } else if (price) {
-      throw new Error("A tag price only means something in a claimer");
-    }
+  const gates: Record<FightMode, [ok: boolean, rule: string]> = {
+    juvenile: [canJuvenile(bird.age), "the juvenile division is the discovery year only — age 1"],
+    real: [canRealFight(bird.age), "real stakes open at age 2"],
+  };
+  const [ageOk, rule] = gates[mode];
+  if (!ageOk) return `${bird.name} is ${bird.age} — ${rule}`;
+
+  // THE DISCOVERY-YEAR LADDER (round 23). The juvenile season used to be one
+  // flat open division, which gave a chick nowhere to climb. It now runs
+  // maidens, stakes (open) and claimers of its own — the same shape the grown
+  // card has, so a bird learns the ladder in the year its results don't count
+  // against it. The conditions class stays out: a one-year-old hasn't the
+  // record to sort by.
+  if (mode === "juvenile" && classType === "nw3")
+    return "Juvenile lobbies are open, maiden or claimer";
+
+  // WHICH record the ladder reads depends on the season, and this is the
+  // subtle part. Grown classes read the STAKES record (round 19) — juvenile
+  // practice wins must not graduate a maiden, or the class never opens. But
+  // inside the discovery year a bird has NO stakes record at all, so a
+  // juvenile maiden reads its juvenile wins instead. Same rule, measured
+  // against the season the bird is actually in.
+  const ladderWins = mode === "juvenile" ? bird.wins : bird.stakesWins;
+  if (classType === "maiden" && ladderWins > 0)
+    return mode === "juvenile"
+      ? `${bird.name} has already won in the discovery year — juvenile maidens take never-winners`
+      : `${bird.name} has won at stakes — maidens take never-winners only`;
+  // nw3 absorbed nw2 in round 31 — see the LOBBIES comment in config.
+  if (classType === "nw3" && bird.stakesWins >= NW_CAP)
+    return `${bird.name} has ${bird.stakesWins} stakes wins — nw3 takes fewer than ${NW_CAP}`;
+
+  if (classType === "claimer") {
+    // Juveniles claim on their own, cheaper ladder — an unproven bird priced
+    // against grown stock would never be tagged at all.
+    const ladder = (
+      mode === "juvenile" ? CLAIMER.JUVENILE_PRICES : CLAIMER.PRICES
+    ) as readonly number[];
+    if (!price || !ladder.includes(price)) return `Pick a claiming tag: ${ladder.join(" / ")} GP`;
+  } else if (price) {
+    return "A tag price only means something in a claimer";
   }
+  return null;
 }
 
 function toCombatant(row: BirdRow): Combatant {

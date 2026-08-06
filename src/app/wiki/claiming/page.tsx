@@ -25,8 +25,9 @@ export default function ClaimingPage() {
 
       <h2>The tag ladder</h2>
       <p>
-        Five rungs, straddling the {ECONOMY.BREED_FEE} GP breed fee on purpose — two rungs
-        cheaper than a cover, three dearer:
+        {CLAIMER.PRICES.length} rungs, straddling the {ECONOMY.BREED_FEE} GP breed fee on purpose —{" "}
+        {CLAIMER.PRICES.filter((p) => p < ECONOMY.BREED_FEE).length} cheaper than a cover,{" "}
+        {CLAIMER.PRICES.filter((p) => p >= ECONOMY.BREED_FEE).length} dearer:
       </p>
       <div className="tablewrap">
         <table>
@@ -49,13 +50,21 @@ export default function ClaimingPage() {
         </table>
       </div>
       <p>
-        Claimer lobbies are keyed by tag price too, so a bird you enter at a given rung is pooled
-        with — and drawn against — other birds tagged at that same rung. That&apos;s the real
-        strategy: a cheap tag gets you an easier fight, because the field around it is thin, but
-        anybody can buy your bird out from under you afterward for pocket change. A dear tag
-        protects it — few farms will pay that much on a whim — but it also puts you in with
-        whatever company chose to fight at that price, which tends to be the stronger birds.
+        A claimer lobby is named by its tag price as well as its blade, so a bird you enter at a
+        given rung is pooled with — and drawn against — other birds tagged at that same rung.
+        That&apos;s the real trade: a cheap tag is cheap company, but anybody can buy your bird out
+        from under you afterward for pocket change. A dear tag protects it — few farms will pay that
+        much on a whim — but it also puts you in with whatever company chose to fight at that price,
+        which tends to be the stronger birds.
       </p>
+      <div className="callout warn">
+        <b>You can only use a rung that&apos;s on tonight&apos;s card.</b> Like every other fight,
+        claimers are posted daily rather than conjured on demand (see{" "}
+        <Link href="/wiki/card">The card</Link>). Each night&apos;s card carries the cheapest rung —{" "}
+        {CLAIMER.PRICES[0]} GP, where nearly all the trade happens — plus one dearer rung, which
+        rotates. So the bargain end is always open, and the expensive end comes around. If you want
+        to run at a rung that isn&apos;t posted, you wait a day or two.
+      </div>
 
       <h3>The juvenile ladder</h3>
       <p>
@@ -82,8 +91,9 @@ export default function ClaimingPage() {
         </table>
       </div>
       <p>
-        Everything else about the sequence below works exactly the same whether the bird tagged is
-        a one-year-old or a veteran.
+        The juvenile card posts a claimer every night, with the rung alternating, so both prices
+        come around quickly. Everything else about the sequence below works exactly the same whether the
+        bird tagged is a one-year-old or a veteran.
       </p>
 
       <h2>The sequence</h2>

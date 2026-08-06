@@ -424,6 +424,98 @@ world and is FALSE in a mature one (hens +59.0 vs any bird +64.5) — the flock
 number is lifted by the plan's own foals while the breeding hens are mostly
 unselected founders. The assertion was removed rather than tuned.
 
+## The unmatched rate was the KEY SPACE, not the scout — measured round 31
+
+Round 30 closed with a hypothesis: discovery had got sharper, so bots carded
+their birds' true best blades more often, so entries spread across five blades
+and fragmented the lobby keys. The reading was that better discovery *costs*
+matchmaking density. **That trade does not exist.** Round 31 fixed the key
+space alone — the scout, `SCOUT.EXPLORE`, `JITTER` and the figure were not
+touched — and the unmatched rate fell by more than two thirds. Discovery never
+had to be traded for anything.
+
+The cause was that lobbies were CONJURED ON DEMAND: entering created the lobby
+if its key did not exist, so every fight type was on offer every day and the
+perfect fight always existed because you invented it by asking. Measured over
+91 days, before:
+
+| | |
+|---|---|
+| live lobby keys | 74 |
+| entries a day across them | ~70 |
+| mean birds per lobby | 2.9 (against a capacity of 8) |
+| entries that never drew an opponent | 16.3% |
+
+**The decomposition is what settled the argument.** Of those unmatched entries,
+**35% were the sole entrant** in a lobby nobody else joined, **31% were two
+barn-mates alone** (matchmaking never pairs same-barn birds), and **34% were
+the odd bird out**. The first two are pure key-space damage — no matchmaker
+can fix them, only collision can — and no scout policy makes a room of one
+into a fight.
+
+### What was cut, and what it had measured
+
+| axis | before | after | the measurement that ruled it |
+|---|---|---|---|
+| hardcore on the daily card | yes | **gone** | 201 entries → 55 fights, **45.3% unmatched** — the worst of any mode, for under one fight a day |
+| `nw2` / `nw3` | two classes | **one (`nw3`)** | exclusive constituencies of **10** and **18** birds out of 181 active |
+| `CLAIMER.PRICES` | 5 rungs | **3** (50/200/600) | claimers were **40 of 75 keys** — 53% of the space off one axis — at **0.33 entries per key** |
+| `CLAIMER.JUVENILE_PRICES` | 3 rungs | **2** (25/100) | same axis, same arithmetic |
+| total key space | **75** | **50** | |
+
+The dear claimer rungs were not thin, they were dead: b3@400 drew **two**
+entries in 84 days. Hardcore survives where it earns its keep — the Pintakasi
+Majors, which are tournaments and never open a lobby.
+
+Cutting the space is only half of it. The other half is that ~11 of those 50
+keys are POSTED each day (`cardOfDay`, 10 on the Majors' crown day), so entries
+are forced to collide. Every class runs daily in both divisions and the BLADES
+rotate, because the classes nest (maiden ⊂ nw3 ⊂ open) and 33 of 181 active
+birds are open-only — adult open must exist daily or veterans strand. Measured
+blade gaps: k=3 and k=2 classes reach every blade within **4 days**, k=1
+classes within **8**, and the whole card within **3 days** in both divisions.
+
+That k=1 gap is what forced the chooser to invert — blade first, class as the
+slack. A juvenile's entire discovery year is 7 days against an 8-day worst
+gap, so a class-first chooser could have retired a winless chick that never saw
+a blade in a maiden.
+
+### The result, on a fresh 91-day world
+
+| | before | after |
+|---|---|---|
+| mean birds per lobby | 2.9 | **7.36** |
+| entries never drawing an opponent | 16.3% | **4.5%** |
+| lobbies holding a single bird | 334 (16.6%) | **26 (3.9%)** |
+| same-barn-only stranding | ~302 birds | **25 birds** |
+| lobbies | 2,012 | 673 |
+
+All five invariants pass with **zero health warnings** (round 30 ended on two).
+Two things worth checking that did NOT get worse:
+
+- **Championship fields survived losing the hardcore points route.** With
+  `POINTS_FOR.hardcore` unreachable, three real wins is the only road to
+  `QUALIFYING_POINTS` — and majors ran **29 of 30** with a mean field of
+  **11.0**, up from 9.6 in round 30.
+- **The claimer marketplace got healthier, not smaller.** 0.33 entries per key
+  → roughly **4.4**, with `claims placed` adoption steady at 14/15 farms.
+
+### Discovery held, with one honest caveat
+
+Clear-home scout accuracy reads **53.4% at age 2–3** against the 20% random
+baseline. Age 4+ reads **36.3%** — but on a much smaller sample this run (160
+decisions), and age-1 answer coverage is down to 3.3%. Those two are recorded
+as noise-prone rather than as a result: a card that posts fewer keys also posts
+fewer decisions to grade, so the discovery denominators are thinner than the
+round-30 ones they would be compared against. Worth watching, not worth
+concluding from.
+
+New instrumentation, since the doctor is where this argument gets settled next
+time: a **LOBBY FILL** section (mean, a bucketed histogram, singletons and
+same-barn stranding) with `DOCTOR.FILL_WARN` = 5, and `BotDayReport.noCard`
+counting birds the card had nothing for — the only error surface the bot layer
+has, because `quietly()` swallows everything else.
+
 ## Still open, ranked
 
 ### 1. B1 cannot reach the +200 target (accepted, documented)
@@ -469,6 +561,15 @@ Separate unit of work: larger grade jumps at the low end, tapering toward
 
 ### 7. Better discovery may be costing matchmaking density (round 30, HYPOTHESIS)
 
+> **RESOLVED in round 31 — the hypothesis was wrong about the cause and right
+> about the lever.** It was never the scout. Lobbies were conjured on demand,
+> so the key space was effectively self-serve at 74 live keys; cutting it to 50
+> and POSTING ~11 a day took the unmatched rate **16.3% → 4.5%** with the scout
+> untouched. "The lever is lobby-key coarseness, not the scout" was the correct
+> half of the guess, and it turns out discovery and density do NOT pull against
+> each other. See **"The unmatched rate was the KEY SPACE, not the scout"**.
+> Kept as history because it is the open question that produced the card.
+
 The unmatched-entry warning moved up: round 29 ran 14.7%, and round 30's runs
 measured 18.7%, 18.1% and 16.3%. Noisy, but the centre has moved. The
 plausible mechanism — **and it is not proven, no ablation was run** — is that
@@ -484,7 +585,45 @@ The doctor warns when under 50% of birds have a home blade worth finding.
 Round 30's runs measured 49.5%, 50.7% and 53.3% — the warning straddles its
 own bar, so it fires or doesn't on run-to-run variance. Either the bar wants
 moving or the measurement wants a wider sample; a health line that flips sign
-on noise teaches nobody anything.
+on noise teaches nobody anything. (It did not fire on the round-31 world, which
+is not evidence either way — that is the complaint.)
+
+### 9. The odd bird out is structural, and the fix is scoped (round 31 → 32)
+
+The residue after the card is **~4.5%**, and it is nearly all the last bird in
+a room that closed odd. Nothing about the key space removes it: unbounded
+lobbies mean parity is a coin flip, where the old capacity of 8 was even ON
+PURPOSE. But unbounded lobbies also change the residue's SHAPE for the better.
+Round-robin across a whole room is impossible (30 birds = 435 fights), so the
+next round partitions each room into GROUPS — Zane's FIFA group-stage analogy —
+where a room of 30 becomes seven groups of four plus one of two and *everybody
+fights*. Only a room holding a single entry would strand anyone.
+
+It is a wide change, not a knob: `CADENCE.FIGHTS_PER_BIRD_PER_DAY`, the
+`potCents = ea.fee * 200` assumption, per-fight `landForFight` minting and the
+single-`battleLogId` shape of `lobbyEntries` all move together. Zane's ruling
+on the money: **entry fees become divisible by 3** (40 → 42, 8 → 9) and the
+stake splits across the fights actually taken, refunding the remainder.
+
+### 10. Same-barn stranding has no cap any more (round 31, watch)
+
+Dropping `LOBBY.CAPACITY` also dropped the round-17 per-farm seating cap, which
+was defined as `capacity / 2` and had no denominator left. It was **not**
+replaced: a barn that pours its roster into one key strands its own surplus and
+is refunded in full, which is self-correcting. Measured at **25 birds** across
+91 days, down from ~302. The doctor's LOBBY FILL section prints it every run;
+if it climbs, the cap needs replacing with something that works without a
+capacity.
+
+### 11. The element wheel fades as the flock breeds up (round 31, newly opened)
+
+The wheel is ADDITIVE, so its edge shrinks in relative terms exactly as
+breeding raises the stat floor — the opposite of what a counter-meta wants.
+Two companions to the same rework: per-fight random weather, and showing a
+lobby's element composition, because the counter-meta is currently *unplayable*
+rather than merely weak — the field is fogged, so nobody can counter what they
+cannot see. PFL-style aging curves and carriage (Ground/Air, still data-only
+since round 23, and the natural second star axis) sit in the same queue.
 
 ## Comment/code discrepancies
 

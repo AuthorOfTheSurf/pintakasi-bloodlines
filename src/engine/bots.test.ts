@@ -25,7 +25,7 @@ import {
 import type { StudView } from "./breeding";
 import { Flock, type BirdView } from "./flock";
 import { mulberry32 } from "./rng";
-import { makeBird, world as testWorld } from "./testkit";
+import { makeBird, onCard, world as testWorld } from "./testkit";
 import { Game } from "./game";
 
 function world(opts: { only?: string[] } = {}) {
@@ -200,8 +200,10 @@ describe("the scout's blade pick", () => {
     for (const f of FORMAT_NAMES) expect(scores[f]).toBe(SCOUT.PRIOR_FIGURE); // unraced = prior
     const format = bestFormat(w.db, bird, mulberry32(7));
     expect(FORMAT_NAMES).toContain(format);
+    // The blade the scout PREFERS may not be posted tonight — the bots choose
+    // from the card, so the door gets the carded key and the fogged bird.
     expect(() =>
-      w.dev.lobbies.enter(bird.id, { mode: "real", classType: "maiden", format })
+      w.dev.lobbies.enter(bird.id, onCard(w.db, { mode: "real", classType: "maiden" }))
     ).not.toThrow();
   });
 });

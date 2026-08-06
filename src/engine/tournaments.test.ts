@@ -9,6 +9,7 @@ import { Flock } from "./flock";
 import { mulberry32 } from "./rng";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
+import { onCard } from "./testkit";
 import { Tournaments } from "./tournaments";
 
 /** Two legacy farms — each carries two age-3+ birds (Sinag 3, Batong Buhay 5). */
@@ -427,10 +428,10 @@ describe("the crown-day resolution", () => {
     const lobbies = new Lobbies(w.db, w.devId);
     // Monday: the registrant fights normal cards freely (entry succeeds).
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3 (Monday)
-    lobbies.enter(bb.id, { mode: "real", classType: "open", format: "b2" });
+    lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }));
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 6 (Thursday, crown day)
     expect(() =>
-      lobbies.enter(bb.id, { mode: "real", classType: "open", format: "b2" })
+      lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }))
     ).toThrow(/Pintakasi/);
   });
 });

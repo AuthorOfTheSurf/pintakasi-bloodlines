@@ -8,7 +8,9 @@ import {
   PINTAKASI,
   landForFight,
   landForTournamentFight,
+  cardOfDay,
   weatherOfDay,
+  type CardKey,
   type FightFormat,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
@@ -61,6 +63,15 @@ function cardLabel(mode: string, classType: string): string {
     ...(classType === "open" ? [] : [classType.toUpperCase()]),
   ];
   return parts.length ? parts.join("·") : "OPEN";
+}
+
+/**
+ * One key on the posted card (round 31), in the same shorthand the lobby
+ * boxes below use — so the header's schedule and the card that went off read
+ * as the same language, and a missing lobby is easy to spot by eye.
+ */
+function cardKeyLabel(k: CardKey): string {
+  return `${cardLabel(k.mode, k.classType)}${k.price ? `@${k.price}` : ""} ${FORMATS[k.format].label}`;
 }
 
 type EntryRow = typeof tournamentEntries.$inferSelect;
@@ -387,9 +398,9 @@ export default function Admin() {
         label:
           cardLabel(l.mode, l.classType) +
           `${l.price ? ` @ ${l.price} GP tag` : ""} · ${FORMATS[l.format as FightFormat].label}`,
-        hardcore: l.mode === "hardcore",
+        // No capacity any more (round 31): one unbounded lobby per posted key,
+        // so the fill count is a bare number with nothing to divide it by.
         filled: entries.length,
-        capacity: l.capacity,
         bouts,
         unmatched: entries
           .filter((e) => e.status === "unmatched")
@@ -506,10 +517,14 @@ export default function Admin() {
   // LT: the land its fights minted (both fighters are paid, win or lose)
   // plus the championship's elimination grant. Entry fees are stored on the
   // entry rows; daily fees are fixed per mode, so they derive exactly.
+  // Keyed by battleLog.mode, which still carries "hardcore" — but since round
+  // 31 those rows can only be Pintakasi Majors, and a Major is FREE to enter
+  // (PINTAKASI.ENTRY_FEE). The daily card runs no hardcore at all. This used to
+  // read ECONOMY.HARDCORE_ENTRY_FEE and was already conflating the two.
   const FEE_BY_MODE: Record<string, number> = {
     juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
     real: ECONOMY.REAL_ENTRY_FEE,
-    hardcore: ECONOMY.HARDCORE_ENTRY_FEE,
+    hardcore: PINTAKASI.ENTRY_FEE,
   };
   const netGpCents = new Map<string, number>();
   const netLt = new Map<string, number>();
@@ -702,6 +717,15 @@ export default function Admin() {
           {" · "}weather: <b>{weatherOfDay(state.dayIndex)}</b> today,{" "}
           <span className="dim">{weatherOfDay(state.dayIndex + 1)} tomorrow</span>
         </p>
+        {/* TONIGHT'S POSTED CARD (round 31). Derived, never stored — cardOfDay
+            is pure, so this is the same schedule the engine enforces at the
+            lobby door. It is the fastest way to read a sim: every lobby box
+            below should trace back to a key on this line, and a key with no box
+            is a fight nobody entered. */}
+        <p className="clock">
+          card: <b>{cardOfDay(state.dayIndex).length}</b> posted today{" "}
+          <span className="dim">— {cardOfDay(state.dayIndex).map(cardKeyLabel).join(" · ")}</span>
+        </p>
         <p className="dbpath">
           database: <b>{path.basename(dbPath)}</b> <span className="dim">({dbPath})</span>
         </p>
@@ -870,7 +894,7 @@ export default function Admin() {
                     <div className="lobby-head">
                       {l.label}
                       <span className="fill">
-                        {l.filled}/{l.capacity} · #{l.id}
+                        {l.filled} in · #{l.id}
                       </span>
                     </div>
                     {l.bouts.map((b, i) => (
@@ -884,7 +908,10 @@ export default function Admin() {
                           {b.edge
                             ? ` · ${b.edge === "both" ? "both birds" : b.edge} carried the ${cardWeather} edge`
                             : ""}
-                          {l.hardcore ? " · loser force-retired" : ""}
+                          {/* No force-retirement note here any more (round 31):
+                              the daily card has no hardcore mode, so nothing on
+                              this page can end a career. The Majors do — that
+                              note lives on the Pintakasi section below. */}
                         </span>
                       </div>
                     ))}

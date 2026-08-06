@@ -15,10 +15,9 @@ import { fmtGp } from "@/engine/events";
 export const dynamic = "force-dynamic";
 
 /** Daily-card land, per fighter — read live so the curve can't go stale. */
-const FIGHT_MODES: { label: string; fee: number }[] = [
+const CARD_MODES: { label: string; fee: number }[] = [
   { label: "Juvenile", fee: ECONOMY.JUVENILE_ENTRY_FEE },
   { label: "Real / Claimer", fee: ECONOMY.REAL_ENTRY_FEE },
-  { label: "Hardcore", fee: ECONOMY.HARDCORE_ENTRY_FEE },
 ];
 
 /** Elimination grants, EARLIEST exit first — the fallen-weighted inversion. */
@@ -33,9 +32,13 @@ const ELIMINATION_STAGES: { label: string; grant: number }[] = [
 ];
 
 export default function LandPage() {
+  // The "fighting up pays more land" comparison, re-anchored in round 31 on the
+  // two modes the daily card actually runs. It used to be measured against the
+  // hardcore entry, which left the card that round — the curve is unchanged,
+  // only the pair of points we quote on it.
   const realLandPerGp = landForFight(ECONOMY.REAL_ENTRY_FEE) / ECONOMY.REAL_ENTRY_FEE;
-  const hardcoreLandPerGp = landForFight(ECONOMY.HARDCORE_ENTRY_FEE) / ECONOMY.HARDCORE_ENTRY_FEE;
-  const upFightingBonus = Math.round((hardcoreLandPerGp / realLandPerGp - 1) * 100);
+  const juvenileLandPerGp = landForFight(ECONOMY.JUVENILE_ENTRY_FEE) / ECONOMY.JUVENILE_ENTRY_FEE;
+  const upFightingBonus = Math.round((realLandPerGp / juvenileLandPerGp - 1) * 100);
   const crownLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
 
   // Every worked number below is computed from the live config, not typed —
@@ -88,7 +91,7 @@ export default function LandPage() {
             </tr>
           </thead>
           <tbody>
-            {FIGHT_MODES.map((m) => (
+            {CARD_MODES.map((m) => (
               <tr key={m.label}>
                 <td>{m.label}</td>
                 <td className="num">{m.fee} GP</td>
@@ -99,9 +102,10 @@ export default function LandPage() {
         </table>
       </div>
       <p className="dim">
-        Hardcore costs {Math.round(ECONOMY.HARDCORE_ENTRY_FEE / ECONOMY.REAL_ENTRY_FEE)}× a real
-        entry&apos;s fee, but it pays about {upFightingBonus}% more land per GP staked than a real
-        fight does. The curve rewards the risk, not just the buy-in.
+        A real entry costs {Math.round(ECONOMY.REAL_ENTRY_FEE / ECONOMY.JUVENILE_ENTRY_FEE)}× a
+        juvenile one, but it pays about {upFightingBonus}% more land <em>per GP staked</em>. That is
+        the curve: every step up in stakes pays more than its share. The steepest step of all is the
+        Pintakasi Majors, below.
       </p>
 
       <h3>The Pintakasi Majors pay even steeper</h3>
@@ -134,8 +138,9 @@ export default function LandPage() {
         </table>
       </div>
       <p className="dim">
-        Every Major bout is hardcore — the loser&apos;s career ends there. The grant is the
-        game&apos;s way of saying a first-round hardcore death is never a pure loss: the money goes
+        Every Major bout is hardcore — the loser&apos;s career ends there, and the Majors are the
+        only place in the game a hardcore fight happens at all. The grant is the game&apos;s way of
+        saying a first-round hardcore death is never a pure loss: the money goes
         to the champion, but the land goes to the fallen. The Wednesday Juvenile Championship mints
         per-fight land too, but off the much smaller juvenile entry fee — it&apos;s a discovery-year
         stage, not a Major, and losing one doesn&apos;t end a career. See{" "}

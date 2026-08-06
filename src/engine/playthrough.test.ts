@@ -4,11 +4,12 @@ import { createDb } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
-import { BARN } from "./config";
+import { BARN, cardOfDay } from "./config";
 import { Flock, type BirdView } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
 import { mulberry32 } from "./rng";
+import { onCard } from "./testkit";
 
 /**
  * The acceptance test — now in the PURE PvP world: two farms, and every
@@ -121,7 +122,7 @@ describe("the full breeding-lifecycle loop closes — PvP edition", () => {
         element: "Wood", halfStars: 2, birthWeek: week - 1, birthDay: (week - 1) * 7, named: 1,
       })
       .run();
-    const juvenile = duel(w, chick.id, "rival-chick", { mode: "juvenile", classType: "open", format: "b2" }, 21);
+    const juvenile = duel(w, chick.id, "rival-chick", onCard(w.db, { mode: "juvenile", classType: "open" }), 21);
     expect(juvenile.birds).toContain("Alon");
     const afterJuvenile = w.flock.byId(chick.id);
     // ONE lifetime record (round 15): juvenile fights count like any other.
@@ -129,13 +130,14 @@ describe("the full breeding-lifecycle loop closes — PvP edition", () => {
     // Stats are FIXED at birth (round 13) — no training; discovery is fought.
   });
 
-  test("4. age 2 opens real stakes; hardcore still gated at 3", () => {
+  test("4. age 2 opens real stakes — and the daily card runs no hardcore at all", () => {
     w.game.tickWeek();
     expect(w.flock.byId(chick.id).age).toBe(2);
-    expect(() =>
-      w.game.lobbies.enter(chick.id, { mode: "hardcore", classType: "open", format: "b2" })
-    ).toThrow(/age 3/);
-    duel(w, chick.id, "Alab", { mode: "real", classType: "open", format: "b2" }, 33);
+    // ⚠ ROUND 31: there is no hardcore door on the daily card to be gated by
+    // age any more. Every posted key is juvenile or real; the key rule lives
+    // only in the Pintakasi Majors now (stage 8).
+    expect(cardOfDay(0).every((k) => k.mode === "juvenile" || k.mode === "real")).toBe(true);
+    duel(w, chick.id, "Alab", onCard(w.db, { mode: "real", classType: "open" }), 33);
     const afterReal = w.flock.byId(chick.id);
     expect(afterReal.wins + afterReal.losses).toBe(2); // juvenile + real — one record
   });
@@ -144,7 +146,7 @@ describe("the full breeding-lifecycle loop closes — PvP edition", () => {
     w.game.tickWeek();
     expect(w.flock.byId(chick.id).age).toBe(3);
     // Ride the career one more carded fight, then take the safe arm.
-    duel(w, chick.id, "Sinag", { mode: "real", classType: "open", format: "b2" }, 44);
+    duel(w, chick.id, "Sinag", onCard(w.db, { mode: "real", classType: "open" }), 44);
     retiree = w.flock.retire(chick.id);
     expect(retiree.status).toBe("retired");
     expect(retiree.retiredBy).toBe("manual");
@@ -204,7 +206,7 @@ describe("the cold start (every stable begins with BARN.STARTER_EGGS eggs)", () 
 
     // Week one: eggs can't be carded at all.
     expect(() =>
-      game.lobbies.enter(eggs[0].id, { mode: "juvenile", classType: "open", format: "b2" })
+      game.lobbies.enter(eggs[0].id, onCard(db, { mode: "juvenile", classType: "open" }))
     ).toThrow(/not an active fighter/);
 
     // Friday: the whole flock hatches at age 1 — juvenile year opens.
@@ -214,7 +216,7 @@ describe("the cold start (every stable begins with BARN.STARTER_EGGS eggs)", () 
     expect(chick.age).toBe(1);
     expect(["rooster", "hen"]).toContain(chick.sexLabel!);
     expect(
-      game.lobbies.enter(chick.id, { mode: "juvenile", classType: "open", format: "b2" })
+      game.lobbies.enter(chick.id, onCard(db, { mode: "juvenile", classType: "open" }))
         .entryId
     ).toBeGreaterThan(0);
   });
@@ -222,19 +224,23 @@ describe("the cold start (every stable begins with BARN.STARTER_EGGS eggs)", () 
 
 describe("hardcore arm of the loop", () => {
   test("a hardcore loss ends the career straight into the barn — still breedable", () => {
-    // Hunt a lobby seed where OUR Sinag loses the hardcore duel.
-    for (let seed = 1; seed < 200; seed++) {
-      const w = world();
-      const sinag = w.flock.all().find((b) => b.name === "Sinag")!; // age 3, at the fork
-      const fight = duel(w, sinag.id, "Sinag", { mode: "hardcore", classType: "open", format: "b2" }, seed);
-      if (fight.winnerFarm === "Bukidnon Farms") continue; // we won — wrong arm, next seed
-      const after = w.flock.byId(sinag.id);
-      expect(after.status).toBe("retired");
-      expect(after.retiredBy).toBe("hardcore");
-      // The loss is a conversion, not a destruction: she can breed immediately.
-      expect(() => new Breeding(w.db, w.farmId, mulberry32(5)).breed(sinag.id, "starter-1")).not.toThrow();
-      return;
-    }
-    throw new Error("no losing seed found");
+    // ⚠ REROUTED IN ROUND 31. This used to card a hardcore lobby and hunt a
+    // seed where our bird lost. The daily card no longer runs hardcore at all,
+    // so the only way to lose a career now is the Pintakasi Majors — but the
+    // CLAIM this stage makes about the loop is unchanged, and it is the one
+    // worth keeping: a hardcore loss is a CONVERSION, not a destruction. The
+    // bird moves from the pit to the breeding barn the same day.
+    //
+    // Driven through `Flock.hardcoreRetire`, which is the shared path the
+    // Majors take (see Tournaments) and which the old lobby route also used —
+    // so this still tests the real code, just without staging a whole bracket
+    // inside a narrative walkthrough.
+    const w = world();
+    const sinag = w.flock.all().find((b) => b.name === "Sinag")!; // age 3, at the fork
+    const after = w.flock.hardcoreRetire(sinag.id);
+    expect(after.status).toBe("retired");
+    expect(after.retiredBy).toBe("hardcore");
+    // The whole point: she can breed immediately.
+    expect(() => new Breeding(w.db, w.farmId, mulberry32(5)).breed(sinag.id, "starter-1")).not.toThrow();
   });
 });

@@ -297,8 +297,11 @@ export default function FightingPage() {
       </p>
       <div className="callout tip">
         <b>Why it exists.</b> A bird rarely gets its ideal blade <em>and</em> its ideal weather in
-        the same fight. The weather is the random half of that tradeoff — the blade is the one you
-        choose. Run a wrong-weather bird because the blade is right, or hold it for its day and
+        the same fight. The weather is the random half of that tradeoff — the blade is the half you
+        choose, out of whatever the day posted (see <Link href="/wiki/card">The card</Link>; the
+        blade rotation and the weather are deliberately kept from lining up, so a blade never
+        reliably arrives on its own element&apos;s day). Run a wrong-weather bird because the blade
+        is right, or hold it for its day and
         run something else tonight. The birds drawn in by a good-weather day pull their natural
         counters in after them, and the counters&apos; counters — the card stays logical and a
         little foggy, which is the point.

@@ -151,37 +151,121 @@ the balance suite at 1 warning across 154 rows and 46 findings (the standing
 B1 +200 spec target, a target issue and not an engine one), and a 91-day world
 with zero invariant failures and the two health warnings above.
 
+### Round 31 — the card, and the unmatched rate explained
+
+Round 30's first recommended step was "explain the unmatched rate, don't assume
+it," on a hypothesis that a sharper scout was fragmenting the lobby keys. Round
+31 answered it, and the answer was not the scout. **Lobbies were conjured on
+demand** — `Lobbies.enter` created the lobby when its key did not exist, so
+every fight type was available every day and the perfect fight always existed
+because you invented it by asking.
+
+The cost, over 91 days: **74 live keys taking ~70 entries a day, 2.9 birds per
+lobby, 16.3% of entries never drawing an opponent** — of which 35% were the
+sole entrant, 31% were two barn-mates alone, and only 34% were the odd bird
+out. Two thirds of it was key-space damage that no matchmaker could touch.
+
+The fix was collision, in three parts, with the scout untouched:
+
+- **The key space cut 75 → 50.** Hardcore off the daily card entirely (it had
+  measured 201 entries → 55 fights at a **45.3% unmatched rate**, the worst of
+  any mode; it survives in the Majors, which are tournaments and open no
+  lobby), `nw2` merged into `nw3` (exclusive constituencies of 10 and 18 birds
+  out of 181), and the claimer tag ladders thinned to 3 grown rungs and 2
+  juvenile ones — claimers alone had been **40 of the 75 keys at 0.33 entries
+  per key**.
+- **A published daily card.** `cardOfDay(dayIndex)` posts ~11 keys a day, pure
+  from the day index like `weatherOfDay` — no schema, and `cardOfDay(day + 1)`
+  is free, so tomorrow is public and plannable. Every CLASS runs daily in both
+  divisions; the BLADES rotate, because the classes nest and 33 of 181 active
+  birds are open-only.
+- **Unbounded lobbies.** `LOBBY.CAPACITY` deleted; exactly one lobby per posted
+  key per day. Capacity-8 duplication had been splitting a hot key back into
+  two half-empty rooms, undoing the concentration the card exists to create.
+
+**Measured on a fresh 91-day world:** mean birds per lobby **2.9 → 7.36**,
+unmatched entries **16.3% → 4.5%**, single-bird lobbies **334 (16.6%) → 26
+(3.9%)**, same-barn stranding **~302 birds → 25**, lobbies 2,012 → 673. All
+five invariants pass with **zero health warnings** (round 30 ended on two).
+Championship fields survived losing the hardcore points route — majors 29 run /
+1 cancelled at a field of **11.0**, up from 9.6 — and claimer keys went from
+0.33 entries per key to roughly 4.4, so the marketplace got healthier rather
+than smaller.
+
+Two structural notes worth keeping. The chooser had to be **inverted — blade
+first, class as the slack** — because a class running one blade a day has an
+8-day worst gap and a juvenile's whole discovery year is 7 days; inverting uses
+the nesting, so a chick whose blade isn't in today's maiden runs juvenile open
+at that blade instead. And `entryRefusal` is now **one predicate with two
+callers**: the door throws it, the chooser filters on it. Both entry paths wrap
+`enter` in `quietly()`, so a chooser proposing specs the door rejects would
+surface as nothing but a silently collapsed fill rate.
+
+A pre-existing bug was found and fixed first, in its own commit: the crown-day
+door queried pending tournament entries **without filtering by division**, so a
+Juvenile Championship registrant could enter a normal lobby AND fight its crown
+on the same Wednesday. Nothing caught it — the tournament stamps its battle-log
+rows with Thursday's day index, and the doctor's one-card-per-bird-per-day
+invariant buckets on `lobbyEntries` only. Landed separately so an inflated
+juvenile fight count wouldn't be read as the schedule change moving numbers.
+
+**Not proven this round:** discovery. Clear-home accuracy reads 53.4% at age
+2–3 against a 20% baseline, but age 4+ reads 36.3% on only 160 decisions and
+age-1 answer coverage fell to 3.3%. Fewer posted keys means fewer graded
+decisions, so those buckets are noise-prone — recorded as something to watch,
+not as a result.
+
 ## Recommended next steps
 
-*Re-ordered after round 30. The old item 2 (recentre the Pit Figure) is DONE —
-it became the rebuild above. The old item 3 (watch the flock shape line) is
-answered for the first two generations by the BLOODLINES ladder, and downgraded
-to a standing watch rather than an investigation.*
+*Re-ordered after round 31. The old item 1 (explain the unmatched rate) is
+DONE and its hypothesis is disproved — see above and open item 7 in
+`BALANCE.md`. The old item 6 (revisit claimers, "still the thin ones") is done
+with it: the claimer ladder was thinned and hardcore left the card entirely.*
 
-1. **Explain the unmatched rate, don't assume it.** It moved 14.7% → ~16–19%
-   in the same round that discovery doubled, and the "sharper scout fragments
-   the lobby keys" story is untested. The ablation is cheap: hold the world
-   fixed and run it with the scout's blade choice randomized, then compare
-   unmatched rates. If the story holds, the lever is lobby-key coarseness, not
-   the scout.
-2. **Fix the flat-flock warning's bar.** 49.5 / 50.7 / 53.3% against a 50% bar
+1. **Multi-fight lobbies — the group stage.** The remaining ~4.5% unmatched is
+   the odd bird out, which is structural: unbounded lobbies make parity a coin
+   flip where the old capacity of 8 was even on purpose. Round-robin across a
+   room is impossible (30 birds = 435 fights), so partition each room into
+   GROUPS — a room of 30 becomes seven groups of four plus one of two, and
+   everybody fights. Only a room holding a single entry strands anyone. Wide,
+   not a knob: `CADENCE.FIGHTS_PER_BIRD_PER_DAY`, the `potCents = ea.fee * 200`
+   assumption, per-fight `landForFight` minting and the single-`battleLogId`
+   shape of `lobbyEntries` move together. Zane's ruling on the money: entry
+   fees become divisible by 3 (40 → 42, 8 → 9), and the stake splits across the
+   fights actually taken, refunding the remainder.
+2. **Re-measure discovery on the new card, with a proper denominator.** The
+   round-31 age-4+ and age-1 buckets are too thin to read. Until they are, no
+   claim about discovery getting better or worse under the card should be
+   believed in either direction.
+3. **The element rework.** The wheel is additive, so it fades as the flock
+   breeds up; per-fight random weather; and show a lobby's element composition,
+   because the counter-meta is currently unplayable rather than merely weak —
+   the field is fogged, so nobody can counter what they cannot see.
+4. **Fix the flat-flock warning's bar.** 49.5 / 50.7 / 53.3% against a 50% bar
    is a coin flip printed as a verdict. Either widen the sample or move the
    bar to where it means something.
-3. **Run matched multi-seed worlds** comparing the current and end-first
-   discovery policies. Still worth doing, and now doubly so — the audit is
-   sound AND the figure it reads has a unit, so a difference between policies
-   is finally attributable to the policies.
-4. **Element in the breeding score** (opened by round 30, deferred by Zane): a
+5. **Run matched multi-seed worlds** comparing the current and end-first
+   discovery policies. The audit is sound and the figure it reads has a unit,
+   so a difference between policies is finally attributable to the policies —
+   but it wants item 2 first, or it will be measuring the denominator.
+6. **Element in the breeding score** (opened by round 30, deferred by Zane): a
    cross-element cover should cost star potential, so bots keep lines pure.
    Deferred on the suspicion that the population is too thin and the star
    incentive too weak for the effect to measure — which is itself testable.
-5. **Re-measure `SCOUT.PRIOR_FIGURE` when the BLOODLINES ladder moves a band.**
+7. **Re-measure `SCOUT.PRIOR_FIGURE` when the BLOODLINES ladder moves a band.**
    It is the flock's mean, not a constant of the engine, and it will drift up
    as the flock breeds up. Do not fit it to a formula it does not obey.
-6. **Then revisit population and claimers.** Claimer and hardcore lobby keys
-   are still the thin ones.
-7. **Standing watch: does shape keep accumulating past generation 2?** The
-   ladder shows the first two nests compounding (+20.0 stat points, home
-   margin 8.1 → 11.2), but 13 weeks is roughly two selected generations and
-   `STAT_VARIANCE` regenerates most of the spread each time. A longer horizon
-   is the only way to answer it.
+8. **Carriage (Ground/Air) and PFL-style aging curves.** Carriage has been
+   data-only since round 23 and is the natural second star axis. Both are new
+   mechanics rather than repairs, so they queue behind the group stage.
+9. **Standing watch: same-barn stranding, now that nothing caps it.** Dropping
+   the capacity dropped the round-17 per-farm seating cap with it (it was
+   `capacity / 2`), and it was not replaced — a barn that floods one key
+   strands its own surplus and is refunded. 25 birds over 91 days, printed
+   every run by LOBBY FILL. If it climbs, it needs a cap that works without a
+   capacity.
+10. **Standing watch: does shape keep accumulating past generation 2?** The
+    ladder shows the first two nests compounding (+20.0 stat points, home
+    margin 8.1 → 11.2), but 13 weeks is roughly two selected generations and
+    `STAT_VARIANCE` regenerates most of the spread each time. A longer horizon
+    is the only way to answer it.

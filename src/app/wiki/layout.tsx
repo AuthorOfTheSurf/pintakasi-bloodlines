@@ -27,7 +27,7 @@ const NAV: { href: string; label: string; blurb: string }[] = [
   { href: "/wiki", label: "Start here", blurb: "the game in five minutes" },
   { href: "/wiki/birds", label: "Birds & stats", blurb: "what makes a fighter" },
   { href: "/wiki/fighting", label: "Fighting", blurb: "the five blades, and figures" },
-  { href: "/wiki/card", label: "The card", blurb: "lobbies, classes, the fog" },
+  { href: "/wiki/card", label: "The card", blurb: "the daily card, classes, the fog" },
   { href: "/wiki/claiming", label: "Claiming", blurb: "buying a bird off the card" },
   { href: "/wiki/pintakasi", label: "The Pintakasi", blurb: "Thursday's Majors" },
   { href: "/wiki/breeding", label: "Breeding", blurb: "retired birds make the next ones" },

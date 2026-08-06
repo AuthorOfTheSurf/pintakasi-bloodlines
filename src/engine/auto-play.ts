@@ -2,10 +2,9 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
 import {
-  bestFormat,
   chaseCrowns,
   chaseJuvenileCrowns,
-  ladderClass,
+  pickOffering,
   type DiscoveryPolicy,
   weatherCardsToday,
   weatherOrder,
@@ -14,7 +13,7 @@ import { Breeding } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
-import { Lobbies, type LobbySpec } from "./lobbies";
+import { Lobbies } from "./lobbies";
 import { CLAIMER, ECONOMY } from "./config";
 import { canHardcore } from "./lifecycle";
 import { drawStarterNames } from "./naming";
@@ -129,23 +128,14 @@ export function playHonestDay(
   );
   for (const bird of carding) {
     if (!weatherCardsToday(bird, day, cardRng, HONEST_ENTRY_RATE)) continue;
-    const format = bestFormat(db, bird, cardRng, discoveryPolicy);
-    // The discovery-year ladder (round 23): a winless juvenile starts in a
-    // maiden, a winner moves up to juvenile stakes, and now and then one goes
-    // out with a tag on it — the cheap way to learn what the market thinks.
-    const spec: LobbySpec =
-      bird.age >= 2
-        ? { mode: "real", classType: ladderClass(bird.stakesWins), format }
-        : bird.wins === 0
-          ? { mode: "juvenile", classType: "maiden", format }
-          : cardRng() < JUVENILE_SELL_RATE
-            ? {
-                mode: "juvenile",
-                classType: "claimer",
-                format,
-                price: CLAIMER.JUVENILE_PRICES[randInt(cardRng, 0, CLAIMER.JUVENILE_PRICES.length - 1)],
-              }
-            : { mode: "juvenile", classType: "open", format };
+    // ⚠ ROUND 31 deleted the copy of this decision that used to live here.
+    // Auto-play and the bots had independently encoded the same ladder and had
+    // already drifted apart — auto-play never entered a grown claimer at all,
+    // and priced juvenile tags uniformly at random rather than by record. With
+    // a daily card there is a third thing to agree about (what is even posted
+    // tonight), so the decision now lives in exactly one place.
+    const spec = pickOffering(db, AUTO_PLAY_STYLE, bird, cardRng, day, discoveryPolicy);
+    if (spec === null) continue; // nothing on tonight's card this bird can enter
     quietly(() => lobbies.enter(bird.id, spec));
   }
 
@@ -191,7 +181,13 @@ const AUTO_CLAIMS_PER_DAY = 2;
 const AUTO_CLAIM_APPETITE = 0.35;
 const AUTO_RESERVE = 400; // GP never gambled into a tag
 /** How often a juvenile is carded with a tag on it (round 23). */
-const JUVENILE_SELL_RATE = 0.2;
+/**
+ * The honest stable's carding style, in the shape `pickOffering` wants. It is
+ * deliberately plainer than any bot profile: a player-side barn sells a fifth
+ * of the time and tags near the bottom of the ladder, which is the cautious
+ * read a human learning the game would make.
+ */
+const AUTO_PLAY_STYLE = { sellRate: 0.2, tagCourage: 0.3 };
 /**
  * An honest stable cards everything it legally can — that has been true since
  * round 17 and this is just that rule written down, so weatherCardsToday has a

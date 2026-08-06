@@ -8,10 +8,14 @@ export const dynamic = "force-dynamic";
 /** GP → dollars, at the peg. Every figure on this page runs through this. */
 const usd = (gp: number) => (gp / ECONOMY.GP_PER_DOLLAR).toFixed(2);
 
+/**
+ * The fees a farm actually pays to card a bird. Hardcore's fee left this list
+ * in round 31 with the hardcore lobby itself — the Majors, where hardcore now
+ * lives, are free to enter.
+ */
 const ENTRY_FEES: { label: string; fee: number }[] = [
   { label: "Juvenile entry", fee: ECONOMY.JUVENILE_ENTRY_FEE },
-  { label: "Real entry", fee: ECONOMY.REAL_ENTRY_FEE },
-  { label: "Hardcore entry", fee: ECONOMY.HARDCORE_ENTRY_FEE },
+  { label: "Real entry (and claimers)", fee: ECONOMY.REAL_ENTRY_FEE },
 ];
 
 export default function MoneyPage() {

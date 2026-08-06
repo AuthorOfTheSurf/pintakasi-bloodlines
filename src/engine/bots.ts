@@ -12,8 +12,10 @@ import {
   FORMAT_NAMES,
   JUVENILE_MAJOR,
   LAND,
+  NW_CAP,
   PINTAKASI,
   SCOUT,
+  cardOfDay,
   weatherOfDay,
   type DistanceStat,
   type FightFormat,
@@ -27,7 +29,7 @@ import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { Gacha } from "./gacha";
 import { canHardcore } from "./lifecycle";
-import { Lobbies, type FightMode } from "./lobbies";
+import { Lobbies, entryRefusal, type FightMode, type LobbySpec } from "./lobbies";
 import { mulberry32, randInt, type Rng } from "./rng";
 import { Tournaments } from "./tournaments";
 
@@ -52,6 +54,10 @@ export interface BotDayReport {
   entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
   crowns: string[]; // birds registered for this week's championships
   claimsPlaced: number;
+  // Birds the day's card had NOTHING for (round 31). The only error surface
+  // the bot layer has: `quietly` swallows every entry exception, so a card
+  // that stranded a class would otherwise be invisible. The doctor reads it.
+  noCard: number;
 }
 
 /** GP a bot keeps in reserve — never gambled into fees, tags, or breeds. */
@@ -154,6 +160,7 @@ export class Bots {
       entered: [],
       crowns: [],
       claimsPlaced: 0,
+      noCard: 0,
     };
     const gp = () => db.select().from(farms).where(eq(farms.id, bot.id)).get()!.gp;
     const quietly = (fn: () => void) => {
@@ -301,9 +308,9 @@ export class Bots {
         today
       );
     for (const lobby of lobbies.board()) {
+      if (lobby.lobbyId === null) continue; // a phantom — posted, nobody in it yet
       if (lobby.status !== "open") continue; // closed = entries locked
       if (lobby.filled % 2 === 0) continue;
-      if (lobby.mode === "hardcore" && rng() >= bot.hardcoreNerve) continue; // nobody's talked into dying
       if (gp() <= lobby.fee + RESERVE) break;
       for (const bird of roster()) {
         const spec = {
@@ -324,8 +331,16 @@ export class Bots {
     //    waits a night when tomorrow is its day (see WEATHER_APPETITE).
     for (const bird of roster()) {
       if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
-      if (gp() <= ECONOMY.HARDCORE_ENTRY_FEE + RESERVE) break;
-      const spec = Bots.pickSpec(db, bot, bird, rng, discoveryPolicy);
+      if (gp() <= ECONOMY.REAL_ENTRY_FEE + RESERVE) break;
+      const spec = pickOffering(db, bot, bird, rng, today, discoveryPolicy);
+      // null = today's card had nothing this bird is eligible for. Counted
+      // rather than swallowed: `quietly` hides every other entry failure, so
+      // without this number a card that starved a class would look like bots
+      // simply choosing not to run.
+      if (spec === null) {
+        report.noCard++;
+        continue;
+      }
       if (quietly(() => void lobbies.enter(bird.id, spec))) {
         report.entered.push({ bird: bird.name, ...spec });
       }
@@ -335,6 +350,7 @@ export class Bots {
     if (bot.claimAggression > 0) {
       for (const lobby of lobbies.board()) {
         if (report.claimsPlaced >= MAX_CLAIMS_PER_DAY) break;
+        if (lobby.lobbyId === null) continue; // a phantom has no field to shop
         if (lobby.classType !== "claimer") continue;
         for (const entry of lobby.entries) {
           if (report.claimsPlaced >= MAX_CLAIMS_PER_DAY) break;
@@ -353,52 +369,77 @@ export class Bots {
   }
 
   /** Where does this bird belong tonight? Style + the scout report (round 28). */
-  private static pickSpec(
-    db: DB,
-    bot: BotProfile,
-    bird: BirdView,
-    rng: Rng,
-    discoveryPolicy: DiscoveryPolicy
-  ): { mode: FightMode; classType: Lobby; format: FightFormat; price?: number } {
-    const format = bestFormat(db, bird, rng, discoveryPolicy);
-    // THE DISCOVERY-YEAR LADDER (round 23): a juvenile climbs the same way a
-    // grown bird does — maiden while it hasn't won, stakes once it has, and
-    // sometimes out with a tag on it. The old code carded every chick in one
-    // flat open division, which is exactly the lack of laddering Zane wanted
-    // fixed ("allow deeper discovery by promoting laddering in the Juvi
-    // season").
-    if (bird.age === 1) {
-      if (bird.wins === 0) return { mode: "juvenile", classType: "maiden", format };
-      if (rng() < bot.sellRate) {
-        const idx = Math.min(
-          CLAIMER.JUVENILE_PRICES.length - 1,
-          Math.round(Math.max(0, bird.wins - bird.losses) * bot.tagCourage)
-        );
-        return {
-          mode: "juvenile",
-          classType: "claimer",
-          format,
-          price: CLAIMER.JUVENILE_PRICES[idx],
-        };
-      }
-      return { mode: "juvenile", classType: "open", format };
-    }
-    if (bird.age >= 3 && rng() < bot.hardcoreNerve) {
-      return { mode: "hardcore", classType: "open", format };
-    }
-    if (rng() < bot.sellRate) {
-      // Tag by the record, stretched by courage: better birds card dearer.
-      const edge = Math.max(0, bird.wins - bird.losses);
-      const idx = Math.min(CLAIMER.PRICES.length - 1, Math.round(edge * bot.tagCourage));
-      return { mode: "real", classType: "claimer", format, price: CLAIMER.PRICES[idx] };
-    }
-    // The self-sorting ladder: card in the most protective class that takes
-    // you. Reads the STAKES record (round 19) — the discovery year doesn't
-    // graduate anybody, so a two-year-old starts at the bottom rung.
-    const classType: Lobby = ladderClass(bird.stakesWins);
-    return { mode: "real", classType, format };
-  }
 }
+
+/**
+ * WHAT SHALL THIS BIRD RUN IN TONIGHT? — or null, if today's card has nothing
+ * for it.
+ *
+ * ⚠ INVERTED IN ROUND 31: blade first, CLASS AS THE SLACK. The old chooser
+ * picked a class from the bird's record and then a blade, which worked only
+ * because every key existed every day. Now a small card is posted, and the
+ * naive port — pick the class, then hope its blade is up — starves the classes
+ * that run one blade a day: measured worst gap for a k=1 class is 8 days, and a
+ * juvenile's whole discovery year is 7. A winless chick could have finished its
+ * career without ever seeing a blade in a maiden.
+ *
+ * Inverting fixes it using the property the card is built on — the classes NEST
+ * (maiden ⊂ nw3 ⊂ open). Find the blade this bird wants among everything it is
+ * legally allowed to enter today, then take the most PROTECTIVE class posted at
+ * that blade. A winless juvenile whose blade isn't in today's maiden simply
+ * runs juvenile open at that blade instead. Maiden becomes protection you get
+ * when the card offers it, and the whole-card blade gap — 3 days in both
+ * divisions — is what actually governs coverage.
+ *
+ * Eligibility comes from `entryRefusal`, the same predicate `Lobbies.enter`
+ * throws on, so the chooser can never propose a spec the door refuses. That
+ * matters more than it looks: both entry paths wrap `enter` in `quietly()`, so
+ * a disagreement between the two would surface as nothing at all except a fill
+ * rate that silently collapsed.
+ *
+ * Exported (it was private) because auto-play used to carry its own copy of
+ * this decision and the two had already drifted apart.
+ */
+export function pickOffering(
+  db: DB,
+  bot: { sellRate: number; tagCourage: number },
+  bird: BirdView,
+  rng: Rng,
+  today: number,
+  discoveryPolicy: DiscoveryPolicy = "current"
+): LobbySpec | null {
+  const options = cardOfDay(today).filter((k) => entryRefusal(bird, k) === null);
+  if (options.length === 0) return null;
+
+  const format = bestFormat(db, bird, rng, discoveryPolicy, new Set(options.map((k) => k.format)));
+  const atBlade = options.filter((k) => k.format === format);
+
+  // Spend the sell draw UNCONDITIONALLY, before knowing whether a claimer is
+  // posted at this blade — otherwise the number of draws depends on the card
+  // and a bot's whole day shifts with the schedule.
+  const wantsToSell = rng() < bot.sellRate;
+  const claimers = atBlade
+    .filter((k) => k.classType === "claimer")
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+  if (wantsToSell && claimers.length > 0) {
+    // Tag by the record, stretched by courage: better birds card dearer. Picks
+    // from the rungs OFFERED today rather than the whole ladder, so a barn is
+    // never priced out of the marketplace by the day's draw.
+    const edge = Math.max(0, bird.wins - bird.losses);
+    return claimers[Math.min(claimers.length - 1, Math.round(edge * bot.tagCourage))];
+  }
+
+  // The self-sorting ladder, most protective rung first. Reads the STAKES
+  // record for grown birds (round 19) — the discovery year graduates nobody.
+  for (const classType of PROTECTION_ORDER) {
+    const found = atBlade.find((k) => k.classType === classType);
+    if (found) return found;
+  }
+  return atBlade[0] ?? null;
+}
+
+/** Most protective class first — the order `pickOffering` settles down. */
+const PROTECTION_ORDER: Lobby[] = ["maiden", "nw3", "open", "claimer"];
 
 /**
  * The class ladder's rung for a given stakes record — the most protective
@@ -407,8 +448,7 @@ export class Bots {
  */
 export function ladderClass(stakesWins: number): Lobby {
   if (stakesWins === 0) return "maiden";
-  if (stakesWins < 2) return "nw2";
-  if (stakesWins < 3) return "nw3";
+  if (stakesWins < NW_CAP) return "nw3"; // nw2 merged into nw3 in round 31
   return "open";
 }
 
@@ -542,10 +582,22 @@ export function bestFormat(
   db: DB,
   bird: BirdView,
   rng: Rng,
-  discoveryPolicy: DiscoveryPolicy = "current"
+  discoveryPolicy: DiscoveryPolicy = "current",
+  allowed?: ReadonlySet<FightFormat>
 ): FightFormat {
   const report = new Lobbies(db, "scout").scoutReport(bird.id);
-  const unread = FORMAT_NAMES.filter((f) => report.blades[f].fights < SCOUT.MIN_READS);
+  // ⚠ THE DRAW COUNT MUST NOT DEPEND ON `allowed` (round 31). Today's card
+  // offers only some blades, so this now picks from a subset — but the jitter
+  // below draws twice per blade inside a reduce, and shrinking the CANDIDATE
+  // set would spend four draws instead of eight and shift every later decision
+  // in that bot's day (breeding picks, claim rolls, weather holds). So the loop
+  // still walks all five blades and an off-card one is scored to -Infinity
+  // instead. Same discipline as the end-first branch below, which spends its
+  // draw even when it discards the result.
+  const offCard = (f: FightFormat) => allowed !== undefined && !allowed.has(f);
+  const unread = FORMAT_NAMES.filter(
+    (f) => report.blades[f].fights < SCOUT.MIN_READS && !offCard(f)
+  );
   if (unread.length > 0 && rng() < SCOUT.EXPLORE) {
     const least = Math.min(...unread.map((f) => report.blades[f].fights));
     const targets = unread.filter((f) => report.blades[f].fights === least);
@@ -556,9 +608,8 @@ export function bestFormat(
     return END_FIRST_ORDER.find((f) => targets.includes(f))!;
   }
   const jitter = () => rng() * SCOUT.JITTER; // imperfect judges — bots misread the margin calls
-  return FORMAT_NAMES.reduce((best, cur) =>
-    report.blades[cur].score + jitter() > report.blades[best].score + jitter() ? cur : best
-  );
+  const score = (f: FightFormat) => (offCard(f) ? -Infinity : report.blades[f].score + jitter());
+  return FORMAT_NAMES.reduce((best, cur) => (score(cur) > score(best) ? cur : best));
 }
 
 /**

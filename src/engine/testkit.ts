@@ -4,12 +4,20 @@ import { createDb, type DB } from "@/db/client";
 import { birds, farms, gameState, type NewBird } from "@/db/schema";
 import { DEV_FARM_ID, seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
-import { CALENDAR, PINTAKASI, type FarmColor } from "./config";
+import {
+  CALENDAR,
+  PINTAKASI,
+  cardOfDay,
+  type FarmColor,
+  type FightFormat,
+  type FightMode,
+  type Lobby,
+} from "./config";
 import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { Game } from "./game";
 import { GameClock } from "./game-clock";
-import { Lobbies } from "./lobbies";
+import { Lobbies, type LobbySpec } from "./lobbies";
 import { gpFromFaucetsCents, gpInWorldCents } from "./snapshots";
 import { Tournaments } from "./tournaments";
 
@@ -260,4 +268,65 @@ export function expectConserved(db: DB): void {
   expect(state.stakerPoolCents).toBeGreaterThanOrEqual(0);
   expect(state.juicePoolCents).toBeGreaterThanOrEqual(0);
   expect(gpInWorldCents(db)).toBe(gpFromFaucetsCents(db));
+}
+
+/**
+ * A LOBBY SPEC THAT IS ACTUALLY ON TODAY'S CARD (round 31).
+ *
+ * Lobbies stopped being conjured on demand: `Lobbies.enter` refuses any key the
+ * day did not post (see `cardOfDay`). That is the point of the round, but it
+ * means a test can no longer hard-code `{ mode: "real", classType: "open",
+ * format: "b2" }` and expect the door to open — whether it does now depends on
+ * which day the world is standing on.
+ *
+ * So tests that care about a MECHANIC (claims settling, records moving, the
+ * fog, the naming law) ask for a class and take whichever blade is running.
+ * Tests that care about a BLADE should pass `format` and will get a clear
+ * failure if it isn't posted, rather than a confusing one from inside `enter`.
+ *
+ * Deliberately reads the world's own clock rather than taking a day: the bug
+ * this prevents is a test advancing the calendar and then entering against
+ * yesterday's card.
+ */
+export function onCard(
+  db: DB,
+  want: { mode: FightMode; classType: Lobby; format?: FightFormat }
+): LobbySpec {
+  const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+  const posted = cardOfDay(day).filter(
+    (k) =>
+      k.mode === want.mode &&
+      k.classType === want.classType &&
+      (want.format === undefined || k.format === want.format)
+  );
+  if (posted.length === 0) {
+    const shown = cardOfDay(day)
+      .map((k) => `${k.mode}/${k.classType}/${k.format}${k.price ? `@${k.price}` : ""}`)
+      .join(", ");
+    throw new Error(
+      `Day ${day} posts no ${want.mode}/${want.classType}${want.format ? `/${want.format}` : ""}. ` +
+        `Tonight's card: ${shown}`
+    );
+  }
+  const k = posted[0];
+  return { mode: k.mode, classType: k.classType, format: k.format, ...(k.price ? { price: k.price } : {}) };
+}
+
+/** The first day at or after `from` whose card posts this class. */
+export function dayWithKey(
+  from: number,
+  want: { mode: FightMode; classType: Lobby; format?: FightFormat }
+): number {
+  for (let d = from; d < from + 60; d++) {
+    if (
+      cardOfDay(d).some(
+        (k) =>
+          k.mode === want.mode &&
+          k.classType === want.classType &&
+          (want.format === undefined || k.format === want.format)
+      )
+    )
+      return d;
+  }
+  throw new Error(`no day in 60 posts ${want.mode}/${want.classType}/${want.format ?? "any"}`);
 }

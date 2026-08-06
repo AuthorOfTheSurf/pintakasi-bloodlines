@@ -89,7 +89,7 @@ export const birds = sqliteTable("birds", {
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
   // The STAKES wins (round 19) — real + hardcore only. The class LADDER
-  // (maiden / nw2 / nw3) reads THIS line, not the lifetime one: the
+  // (maiden / nw3) reads THIS line, not the lifetime one: the
   // discovery year is practice, so a chick that won juvenile fights is
   // still a maiden the day real stakes open at age 2. The displayed record
   // stays ONE lifetime line (ruled round 15) — this is eligibility only.
@@ -150,8 +150,11 @@ export const battleLog = sqliteTable("battle_log", {
   mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
   // The weapon format — the "distance" this fight was run at.
   format: text("format", { enum: ["b1", "b2", "b3", "b4", "b5"] }).notNull(),
-  // The lobby class — open / maiden / nw2 / nw3 / claimer.
-  lobby: text("lobby", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] })
+  // The lobby class — open / maiden / nw3 / claimer (nw2 merged into nw3 in
+  // round 31). battleLog.mode above KEEPS "hardcore": the daily card stopped
+  // running it, but the Pintakasi Majors are hardcore throughout and this is
+  // where those fights are recorded.
+  lobby: text("lobby", { enum: ["open", "maiden", "nw3", "claimer"] })
     .notNull()
     .default("open"),
   claimPrice: integer("claim_price"), // claimers only
@@ -175,10 +178,13 @@ export const battleLog = sqliteTable("battle_log", {
   playByPlay: text("play_by_play").notNull(),
 });
 
-// A LOBBY — one slot on tonight's card, keyed by (mode, class, format[,
-// tag]). Fills to capacity (8 — even, so a full lobby guarantees every bird
-// a fight), then a fresh one opens. Pure PvP — no house. The card runs
-// PFL's three states (ruled 2026-08-03):
+// A LOBBY — one slot on tonight's card, keyed by (mode, class, format[, tag]).
+// Since round 31 there is EXACTLY ONE per key per day and it grows without
+// limit: the day's card (config.cardOfDay) posts a small set of keys, and a
+// lobby exists for a key only if that key was posted. It used to fill to a
+// capacity of 8 and then open a duplicate, which split a hot key back into two
+// half-empty rooms — see the LOBBY comment in config for why that had to go.
+// Pure PvP — no house. The card runs PFL's three states (ruled 2026-08-03):
 //   OPEN      — taking entries; the field is fogged (claimers excepted).
 //   CLOSED    — entries locked, matchups drawn AND REVEALED. Claimers close
 //               early (6 PM PH) so ~6 hours of informed claiming can happen;
@@ -188,11 +194,10 @@ export const battleLog = sqliteTable("battle_log", {
 //   COMPLETED — fights concluded, refunds paid, claims settled.
 export const lobbies = sqliteTable("lobbies", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  mode: text("mode", { enum: ["juvenile", "real", "hardcore"] }).notNull(),
-  classType: text("class_type", { enum: ["open", "maiden", "nw2", "nw3", "claimer"] }).notNull(),
+  mode: text("mode", { enum: ["juvenile", "real"] }).notNull(),
+  classType: text("class_type", { enum: ["open", "maiden", "nw3", "claimer"] }).notNull(),
   format: text("format", { enum: ["b1", "b2", "b3", "b4", "b5"] }).notNull(),
   price: integer("price"), // claimer tag — null for every other class
-  capacity: integer("capacity").notNull().default(8), // 16/32/64 = future tournament brackets
   seed: integer("seed").notNull(), // drives the pairing shuffle + fight seeds
   status: text("status", { enum: ["open", "closed", "completed"] }).notNull().default("open"),
   dayOpened: integer("day_opened").notNull(),
