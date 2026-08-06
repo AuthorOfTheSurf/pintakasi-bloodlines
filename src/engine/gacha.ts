@@ -219,6 +219,9 @@ export class Gacha {
           // magnitude — no parents to inherit from (round 23).
           carriage: CARRIAGES[randInt(this.rng, 0, CARRIAGES.length - 1)] as Carriage,
           carriageHalfStars: randInt(this.rng, tier.halfStars[0], tier.halfStars[1]),
+          // Generation 0 like a starter (round 30): a mystery egg enters the
+          // world from OUTSIDE the bloodline, so it starts the count over.
+          generation: 0,
           birthWeek: GameClock.weekOf(today),
           birthDay: today,
           motherId: null,

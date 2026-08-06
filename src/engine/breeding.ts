@@ -205,6 +205,9 @@ export class Breeding {
       halfStars,
       carriage,
       carriageHalfStars,
+      // The generation marker (round 30) counts nests down the DAM's line —
+      // the hen owns the egg, so her depth is the one that carries.
+      generation: motherRow.generation + 1,
       birthWeek: week + 1,
       birthDay: day,
       motherId: mother.id,

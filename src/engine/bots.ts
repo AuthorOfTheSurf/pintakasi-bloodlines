@@ -15,6 +15,7 @@ import {
   PINTAKASI,
   SCOUT,
   weatherOfDay,
+  type DistanceStat,
   type FightFormat,
   type Lobby,
   type StatName,
@@ -230,7 +231,12 @@ export class Bots {
     //    afford to look at, then buys the best one.
     if (rng() < bot.breedDrive && gp() > ECONOMY.BREED_FEE + RESERVE) {
       const hens = flock.all().filter((b) => b.status === "retired" && b.sex === "female");
-      const shape = BREEDING_SHAPES[bot.housePair % BREEDING_SHAPES.length];
+      // Round 30: the shape is chosen PER HEN, not per barn. Round 29 priced
+      // every cover in the barn against one house axis, which meant half the
+      // flock was being bred ACROSS its own grain — a deep-water hen dragged
+      // toward sprint spends the foal's whole midpoint undoing her. The house
+      // pair survives as the fallback below.
+      const house = BREEDING_SHAPES[bot.housePair % BREEDING_SHAPES.length];
       // Priced up front rather than inside the try/buy loop: a legal cover can
       // still fail on kinship or a used-up slot, and the barn should fall to
       // its SECOND choice, not back to random.
@@ -240,6 +246,13 @@ export class Bots {
         // A retired hen's sheet is revealed (round 28), so this is public
         // information for a bot exactly as it is for a player reading her card.
         const dam = flock.byId(hen.id);
+        // HER shape if she has one, the barn's if she doesn't. A hen sitting a
+        // few points off flat has no grain to follow, and following the noise
+        // in her sheet is following nothing — worse, it would scatter the
+        // barn's covers across all three axes and give up the concentration
+        // that makes a bloodline a bloodline.
+        const own = bestShape(dam);
+        const shape = own.separation >= BREEDING_PLAN.OWN_SHAPE_MIN ? own.shape : house;
         // SHUFFLED, and this is load-bearing: browseStuds returns rows in
         // insertion order, so a cap applied to the raw list always sliced to
         // the OLDEST studs in the barn — the unselected founders. The first
@@ -397,6 +410,52 @@ export function ladderClass(stakesWins: number): Lobby {
   if (stakesWins < 2) return "nw2";
   if (stakesWins < 3) return "nw3";
   return "open";
+}
+
+/**
+ * WHICH SHAPE IS THIS BIRD ALREADY? (Zane, 2026-08-06: "Each hen is different,
+ * and ought to be bred strategically. If a hen has b1/b2 oriented stats, it
+ * should breed with a b1/b2 oriented rooster if possible.")
+ *
+ * Returns the BREEDING_SHAPES entry the bird's own sheet already leans toward,
+ * plus how far it leans — the same `mean(pair) - mean(off)` arithmetic
+ * `foalScore` prices a foal on, so the two speak one unit and a caller can
+ * compare a hen's separation against a threshold in BREEDING_PLAN.
+ *
+ * It lives HERE and not in config because it is not a rule of the game: it
+ * decides nothing about a fight, a fee or a gate. It is how a *plan* reads a
+ * bird, which is bot territory — the same place `bestFormat` and `foalScore`
+ * live. Config owns the three shapes; this owns the opinion about them.
+ *
+ * NULLS ARE THE POINT OF THE `?? 0`. Round 28 put a fog on the sheet: the six
+ * fighting stats are `null` on a BirdView unless the bird is retired. Breeding
+ * hens are retired, so in practice the numbers are there — but an arithmetic
+ * `undefined` here would produce NaN, NaN sorts to the bottom of every
+ * comparison in silence, and the whole plan quietly degrades to random. That
+ * exact class of bug has bitten this file twice. A fully fogged bird instead
+ * reads as separation 0 on every shape, which is honest (we know nothing about
+ * her shape) and lands below any sane threshold, so the caller falls back.
+ *
+ * Ties go to the earliest shape on the dial. Deterministic on purpose: a
+ * random tie-break would make the same barn price the same hen differently on
+ * two consecutive days for no reason a player could ever see.
+ */
+export function bestShape(sheet: Partial<Record<DistanceStat, number | null>>): {
+  shape: (typeof BREEDING_SHAPES)[number];
+  separation: number;
+} {
+  const mean = (stats: readonly DistanceStat[]) =>
+    stats.reduce((sum, s) => sum + (sheet[s] ?? 0), 0) / stats.length;
+  let best = BREEDING_SHAPES[0];
+  let separation = -Infinity;
+  for (const shape of BREEDING_SHAPES) {
+    const sep = mean(shape.pair) - mean(shape.off);
+    if (sep > separation) {
+      best = shape;
+      separation = sep;
+    }
+  }
+  return { shape: best, separation };
 }
 
 /**

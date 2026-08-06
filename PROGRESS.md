@@ -96,22 +96,92 @@ weather normalization (+0.2 to +0.8, real but not the bottleneck).
 
 The remaining ceiling is the population, not the report. See `BALANCE.md`.
 
+### Round 30 — the figure got a unit, and discovery roughly doubled
+
+Round 29 booked "recentre the Pit Figure" as the next step. Round 30 did the
+round and changed the diagnosis: the scale was not mis-centred, it was
+**unanchored**. `pace / GHOST_PACE × 100` measured wind DEALT, which depends
+on the opponent, so nothing pinned it — which is why round 27 could move every
+figure in the game by ~20 points without anybody noticing. The figure is now
+**spine × night**: an absolute, dice-free, opponent-free stat blend at the
+blade, modulated by what the bird actually brought that night. The whole ghost
+family (`GHOST_PACE`, `GHOST_FIGURE`, `CLASS_BASE`, `CLASS_DIVISOR`,
+`BEATEN_SCALE`, `MIN_BEATEN`, `MAX`) is deleted.
+
+**What that PROVED, in measurements:**
+
+- A letter grade is worth exactly **10 figure points at every rung** — derived
+  from the peg (1000 stat points = 100 figure points), not fitted. The lab's
+  calibration table reads +9.7 to +12.2 against the derived +10.
+- **Blade fit is multiplicative** and no longer fades on good birds:
+  home−middle 11.2 / 11.6 / 10.5 / 9.6 / 7.5 at base 320 → 1600, where the old
+  additive fit collapsed 11.9 → 3.5. Home−worst GROWS, 23.8 → 32.0.
+- **Scout accuracy on birds with a real home: 30.5% → 57.5% for mature birds**
+  (83.5% on-or-adjacent) against an unmoved 20% baseline, after `SCOUT.
+  OWN_GRADE_STEP` was re-derived (15 → 10) and `OPPONENT_GRADE_STEP` retired
+  (5 → 0). The scout's constants had been fitted to the figure's OUTPUT, which
+  is the same failure round 29 caught — now structurally prevented, because
+  `scout.test.ts` pins the derivation.
+- **The loop compounds.** Birds carry a generation, and the doctor prints a
+  BLOODLINES ladder: gen 0 → 1 → 2 reads 328.2 → 335.7 → 348.1 mean stat,
+  1.75★ → 1.74★ → 2.06★, median home margin 8.1 → 11.2 → 10.3. Slowly, but in
+  the right direction, and now visible.
+- **Breeding selects, and it is measured on the choice.** Hens are bred to
+  their own shape rather than the barn's (`OWN_SHAPE_MIN` = 40, set off the
+  measured p25 = 32 / median = 55.5 / p75 = 91 spread of 149 hens). The
+  doctor's ruler was rebuilt to price the choice, not the policy: chosen sires
+  sit **+67.0** along the dam's own shape against **+1.0** for an unchosen one;
+  foals land at +59.5.
+
+**What is NOT proven, and should not be read as settled:**
+
+- The unmatched rate moved up — 14.7% in round 29, 18.7 / 18.1 / **16.3%**
+  across round-30 runs. The plausible mechanism is that a sharper scout cards
+  true best blades more often, spreading entries over five blades and
+  fragmenting lobby keys — i.e. better discovery costs matchmaking density.
+  **No ablation was run. This is a hypothesis with numbers attached.**
+- The "flock is being bred flat" warning straddles its own bar (49.5 / 50.7 /
+  53.3% of birds with a home blade worth finding), so it fires on noise.
+- `SCOUT.PRIOR_FIGURE` (27) is the one scout constant that still cannot be
+  derived — it is a property of the POPULATION's condition, not the formula,
+  and it will drift up on its own as the flock breeds up.
+
+State at the end of the round: `bunx tsc --noEmit` clean, 319 tests passing,
+the balance suite at 1 warning across 154 rows and 46 findings (the standing
+B1 +200 spec target, a target issue and not an engine one), and a 91-day world
+with zero invariant failures and the two health warnings above.
+
 ## Recommended next steps
 
-*Items 1 and 4 of the original list are done; the rest stand, re-ordered.*
+*Re-ordered after round 30. The old item 2 (recentre the Pit Figure) is DONE —
+it became the rebuild above. The old item 3 (watch the flock shape line) is
+answered for the first two generations by the BLOODLINES ladder, and downgraded
+to a standing watch rather than an investigation.*
 
-1. **Run matched multi-seed worlds** comparing the current and end-first
-   discovery policies, now that the audit is sound. Report exact and adjacent
-   scout accuracy, coverage and unmatched rate across seeds, not one world.
-2. **Recentre the Pit Figure scale.** `GHOST_PACE` puts even fights ~20 points
-   low, so live figures occupy about a third of the 0–150 range and the ±4 fog
-   eats a large share of every read. Its own round: `GHOST_FIGURE`,
-   `CLASS_BASE`, `MAX` and the Handbook move together.
-3. **Watch the flock shape line.** The breeding plan is demonstrably choosing
-   (sires +83 along their barn's house axis against a flock baseline of +4),
-   but 13 weeks is roughly two selected generations and `STAT_VARIANCE`
-   regenerates most of the spread each time. Whether shape accumulates is a
-   longer-horizon question.
-4. **Then revisit population and claimers.** The unmatched rate now sits at
-   14.7%, under the warning bar, but claimer and hardcore lobby keys are still
-   the thin ones.
+1. **Explain the unmatched rate, don't assume it.** It moved 14.7% → ~16–19%
+   in the same round that discovery doubled, and the "sharper scout fragments
+   the lobby keys" story is untested. The ablation is cheap: hold the world
+   fixed and run it with the scout's blade choice randomized, then compare
+   unmatched rates. If the story holds, the lever is lobby-key coarseness, not
+   the scout.
+2. **Fix the flat-flock warning's bar.** 49.5 / 50.7 / 53.3% against a 50% bar
+   is a coin flip printed as a verdict. Either widen the sample or move the
+   bar to where it means something.
+3. **Run matched multi-seed worlds** comparing the current and end-first
+   discovery policies. Still worth doing, and now doubly so — the audit is
+   sound AND the figure it reads has a unit, so a difference between policies
+   is finally attributable to the policies.
+4. **Element in the breeding score** (opened by round 30, deferred by Zane): a
+   cross-element cover should cost star potential, so bots keep lines pure.
+   Deferred on the suspicion that the population is too thin and the star
+   incentive too weak for the effect to measure — which is itself testable.
+5. **Re-measure `SCOUT.PRIOR_FIGURE` when the BLOODLINES ladder moves a band.**
+   It is the flock's mean, not a constant of the engine, and it will drift up
+   as the flock breeds up. Do not fit it to a formula it does not obey.
+6. **Then revisit population and claimers.** Claimer and hardcore lobby keys
+   are still the thin ones.
+7. **Standing watch: does shape keep accumulating past generation 2?** The
+   ladder shows the first two nests compounding (+20.0 stat points, home
+   margin 8.1 → 11.2), but 13 weeks is roughly two selected generations and
+   `STAT_VARIANCE` regenerates most of the spread each time. A longer horizon
+   is the only way to answer it.

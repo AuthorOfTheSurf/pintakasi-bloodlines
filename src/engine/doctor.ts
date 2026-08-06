@@ -25,6 +25,7 @@ import {
 } from "./config";
 import { BOT_FARMS } from "./bot-config";
 import { GameClock } from "./game-clock";
+import { gradeOf } from "./grades";
 import { ageOf } from "./lifecycle";
 import { normalizedScoutFigure } from "./scout";
 import {
@@ -98,6 +99,11 @@ const DOCTOR = {
   // hand-picked one. Both denominators print: the gap between them is the
   // population-shape story, and it belongs in the report, not hidden by it.
   DISCOVERY_HOME_MARGIN: 10,
+  // A generation's row prints from the first bird, but the gen-0-vs-deepest
+  // VERDICT needs a real sample: the deepest nest in a young world is often
+  // one lucky chick, and a single bird's stat roll would swing the whole
+  // ladder's story either way.
+  GENERATION_MIN_SAMPLE: 10,
 } as const;
 
 export interface Invariant {
@@ -492,6 +498,108 @@ function population(db: DB, topline: Topline): HealthSection {
   };
 }
 
+/**
+ * ── IS THE FLOCK ACTUALLY GETTING BETTER? (round 30) ────────────────────────
+ *
+ * Every bird now carries a GENERATION (Zane's ruling): starters and gacha
+ * pulls are 0, a chick is its dam's generation + 1. The whole game loop —
+ * fight, retire, breed, repeat — is a promise that nest N beats nest N−1, and
+ * until this section existed there was NO WAY TO SEE WHETHER IT DOES. A world
+ * could have been breeding sideways for thirteen simulated weeks and every
+ * other number in this report would have looked fine.
+ *
+ * Two halves of "better", because they are different failures:
+ *   - STRONGER — the mean six-stat average, printed as the letter grade a
+ *     player would see plus the raw number, since a whole band is a lot of
+ *     progress to hide inside one letter. Stars ride along: they are the other
+ *     thing breeding is supposed to compound.
+ *   - MORE TUNED — the median home-blade margin, the same measurement the
+ *     discovery audit grades the scout on. A line that is merely bigger is
+ *     easy; a line bred toward a SHAPE is the thing round 29's breeding plan
+ *     was for, and it shows up here as a widening margin.
+ *
+ * The doctor is omniscient and reads raw rows, so the round-28 stat fog does
+ * not apply — this is precisely the read no player can run for themselves.
+ *
+ * HEALTH, never an invariant. A flat ladder is a balance conversation (the
+ * breed floor is too low, selection is too weak, gacha 0s are diluting the
+ * average); it is not a broken world, and it must never fail a build.
+ */
+export interface GenerationRow {
+  generation: number;
+  birds: number;
+  /** Mean of the six-stat average — the same scale overallGradeOf bands. */
+  meanStat: number;
+  meanHalfStars: number;
+  /** Median home-blade margin, in weighted stat points. @see homeBlade */
+  medianHomeMargin: number;
+}
+
+export function generationLadder(db: DB): GenerationRow[] {
+  const byGen = new Map<number, { stat: number[]; stars: number[]; margins: number[] }>();
+  for (const b of db.select().from(birds).all()) {
+    const gen = b.generation;
+    let bucket = byGen.get(gen);
+    if (!bucket) byGen.set(gen, (bucket = { stat: [], stars: [], margins: [] }));
+    bucket.stat.push(
+      (b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition) / 6
+    );
+    bucket.stars.push(b.halfStars);
+    bucket.margins.push(homeBlade(b).margin);
+  }
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+  return [...byGen.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([generation, b]) => ({
+      generation,
+      birds: b.stat.length,
+      meanStat: mean(b.stat),
+      meanHalfStars: mean(b.stars),
+      medianHomeMargin: median(b.margins),
+    }));
+}
+
+function generations(db: DB): HealthSection {
+  const rows = generationLadder(db);
+  // Eggs and the retired count too: this is the BLOODLINE's arithmetic, not
+  // the fight card's. A chick that never raced still tells you what the cover
+  // that made it was worth.
+  const lines = ["gen   birds   mean grade     stars   home margin"];
+  for (const r of rows)
+    lines.push(
+      `${String(r.generation).padEnd(4)}  ${String(r.birds).padStart(5)}   ` +
+        `${gradeOf(r.meanStat).padEnd(2)} (${r.meanStat.toFixed(1).padStart(6)})   ` +
+        `${(r.meanHalfStars / 2).toFixed(2).padStart(5)}★   ${r.medianHomeMargin.toFixed(1).padStart(6)}`
+    );
+
+  // The verdict, in the only comparison that matters: founders against the
+  // deepest nest that has enough birds in it to mean anything.
+  const founders = rows.find((r) => r.generation === 0);
+  const bred = rows.filter((r) => r.generation > 0 && r.birds >= DOCTOR.GENERATION_MIN_SAMPLE);
+  const deepest = bred[bred.length - 1];
+  let warn: string | undefined;
+  if (!founders || !deepest) {
+    lines.push(
+      rows.length <= 1
+        ? "· nothing has been bred yet — every bird in the world is a founder"
+        : `· no bred generation has ${DOCTOR.GENERATION_MIN_SAMPLE}+ birds yet — too early to grade the ladder`
+    );
+  } else {
+    const dStat = deepest.meanStat - founders.meanStat;
+    const dMargin = deepest.medianHomeMargin - founders.medianHomeMargin;
+    lines.push(
+      `gen ${deepest.generation} vs gen 0  ${signed(dStat)} mean stat · ` +
+        `${signed(deepest.meanHalfStars / 2 - founders.meanHalfStars / 2)}★ · ` +
+        `${signed(dMargin)} pts of home margin`
+    );
+    if (dStat <= 0)
+      warn =
+        `generation ${deepest.generation} is no stronger than the founders ` +
+        `(${signed(dStat)} mean stat) — the breeding loop is running sideways`;
+  }
+  return { title: "BLOODLINES", lines, warn };
+}
+
 /** What has actually fed the staker pool, by source. */
 function stakerInflows(db: DB): HealthSection {
   const bySource = new Map<string, number>();
@@ -683,42 +791,68 @@ export interface BladeDiscovery {
  */
 export interface BreedingSelection {
   covers: number;
-  /** Median separation along a random house axis, over every bird — the floor. */
+  /** Median own-best separation over EVERY bird — how shaped a bird is by accident. */
   flock: number;
-  /** …over the sires those covers actually chose. */
-  sires: number;
-  /** …over the dams. Lower by nature: a barn breeds the hens it happens to own. */
+  /** …over the dams actually covered. The raw material a barn had to work with. */
   dams: number;
-  /** …over the foals produced. Roughly the parents' midpoint, less variance. */
+  /**
+   * The one that grades round 30's ruling. For each cover, how far the chosen
+   * SIRE sits along the DAM's own shape — "a b1/b2 hen should breed with a
+   * b1/b2 rooster." Its floor is `sireBaseline`, not `flock`: a sire picked
+   * blind sits near zero along someone else's axis, because a separation
+   * measured on an axis you did not choose is a signed quantity that cancels.
+   */
+  sires: number;
+  /** What an unchosen sire scores on the same axes — the honest floor for `sires`. */
+  sireBaseline: number;
+  /** …and where the foals landed, along the shape their cover was aimed at. */
   foals: number;
+}
+
+/**
+ * THE ANSWER KEY, for one bird — read straight off the hidden sheet.
+ *
+ * `best` is a SET, not a single winner: every blade's weights sum to 1, so a
+ * flat-statted bird genuinely is equally good everywhere, and scoring its every
+ * entry a miss would report noise as failure. (Epsilon because those weight
+ * sums only agree to floating point.)
+ *
+ * `margin` is how far the home blade beats the runner-up. A bird whose top two
+ * blades are a point apart has no home to find, and grading a scout on it is
+ * grading a coin flip — see DOCTOR.DISCOVERY_HOME_MARGIN. Round 30 pulled this
+ * out of bladeDiscovery so the generation ladder can ask the same question of
+ * the same arithmetic: "is nest N better TUNED than nest N−1" is only
+ * meaningful if it is the identical measurement the scout audit is graded on.
+ */
+function homeBlade(b: { agility: number; sight: number; stamina: number; gameness: number }): {
+  best: Set<FightFormat>;
+  margin: number;
+} {
+  const score = (f: FightFormat) => {
+    const w = FORMATS[f].weights;
+    return (
+      b.agility * w.agility + b.sight * w.sight + b.stamina * w.stamina + b.gameness * w.gameness
+    );
+  };
+  const scores = FORMAT_NAMES.map(score);
+  const top = Math.max(...scores);
+  const runnerUp = Math.max(...scores.filter((s) => s < top - 1e-9));
+  return {
+    best: new Set(FORMAT_NAMES.filter((f) => score(f) >= top - 1e-6)),
+    // A tie at the top IS a zero margin — the flat bird, every blade its home.
+    margin: Number.isFinite(runnerUp) ? top - runnerUp : 0,
+  };
 }
 
 export function bladeDiscovery(db: DB): BladeDiscovery {
   const allBirds = db.select().from(birds).all();
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
-  // The true best blade(s), read straight off the hidden sheet. A SET, not
-  // a single winner: every blade's weights sum to 1, so a flat-statted bird
-  // genuinely is equally good everywhere, and scoring its every entry a
-  // miss would report noise as failure. (Epsilon because those weight sums
-  // only agree to floating point.)
   const bestOf = new Map<string, Set<FightFormat>>();
-  // How far the home blade beats the runner-up. A bird whose top two blades
-  // are a point apart has no home to find, and grading a scout on it is
-  // grading a coin flip — see DOCTOR.DISCOVERY_HOME_MARGIN.
   const marginOf = new Map<string, number>();
   for (const b of allBirds) {
-    const score = (f: FightFormat) => {
-      const w = FORMATS[f].weights;
-      return (
-        b.agility * w.agility + b.sight * w.sight + b.stamina * w.stamina + b.gameness * w.gameness
-      );
-    };
-    const scores = FORMAT_NAMES.map(score);
-    const top = Math.max(...scores);
-    const runnerUp = Math.max(...scores.filter((s) => s < top - 1e-9));
-    bestOf.set(b.id, new Set(FORMAT_NAMES.filter((f) => score(f) >= top - 1e-6)));
-    // A tie at the top IS a zero margin — the flat bird, every blade its home.
-    marginOf.set(b.id, Number.isFinite(runnerUp) ? top - runnerUp : 0);
+    const { best, margin } = homeBlade(b);
+    bestOf.set(b.id, best);
+    marginOf.set(b.id, margin);
   }
 
   const emptyBucket = () => ({
@@ -830,31 +964,45 @@ export function breedingSelection(db: DB): BreedingSelection | null {
   const sep = (b: (typeof rows)[number], s: Shape) =>
     (b[s.pair[0]] + b[s.pair[1]]) / 2 - (b[s.off[0]] + b[s.off[1]]) / 2;
 
+  // Each bird's OWN grain: the shape it leans toward hardest. Round 30 moved
+  // the bots off a single house axis per barn and onto the hen's own shape
+  // (Zane: "each hen is different, and ought to be bred strategically"), so
+  // grading every cover against the barn's axis measured the policy the bots
+  // had just stopped following — it read dams at −9.0 and called a working
+  // plan broken. The ruler has to follow the ruling.
+  const ownBest = (b: (typeof rows)[number]) =>
+    BREEDING_SHAPES.reduce((best, s) => Math.max(best, sep(b, s)), -Infinity);
+  const ownShape = (b: (typeof rows)[number]) =>
+    BREEDING_SHAPES.reduce((best, s) => (sep(b, s) > sep(b, best) ? s : best), BREEDING_SHAPES[0]);
+
   const sires: number[] = [];
   const dams: number[] = [];
   const foals: number[] = [];
+  const baseline: number[] = [];
   for (const foal of rows) {
     if (!foal.fatherId || !foal.motherId) continue;
     // The barn that OWNS the foal is the barn that bought the cover: a hen's
     // owner keeps her egg, and a bird can only change hands after it hatches.
-    const shape = houseOf.get(foal.farmId);
-    if (!shape) continue; // a player farm — no declared house shape to grade
+    if (!houseOf.has(foal.farmId)) continue; // a player farm — not running the plan
     const sire = byId.get(foal.fatherId);
     const dam = byId.get(foal.motherId);
-    if (sire) sires.push(sep(sire, shape));
-    if (dam) dams.push(sep(dam, shape));
-    foals.push(sep(foal, shape));
+    if (!dam) continue;
+    const aim = ownShape(dam); // the axis this cover was aimed down
+    dams.push(ownBest(dam));
+    if (sire) sires.push(sep(sire, aim));
+    foals.push(sep(foal, aim));
+    // What the barn WOULD have scored had it grabbed a bird at random for
+    // this same hen. Pooled over every cover, so the floor is measured on the
+    // very axes the plan chose rather than on one stand-in axis.
+    baseline.push(median(rows.map((b) => sep(b, aim))));
   }
   if (foals.length === 0) return null;
   return {
     covers: foals.length,
-    // The floor: the same arithmetic over the WHOLE flock on one fixed axis.
-    // An unselected population sits near zero here — separations exist, but
-    // they point in random directions, so the median of a signed measurement
-    // cancels. That is exactly what makes it the right baseline.
-    flock: median(rows.map((b) => sep(b, BREEDING_SHAPES[1]))),
-    sires: median(sires),
+    flock: median(rows.map(ownBest)),
     dams: median(dams),
+    sires: median(sires),
+    sireBaseline: median(baseline),
     foals: median(foals),
   };
 }
@@ -882,8 +1030,9 @@ function discovery(d: BladeDiscovery): HealthSection {
   const sel = d.selection;
   if (sel)
     lines.push(
-      `breeding  ${sel.covers} bot covers · along the barn's own house axis, sires ${signed(sel.sires)} · ` +
-        `dams ${signed(sel.dams)} · foals ${signed(sel.foals)} — against a flock baseline of ${signed(sel.flock)}`
+      `breeding  ${sel.covers} bot covers · hens carry ${signed(sel.dams)} of their own shape (any bird: ${signed(sel.flock)}) · ` +
+        `the sires chosen reinforce it by ${signed(sel.sires)} (an unchosen sire: ${signed(sel.sireBaseline)}) · ` +
+        `foals land at ${signed(sel.foals)}`
     );
 
   const [juv, , vet] = d.buckets;
@@ -964,6 +1113,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     },
     fragmentation(db),
     population(db, topline),
+    // Right after POPULATION: that section counts the flock, this one asks
+    // whether the birds coming out of it are any better than the ones going in.
+    generations(db),
     stakerInflows(db),
     championships(db),
     adoption(db),

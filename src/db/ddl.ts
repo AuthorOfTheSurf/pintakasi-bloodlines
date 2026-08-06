@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS birds (
   carriage TEXT NOT NULL DEFAULT 'Ground' CHECK (carriage IN ('Ground','Air')),
   carriage_half_stars INTEGER NOT NULL DEFAULT 0,
   half_stars INTEGER NOT NULL CHECK (half_stars BETWEEN 0 AND 10),
+  -- Round 30: 0 for starters and gacha pulls, dam + 1 for a bred chick.
+  generation INTEGER NOT NULL DEFAULT 0,
   birth_week INTEGER NOT NULL,
   birth_day INTEGER NOT NULL,
   wins INTEGER NOT NULL DEFAULT 0,

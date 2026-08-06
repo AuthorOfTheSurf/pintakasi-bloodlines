@@ -189,6 +189,14 @@ a split bird, which is a fair reading of a sprint.
 
 ## The Pit Figure is centered ~20 points low — measured round 29
 
+> **RESOLVED in round 30, and not the way this section proposed.** The scale
+> did not need re-centring, it needed an ANCHOR: `GHOST_PACE` and the whole
+> ghost-divisor family are deleted, and the figure is now spine × night with
+> a unit. The blade-fit shrinkage recorded below is fixed too — fit went
+> multiplicative. See **"The Pit Figure has a unit — rebuilt round 30"**.
+> Kept as history because it is the measurement that forced the rebuild.
+
+
 `GHOST_PACE`'s comment promises that an even fight between starters figures
 ~50. It doesn't, and hasn't since round 27 rescaled the wind and every
 `damageMult`. The `symmetry` control reads:
@@ -254,6 +262,14 @@ a pure function of a column already stored).
 
 ## The flock had no shape to discover — measured round 29
 
+> **RESOLVED in round 30 — partly.** The scout half is fixed (mature clear-home
+> accuracy 30.5% → 57.5%), and the flock now has a pedigree ladder proving the
+> shape is compounding rather than merely being chosen. What is NOT settled is
+> the population itself: the doctor's "worth finding" line still straddles its
+> 50% bar. See **"Discovery, after the rebuild"** and open item 7.
+> Kept as history — this is the measurement that produced `BREEDING_PLAN`.
+
+
 The doctor's answer key is the argmax over `FORMATS[].weights`. Measured
 across a 13-week world, how much the median bird's home blade beats its
 runner-up:
@@ -280,6 +296,133 @@ optimises for nothing and regresses every line to the middle. Round 29 gave
 them `BREEDING_PLAN` — a house shape, and a priced choice — and the doctor
 now prints the flock's median home margin beside the accuracy, because that
 number is the CEILING on everything above it.
+
+## The Pit Figure has a unit — rebuilt round 30
+
+Round 29 booked "recalibrate `GHOST_PACE`" as its own round. It got one, and
+the diagnosis moved: the number was not mis-centred, it was **unanchored**.
+`pace / GHOST_PACE × 100` reads like "percent of a maxed bird", but `pace` was
+wind DEALT — which depends on the opponent — so nothing pinned the scale.
+Twice over that showed: round 27 rescaled the wind and every figure in the
+game moved ~20 points silently, and `CLASS_BASE`/`CLASS_DIVISOR` existed only
+to put back a quality signal raw pace could not carry.
+
+The figure is now **spine × night**. The SPINE is the bird's weighted stat
+blend at that blade on a fixed scale — dice-free, opponent-free, and
+untouched by `damageMult`, `ROLL_DIVISOR` or the wind pool, so no future
+combat rebalance can move it. The NIGHT is the ratio of the roll bonus the
+bird actually rolled to what a `NOMINAL_CONDITION` bird would have rolled,
+which is where condition, the wheel, the weather, station's clawback and the
+fuel wall land. A loss is marked down by beaten lengths as a SHARE. One track
+variant fogs both sides. `GHOST_PACE`, `GHOST_FIGURE`, `CLASS_BASE`,
+`CLASS_DIVISOR`, `BEATEN_SCALE`, `MIN_BEATEN` and `MAX` are deleted — figures
+are no longer capped at all.
+
+**The peg, measured at build time (600 fights per cell).** Two identical
+flat-1000 birds at B3: the winner posts **102.8**, the loser **81.6**, mean
+92.1. So `PEG_FIGURE` is what a flat `PEG_STAT` bird posts *when it wins* —
+the peg is on the number, not near it. Flat 320 (today's starters) reads 25.2
+mean; flat 1500 reads 153.1.
+
+**A grade is 10 points, everywhere.** The spine is linear in the blend, a
+grade band is 100 stat points, and 1000 stat points are 100 figure points —
+so a letter grade is worth exactly 10 figure points at every rung. Nothing
+fits that number any more; the lab's grade-calibration case DERIVES its
+target from `FIGURE.PEG_STAT`/`PEG_FIGURE` (10% tolerance for quantization)
+and measures, across grades and blades:
+
++10.1 / +9.9 / +9.7 / +11.5 / +11.6 / +11.7 / +11.5 / +11.6 / +12.2 / +10.9 /
++10.8 / +10.8 / +10.7 / +10.7 / +10.4
+
+A miss there now means the engine broke a promise its own config makes,
+rather than that somebody set a target too high.
+
+### Blade fit went multiplicative for free — the round-29 shrinkage is gone
+
+Every format's weight matrix sums to exactly 1.00 (round 27), so a FLAT bird
+blends identically at all five blades: cross-blade comparability by
+construction, with no hand-tuned per-blade table — which is exactly the job
+`GHOST_PACE` had been doing by hand. A SHAPED bird's fit then falls out
+proportionally with no fit term written anywhere. Measured on a true
+specialist (pair +200, off-pair −200) at five levels:
+
+| base | B1 | B2 | B3 | B4 | B5 | home−middle | home−worst |
+|---|---|---|---|---|---|---|---|
+| 320 | 37.0 | 32.0 | 25.8 | 16.3 | 13.2 | 11.2 | 23.8 |
+| 500 | 54.7 | 49.4 | 43.1 | 31.1 | 27.1 | 11.6 | 27.6 |
+| 800 | 84.5 | 79.6 | 74.0 | 58.8 | 53.7 | 10.5 | 30.8 |
+| 1200 | 127.7 | 122.2 | 118.0 | 103.0 | 95.7 | 9.6 | 32.0 |
+| 1600 | 175.7 | 170.8 | 168.2 | 153.0 | 147.6 | 7.5 | 28.2 |
+
+Compare the round-29 table above, where home−middle **collapsed 11.9 → 3.5**
+as birds improved and good birds were structurally harder to type than bad
+ones. Home−middle now holds near 10 at every level, and home−worst GROWS with
+the bird. Against `FIGURE.NOISE` (±4) that is a signal a scout can read on a
+good bird, which is the thing the old figure had stopped being able to do.
+
+### Discovery, after the rebuild
+
+Rebuilding the figure moved the scale under the scout — the round-27 mistake,
+repeated. This time both fitted constants were replaced rather than re-fitted:
+`SCOUT.OWN_GRADE_STEP` 15 → **10, derived** (and pinned by `scout.test.ts`, so
+a future re-peg fails loudly), and `SCOUT.OPPONENT_GRADE_STEP` 5 → **0** — the
+opponent has left the figure entirely. Measured, holding own grade at B+: mean
+figure 27.0 against B+ company, 27.8 against B, 25.8 against A. Flat.
+
+`SCOUT.PRIOR_FIGURE` 30 → **27** is the one number still measured rather than
+derived, and it is worth knowing why. The spine says a B+ bird "should" figure
+~35; the live flock averages 27 because its CONDITION is starter-grade (~320
+against a nominal 1000), so nearly every bird fights below nominal form and
+every loser is marked down on top. Both are properties of the population, not
+of the formula — **so this number drifts UP on its own as the flock breeds
+up.** Re-measure when the BLOODLINES ladder shows the mean grade has moved a
+band.
+
+The payoff, on the clear-home verdict (birds whose home blade actually beats
+its runner-up — the scout is not graded on coin flips):
+
+| age bucket | clear-home exact, r29 | r30 | random |
+|---|---|---|---|
+| age 1 | — | 57.3% | 20% |
+| age 2–3 | — | 50.9% | 20% |
+| **age 4+** | **30.5%** | **57.5%** (83.5% on-or-adjacent) | 20% |
+
+Raw accuracy over all birds, including the shapeless ones: 50.4 / 41.8 / 44.0
+by the same buckets.
+
+### Is the flock actually getting better? (the BLOODLINES ladder)
+
+Every bird now carries a GENERATION — starters and gacha pulls 0, a chick its
+dam's + 1 — and the doctor prints a ladder per generation. Before this
+existed, a world could have bred sideways for thirteen weeks and every other
+number in the report would have looked fine. Latest 91-day sim:
+
+| generation | mean stat | mean stars | median home margin |
+|---|---|---|---|
+| 0 | 328.2 | 1.75★ | 8.1 |
+| 1 | 335.7 | 1.74★ | 11.2 |
+| 2 | 348.1 | 2.06★ | 10.3 |
+
++20.0 stat points over two nests, and the shape line rises off the founders.
+The loop compounds, slowly. The margin column uses the identical `homeBlade`
+arithmetic the discovery audit is graded on, so "more tuned" means the same
+thing in both places.
+
+**Hens are now bred to their own shape** (`BREEDING_PLAN.OWN_SHAPE_MIN` = 40),
+with the barn's house axis kept only as a fallback for the genuinely flat.
+Measured over the 149 breeding hens of the round-29 world, best-pair
+separation ran p25 = 32 / median = 55.5 / p75 = 91, so the bar hands about a
+third of the flock to the house pair and breeds the rest to itself. The
+doctor's ruler was rebuilt to match: it now prices the CHOICE — how far the
+chosen sire sits along the DAM's own shape, against what an unchosen sire
+would score on those same axes. **Sires chosen +67.0 against an unchosen sire
++1.0; foals land at +59.5.** Nothing but selection produces that gap.
+
+One honest note. The first version of the accompanying test asserted that
+covered hens carry more shape than the average bird. It passed on a 20-day
+world and is FALSE in a mature one (hens +59.0 vs any bird +64.5) — the flock
+number is lifted by the plan's own foals while the breeding hens are mostly
+unselected founders. The assertion was removed rather than tuned.
 
 ## Still open, ranked
 
@@ -323,6 +466,25 @@ job between even birds. Unblocked; needs its own round.
 
 Separate unit of work: larger grade jumps at the low end, tapering toward
 2000, plus a years-to-max analysis against the weekly breeding cycle.
+
+### 7. Better discovery may be costing matchmaking density (round 30, HYPOTHESIS)
+
+The unmatched-entry warning moved up: round 29 ran 14.7%, and round 30's runs
+measured 18.7%, 18.1% and 16.3%. Noisy, but the centre has moved. The
+plausible mechanism — **and it is not proven, no ablation was run** — is that
+a sharper scout makes bots card their bird's true best blade more often, which
+spreads entries across all five blades and fragments the lobby keys. If that
+is what it is, it is a real trade and not a bug: discovery and density pull
+against each other, and the lever is lobby-key coarseness, not the scout.
+Measure it before believing it.
+
+### 8. The "flock is being bred flat" warning fires on noise (round 30)
+
+The doctor warns when under 50% of birds have a home blade worth finding.
+Round 30's runs measured 49.5%, 50.7% and 53.3% — the warning straddles its
+own bar, so it fires or doesn't on run-to-run variance. Either the bar wants
+moving or the measurement wants a wider sample; a health line that flips sign
+on noise teaches nobody anything.
 
 ## Comment/code discrepancies
 

@@ -41,7 +41,7 @@ import {
   type StatName,
 } from "@/engine/config";
 import { simulatePair, type Combatant } from "@/engine/fight-sim";
-import { gradeOf } from "@/engine/grades";
+import { GRADE_BAND, gradeOf } from "@/engine/grades";
 import { mulberry32 } from "@/engine/rng";
 import {
   clawbackOf,
@@ -1443,7 +1443,25 @@ const figure: BalanceCase = {
  * first expectation; this table measures it before any figure knob is tuned.
  */
 const FIGURE_GRADE_LEVELS = [250, 350, 450, 550, 650, 750];
-const FIGURE_GRADE_STEP = 5;
+// ⚠ DERIVED SINCE ROUND 30, not chosen. This was 5 — "Zane's stated first
+// expectation" — back when the figure had no unit and a grade step was worth
+// whatever the ghost divisor happened to make it worth. The rebuilt figure's
+// spine is linear in the stat blend, so PEG_STAT stat points buy PEG_FIGURE
+// figure points and a grade band buys a fixed slice of that: the target is
+// now a PREDICTION the engine must keep, not a hope it might miss. Same
+// derivation as SCOUT.OWN_GRADE_STEP, and pinned there by scout.test.ts.
+const FIGURE_GRADE_STEP = (GRADE_BAND / FIGURE.PEG_STAT) * FIGURE.PEG_FIGURE;
+
+// The spine keeps the step EXACTLY; the measurement cannot. Each cell is a
+// mean of figures already rounded to FIGURE.BAND, with the night term moving
+// each fight off its spine, so a step lands a few tenths either side of the
+// target as a matter of arithmetic. Measured across the whole table after the
+// round-30 rebuild: +10.1 +9.9 +9.7 +11.5 +11.6 +11.7 +11.5 +11.6 +12.2 +10.9
+// +10.8 +10.8 +10.7 +10.7 +10.4 — one cell three tenths light, and warning on
+// that would be reporting the ruler's own resolution as an engine fault. 10%
+// is wide enough to swallow the quantization and far too narrow to hide a
+// real regression: the OLD figure's step at these levels was ~5.
+const FIGURE_GRADE_TOLERANCE = 0.9;
 const figureGrade: BalanceCase = {
   name: "figuregrade",
   question: "Against fixed B+ company, do grade and distance both move a specialist's Pit Figure as expected?",
@@ -1492,7 +1510,10 @@ const figureGrade: BalanceCase = {
         return prior === undefined ? figure.toFixed(1) : `${figure.toFixed(1)} (+${(figure - prior).toFixed(1)})`;
       });
       const verdict: Row["verdict"] =
-        level === FIGURE_GRADE_LEVELS[0] || minStep >= FIGURE_GRADE_STEP ? "ok" : "warn";
+        level === FIGURE_GRADE_LEVELS[0] ||
+        minStep >= FIGURE_GRADE_STEP * FIGURE_GRADE_TOLERANCE
+          ? "ok"
+          : "warn";
       return {
         label: `${grade} (${level})`,
         cells,
@@ -1501,7 +1522,7 @@ const figureGrade: BalanceCase = {
           level === FIGURE_GRADE_LEVELS[0]
             ? "first reference grade"
             : verdict === "warn"
-              ? `smallest blade-to-blade step is +${minStep.toFixed(1)}, below the +${FIGURE_GRADE_STEP} target`
+              ? `smallest blade-to-blade step is +${minStep.toFixed(1)}, more than ${((1 - FIGURE_GRADE_TOLERANCE) * 100).toFixed(0)}% under the derived +${FIGURE_GRADE_STEP} target`
               : undefined,
       };
     });
@@ -1514,8 +1535,9 @@ const figureGrade: BalanceCase = {
         columns: ["public grade", "home blade", "adjacent blade", "middle blade"],
         rows,
         findings: [
-          `The first target is +${FIGURE_GRADE_STEP} figure points per 100-point public-grade step at the same blade and against the same company.`,
-          "This is a target-dummy calibration, not a live-card promise: live figures also move with opponent class, result, weather, and specialist shape.",
+          `The target is +${FIGURE_GRADE_STEP} figure points per ${GRADE_BAND}-point public-grade step at the same blade. It is DERIVED from the figure's own scale (${FIGURE.PEG_STAT} stat points = ${FIGURE.PEG_FIGURE} figure points), so a miss here means the engine is not keeping a promise its config makes — not that a target was set too high.`,
+          "Steps should read at or ABOVE the target, because condition climbs with the level in these profiles and a better-conditioned bird also performs nearer its spine.",
+          "This is a target-dummy calibration, not a live-card promise: live figures also move with result, weather and specialist shape. Opponent CLASS is no longer among them — round 30 took the company credit out of the figure entirely.",
         ],
       },
     ];

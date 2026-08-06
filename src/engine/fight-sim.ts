@@ -49,7 +49,30 @@ interface Fighter {
   clawPerRoll: number; // station's slope — set once at the scale, pre-form
   quitChecked: boolean; // the once-per-fight morale check
   ran: boolean;
-  dealt: number; // damage bookkeeping for the Pit Figures
+  dealt: number; // damage bookkeeping for the play-by-play
+  // The Pit Figure's night term (round 30): the total NON-DICE addition this
+  // bird actually rolled, summed over the turns it fought. Everything the
+  // bird brought — form, the element wheel, the weather, station's clawback,
+  // gameness late, and the fuel wall eating its speed stats — lands here, and
+  // the dice deliberately do not. See FIGURE in config.
+  bonusRolled: number;
+}
+
+/**
+ * The weighted stat blend — what a blade actually tests, in stat points.
+ * Every format's weights sum to exactly 1.00 (pinned in formats.test.ts), so
+ * a FLAT bird blends the same number at all five blades and a SHAPED one
+ * blends higher at the blades its pair keys. This is the whole Pit Figure
+ * spine, and the reason blade fit is multiplicative without a fit term.
+ */
+export function blendOf(stats: BirdStats, fmt: BladeFormat): number {
+  const w = fmt.weights;
+  return (
+    stats.agility * w.agility +
+    stats.sight * w.sight +
+    stats.stamina * w.stamina +
+    stats.gameness * w.gameness
+  );
 }
 
 function toFighter(c: Combatant): Fighter {
@@ -72,6 +95,7 @@ function toFighter(c: Combatant): Fighter {
     quitChecked: false,
     ran: false,
     dealt: 0,
+    bonusRolled: 0,
   };
 }
 
@@ -168,6 +192,10 @@ export function simulatePair(
 
     const ra = turnRoll(a, b, fmt, rng, weather);
     const rb = turnRoll(b, a, fmt, rng, weather);
+    // Book the night BEFORE the roll is resolved — a bird's figure counts
+    // what it brought to every turn it fought, win or lose the exchange.
+    a.bonusRolled += ra.bonus;
+    b.bonusRolled += rb.bonus;
 
     if (ra.total === rb.total) {
       lines.push(`T${turn} [${phase}] Both circle — ${ra.detail} vs ${rb.detail}. No blood.`);
@@ -222,50 +250,63 @@ export function simulatePair(
     lines.push(`Time is called — ${winner === 0 ? a.name : b.name} kept more wind.`);
   }
 
-  // ── The Pit Figures (rebuilt round 20 — the ghost standard) ───────────────
-  // EACH bird is timed against an invisible maxed-out bird: its own damage
-  // output per turn, normalized by the blade, as a fraction of GHOST_PACE.
-  // A loss still costs beaten lengths, but a close loser earns its own
-  // ghost-paced performance rather than inheriting the winner's number.
-  // One shared track variant and the ordering cap keep a lower figure from
-  // ever winning the same fight.
+  // ── The Pit Figures (rebuilt round 30 — spine × night) ────────────────────
+  // See the FIGURE block in config for the full design note. In short: the
+  // SPINE is the bird's weighted stat blend at this blade on a fixed scale
+  // (PEG_STAT flat = PEG_FIGURE, dice-free, opponent-free, drift-proof), the
+  // NIGHT is what it actually brought tonight, a loss is marked down by
+  // beaten lengths as a share, and one shared track variant fogs both sides.
   const won = winner === 0 ? a : b;
   const lost = winner === 0 ? b : a;
   const variant = randInt(rng, -FIGURE.NOISE, FIGURE.NOISE);
-  const band = (raw: number) =>
-    Math.max(0, Math.min(FIGURE.MAX, Math.round((raw + variant) / FIGURE.BAND) * FIGURE.BAND));
+  const band = (raw: number) => Math.max(0, Math.round((raw + variant) / FIGURE.BAND) * FIGURE.BAND);
 
-  const avg = (s: BirdStats) => Object.values(s).reduce((x, y) => x + y, 0) / 6;
-  const rawFigure = (self: Fighter, opponent: Fighter) => {
-    const pace = self.dealt / Math.max(1, turnsFought) / fmt.damageMult;
-    // Company still matters, but it is the company THIS bird faced. Pace
-    // alone cannot distinguish monsters from maidens because turns roll on
-    // the difference between two books, not their absolute size.
-    const opponentClass = (avg(opponent.stats) - FIGURE.CLASS_BASE) / FIGURE.CLASS_DIVISOR;
-    return (pace / FIGURE.GHOST_PACE[format]) * FIGURE.GHOST_FIGURE + opponentClass;
+  // The reference form — what a NOMINAL_CONDITION bird averages per turn.
+  // Derived from BATTLE's own curve so the two can never drift apart: form is
+  // drawn uniformly from [floor, 1], so its mean is the midpoint.
+  const nominalFormFloor =
+    BATTLE.WORST_FORM + BATTLE.FORM_RANGE * (FIGURE.NOMINAL_CONDITION / STATS.MAX);
+  const nominalForm = (1 + nominalFormFloor) / 2;
+
+  const rawFigure = (self: Fighter) => {
+    const spine = (blendOf(self.stats, fmt) / FIGURE.PEG_STAT) * FIGURE.PEG_FIGURE;
+    // What a nominal-condition version of this same bird would have added to
+    // each roll, with no wheel edge, no weather, no clawback and no wall.
+    // statScale appears on both sides of the ratio and cancels, which is why
+    // figures stay comparable across blades of different loudness.
+    const nominalBonus =
+      (blendOf(self.stats, fmt) * nominalForm * fmt.statScale) / BATTLE.ROLL_DIVISOR;
+    const actualBonus = self.bonusRolled / Math.max(1, turnsFought);
+    const night =
+      nominalBonus <= 0
+        ? 1
+        : Math.min(
+            1 + FIGURE.NIGHT_RANGE,
+            Math.max(1 - FIGURE.NIGHT_RANGE, actualBonus / nominalBonus)
+          );
+    return spine * night;
   };
-  const winnerRaw = rawFigure(won, lost);
-  const loserRaw = rawFigure(lost, won);
+  const winnerRaw = rawFigure(won);
+  const loserRaw = rawFigure(lost);
   // Beaten lengths: the gap in wind left at the end, as a fraction of the
   // loser's own pool. A bird that ran, or emptied, was beaten by the length
   // of the pit; a bird that lost on wind at the bell was beaten by inches.
   const remaining = (f: Fighter) => Math.max(0, f.wind) / f.maxWind;
   const margin = lost.ran ? 1 : Math.min(1, Math.max(0, remaining(won) - remaining(lost)));
-  const beaten = Math.max(FIGURE.MIN_BEATEN, margin * FIGURE.BEATEN_SCALE);
+  const beatenShare = Math.max(FIGURE.MIN_BEATEN_SHARE, margin * FIGURE.BEATEN_SHARE);
 
-  // The winner never posts below one band: a bell decision with almost no
-  // blood can band a WIN to 0 (commoner at uniform 100 wind), and a 0-figure
-  // winner would tie the loser's floor — the one inversion the ghost
-  // standard promises can't happen.
+  // The winner never posts below one band: a bell decision between two very
+  // weak birds can band a WIN to 0, and a 0-figure winner would tie the
+  // loser's floor — the one inversion the ghost standard promises can't
+  // happen.
   const winnerFigure = Math.max(FIGURE.BAND, band(winnerRaw));
-  // The loser is independently ghost-scored, then marked down by its actual
-  // beaten lengths. Capping below the winner preserves the one unbreakable
-  // reading rule, even when stronger-company credit makes a loser's raw
-  // effort look bigger. Clamp the raw score before subtraction so a blowout
-  // cannot flatten at 145.
+  // The loser is independently spine-scored, then marked down by its actual
+  // beaten lengths. Capping below the winner preserves that reading rule even
+  // when a much better bird loses a close one — it can still post the second
+  // figure of the night, but never the first.
   const loserFigure = Math.max(
     0,
-    Math.min(winnerFigure - FIGURE.BAND, band(Math.min(loserRaw, FIGURE.MAX) - beaten))
+    Math.min(winnerFigure - FIGURE.BAND, band(loserRaw * (1 - beatenShare)))
   );
   const figures: [number, number] =
     winner === 0 ? [winnerFigure, loserFigure] : [loserFigure, winnerFigure];
@@ -281,7 +322,7 @@ function turnRoll(
   fmt: BladeFormat,
   rng: Rng,
   weather?: Element
-): { total: number; dice: [number, number]; doubles: boolean; detail: string } {
+): { total: number; bonus: number; dice: [number, number]; doubles: boolean; detail: string } {
   const dice = roll2d6(rng);
   const parts = [`${dice[0]}+${dice[1]}`];
 
@@ -334,5 +375,12 @@ function turnRoll(
     total += ((self.stats.gameness * form) / BATTLE.GAMENESS_DIVISOR) * statScale;
     parts.push("+gameness");
   }
-  return { total, dice, doubles: dice[0] === dice[1], detail: parts.join("") };
+  // `bonus` is everything except the dice — the Pit Figure's night term.
+  return {
+    total,
+    bonus: total - dice[0] - dice[1],
+    dice,
+    doubles: dice[0] === dice[1],
+    detail: parts.join(""),
+  };
 }

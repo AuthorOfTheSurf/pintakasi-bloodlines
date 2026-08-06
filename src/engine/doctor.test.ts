@@ -5,7 +5,7 @@ import { battleLog, farms, gameState, lobbies, lobbyEntries, tournamentEntries }
 import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
 import { ELEMENTS, FORMAT_NAMES, weatherOfDay, type FightFormat } from "./config";
-import { bladeDiscovery, diagnose, formatReport, weatherTiming } from "./doctor";
+import { bladeDiscovery, diagnose, formatReport, generationLadder, weatherTiming } from "./doctor";
 import { makeBird, world as testWorld } from "./testkit";
 import { Game } from "./game";
 
@@ -227,6 +227,90 @@ describe("the health report", () => {
  * these tests have to prove both directions: that ignoring it reads as chance,
  * and that timing it reads as more.
  */
+/**
+ * THE BLOODLINES LADDER (round 30) — the report that answers the question the
+ * whole breed loop is a promise about: is nest N better than nest N−1? Every
+ * other section could read clean while the flock bred sideways for a season.
+ */
+describe("the bloodlines section", () => {
+  const section = (db: DB) =>
+    diagnose(db, ":memory:").health.find((h) => h.title === "BLOODLINES")!;
+
+  test("a world that has bred nothing says so instead of inventing a ladder", () => {
+    const w = testWorld({ rivalFlock: false });
+    const ladder = generationLadder(w.db);
+    expect(ladder).toHaveLength(1);
+    expect(ladder[0]).toMatchObject({ generation: 0, birds: 8 });
+    const s = section(w.db);
+    expect(s.lines.join("\n")).toContain("every bird in the world is a founder");
+    expect(s.warn).toBeUndefined(); // a founder-only world is not a failure
+  });
+
+  test("each generation reports count, mean grade, stars and home margin", () => {
+    const w = testWorld({ rivalFlock: false });
+    // A dozen chicks that are both STRONGER (600 average against a ~300
+    // starter band) and better TUNED (agility towers, so B1 is a real home)
+    // than the founders — the shape of a breeding loop that is working.
+    for (let i = 0; i < 12; i++)
+      makeBird(w.db, {
+        generation: 1,
+        agility: 900, sight: 300, stamina: 300, gameness: 300, station: 900, condition: 900,
+        halfStars: 6,
+      });
+    const [gen0, gen1] = generationLadder(w.db);
+    expect(gen0).toMatchObject({ generation: 0, birds: 8 });
+    expect(gen1).toMatchObject({ generation: 1, birds: 12, meanStat: 600, meanHalfStars: 6 });
+    expect(gen1.medianHomeMargin).toBeGreaterThan(gen0.medianHomeMargin);
+
+    const lines = section(w.db).lines;
+    expect(lines[0]).toContain("mean grade");
+    // 600 average = S on the 100-point bands, and the raw number rides along
+    // because a whole band is a lot of progress to hide inside one letter.
+    expect(lines[2]).toContain("S  ( 600.0)");
+    expect(lines[2]).toContain("3.00★");
+    // The verdict line: signed deltas against the founders, all three positive.
+    expect(lines[3]).toMatch(/^gen 1 vs gen 0  \+/);
+    expect(section(w.db).warn).toBeUndefined();
+  });
+
+  test("a generation no stronger than the founders is named as running sideways", () => {
+    const w = testWorld({ rivalFlock: false });
+    for (let i = 0; i < 12; i++)
+      makeBird(w.db, {
+        generation: 1,
+        agility: 100, sight: 100, stamina: 100, gameness: 100, station: 100, condition: 100,
+      });
+    const s = section(w.db);
+    expect(s.warn).toContain("running sideways");
+    // …and it stays JUDGEMENT. A flock that isn't improving is a balance
+    // conversation, not a broken world — the exit code must not move.
+    const report = diagnose(w.db, ":memory:");
+    expect(report.ok).toBe(true);
+    for (const i of report.invariants) expect(i.passed).toBe(true);
+  });
+
+  test("a thin bred generation is not graded — one lucky chick is not a trend", () => {
+    const w = testWorld({ rivalFlock: false });
+    makeBird(w.db, { generation: 1, agility: 2000 });
+    const s = section(w.db);
+    expect(s.lines.join("\n")).toContain("too early to grade the ladder");
+    expect(s.warn).toBeUndefined();
+  });
+
+  test("the ladder deepens on a simulated world that actually breeds", () => {
+    // The end-to-end proof: nobody sets `generation` by hand here — the bots
+    // buy covers and the marker has to arrive on the eggs by itself.
+    const w = world(30);
+    const ladder = generationLadder(w.db);
+    expect(ladder.length).toBeGreaterThan(1);
+    expect(ladder[0].generation).toBe(0);
+    expect(ladder[1].generation).toBe(1);
+    // Gacha pulls enter from OUTSIDE the bloodline, so they land back on 0 —
+    // generation counts nests, not birthdays.
+    expect(ladder[0].birds).toBeGreaterThan(8);
+  });
+});
+
 describe("the weather-timing line", () => {
   /**
    * Post `n` entries on one day, `matched` of them by birds whose element is
@@ -506,16 +590,37 @@ describe("the discovery section", () => {
     const w = world(20);
     const sel = bladeDiscovery(w.db).selection!;
     expect(sel.covers).toBeGreaterThan(0);
-    // The floor: signed separations over the whole flock cancel, because an
-    // unselected population's shapes point in random directions.
-    expect(Math.abs(sel.flock)).toBeLessThan(25);
-    // …and the sires the plan actually bought sit well clear of it. If this
-    // ever collapses toward the baseline, the bots are shuffling again — which
-    // is precisely what the first cut of BREEDING_PLAN did while looking fine.
-    expect(sel.sires).toBeGreaterThan(sel.flock + 25);
-    // Dams come from whatever hens the barn happens to own, so they are the
-    // weaker half of the selection by nature — but both halves must be on the
-    // right side of the baseline, or only one of the two loops is working.
-    expect(sel.dams).toBeGreaterThan(sel.flock);
+
+    // ⚠ REBASED IN ROUND 30 along with the metric. This used to assert that
+    // `flock` sits near ZERO, which was true while every number on the line
+    // was a separation along one fixed axis: signed quantities over an
+    // unselected population point in random directions and cancel. The metric
+    // now measures each bird along its OWN best shape, because that is the
+    // policy the bots follow since Zane's ruling that each hen be bred to her
+    // own grain. A maximum over three shapes cannot cancel — it is positive
+    // for every bird alive, by construction. So the floor moved, and the test
+    // that pinned the floor to zero was pinning the OLD ruler.
+    expect(sel.flock).toBeGreaterThan(0);
+
+    // The claim that survives the rebase, and the one that matters: a sire
+    // scored along the DAM's axis has no such positive bias. Pick a sire
+    // blind and he sits near `sireBaseline`, because that axis was not chosen
+    // for him. So the gap between `sires` and `sireBaseline` is the plan
+    // choosing, with nothing else that could produce it. If it ever collapses,
+    // the bots are shuffling again — which is exactly what the first cut of
+    // BREEDING_PLAN did while looking perfectly fine in the config.
+    expect(sel.sires).toBeGreaterThan(sel.sireBaseline + 25);
+    // Hens are NOT selected — a barn covers whatever hens it happens to own,
+    // and `dams` is reported to show the raw material, not to grade anything.
+    // Deliberately not asserted against `flock`: in a mature world it comes in
+    // BELOW it (91 days: hens +59.0, any bird +64.5), because the flock number
+    // is lifted by the plan's own foals while the breeding hens are mostly
+    // unselected founders. An earlier draft of this test asserted the opposite
+    // and passed only because a 20-day world has barely any foals in it yet.
+    expect(sel.dams).toBeGreaterThan(0);
+    // And the point of all of it: the foal has to inherit the shape the cover
+    // was aimed at. Parents' midpoint less variance, so it lands lower than
+    // the sire — but decisively on the right side of an unaimed bird.
+    expect(sel.foals).toBeGreaterThan(sel.sireBaseline);
   });
 });

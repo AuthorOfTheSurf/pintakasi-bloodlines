@@ -26,6 +26,11 @@ import {
   withKnob,
 } from "./lab";
 
+// Round 30 removed FIGURE.MAX — there is no clamp to assert. See the same
+// constant in formats.test.ts: a derived sanity bound that tracks the scale.
+const CEILING =
+  (STATS.MAX / FIGURE.PEG_STAT) * FIGURE.PEG_FIGURE * (1 + FIGURE.NIGHT_RANGE) + FIGURE.NOISE;
+
 /**
  * THE POINT OF THIS FILE, borrowed wholesale from doctor.test.ts: "a health
  * check nobody has watched FAIL is a green light with no bulb in it."
@@ -238,7 +243,7 @@ describe("duel's bookkeeping is self-consistent", () => {
       for (const fig of [d.meanFigureA, d.meanFigureB]) {
         expect(fig % FIGURE.BAND).toBe(0);
         expect(fig).toBeGreaterThanOrEqual(0);
-        expect(fig).toBeLessThanOrEqual(FIGURE.MAX);
+        expect(fig).toBeLessThanOrEqual(CEILING);
       }
     }
   });
@@ -454,9 +459,14 @@ describe("withKnob puts the config back", () => {
     expect(knobs).toContain("FORMATS.b1.critMult");
     // …and an intermediate object is never advertised as if it were a knob.
     expect(knobs).not.toContain("FORMATS.b1");
-    // FIGURE.GHOST_PACE is a per-format object; a sweep can't set it to a
-    // single number, so it must not be advertised as though it could.
-    expect(knobs).not.toContain("FIGURE.GHOST_PACE");
+    // …at every depth. FORMATS.b1.weights is a container of four numbers; a
+    // sweep can't set it to a single value, so it must not be advertised as
+    // though it could, while each weight underneath it must be.
+    // (This used to guard FIGURE.GHOST_PACE, the per-format pace table that
+    // round 30 deleted along with the rest of the ghost-divisor figure. The
+    // claim outlived the example, so it moved to a live one.)
+    expect(knobs).not.toContain("FORMATS.b1.weights");
+    expect(knobs).toContain("FORMATS.b1.weights.agility");
     expect(knobs).toEqual([...knobs].sort());
     // Everything listed must actually be settable — the list and the setter
     // agree, so `--list` never offers something `--sweep` will reject.

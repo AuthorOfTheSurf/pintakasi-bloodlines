@@ -160,6 +160,7 @@ export function seedStarterFlock(
         halfStars: Math.min(s.halfStars, STARS.STARTER_MAX_HALF),
         carriage: CARRIAGES[randInt(rng, 0, CARRIAGES.length - 1)],
         carriageHalfStars: randInt(rng, STARS.STARTER_MIN_HALF, STARS.STARTER_MAX_HALF),
+        generation: 0, // day-one stock founds the line (round 30)
         birthWeek: -s.age, // age at week 0 = 0 - birthWeek
         birthDay: -s.age * 7,
         wins: s.wins ?? 0,
@@ -217,6 +218,7 @@ export function seedStarterFlock(
       halfStars: randInt(rng, STARS.STARTER_MIN_HALF, STARS.STARTER_MAX_HALF),
       carriage: CARRIAGES[randInt(rng, 0, CARRIAGES.length - 1)],
       carriageHalfStars: randInt(rng, STARS.STARTER_MIN_HALF, STARS.STARTER_MAX_HALF),
+      generation: 0, // day-one stock founds the line (round 30)
       birthWeek: week, // hatches NEXT Friday, age 1 — no fighting week one
       birthDay: today,
       motherId: null,

@@ -9,8 +9,18 @@
 export const GRADES = ["C", "C+", "B", "B+", "A", "A+", "S", "S+", "O", "O+"] as const;
 export type Grade = (typeof GRADES)[number];
 
+/**
+ * Stat points per letter grade. Exported since round 30, when the Pit Figure
+ * was rebuilt with a UNIT and a grade step became a fixed quantity of figure
+ * points (SCOUT.OWN_GRADE_STEP is derived from this number and PEG_STAT/
+ * PEG_FIGURE, and scout.test.ts pins the derivation). Nothing may re-type the
+ * literal — the whole point of round 30 was that a constant fitted to the
+ * figure's output goes stale the moment the figure moves.
+ */
+export const GRADE_BAND = 100;
+
 export function gradeOf(value: number): Grade {
-  const band = Math.floor(Math.max(0, value) / 100);
+  const band = Math.floor(Math.max(0, value) / GRADE_BAND);
   return GRADES[Math.min(band, GRADES.length - 1)];
 }
 

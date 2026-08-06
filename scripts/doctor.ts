@@ -16,6 +16,7 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { sql } from "drizzle-orm";
 import { createDb, latestSimDb } from "@/db/client";
 import { diagnose, formatReport } from "@/engine/doctor";
 
@@ -35,7 +36,30 @@ if (!existsSync(target)) {
   process.exit(1);
 }
 
-const report = diagnose(createDb(target), path.relative(process.cwd(), target));
+const db = createDb(target);
+
+// …and a world built by an OLDER schema is the same trap wearing a disguise.
+// Round 30 added birds.generation; running the doctor against a pre-round-30
+// keeper printed the string "generation" as every bird's generation, for all
+// 530 of them, without a single error — SQLite renders a double-quoted
+// unknown identifier as a string literal rather than failing. A report that
+// is confidently wrong is worse than no report, and this codebase remakes
+// worlds instead of migrating them (see CLAUDE.md), so the only honest answer
+// is to refuse and say what to do about it.
+const columns = db
+  .all<{ name: string }>(sql`SELECT name FROM pragma_table_info('birds')`)
+  .map((r) => r.name);
+const REQUIRED = ["generation"];
+const missing = REQUIRED.filter((c) => !columns.includes(c));
+if (missing.length > 0) {
+  console.error(
+    `${path.relative(process.cwd(), target)} was built by an older schema — birds is missing: ${missing.join(", ")}.\n` +
+      "Sim databases are disposable by design. Run `bun run simulate` for a fresh world, or delete data/game.db and reseed."
+  );
+  process.exit(1);
+}
+
+const report = diagnose(db, path.relative(process.cwd(), target));
 
 console.log(
   args.includes("--json")

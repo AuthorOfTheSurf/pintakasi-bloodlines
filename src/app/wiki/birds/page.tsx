@@ -255,13 +255,26 @@ export default function BirdsPage() {
         never as &ldquo;bad.&rdquo; No evidence is not bad evidence.
       </p>
       <p>
-        The scout also makes a small, public-context correction before it compares blades. A higher
-        letter grade is expected to post a louder figure, and better company lifts both birds&apos;
-        numbers. Those broad expectations are taken out using the grades printed on the old card.
-        The win, the beaten lengths, and the blade itself stay in the score. That way the report
-        asks &ldquo;where did this bird exceed expectations?&rdquo;, not merely &ldquo;where did
-        it meet tougher company?&rdquo;
+        The scout also makes one small, public correction before it compares blades. A better bird
+        is expected to post a louder figure, so the scout subtracts that expectation using the
+        letter grade printed on the old card — {SCOUT.OWN_GRADE_STEP} points per grade, the exact
+        amount a grade is worth. What is left is the part of the number the bird&apos;s <em>blade</em>
+        earned. The win, the beaten lengths and the blade itself all stay in.
       </p>
+      <p>
+        It does <strong>not</strong> correct for who the bird fought, and that is not an oversight.
+        A Pit Figure is built against a fixed ruler rather than against the opponent, so the company
+        a bird kept barely touches its number in the first place — there is nothing to take out.
+        Beating a monster is worth a great deal to your record and your pocket. It is not worth
+        extra figure points.
+      </p>
+      <div className="callout tip">
+        <b>Grade and figure are two different readings — compare them.</b> The overall grade is
+        public and covers all six stats. A Pit Figure only weighs the four distance stats that the
+        blade keys, so station and condition never show up in it directly. A bird whose figures keep
+        landing <em>below</em> what its grade would suggest is usually carrying its weight in those
+        two anchors — real quality, just not the kind that scores. That gap is a read worth having.
+      </div>
       <p>
         A blade stays marked <strong>unread</strong> until the bird has at least {SCOUT.MIN_READS}{" "}
         figures there — one reading, however loud, isn&apos;t a verdict. Unread blades are

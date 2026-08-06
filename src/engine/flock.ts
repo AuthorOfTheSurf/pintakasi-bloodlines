@@ -31,6 +31,10 @@ export interface BirdView
   extends Omit<BirdRow, "sex" | StatName>,
     Record<StatName, number | null> {
   overallGrade: Grade; // the six-stat average as a letter — public even under the fog
+  // `generation` rides in from BirdRow untouched, and deliberately so (round
+  // 30): it is PEDIGREE, not shape. Knowing a chick is the fourth nest down a
+  // line says nothing about which blade suits it, so the fog has no reason to
+  // hide it — and it is exactly the sort of thing a barn brags about.
   sex: "male" | "female" | "hidden"; // hidden while an egg — revealed at hatch
   sexLabel: "rooster" | "hen" | null; // the sabong layer over male/female
   age: number; // eggs clamp to 0 (a pregnancy's derived age is negative)

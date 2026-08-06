@@ -71,6 +71,15 @@ export const birds = sqliteTable("birds", {
     .notNull()
     .default("Ground"),
   carriageHalfStars: integer("carriage_half_stars").notNull().default(0),
+  // THE GENERATION MARKER (round 30, Zane's ruling): starters and gacha pulls
+  // are generation 0 — they enter the world from outside any bloodline. A
+  // chick takes its MOTHER's generation + 1. Traced through the DAM alone, not
+  // max(dam, sire): a single parent keeps the number monotone down one line
+  // and makes it read as "how many nests deep is this hen's family", which is
+  // the question the doctor's per-generation report is asking. It exists to
+  // measure whether the flock is actually improving nest over nest — nothing
+  // in the fight engine or any gate reads it.
+  generation: integer("generation").notNull().default(0),
   // Birth moment, not age — age in bird-years = currentWeek - birthWeek
   // (birds age one year per game-week; the derivation is Zane's ruling).
   birthWeek: integer("birth_week").notNull(),

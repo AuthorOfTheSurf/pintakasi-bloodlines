@@ -49,15 +49,27 @@ export function defaultDbPath(): string {
 
 /**
  * Every simulation run writes its own timestamped file (data/sim-*.db).
- * PINTAKASI_DB=latest-sim (what `bun dev:sim` sets) resolves to the newest
- * one — the names sort chronologically.
+ * PINTAKASI_DB=latest-sim (what `bun dev:sim` sets) resolves to the newest.
+ *
+ * ⚠ ORDERED BY MTIME SINCE ROUND 30, not by name. The names sort
+ * chronologically only while every file is the `sim-YYYYMMDD-HHMM` the script
+ * generates — and a hand-named keeper does not play along. A
+ * `sim-20260806-season-c.db` sorts AFTER `sim-20260806-1636.db`, so the
+ * doctor silently reported on a world three schema versions old, and because
+ * SQLite renders a double-quoted unknown identifier as a string literal, a
+ * column added that day printed as its own NAME for all 530 birds rather than
+ * erroring. Nothing looked broken. mtime is what "newest" was always meant
+ * to say; now it says it.
  */
 export function latestSimDb(): string {
   const dir = path.join(process.cwd(), "data");
-  const sims = (existsSync(dir) ? readdirSync(dir) : []).filter((f) => /^sim-.*\.db$/.test(f)).sort();
+  const sims = (existsSync(dir) ? readdirSync(dir) : [])
+    .filter((f) => /^sim-.*\.db$/.test(f))
+    .map((f) => path.join(dir, f))
+    .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
   if (sims.length === 0)
     throw new Error("No simulation databases in data/ — run `bun run simulate` first");
-  return path.join(dir, sims[sims.length - 1]);
+  return sims[sims.length - 1];
 }
 
 // Lazy singleton for the app (routes/MCP), keyed by the resolved path AND the

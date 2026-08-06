@@ -95,6 +95,9 @@ describe("gacha", () => {
     expect(egg.age).toBe(0);
     expect(egg.sex).toBe("hidden"); // the 50-50 surprise still belongs to hatch day
     expect(egg.motherId).toBeNull(); // no parents — the machine is not kin
+    // …and no bloodline either: a pull enters from outside, so it FOUNDS a
+    // line rather than deepening one (round 30).
+    expect(egg.generation).toBe(0);
     expect(egg.name).toBe(`Mystery Egg (${dropped!.token})`);
     const tier = GACHA_BIRDS[dropped!.token]!;
     expect(egg.halfStars).toBeGreaterThanOrEqual(tier.halfStars[0]);

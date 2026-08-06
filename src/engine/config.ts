@@ -488,63 +488,134 @@ export const BATTLE = {
 } as const;
 
 // ── Pit Figure (the Fleet-Figure analog — every fight pays out signal) ──────
-// REBUILT round 20, PFL-true. The old figure scored each bird against its
-// OPPONENT, which let a loser out-figure the winner of the same fight
-// (Zane: "in PFL this wouldn't be possible"). PFL horses are timed against
-// an invisible maxed-out GHOST, and the rest of the field is scored down
-// from the winner by beaten lengths. Same shape here:
+// REBUILT round 30 — the figure finally has a UNIT.
 //
-//  1. EACH bird's figure starts absolute — its damage output per turn
-//     (normalized by the blade, so figures compare across distances)
-//     measured against GHOST_PACE, the pace a maxed-out bird sets.
-//     Matching the ghost = GHOST_FIGURE (100). Typical starters ≈ 50.
-//  2. A loss is then marked DOWN by the finishing margin — wind left, the
-//     fight's "beaten lengths." A close loser has its own near-winner pace
-//     and loses only a little; a blowout has poor pace AND a deep mark-down.
-//  3. ONE noise roll per fight, applied to both sides (PFL's track
-//     variant), so the fog never reorders the result.
+// THE DIAGNOSIS (Zane, 2026-08-06): "Scientifically I think we are missing a
+// piece. Going in the direction of DPS vs. a fixed target dummy was the right
+// call, but somehow better defining what it's supposed to be should help us
+// design and tune it."
+//
+// He was right, and the missing piece was the unit. In PFL a figure is
+// anchored to something physical — seconds at 8 furlongs — and that one fact
+// does all the work: a grade step is 1.0 second, so a grade step is a fixed
+// number of figure points forever, and the scale cannot drift because the
+// clock cannot drift.
+//
+// Rounds 20–29 only LOOKED like that. `pace / GHOST_PACE × 100` reads as
+// "percent of a maxed bird", but `pace` was wind DEALT, and how much wind you
+// deal depends on who you were fighting. So it was never measured against a
+// fixed thing at all, and it showed twice:
+//   · it DRIFTED — round 27 rescaled the wind pools and every figure in the
+//     game moved ~20 points, silently, because nothing pinned it
+//   · we already patched around it — CLASS_BASE/CLASS_DIVISOR existed only
+//     because pace lost the quality signal (every turn rolls on the
+//     DIFFERENCE between two books, so two maxed birds trade exactly as much
+//     wind as two starters, and pace alone cannot tell them apart)
+// The ghost was never a bird. It was a divisor named after one.
+//
+// THE REBUILD — spine × night:
+//
+//  1. THE SPINE is absolute and dice-free: the bird's weighted stat blend at
+//     this blade, on a fixed scale. PEG_STAT flat = PEG_FIGURE at every
+//     blade. Nothing in it depends on the opponent, the wind pool, damageMult
+//     or ROLL_DIVISOR, so no future combat rebalance can move the scale
+//     again. This is the target dummy, taken seriously: a dummy with no
+//     defence and no dice, which is the only kind whose reading never drifts.
+//
+//  2. THE NIGHT modulates it — what the bird actually brought tonight,
+//     measured as the ratio of the roll bonus it really rolled to the bonus a
+//     NOMINAL_CONDITION bird would have rolled. That captures condition
+//     (form is drawn fresh every turn), the element wheel, the day's weather,
+//     station's clawback and — the good one — the FUEL WALL: a bird that
+//     blows its tank spends the rest of the fight delivering WALL_FACTOR of
+//     its speed stats, and now that shows in its number. The dice are
+//     deliberately NOT in here; they are what the track variant is for.
+//
+//  3. A LOSS is marked down by beaten lengths, as a SHARE rather than a flat
+//     subtraction, so the mark-down means the same thing at every level.
+//
+//  4. ONE noise roll per fight, applied to both sides (PFL's track variant),
+//     so the fog never reorders the result.
+//
+// WHAT FALLS OUT FOR FREE, and this is the happy part: every format's weight
+// matrix sums to exactly 1.00, so a FLAT bird blends identically at all five
+// blades — cross-blade comparability by construction, with no hand-tuned
+// per-blade table to go stale. And a SHAPED bird's blade fit becomes
+// MULTIPLICATIVE without a fit term being written at all: an agility/sight
+// bird carrying +200 on its pair blends 1120 at B1 against 900 at B5, a 24%
+// swing. Round 29 measured the old additive fit signal shrinking as birds
+// improved (11.9 points at B+ down to 3.5 at S+, against ±4 of fog) — that
+// was the bug, and a proportional signal is the fix: the better the bird, the
+// louder its shape. Ruled 2026-08-06 at ~25%, and MEASURED after the rebuild
+// on a true specialist (pair +200, off-pair −200) at five levels:
+//
+//   base   B1     B2     B3     B4     B5    home−middle   home−worst
+//    320  37.0   32.0   25.8   16.3   13.2       11.2         23.8
+//    500  54.7   49.4   43.1   31.1   27.1       11.6         27.6
+//    800  84.5   79.6   74.0   58.8   53.7       10.5         30.8
+//   1200 127.7  122.2  118.0  103.0   95.7        9.6         32.0
+//   1600 175.7  170.8  168.2  153.0  147.6        7.5         28.2
+//
+// Home−middle now holds near 10 at EVERY level instead of collapsing, and
+// home−worst GROWS with the bird. Against the ±NOISE fog of 4 that is a
+// signal a scout can actually read on a good bird, which is the thing the old
+// figure stopped being able to do.
+
 //
 // Still deliberately coarse — banded, never decomposed by stat. The
 // play-by-play carries the qualitative tell.
-// One wrinkle the calibration run exposed: because every turn is decided by
-// the DIFFERENCE between two rolls, two maxed-out birds trade exactly as
-// much damage as two starters — raw pace alone carries no quality signal at
-// all. So the figure also books the CLASS of the bird that was beaten,
-// measured off the starter band. That's how graded-stakes figures work too:
-// a strong field lifts everyone's number, and beating a monster is the
-// whole point. A narrow loss to a monster figures well because the loser
-// independently earns its own pace and company credit, then takes only a
-// small beaten-length mark-down.
+//
+// ONE ACCEPTED CONSEQUENCE: the figure now tracks a bird's distance-stat
+// average closely, and Overall grade is already public (the one exception to
+// round 28's fog). So the figure does not leak much that a player could not
+// already see — but the two disagree in a useful way, because the blend
+// EXCLUDES station and condition. A bird whose figures run below its grade is
+// carrying its weight in the anchors. That is a read worth having, not a leak.
 export const FIGURE = {
-  // The pace a maxed-out ghost sets, per blade — the normalizer that makes
-  // figures COMPARABLE across formats (gaff fights run longer, so their
-  // damage-per-turn is lower by nature).
+  // The peg. A flat PEG_STAT bird posts PEG_FIGURE at every blade, and
+  // because the spine is linear in the blend, a letter grade (100 stat
+  // points, see grades.ts) is worth exactly 10 figure points EVERYWHERE on
+  // the ladder — Zane's PFL analogy, where a grade is a fixed 1.0 seconds at
+  // 8 furlongs, made literally true.
   //
-  // ⚠ MEASURED, round 29: these no longer put an even starter fight at ~50,
-  // which is what this comment used to promise. The `symmetry` control reads
-  // 26.9 / 27.1 / 29.3 / 30.2 / 31.5 — flat across the dial, so the
-  // cross-format normalization is still doing its job, but the whole scale
-  // is centered ~20 points low. Round 27's uniform-100 wind rescaled every
-  // damageMult and the level calibration was never re-derived.
+  // PEG_STAT is 1000 because that is the top of the letter ladder (O+) and
+  // the middle of the raw 0–2000 stat scale: "get the middle right and then
+  // extend outwards." Today's starters (~320) therefore post ~32, which is
+  // roughly where live figures already sat — so the rebuild re-centres the
+  // MEANING of the scale without yanking every number players have seen.
+  // There is no upper clamp any more (ruled 2026-08-06: "let's forget about
+  // the 0–150 range, I don't think it's helpful to cap pit figures like
+  // this"). A bred monster posting 140 should read 140.
   //
-  // The consequence is not cosmetic: live figures occupy roughly 5–55 of the
-  // 0–150 range, so ±NOISE eats a large share of every read and the blade-fit
-  // signal the scout exists to find (3–12 points between a specialist's home
-  // and middle blade) is proportionally quieter than it should be. Recentring
-  // on 50 would stretch the usable scale ~1.6× for free. Deferred to its own
-  // round because it moves GHOST_FIGURE, CLASS_BASE, MAX and the Handbook's
-  // figure pages together — an S+ specialist already reads 110 against the
-  // clamp at 150. SCOUT.PRIOR_FIGURE was moved to the measured value in the
-  // meantime rather than left pinned to a promise the engine stopped keeping.
-  GHOST_PACE: { b1: 8.0, b2: 6.2, b3: 4.3, b4: 3.7, b5: 3.4 },
-  GHOST_FIGURE: 100, //  what matching the ghost's pace scores
-  CLASS_BASE: 320, //    the starter band's middle — class credit starts here
-  CLASS_DIVISOR: 20, //  each 20 points of beaten-opponent average = +1 figure
-  BEATEN_SCALE: 45, //   figure points subtracted across a full-margin loss
-  MIN_BEATEN: 5, //      a loss is always at least one band below the win
-  NOISE: 4, //           ± uniform, ONE roll per fight (the track variant)
-  BAND: 5, //            displayed to the nearest 5
-  MAX: 150, //           clamp range [0, MAX] — headroom for bred stock
+  // ⚠ MEASURED at build time, 600 fights per cell. Two identical flat-1000
+  // birds at B3: the WINNER posts 102.8, the loser 81.6 (beaten lengths),
+  // mean 92.1. So read PEG_FIGURE as "what a flat PEG_STAT bird posts when it
+  // wins" — the peg is on the number, not near it. Flat 320 (today's
+  // starters) reads 25.2 mean, flat 1500 reads 153.1.
+  PEG_STAT: 1000,
+  PEG_FIGURE: 100,
+  // The condition the night multiplier is measured against — the form a
+  // PEG_STAT bird brings. Derived into a form factor in fight-sim from
+  // BATTLE.WORST_FORM/FORM_RANGE rather than typed here, so a change to the
+  // form curve moves the reference with it instead of silently rebasing
+  // every figure in the game. That is exactly the drift that made this
+  // rebuild necessary.
+  NOMINAL_CONDITION: 1000,
+  // How far the night is allowed to move a bird off its spine, either way.
+  // 0.25 is sized to sit just above the ~24% blade-fit swing: a bird can
+  // out-figure its own class by having a great night, which is what makes a
+  // figure a PERFORMANCE and not a stat read-out, but it cannot routinely
+  // out-figure a bird a full blade-fit better. Raise it and the scout goes
+  // blind; drop it to 0 and the figure becomes the sheet, decoded in three
+  // fights.
+  NIGHT_RANGE: 0.25,
+  // Beaten lengths, as a SHARE of the loser's own figure. Multiplicative for
+  // the same reason blade fit is: the old flat 45 wiped out a starter's whole
+  // number and cost a bred monster a third of its own.
+  BEATEN_SHARE: 0.35, //     lost by the length of the pit
+  MIN_BEATEN_SHARE: 0.05, // a loss always sits below the win it lost to
+  NOISE: 4, //               ± uniform, ONE roll per fight (the track variant)
+  BAND: 5, //                displayed to the nearest 5
 } as const;
 
 // ── The Scout Report (round 28 — the fog comes down) ────────────────────────
@@ -558,12 +629,35 @@ export const FIGURE = {
 // the bots all read this same report; nobody reads the sheet.
 export const SCOUT = {
   // Pit Figures are public performance, not a pure blade read: a higher
-  // public grade and stronger public company predict a louder number before
-  // the blade tells us anything. The scout removes only those coarse
-  // expectations, centered on B+, and leaves result and beaten lengths in.
+  // public grade predicts a louder number before the blade tells us anything.
+  // The scout removes that coarse expectation, centered on B+, and leaves
+  // result and beaten lengths in.
   REFERENCE_GRADE: "B+" as const,
-  OWN_GRADE_STEP: 15,
-  OPPONENT_GRADE_STEP: 5,
+  // ⚠ BOTH REBASED IN ROUND 30, and this is the second time the same lesson
+  // has been learnt: a constant fitted to the figure's OUTPUT goes stale the
+  // moment the figure changes. Round 29 caught PRIOR_FIGURE 18 points adrift
+  // after round 27 moved the scale. So these are no longer fitted — they are
+  // read off the figure's own construction, which is exactly what round 30
+  // made possible by giving the figure a unit.
+  //
+  // OWN_GRADE_STEP is a letter grade in figure points, and it is now exactly
+  // that number by design: the spine is linear in the stat blend, a grade
+  // band is 100 stat points (grades.ts), and PEG_STAT stat points are
+  // PEG_FIGURE figure points. So one grade = 100/1000 × 100 = 10, at every
+  // rung of the ladder. Measured in the round-30 sim to confirm rather than
+  // to derive: B 21.4 → B+ 27.1 → A 37.1 over 5,588 fights. It was 15, fitted
+  // against the old ghost-divisor scale.
+  OWN_GRADE_STEP: 10,
+  // The opponent has LEFT the figure entirely. The old figure paid a class
+  // credit for the company you beat (FIGURE.CLASS_BASE/CLASS_DIVISOR) because
+  // raw pace could not tell a monster from a maiden; the spine reads the
+  // bird's own blend, so there is nothing of the opponent left to remove.
+  // Measured, holding own grade at B+: mean figure against B+ company 27.0,
+  // against B 27.8, against A 25.8 — flat inside the noise. Kept as a knob at
+  // zero rather than deleted, because the opponent still reaches the figure
+  // faintly through beaten lengths, and a future rule that pays for company
+  // would want this dial back.
+  OPPONENT_GRADE_STEP: 0,
   // An unread blade scores what an AVERAGE outing scores. Reading "nothing
   // known" as "average" is what stops a single lucky 80 from looking like a
   // destiny.
@@ -581,12 +675,21 @@ export const SCOUT = {
   // 52.2% -> 56.0% on-or-adjacent. PRIOR_WEIGHT barely mattered (0.5/1/2 all
   // landed within 0.3 points) — this was the prior itself, not the Bayes.
   //
-  // 30 is the middle of the measured even-fight band. The proper fix is to
-  // re-tune GHOST_PACE so ~50 really is average again — that would also
-  // stretch the live figure range (currently ~5–55, a third of the 0–150
-  // scale) and shrink the ±NOISE fog relative to the signal. That is its own
-  // round: it moves GHOST_FIGURE, CLASS_BASE, MAX and the Handbook together.
-  PRIOR_FIGURE: 30,
+  // ROUND 30 re-measured it again, because rebuilding the figure moved the
+  // scale under it exactly as round 27 had. In the round-30 sim a bird at the
+  // REFERENCE_GRADE averages 27.1 over 4,689 fights (whole world: 26.4 over
+  // 5,588, range 5–55). So the prior is 27.
+  //
+  // This one genuinely cannot be derived the way OWN_GRADE_STEP now is, and
+  // it is worth writing down why. The spine says a B+ bird "should" figure
+  // ~35; the live flock averages 27 because its CONDITION is starter-grade
+  // (~320 against FIGURE.NOMINAL_CONDITION of 1000), so nearly every bird
+  // fights below nominal form, and the loser of every fight is marked down by
+  // beaten lengths on top. Both of those are properties of the population,
+  // not of the formula — which means this number will drift UP on its own as
+  // the flock breeds up. Re-measure it when the BLOODLINES ladder shows the
+  // mean grade has moved a band; do not fit it to a formula it does not obey.
+  PRIOR_FIGURE: 27,
   // Pseudo-fights behind the prior: by the third real figure at a blade,
   // the bird's own evidence carries the read.
   PRIOR_WEIGHT: 2,

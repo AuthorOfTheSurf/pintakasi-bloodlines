@@ -12,6 +12,7 @@ import {
   FORMATS,
   STARS,
   STAT_NAMES,
+  STATS,
   WEATHER,
   weatherOfDay,
   type Element,
@@ -21,6 +22,17 @@ import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
 import { mulberry32 } from "./rng";
+
+// Round 30 removed FIGURE.MAX — Zane ruled the 0–150 clamp out ("I don't
+// think it's helpful to cap pit figures like this"), because a bred monster
+// posting 140 should read 140 and not sit against a ceiling. So there is no
+// clamp to assert any more. What replaces it is a DERIVED sanity bound: the
+// spine is linear in the stat blend, and no stat can exceed STATS.MAX, so no
+// bird can out-figure a maxed one having the best night the engine allows.
+// Deriving it means the bound tracks the scale instead of pinning a literal
+// that would go stale the moment the peg moves.
+const CEILING =
+  (STATS.MAX / FIGURE.PEG_STAT) * FIGURE.PEG_FIGURE * (1 + FIGURE.NIGHT_RANGE) + FIGURE.NOISE;
 
 /**
  * The house combatant for this file: the lab's flat bird at FULL stars.
@@ -133,7 +145,7 @@ describe("the Pit Figures (discovery signal)", () => {
       for (const f of sim.figures) {
         expect(f % FIGURE.BAND).toBe(0);
         expect(f).toBeGreaterThanOrEqual(0);
-        expect(f).toBeLessThanOrEqual(FIGURE.MAX);
+        expect(f).toBeLessThanOrEqual(CEILING);
       }
       // Both sides get a rating — the loser's figure is signal, not a zero.
       expect(sim.playByPlay).toContain("Pit Figures:");
@@ -360,23 +372,52 @@ describe("daily Element weather (round 24)", () => {
     expect(stacked).toBeLessThan(headToHead + 12); // …but only a few points
   });
 
-  test("both birds matching the weather is a bit-exact no-op", () => {
+  test("both birds matching the weather changes the FIGHT not at all, and both figures alike", () => {
     // Damage is the roll MARGIN, so a bonus paid to both sides subtracts out
-    // and the day cannot leak in through some rounding seam. Asserted over a
-    // window rather than one seed, because a single fight that happens to end
-    // the same way proves nothing about the arithmetic.
+    // and the day cannot leak into the RESULT through some rounding seam.
+    // Asserted over a window rather than one seed, because a single fight
+    // that happens to end the same way proves nothing about the arithmetic.
+    //
+    // ⚠ NARROWED IN ROUND 30, and the narrowing is the point. This used to
+    // claim the figures were bit-identical too. Under the old ghost-divisor
+    // figure they were, because the figure read damage DEALT and the bonus
+    // cancelled there as well. The new figure's night term reads what each
+    // bird BROUGHT to the roll, and on a home-weather day both birds genuinely
+    // brought more — so both numbers rise. That is the design working: a
+    // figure is a performance, and performing in your own weather is part of
+    // it.
+    //
+    // What still has to hold is the READING. The fight is untouched, and the
+    // day lifts both sides together, so it can never make the worse bird look
+    // better — which is the whole substance of round 24's ruling that the
+    // calendar must not relabel the bird. The size of the lift is guarded
+    // separately by "the weather does not relabel the bird", below.
     //
     // Stays hand-rolled: this compares two configurations FIGHT BY FIGHT, and
     // two `DuelResult`s agreeing on their means would be a strictly weaker
     // claim (errors that cancel in an average are precisely what "bit-exact"
     // is meant to rule out).
+    // The `+0.57wx` annotation is stripped: the day IS on both rolls and the
+    // narration correctly says so. Everything else on the line — who struck,
+    // for how much wind, and what each side had left — is what must be
+    // identical, and that is what the cancellation actually promises.
+    const turnsOf = (pbp: string) =>
+      pbp
+        .split("\n")
+        .filter((l) => /^T\d+ \[/.test(l))
+        .map((l) => l.replace(/\+[\d.]+wx/g, ""));
     for (let seed = 1; seed <= 400; seed++) {
       const a = bird("A", 350, "Fire");
       const b = bird("B", 380, "Fire"); // unequal on purpose — a real contest
       const withWx = simulatePair(a, b, "b2", mulberry32(seed), "T", "Fire");
       const without = simulatePair(a, b, "b2", mulberry32(seed), "T");
       expect(withWx.winner).toBe(without.winner);
-      expect(withWx.figures).toEqual(without.figures);
+      // Every turn resolves identically — same striker, same wind, same order.
+      expect(turnsOf(withWx.playByPlay)).toEqual(turnsOf(without.playByPlay));
+      // Neither bird is ever marked DOWN for its own weather, and the pair
+      // moves together, so the ordering the figures teach cannot invert.
+      expect(withWx.figures[0]).toBeGreaterThanOrEqual(without.figures[0]);
+      expect(withWx.figures[1]).toBeGreaterThanOrEqual(without.figures[1]);
     }
     // …and the narration says so, instead of implying the day picked a side.
     const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Fire"), "b2", mulberry32(9), "T", "Fire");
@@ -403,7 +444,7 @@ describe("daily Element weather (round 24)", () => {
     for (const f of sim.figures) {
       expect(f % FIGURE.BAND).toBe(0);
       expect(f).toBeGreaterThanOrEqual(0);
-      expect(f).toBeLessThanOrEqual(FIGURE.MAX);
+      expect(f).toBeLessThanOrEqual(CEILING);
     }
   });
 

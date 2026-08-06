@@ -3,8 +3,16 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, lobbies, lobbyEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
-import { BOT_FARMS, WEATHER_APPETITE } from "./bot-config";
-import { Bots, bestFormat, foalScore, scoutScores, weatherCardsToday, weatherOrder } from "./bots";
+import { BOT_FARMS, BREEDING_PLAN, WEATHER_APPETITE } from "./bot-config";
+import {
+  Bots,
+  bestFormat,
+  bestShape,
+  foalScore,
+  scoutScores,
+  weatherCardsToday,
+  weatherOrder,
+} from "./bots";
 import {
   BREEDING_SHAPES,
   ELEMENTS,
@@ -386,5 +394,67 @@ describe("the breeding plan", () => {
       (_, i) => BOT_FARMS.filter((b) => b.housePair === i).length
     );
     expect(Math.min(...counts)).toBeGreaterThan(0);
+  });
+
+  // ── Round 30: the shape is read off the HEN, not off the barn ────────────
+  test("a bird's own shape is the pair its sheet already leans toward", () => {
+    expect(bestShape({ agility: 600, sight: 600, stamina: 300, gameness: 300 }).shape).toEqual(
+      SPRINT
+    );
+    expect(bestShape({ agility: 300, sight: 300, stamina: 600, gameness: 600 }).shape).toEqual(
+      DEEP
+    );
+    // …and the separation it reports is the same arithmetic foalScore prices
+    // on, so BREEDING_PLAN.OWN_SHAPE_MIN is a like-for-like bar: (600+600)/2
+    // minus (300+300)/2.
+    expect(
+      bestShape({ agility: 600, sight: 600, stamina: 300, gameness: 300 }).separation
+    ).toBe(300);
+  });
+
+  test("a fogged sheet reads as flat, never as NaN", () => {
+    // Round 28 nulls the six stats on any bird that isn't retired. A NaN here
+    // would sort silently to the bottom of every comparison and turn the whole
+    // plan back into random pairing — the exact bug that has bitten this file
+    // twice. Zero-shaped is the honest read: we know nothing about her.
+    const fogged = bestShape({ agility: null, sight: null, stamina: null, gameness: null });
+    expect(Number.isNaN(fogged.separation)).toBe(false);
+    expect(fogged.separation).toBe(0);
+    expect(bestShape({}).separation).toBe(0); // and a sheet with no keys at all
+  });
+
+  test("a shaped hen prefers the sire that reinforces HER pair", () => {
+    const w = testWorld({ rivalFlock: false });
+    // A deep-water hen, well clear of the flat bar.
+    const deepDam = dam(w.db, { agility: 250, sight: 250, stamina: 550, gameness: 550 });
+    const own = bestShape(deepDam);
+    expect(own.shape).toEqual(DEEP);
+    expect(own.separation).toBeGreaterThanOrEqual(BREEDING_PLAN.OWN_SHAPE_MIN);
+
+    // Two sires with identical totals, spent at opposite ends of the dial.
+    // Priced against HER shape, the one that compounds her wins; round 29
+    // would have priced both against the barn's single house pair and, in a
+    // sprint barn, bought the sire that undoes her.
+    const deepSire = sire({ agility: 150, sight: 150, stamina: 550, gameness: 550 });
+    const sprintSire = sire({ agility: 550, sight: 550, stamina: 150, gameness: 150 });
+    expect(foalScore(deepDam, deepSire, own.shape)).toBeGreaterThan(
+      foalScore(deepDam, sprintSire, own.shape)
+    );
+  });
+
+  test("a near-flat hen falls back to the barn's house pair", () => {
+    const w = testWorld({ rivalFlock: false });
+    // Ten points of lean is noise, not a bloodline. Following it would scatter
+    // a barn's covers over all three axes; below the bar the house pair
+    // decides, so the barn still concentrates.
+    const flattish = dam(w.db, { agility: 355, sight: 355, stamina: 345, gameness: 345 });
+    const own = bestShape(flattish);
+    expect(own.shape).toEqual(SPRINT); // she does technically lean sprint…
+    expect(own.separation).toBeLessThan(BREEDING_PLAN.OWN_SHAPE_MIN); // …but not enough to count
+    // And the bar is set where the flock actually is: a genuinely shaped hen
+    // clears it comfortably.
+    expect(
+      bestShape({ agility: 450, sight: 450, stamina: 300, gameness: 300 }).separation
+    ).toBeGreaterThanOrEqual(BREEDING_PLAN.OWN_SHAPE_MIN);
   });
 });

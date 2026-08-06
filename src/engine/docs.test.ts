@@ -239,6 +239,47 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     expect(src).not.toMatch(/\b(5[0-9]|[6-9][0-9])%/);
   });
 
+  // Drift, the Pit Figure (round 30's rebuild). The figure stopped being
+  // "damage per turn against a hand-tuned per-blade ghost, minus a flat
+  // beaten-lengths subtraction, clamped to 0–150" and became spine × night.
+  // Every constant behind the old prose was DELETED, so a stale sentence here
+  // can't even be caught by a compile error on the page: the page just stops
+  // mentioning them and keeps describing a machine that no longer exists.
+  test("fighting page describes the spine × night figure, not the deleted ghost", () => {
+    const src = readWikiPage("fighting/page.tsx");
+    expect(src).toMatch(/spine/i);
+    // The ghost was never a bird — it was a divisor named after one, and the
+    // per-blade GHOST_PACE table it implied is gone.
+    expect(src).not.toMatch(/ghost/i);
+    expect(src).not.toMatch(/GHOST_PACE|CLASS_BASE|CLASS_DIVISOR|BEATEN_SCALE|FIGURE\.MAX/);
+    // The peg has to be read live: it is the whole reason the scale can't
+    // drift the way it drifted in round 27.
+    expect(src).toContain("FIGURE.PEG_STAT");
+    expect(src).toContain("FIGURE.PEG_FIGURE");
+  });
+
+  test("fighting page promises no upper cap on a Pit Figure", () => {
+    const src = readWikiPage("fighting/page.tsx");
+    // Ruled 2026-08-06: "let's forget about the 0–150 range." A bred monster
+    // posting 140 should read 140, so the page must not describe a ceiling.
+    expect(src).not.toMatch(/clamped between/i);
+    expect(src).toMatch(/no ceiling|no upper cap/i);
+  });
+
+  test("fighting page states the fixed points-per-grade the peg buys", () => {
+    const src = readWikiPage("fighting/page.tsx");
+    // The headline fact of the rebuild: a letter grade is worth a fixed
+    // number of figure points everywhere on the ladder. It must be COMPUTED
+    // from the peg and the grade band, never typed, or the day either moves
+    // the page teaches a wrong conversion.
+    expect(src).toContain("figurePerGrade");
+    expect(src).not.toMatch(/\b10 figure points/);
+    // And blade fit is multiplicative now — a better bird shows its shape
+    // LOUDER. If that framing is ever reversed, this fails before a player
+    // reads the old promise.
+    expect(src).toMatch(/louder/i);
+  });
+
   test("MCP get_state tells an agent about the daily ascendant element", () => {
     // Deliberately loose: route.ts's exact sentence is free to be reworded,
     // but an agent that can't learn the day's element from get_state can't

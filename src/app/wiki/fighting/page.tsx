@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { gradeOf } from "@/engine/grades";
 import {
   BATTLE,
   ELEMENTS,
@@ -44,6 +45,45 @@ const starterRollTerm = (
   2 /
   BATTLE.ROLL_DIVISOR
 ).toFixed(2);
+
+/** The middle of the starter band — what a fresh bird's stats look like. */
+const starterStat = Math.round((STATS.STARTER_MIN + STATS.STARTER_MAX) / 2);
+
+/**
+ * How wide one letter grade is, in stat points — MEASURED off `gradeOf`
+ * rather than typed, because the whole point of the round-30 figure is that
+ * "one grade = a fixed number of figure points" stays true by itself. If the
+ * grade ladder is ever re-banded, the sentence below re-bands with it.
+ */
+const GRADE_BAND = (() => {
+  let stat = 0;
+  while (gradeOf(stat) === gradeOf(0)) stat += 1;
+  return stat;
+})();
+
+/** The spine: what a bird with `stat` in every stat is worth, at any blade. */
+const spineOf = (stat: number) => (stat / FIGURE.PEG_STAT) * FIGURE.PEG_FIGURE;
+
+/** One letter grade, in figure points. Uniform everywhere on the ladder. */
+const figurePerGrade = spineOf(GRADE_BAND);
+
+/**
+ * The specialist measurement quoted below — 600 fights a cell, taken from the
+ * engine after the round-30 rebuild on a bird carrying +200 on the stats its
+ * home blade keys and −200 on the rest. These are MEASUREMENTS, not config, so
+ * they are written down; the config comment in `FIGURE` is their source.
+ */
+const SPECIALIST = [
+  { base: 320, figures: [37.0, 32.0, 25.8, 16.3, 13.2] },
+  { base: 500, figures: [54.7, 49.4, 43.1, 31.1, 27.1] },
+  { base: 800, figures: [84.5, 79.6, 74.0, 58.8, 53.7] },
+  { base: 1200, figures: [127.7, 122.2, 118.0, 103.0, 95.7] },
+  { base: 1600, figures: [175.7, 170.8, 168.2, 153.0, 147.6] },
+];
+
+/** The blade that specialist fits best — read off the measurement, not typed. */
+const specialistHomeBlade =
+  FORMAT_NAMES[SPECIALIST[0].figures.indexOf(Math.max(...SPECIALIST[0].figures))];
 
 /**
  * Render a blade's weight row, biggest stat first, so the "stats that decide
@@ -267,79 +307,163 @@ export default function FightingPage() {
       <h2>The Pit Figure — a performance rating, not a strength rating</h2>
       <p>
         Every fight, win or lose, pays out a Pit Figure for both birds. Don&apos;t read it as
-        &ldquo;how strong is this bird&rdquo; — read it as &ldquo;how well did it perform, against
-        what, on this day.&rdquo; It&apos;s the single most useful number in the game, and it&apos;s
-        built the way a horse-racing speed figure is built.
+        &ldquo;how strong is this bird&rdquo; — read it as &ldquo;how well did this bird turn up, at
+        this blade, on this day.&rdquo; It&apos;s the single most useful number in the game, and
+        it&apos;s built the way a horse-racing speed figure is built: against a fixed ruler, so that
+        the same number always means the same thing.
       </p>
       <p>
-        <strong>Both birds are timed against a ghost.</strong> Every fight is measured against an
-        invisible, maxed-out bird&apos;s pace for that exact blade. Match the ghost&apos;s pace and
-        you score {FIGURE.GHOST_FIGURE}. An even fight between two starter-grade birds typically
-        lands well under that — there&apos;s real room to grow into.
+        A figure is built in two parts: a <strong>spine</strong>, which is what the bird is worth at
+        that blade, and a <strong>night</strong>, which is how well it actually turned up.
+      </p>
+
+      <h3>The spine — the bird, on a fixed ruler</h3>
+      <p>
+        The spine is the bird&apos;s stats, blended by the blade&apos;s weights from the table at the
+        top of this page, put on one fixed scale. The peg is simple: a bird carrying{" "}
+        {FIGURE.PEG_STAT} in every stat — that is a {gradeOf(FIGURE.PEG_STAT)}, the top of the
+        letter ladder — has a spine of {FIGURE.PEG_FIGURE}. Everything else is straight-line from
+        there. No dice, no opponent, nothing about tonight.
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Blade</th>
-              <th className="num">Ghost pace</th>
+              <th>A bird with this in every stat</th>
+              <th>Grade</th>
+              <th className="num">Spine</th>
             </tr>
           </thead>
           <tbody>
-            {FORMAT_NAMES.map((name) => (
-              <tr key={name}>
-                <td>{FORMATS[name].label}</td>
-                <td className="num">{FIGURE.GHOST_PACE[name]}</td>
+            {[starterStat, 500, FIGURE.PEG_STAT, 1500].map((stat) => (
+              <tr key={stat}>
+                <td className="num">{stat}</td>
+                <td>{gradeOf(stat)}</td>
+                <td className="num">{spineOf(stat).toFixed(0)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="dim">
+        The first row is roughly a fresh starter, so a new bird&apos;s figures live down around{" "}
+        {spineOf(starterStat).toFixed(0)}. That is not a bad number — that is what the bottom of
+        the ladder looks like.
+      </p>
+
+      <div className="callout tip">
+        <b>One letter grade is worth {figurePerGrade} figure points. Always.</b> A grade band is{" "}
+        {GRADE_BAND} stat points wide, and the spine is a straight line, so the distance from a{" "}
+        {gradeOf(0)} to the next grade up is the <em>same</em> {figurePerGrade} points as the
+        distance from an {gradeOf(FIGURE.PEG_STAT)} to whatever comes after it. That is the whole
+        reason the figure has a fixed ruler: {figurePerGrade} points means one grade, at every
+        blade, at every level, forever. Two birds {figurePerGrade * 3} points apart are three
+        grades apart.
+      </div>
+
+      <h3>The night — what it brought tonight</h3>
       <p>
-        Long-end fights (B4, B5) run more turns, so their damage-per-turn is naturally lower —
-        the ghost pace is tuned per blade so figures still mean the same thing across all five,
-        and you can compare one bird&apos;s B1 figure to its B5 figure honestly.
+        The spine is what the bird <em>is</em>. The night is what it delivered. It can move a bird
+        up or down by as much as {FIGURE.NIGHT_RANGE * 100}% of its own spine, and it counts
+        everything that made the bird bigger or smaller than itself in that fight: condition (rolled
+        fresh every turn), the element wheel, the day&apos;s weather, an underdog&apos;s station
+        clawback, and — the important one — the fuel wall. A bird that empties its tank and spends
+        the back half at {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% of its speed will show it in
+        the number.
       </p>
       <p>
-        <strong>A loss is marked down by beaten lengths.</strong> Each bird earns its own
-        ghost-paced figure first. Then the losing bird loses points for how much wind the winner had
-        left at the bell, as a share of the loser&apos;s own pool. A photo-finish loss stays close
-        to the winner&apos;s number; a bird that ran, or emptied its wind completely, takes the
-        full margin. A loss is never marked down by more than {FIGURE.BEATEN_SCALE} figure points
-        at the extreme, and never by less than {FIGURE.MIN_BEATEN} — a loss always sits at least
-        one band below the win.
+        The dice are deliberately left out. Luck is not a performance, so luck does not get to lift
+        a figure.
+      </p>
+
+      <h3>Blade fit: a better bird shows its shape louder</h3>
+      <p>
+        Every blade&apos;s weights add up to the same 100%. A perfectly flat bird therefore blends
+        the same at all five blades and posts the same figure everywhere — the blades are honestly
+        comparable, by construction. A <em>shaped</em> bird is the interesting case: because the
+        blend multiplies, the blades its stats key give it a bigger number, and the gap grows as the
+        bird gets better.
       </p>
       <p>
-        <strong>The figure also books the class of the bird you beat.</strong> Beating a
-        genuinely strong bird lifts your figure even if the fight itself looked ordinary. That
-        matters because of a quirk in how the dice work: two maxed-out birds trade damage at
-        exactly the same pace as two starters do, since every turn is decided by the{" "}
-        <em>difference</em> between two rolls, not the size of either one. Raw pace alone
-        can&apos;t tell a monster from a maiden — so the figure measures the loser&apos;s average
-        stat against the starter band&apos;s middle ({FIGURE.CLASS_BASE}), and adds one point for
-        every {FIGURE.CLASS_DIVISOR} points above that line. Beat good birds, figure higher.
+        Here is a real specialist, measured in the engine: a bird carrying +200 on the stats{" "}
+        {FORMATS[specialistHomeBlade].label} keys and −200 everywhere else, run at five levels.
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="num">Base stat</th>
+              {FORMAT_NAMES.map((name) => (
+                <th key={name} className="num">
+                  {FORMATS[name].label}
+                </th>
+              ))}
+              <th className="num">Best − middle</th>
+              <th className="num">Best − worst</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SPECIALIST.map((row) => {
+              const best = Math.max(...row.figures);
+              const middle = row.figures[Math.floor(row.figures.length / 2)];
+              const worst = Math.min(...row.figures);
+              return (
+                <tr key={row.base}>
+                  <td className="num">{row.base}</td>
+                  {row.figures.map((f, i) => (
+                    <td key={FORMAT_NAMES[i]} className="num">
+                      {f.toFixed(1)}
+                    </td>
+                  ))}
+                  <td className="num">{(best - middle).toFixed(1)}</td>
+                  <td className="num">{(best - worst).toFixed(1)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Read the last two columns. The gap between this bird&apos;s best blade and the middle blade
+        holds near {figurePerGrade} points — one whole grade — at every level, and the gap to its
+        worst blade <em>grows</em> as the bird improves. So finding a bird&apos;s blade never stops
+        being worth money. The better your stock gets, the more clearly the wrong blade announces
+        itself.
+      </p>
+
+      <h3>A loss is marked down by beaten lengths</h3>
+      <p>
+        Both birds are scored on their own spine and their own night first. Then the loser is marked
+        down for how much wind the winner had left at the bell, as a share of its own figure — up to{" "}
+        {FIGURE.BEATEN_SHARE * 100}% of it if it was beaten by the length of the pit, and never less
+        than {FIGURE.MIN_BEATEN_SHARE * 100}%. A share, not a flat subtraction: losing badly costs a
+        starter and a champion the same <em>proportion</em>, which is why a loss means the same
+        thing at every level.
       </p>
       <p>
-        <strong>One noise roll, shared by both birds.</strong> A single &ldquo;track
-        variant&rdquo; (±{FIGURE.NOISE}) is applied to the whole fight — the same roll for both
-        sides, before the numbers are rounded to the nearest {FIGURE.BAND} and clamped between 0
-        and {FIGURE.MAX} (headroom sits above {FIGURE.GHOST_FIGURE} on purpose, for bred stock that
-        eventually outruns the ghost). Because it&apos;s one shared roll and not two independent
-        ones, the fog can add a little noise to both figures — but it can never flip which bird
-        out-figures the other.
+        <strong>There is no ceiling.</strong> Nothing clamps the top of the scale. If breeding
+        produces a monster whose spine says 180, it posts 180.
+      </p>
+      <p>
+        <strong>One noise roll, shared by both birds.</strong> A single &ldquo;track variant&rdquo;
+        (±{FIGURE.NOISE}) is applied to the whole fight — the same roll for both sides — before the
+        numbers are rounded to the nearest {FIGURE.BAND}. Because it is one shared roll and not two
+        independent ones, the fog moves both figures together and can never flip which bird
+        out-figured the other.
       </p>
       <div className="callout tip">
         <b>The rule that makes figures trustworthy.</b> The winner can never figure below the bird
-        it beat. Both birds earn their own pace number, but the loser&apos;s real beaten-length
-        mark-down keeps it below the winner — so a 45 can never beat a 55. If you ever see a lower figure win, something
-        about the two figures you&apos;re comparing isn&apos;t from the same fight.
+        it beat. Both birds earn their own number, but the loser&apos;s beaten-length mark-down keeps
+        it at least one band under the winner — so a 45 can never beat a 55. If you ever see a lower
+        figure win, the two figures you&apos;re comparing aren&apos;t from the same fight.
       </div>
       <div className="callout tip">
-        <b>The practical lesson.</b> A HIGH figure in a LOSS is not a bad bird — it means the bird
-        was in the wrong format, or the wrong company. A bird that figures 90 losing to a 95 ran a
-        monster close in the wrong crowd; move it down in class or try a different blade. The way
-        you actually find out what a bird is isn&apos;t one fight — it&apos;s comparing its figures
-        <em> across</em> blades and cards over time.
+        <b>The practical lesson, and it changed.</b> A HIGH figure in a LOSS is very good news, and
+        it now means something sharper than it used to. A big number says the blade <em>suited</em>
+        the bird — that is what the figure is built from. So a bird that figures 90 losing to a 95
+        was at the right blade against a better animal. Keep the blade. Move it down in class. It is
+        the LOW figures that tell you a blade is wrong, and the way you find out is never one
+        fight — it is comparing a bird&apos;s figures <em>across</em> blades, over time.
       </div>
 
       <h2>Discovery: why the figures are the game</h2>
@@ -354,8 +478,8 @@ export default function FightingPage() {
       </p>
       <p>
         That&apos;s what the Pit Figure is for. It&apos;s the one honest window into <em>any</em>{" "}
-        live bird, including your own — a number that survives being a loser, that accounts for
-        who it lost to, and that can&apos;t lie about who actually won. The game folds your
+        live bird, including your own — a number that survives being a loser, that says how far
+        behind the loser finished, and that can&apos;t lie about who actually won. The game folds your
         bird&apos;s figures into a per-blade scout report (see{" "}
         <Link href="/wiki/birds">Birds &amp; stats</Link>) so you can read the pattern at a
         glance. Reading figures — yours and everyone else&apos;s — <em>is</em> the skill of the

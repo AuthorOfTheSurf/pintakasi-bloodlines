@@ -41,6 +41,15 @@ export interface BotProfile {
    * market would offer each one in equal supply forever and a player choosing
    * a shape would face no market at all. Sprint blood being scarcer than
    * deep-water blood is a price signal, and price signals are the game.
+   *
+   * ROUND 30 DEMOTED IT TO A FALLBACK, and kept it rather than deleting it.
+   * The shape a cover aims at is now read off the HEN (see BREEDING_PLAN.
+   * OWN_SHAPE_MIN) — but a third of the flock measures near-flat, so "no clear
+   * shape of her own" is the common case, not an edge case, and something has
+   * to decide for those hens. Left to the hen's noise they would scatter over
+   * all three axes at random; left to the house pair the barn still
+   * CONCENTRATES, which is what keeps a farm identifiable and the shapes
+   * scarce. So: her grain when she has one, the barn's when she doesn't.
    */
   housePair: number;
   /** Chance an age-3+ card is a HARDCORE card (pit nerve). */
@@ -270,6 +279,33 @@ export const BREEDING_PLAN = {
    * roughly four hens compete for the day's single cover.
    */
   MAX_STUDS_PER_HEN: 40,
+  /**
+   * THE PER-HEN SHAPE BAR (round 30). How far a hen's own best pair must clear
+   * its off-pair before the barn breeds HER shape instead of the house shape.
+   * Same unit as SHAPE_WEIGHT prices: a difference of two two-stat averages.
+   *
+   * Zane's ruling (2026-08-06): "Each hen is different, and ought to be bred
+   * strategically. If a hen has b1/b2 oriented stats, it should breed with a
+   * b1/b2 oriented rooster if possible." Round 29 aimed every cover in a barn
+   * at ONE axis, so roughly two hens in three were being bred across their own
+   * grain and the foal's midpoint went on undoing the dam instead of
+   * compounding her.
+   *
+   * WHY THERE IS A BAR AT ALL, rather than always following the hen. A hen at
+   * separation 2 is flat, and the "best" of three near-identical numbers is
+   * noise. Chasing it would scatter a barn's covers over all three axes at
+   * random, which is how you get a farm with no bloodline — and the whole
+   * point of housePair is that shapes stay SCARCE and therefore priced.
+   *
+   * MEASURED, not felt: over the 149 breeding hens in the round-29 sim
+   * (sim-20260806-1548), the best-pair separation ran p25 = 32, median = 55.5,
+   * p75 = 91. 40 sits just above the first quartile, so about a third of the
+   * flock — the genuinely shapeless third — falls back to the house pair and
+   * the rest is bred to itself. Raise it if the doctor's shape line stalls
+   * because barns are chasing noise; lower it if the three shapes stop being
+   * distinguishable from one another.
+   */
+  OWN_SHAPE_MIN: 40,
 } as const;
 
 export const BOT_FARMS: BotProfile[] = [

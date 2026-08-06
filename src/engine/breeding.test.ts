@@ -88,6 +88,32 @@ describe("breed", () => {
   });
 });
 
+/**
+ * THE GENERATION MARKER (round 30, Zane's ruling). It gates nothing and no
+ * fight reads it — it exists so the doctor can answer "is the flock actually
+ * getting better?", which is the entire promise of the breed loop and was
+ * previously invisible. So the thing worth pinning is the COUNTING RULE.
+ */
+describe("generation", () => {
+  test("starters are generation 0 and a chick is its DAM's generation + 1", () => {
+    const { db, breeding } = freshGame();
+    for (const id of ["starter-1", "starter-2"])
+      expect(db.select().from(birds).where(eq(birds.id, id)).get()!.generation).toBe(0);
+    const { egg } = breeding.breed("starter-2", "starter-1");
+    expect(egg.generation).toBe(1); // and it rides the VIEW — pedigree isn't fogged
+  });
+
+  test("the SIRE's generation is ignored — the count follows the hen's line", () => {
+    const { db, breeding } = freshGame();
+    // A deep hen covered by a founder rooster, and the mirror image. If the
+    // rule were max(dam, sire) or sire + 1, exactly one of these would break.
+    db.update(birds).set({ generation: 3 }).where(eq(birds.id, "starter-2")).run();
+    db.update(birds).set({ generation: 7 }).where(eq(birds.id, "starter-3")).run();
+    expect(breeding.breed("starter-2", "starter-1").egg.generation).toBe(4);
+    expect(breeding.breed("starter-4", "starter-3").egg.generation).toBe(1);
+  });
+});
+
 describe("the nest (pregnant now, laid Friday, hatched the next)", () => {
   test("one pregnancy per hen; laying frees her before the first egg hatches", () => {
     const w = freshGame(7);
