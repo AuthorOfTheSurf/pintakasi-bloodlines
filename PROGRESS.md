@@ -410,15 +410,32 @@ bottom.*
     mechanic advertises. The lever is `GROUP.SIZE`, NOT the levelling rule —
     packing to 4+4+1 buys full cards by stranding a bird again, which is the
     trade round 34 explicitly refused.
-15. **OPEN QUESTION, and the one number round 34 made worse: gen-2 mean stat
-    gain fell +30.0 → +19.8** while home margin rose +6.9 → +8.7 and stars
-    +0.4 → +0.1★. Nothing about breeding changed in round 34. The plausible
-    mechanism is that tripling the fights tripled the spread in lifetime
-    earnings, which is an input to which birds the bots choose to breed — so
-    this may be item 11 (selection pressure vs. band utilization) reading from
-    the other side. It is NOT diagnosed. Look before stacking another round on
-    it: a 34% fall in the headline bloodline number is worth one sim aimed
-    directly at it.
+15. **CLOSED, and it was never real — read this before trusting any BLOODLINES
+    delta in this file.** Round 34 recorded a "fall" in gen-2 mean stat gain
+    (+30.0 → +19.8) as an open question, with a hypothesis that tripling the
+    fights had widened the lifetime-earnings spread that feeds bot breeding
+    picks. Round 35 killed it twice over:
+    - **The hypothesis was wrong on inspection.** `foalScore` reads STATS only
+      — shape separation, level, anchors, half-stars. It is blind to earnings,
+      records and fight counts, so the group stage could not have changed which
+      pairs a barn chooses by that route, or by any route through results.
+    - **The number was noise.** Until round 35 the simulation was not
+      deterministic (`freshSeed()` returned `Date.now() ^ Math.random()`), so
+      every run built a different world. Six 91-day runs of effectively
+      identical code gave gen-2 stat gains of **+34.4, +23.4, +23.2, +26.0,
+      +17.3, +16.1** — an **18-point spread from the seed alone**. The 10.2-point
+      "fall" sat entirely inside it.
+
+    **The standing lesson, which outlives the item.** Measured across three
+    seeds at 91 days, the structural numbers are trustworthy to a fraction of
+    a point — unmatched 1.0 / 1.0 / 1.0%, full cards 63.1 / 64.8 / 63.0%, fill
+    10.40 / 10.22 / 10.72 — while the SELECTION numbers are not: gen-2 stat
+    ranges 18 points and home margin ran +6.8 / +7.7 / +12.8. **Items 11 and 13
+    below, and every round-over-round BLOODLINES comparison in the round 30–34
+    write-ups above, were read off single runs and are inside this band.** They
+    are not wrong so much as unsupported. Use `bun run simulate --seed=N`: one
+    seed to A/B a change honestly, a spread of seeds before believing any
+    delta on the ladder.
 16. **Watch: Major cancellations went 0 → 3 while fields GREW (13.7 → 17.0).**
     Every fight in a group banks qualification points separately, so a sweep
     is three points in one night and birds qualify roughly three times faster.
