@@ -1,6 +1,17 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birds, claims, farms, gameState, lobbies, lobbyEntries, tournamentEntries, type BirdRow } from "@/db/schema";
+import {
+  battleLog,
+  birds,
+  claims,
+  farms,
+  gameState,
+  lobbies,
+  lobbyEntries,
+  tournamentEntries,
+  tournaments,
+  type BirdRow,
+} from "@/db/schema";
 import {
   BARN,
   CADENCE,
@@ -215,13 +226,40 @@ export class Lobbies {
     const today = this.today();
     this.checkFightCap(bird.id, bird.name, today);
 
-    // A Pintakasi registrant fights normal cards all week — except on crown
-    // day, when its championship IS its card (round 18; Thursday since 20).
-    if (Tournaments.isCrownDay(today)) {
+    // A championship registrant fights normal cards all week — except on ITS
+    // OWN crown day, when the championship IS its card (round 18; Thursday
+    // since 20).
+    //
+    // ⚠ FIXED ROUND 31, and it had been letting birds fight twice in a day.
+    // This gated on isCrownDay alone — Thursday — but queried pending entries
+    // WITHOUT filtering by division. Two bugs in one:
+    //   · Wednesday's Juvenile Championship registrants were never blocked, so
+    //     a juvenile entered a normal lobby AND its crown on the same day. The
+    //     cap at checkFightCap could not see it: the tournament writes its
+    //     battleLog rows at THURSDAY's day index (tournaments.ts), and the
+    //     lobby card resolves before resolveCrownDay in Game.tick, so both
+    //     fights really happened and nothing counted them together.
+    //   · On Thursday a JUVENILE registrant — whose crown had already run the
+    //     day before — was blocked from the daily card for nothing.
+    // The division lives on `tournaments`, not on the entry, which is why the
+    // original query could not tell the two apart without this join.
+    const crownDivision = Tournaments.isCrownDay(today)
+      ? "major"
+      : Tournaments.isJuvenileCrownDay(today)
+        ? "juvenile"
+        : null;
+    if (crownDivision !== null) {
       const registered = this.database
-        .select()
+        .select({ id: tournamentEntries.id })
         .from(tournamentEntries)
-        .where(and(eq(tournamentEntries.birdId, bird.id), eq(tournamentEntries.status, "pending")))
+        .innerJoin(tournaments, eq(tournaments.id, tournamentEntries.tournamentId))
+        .where(
+          and(
+            eq(tournamentEntries.birdId, bird.id),
+            eq(tournamentEntries.status, "pending"),
+            eq(tournaments.division, crownDivision)
+          )
+        )
         .all();
       if (registered.length > 0)
         throw new Error(`${bird.name} is registered for the Pintakasi — tonight's crown is its card`);

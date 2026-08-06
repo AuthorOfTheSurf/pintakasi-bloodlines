@@ -6,6 +6,7 @@ import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { JUVENILE_MAJOR, PINTAKASI } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
+import { Lobbies } from "./lobbies";
 import { Tournaments, type Division } from "./tournaments";
 
 /**
@@ -227,5 +228,70 @@ describe("it is NOT hardcore — the discovery-year contrast with the Majors", (
       1
     );
     expect(majorFighters.filter((b) => b.status === "active").length).toBe(1); // the champion fights on
+  });
+});
+
+/**
+ * ROUND 31 — the crown-day door, which had been letting birds fight twice.
+ *
+ * `Lobbies.enter` refuses a championship registrant on crown day, because the
+ * crown IS its card. That check gated on `isCrownDay` alone — THURSDAY — but
+ * looked up pending tournament entries without filtering by division, and the
+ * division lives on `tournaments`, not on the entry. Two consequences, both
+ * silent:
+ *
+ *   · WEDNESDAY, the Juvenile Championship's own day, was not a crown day by
+ *     that test at all, so a juvenile registrant sailed into a normal lobby and
+ *     then fought its crown as well. Nothing caught it: `checkFightCap` counts
+ *     today's battleLog rows plus pending lobby entries, and the tournament
+ *     stamps its rows with THURSDAY's day index, so the two fights never landed
+ *     in the same bucket. The doctor's one-card-per-bird-per-day invariant
+ *     buckets on lobbyEntries and could not see it either.
+ *   · THURSDAY blocked juvenile registrants from the daily card for nothing —
+ *     their crown had run the day before.
+ *
+ * Both directions are pinned here. This matters beyond correctness: an
+ * inflated juvenile fight count would have been mistaken for the round-31
+ * schedule change moving the numbers.
+ */
+describe("the crown-day door knows which crown", () => {
+  test("Wednesday refuses a JUVENILE registrant — its crown is its card", () => {
+    const w = world();
+    const kidlat = byName(w.devFlock, "Kidlat");
+    qualifyJuvenile(w.db, kidlat.id);
+    w.dev.enter(kidlat.id, "b2", "juvenile");
+    const lobbies = new Lobbies(w.db, w.devId);
+    // Monday — days away from its crown, it cards freely.
+    for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3
+    expect(() =>
+      lobbies.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b3" })
+    ).not.toThrow();
+    // Wednesday — the Juvenile Championship's day.
+    for (let i = 0; i < 2; i++) w.game.tickDay(); // → day 5
+    expect(Tournaments.isJuvenileCrownDay(5)).toBe(true);
+    expect(() =>
+      lobbies.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b3" })
+    ).toThrow(/Pintakasi/);
+  });
+
+  test("Thursday does NOT refuse a juvenile registrant — that crown already ran", () => {
+    const w = world();
+    const kidlat = byName(w.devFlock, "Kidlat");
+    qualifyJuvenile(w.db, kidlat.id);
+    w.dev.enter(kidlat.id, "b2", "juvenile");
+    const lobbies = new Lobbies(w.db, w.devId);
+    for (let i = 0; i < 6; i++) w.game.tickDay(); // → day 6, the Majors' day
+    expect(Tournaments.isCrownDay(6)).toBe(true);
+    // Whatever became of its Wednesday crown, a juvenile is not a Major
+    // registrant and Thursday is an ordinary working day for it.
+    const stillPending = w.db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .filter((e) => e.birdId === kidlat.id && e.status === "pending").length;
+    expect(stillPending).toBe(0); // the juvenile crown resolved on Wednesday
+    expect(() =>
+      lobbies.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b3" })
+    ).not.toThrow();
   });
 });
