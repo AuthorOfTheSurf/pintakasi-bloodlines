@@ -187,6 +187,100 @@ gameness at B5, not B1 — because B1 reads its partner stat at 0.12 while B4
 reads stamina at 0.40. The end blades are the least forgiving places to bring
 a split bird, which is a fair reading of a sprint.
 
+## The Pit Figure is centered ~20 points low — measured round 29
+
+`GHOST_PACE`'s comment promises that an even fight between starters figures
+~50. It doesn't, and hasn't since round 27 rescaled the wind and every
+`damageMult`. The `symmetry` control reads:
+
+| blade | mean figure, even fight |
+|---|---|
+| B1 | 26.9 |
+| B2 | 27.1 |
+| B3 | 29.3 |
+| B4 | 30.2 |
+| B5 | 31.5 |
+
+Flat across the dial, so the cross-format normalization still works — the
+whole SCALE is just low. Live worlds agree: mean normalized figure 32.1
+(winners 55.3, losers 8.9).
+
+Two consequences, one fixed and one deferred.
+
+**Fixed:** `SCOUT.PRIOR_FIGURE` was 50 — the score an unread blade gets. With
+reality at ~30, every blade a bird had actually fought was dragged toward 32
+while every blade it hadn't stayed parked at 50. *Evidence lost to ignorance,
+by construction.* Replaying 5,505 live entries with only that number changed:
+scout accuracy **26.5% → 31.2%** exact, **52.2% → 56.0%** on-or-adjacent.
+`PRIOR_WEIGHT` at 0.5 / 1 / 2 all landed within 0.3, so this was the prior
+itself, not the Bayes.
+
+**Deferred:** re-tuning `GHOST_PACE` so ~50 really is average. Live figures
+currently occupy roughly 5–55 of the 0–150 range, so `FIGURE.NOISE` (±4) eats
+a large share of every read, and the blade-fit signal the scout exists to find
+is proportionally quieter than it should be. Recentring would stretch the
+usable scale ~1.6× for free. It is its own round: `GHOST_FIGURE`, `CLASS_BASE`,
+`MAX` and the Handbook's figure pages move together, and an S+ specialist
+already reads 110 against the clamp at 150.
+
+### The blade-fit signal, and why it is hard
+
+Read the `figuregrade` table ACROSS a row rather than down it. A fixed
+200-point specialist shape, against fixed B+ company:
+
+| public grade | home | adjacent | middle | home − middle |
+|---|---|---|---|---|
+| B (250) | 22.6 | 18.3 | 11.9 | 10.7 |
+| B+ (350) | 41.2 | 36.7 | 29.3 | 11.9 |
+| A (450) | 59.6 | 56.0 | 50.5 | 9.1 |
+| A+ (550) | 77.4 | 73.9 | 70.3 | 7.1 |
+| S (650) | 93.8 | 90.6 | 88.9 | 4.9 |
+| S+ (750) | 110.2 | 107.6 | 106.7 | 3.5 |
+
+Down a column, a grade step is worth +16 to +21. Across a row, the entire
+blade-fit signal is 3.5–11.9 and **shrinks as the bird improves** — the
+home-vs-adjacent gap (2.6–4.5) is under `FIGURE.NOISE` at every grade. The
+Pit Figure is overwhelmingly a POWER meter; discovery needs a SHAPE meter.
+Good birds are harder to type than bad ones, which is a long-term ceiling on
+the discovery loop and probably wants its own ruling.
+
+**Two fixes tested and rejected, so nobody retries them.** Normalizing the
+result out of the figure (subtracting the win/loss means) DROPPED accuracy
+31.2% → 23.2% — winning at a blade *is* blade-fit evidence. Weather
+normalization is worth only +0.2 to +0.8 points; real, but not the
+bottleneck, since only ~25% of entries are timed and stars scale the effect.
+It needs no schema change whenever it is wanted (`weatherOfDay(dayIndex)` is
+a pure function of a column already stored).
+
+## The flock had no shape to discover — measured round 29
+
+The doctor's answer key is the argmax over `FORMATS[].weights`. Measured
+across a 13-week world, how much the median bird's home blade beats its
+runner-up:
+
+| percentile | home-blade margin (weighted stat points) |
+|---|---|
+| p10 | 1.9 |
+| p50 | 11.1 |
+| p90 | 28.3 |
+
+**Half the flock had no home blade worth finding.** Those birds are
+unlearnable by construction, and grading the scout on them reports noise as
+failure. Restricting to birds with a real home, on the same logs:
+
+| answer key | scout exact | vs random |
+|---|---|---|
+| all birds | 31.2% | 20% |
+| home margin ≥ 10 | 35.6% | 20% |
+| home margin ≥ 25 | 47.6% | 20% |
+
+The scout was never as blind as the raw number said. The cause was breeding,
+not the report: bots took the first legal cover off a shuffled list, which
+optimises for nothing and regresses every line to the middle. Round 29 gave
+them `BREEDING_PLAN` — a house shape, and a priced choice — and the doctor
+now prints the flock's median home margin beside the accuracy, because that
+number is the CEILING on everything above it.
+
 ## Still open, ranked
 
 ### 1. B1 cannot reach the +200 target (accepted, documented)

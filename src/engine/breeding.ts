@@ -47,6 +47,10 @@ export interface StudView {
   farm: string;
   name: string;
   stars: string;
+  /** The same rating as a number — stars are the element wheel's volume knob
+   *  (round 26), so a shopper comparing bloodlines wants to do arithmetic on
+   *  it, not parse "2.5★ Fire". Added round 29 for the bots' breeding plan. */
+  halfStars: number;
   age: number;
   career: { wins: number; losses: number };
   sheet: Record<StatName, number>; // the revealed stats — what you're buying half of
@@ -351,6 +355,7 @@ export class Breeding {
           farm: farm.name,
           name: rooster.name,
           stars: `${rooster.halfStars / 2}★ ${rooster.element}`,
+          halfStars: rooster.halfStars,
           age: ageOf(rooster, week),
           career: { wins: rooster.wins, losses: rooster.losses },
           sheet: {

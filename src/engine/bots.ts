@@ -2,9 +2,11 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
-import { BOT_FARMS, WEATHER_APPETITE, type BotProfile } from "./bot-config";
+import { BOT_FARMS, BREEDING_PLAN, WEATHER_APPETITE, type BotProfile } from "./bot-config";
 import {
+  BREEDING_SHAPES,
   CLAIMER,
+  DISTANCE_STATS,
   ECONOMY,
   FORMATS,
   FORMAT_NAMES,
@@ -15,8 +17,9 @@ import {
   weatherOfDay,
   type FightFormat,
   type Lobby,
+  type StatName,
 } from "./config";
-import { Breeding } from "./breeding";
+import { Breeding, type StudView } from "./breeding";
 import { drawStarterNames } from "./naming";
 import { emit } from "./events";
 import { Farms } from "./farms";
@@ -220,16 +223,45 @@ export class Bots {
 
     // 3. Breed through the BARN, if the drive and a legal cover line up —
     //    bots shop other farms' listed studs like anyone else.
+    //
+    //    Round 29: they now shop with a PLAN. This loop used to take the first
+    //    legal cover off a shuffled list, which optimised for nothing and bred
+    //    the whole world flat (see BREEDING_PLAN). It prices every pair it can
+    //    afford to look at, then buys the best one.
     if (rng() < bot.breedDrive && gp() > ECONOMY.BREED_FEE + RESERVE) {
       const hens = flock.all().filter((b) => b.status === "retired" && b.sex === "female");
-      outer: for (const hen of shuffle(hens, rng)) {
-        const { studs } = breeding.browseStuds(hen.id);
-        for (const stud of shuffle(studs, rng)) {
-          let eggName: string | null = null;
-          if (quietly(() => (eggName = breeding.breed(hen.id, stud.birdId).egg.name))) {
-            report.bred = eggName;
-            break outer; // one cover a day is plenty
-          }
+      const shape = BREEDING_SHAPES[bot.housePair % BREEDING_SHAPES.length];
+      // Priced up front rather than inside the try/buy loop: a legal cover can
+      // still fail on kinship or a used-up slot, and the barn should fall to
+      // its SECOND choice, not back to random.
+      const priced: { henId: string; studId: string; score: number }[] = [];
+      for (const hen of shuffle(hens, rng)) {
+        if (priced.length >= BREEDING_PLAN.MAX_PAIRS_PRICED) break;
+        // A retired hen's sheet is revealed (round 28), so this is public
+        // information for a bot exactly as it is for a player reading her card.
+        const dam = flock.byId(hen.id);
+        // SHUFFLED, and this is load-bearing: browseStuds returns rows in
+        // insertion order, so a cap applied to the raw list always sliced to
+        // the OLDEST studs in the barn — the unselected founders. The first
+        // cut of this plan picked beautifully from exactly the wrong 60 studs
+        // and moved the flock's median shape by nothing at all across 91 days.
+        let forThisHen = 0;
+        for (const stud of shuffle(breeding.browseStuds(hen.id).studs, rng)) {
+          if (priced.length >= BREEDING_PLAN.MAX_PAIRS_PRICED) break;
+          // Per-hen cap so the budget reaches several hens: without it the
+          // first hen out of the shuffle ate it all, and every cover in the
+          // game had a chosen father and a random mother.
+          if (forThisHen >= BREEDING_PLAN.MAX_STUDS_PER_HEN) break;
+          forThisHen++;
+          priced.push({ henId: hen.id, studId: stud.birdId, score: foalScore(dam, stud, shape) });
+        }
+      }
+      priced.sort((a, b) => b.score - a.score);
+      for (const pick of priced) {
+        let eggName: string | null = null;
+        if (quietly(() => (eggName = breeding.breed(pick.henId, pick.studId).egg.name))) {
+          report.bred = eggName;
+          break; // one cover a day is plenty
         }
       }
     }
@@ -365,6 +397,53 @@ export function ladderClass(stakesWins: number): Lobby {
   if (stakesWins < 2) return "nw2";
   if (stakesWins < 3) return "nw3";
   return "open";
+}
+
+/**
+ * Price one cover: what would the FOAL be worth to a barn breeding `shape`?
+ *
+ * Expected foal sheet is the parents' midpoint — BREEDING.STAT_VARIANCE is
+ * symmetric noise around it and mutations are a 5% tail, so the midpoint is
+ * the honest expectation and the whole plan stays arithmetic a player could
+ * do on paper. That matters: bots must not out-know their owners. Every input
+ * here is public (both parents are retired, so both sheets are revealed, and
+ * stars are on the card).
+ *
+ * Four terms, in Zane's order — shape first, then the anchors and the stars:
+ *
+ *   shape  how far the foal's TARGET PAIR clears its off-pair, as two-stat
+ *          averages. This is the term nothing else in the game supplies.
+ *   level  the four-stat average, so the plan can't breed a shapely weakling.
+ *   anchor station and condition — they key no blade, so they never fight the
+ *          shape term.
+ *   stars  the element wheel's volume knob, worth 77-87% at 5★.
+ *
+ * Weights live in BREEDING_PLAN with the reasoning for each.
+ */
+export function foalScore(
+  dam: BirdView,
+  sire: StudView,
+  shape: (typeof BREEDING_SHAPES)[number]
+): number {
+  // A retired parent's stats are revealed, but BirdView types them nullable
+  // for the fogged case. A hen that reaches here is retired by the caller's
+  // filter; 0 is the safe read if that ever stops being true, and it simply
+  // makes her look like a bad mate rather than crashing the day.
+  const mid = (stat: StatName) => ((dam[stat] ?? 0) + sire.sheet[stat]) / 2;
+  const mean = (stats: readonly StatName[]) =>
+    stats.reduce((sum, s) => sum + mid(s), 0) / stats.length;
+
+  const separation = mean(shape.pair) - mean(shape.off);
+  const level = mean(DISTANCE_STATS);
+  const anchors = mean(["station", "condition"] as const);
+  const halfStars = (dam.halfStars + sire.halfStars) / 2;
+
+  return (
+    separation * BREEDING_PLAN.SHAPE_WEIGHT +
+    level * BREEDING_PLAN.LEVEL_WEIGHT +
+    anchors * BREEDING_PLAN.ANCHOR_WEIGHT +
+    halfStars * BREEDING_PLAN.STAR_WEIGHT
+  );
 }
 
 /**

@@ -61,36 +61,57 @@ passed all five Doctor invariants. It recorded 4,648 fights from 5,505 entries;
 
 ## Discovery: what is proven, and what is not
 
-The latest Doctor output shows raw selected-format hits rising from 20.7% at
-age 1 to 26.2% at age 4+, compared with roughly 20% random selection. It also
-shows better adjacent-blade selection at age 4+ (55.2% versus a 48.2% random
-baseline).
+*Updated after round 29 — the three diagnostic limitations named below have
+been fixed, and the answer changed once the audit stopped measuring the wrong
+thing.*
 
-This is **not yet proof that scout discovery steadily improves with age**.
-The green Doctor verdict currently uses selected-format hit rate rather than
-the scout report's own ranked-blade accuracy. It also includes tournament
-fight rows even though later bracket rounds are not new blade-choice
-decisions, and its "true best blade" uses the static format-weight matrix
-rather than realized fight performance. Those are diagnostic limitations, not
-evidence that the feature is healthy.
+The original reading here was raw selected-format hits rising 20.7% to 26.2%
+across age buckets, with the caveat that this was **not** proof the scout was
+teaching anybody anything. That caveat was right, and for three reasons that
+round 29 addressed one at a time.
+
+1. **The verdict graded the wrong quantity.** A card lands where the scout
+   said AND where `SCOUT.EXPLORE` sent it AND where the lobby had room. The
+   Doctor now grades the scout report's own top-ranked blade against its own
+   random baseline.
+2. **Tournament rows were counted as decisions.** A bracket bout's format is
+   fixed by the committee. They are excluded from decisions and still feed the
+   scout history, since a bracket fight is real evidence.
+3. **The denominator was full of coin flips.** Home-blade margins measure
+   p10 1.9 / p50 11.1 / p90 28.3 weighted stat points — half the flock had no
+   home worth finding. The Doctor now prints a clear-home line beside the raw
+   one.
+
+Separately, `SCOUT.PRIOR_FIGURE` was found to be miscalibrated: set to 50 on
+the strength of a `GHOST_PACE` comment that round 27 had quietly falsified.
+Even fights actually figure 26.9–31.5, so evidence lost to ignorance by
+construction. Replaying the same 5,505 entries with only that number changed
+lifted scout accuracy 26.5% to 31.2% exact.
+
+With all four fixed, a fresh 91-day world reads **32.9% exact on mature birds
+with a real home, against 20% by chance**, and passes every invariant with
+zero health warnings. Two candidate fixes were tested and rejected on the
+data: normalizing the result out of the figure (accuracy fell to 23.2%) and
+weather normalization (+0.2 to +0.8, real but not the bottleneck).
+
+The remaining ceiling is the population, not the report. See `BALANCE.md`.
 
 ## Recommended next steps
 
-1. **Fix the discovery audit before changing policy again.** Restrict it to
-   daily-card blade choices, judge convergence by prior-evidence scout accuracy
-   against its random baseline, and call the current answer key "weight-matrix
-   affinity" until a realized-performance reference field is calibrated.
-2. **Run matched multi-seed worlds.** Compare current and end-first policies
-   over the same seeds after the audit fix. Report exact and adjacent scout
-   accuracy, coverage, and unmatched rate, not a single-world result.
-3. **Then decide discovery policy.** Keep whichever policy improves mature
-   scout accuracy without collapsing lobby liquidity. A juvenile-only
-   double-header experiment remains a sensible separate test if coverage is
-   still the bottleneck.
-4. **Measure the new grade normalization directly.** Add raw-versus-normalized
-   accuracy and residual grade/company bias to Doctor before tuning its
-   coefficients. Weather normalization should wait until it can be based on
-   historical public weather context, not reconstructed hidden data.
-5. **Revisit population and claimers after discovery is trustworthy.** The
-   15.6% unmatched rate and force-retirement churn are real design questions,
-   but tuning them before the measurement loop is sound would mix causes.
+*Items 1 and 4 of the original list are done; the rest stand, re-ordered.*
+
+1. **Run matched multi-seed worlds** comparing the current and end-first
+   discovery policies, now that the audit is sound. Report exact and adjacent
+   scout accuracy, coverage and unmatched rate across seeds, not one world.
+2. **Recentre the Pit Figure scale.** `GHOST_PACE` puts even fights ~20 points
+   low, so live figures occupy about a third of the 0–150 range and the ±4 fog
+   eats a large share of every read. Its own round: `GHOST_FIGURE`,
+   `CLASS_BASE`, `MAX` and the Handbook move together.
+3. **Watch the flock shape line.** The breeding plan is demonstrably choosing
+   (sires +83 along their barn's house axis against a flock baseline of +4),
+   but 13 weeks is roughly two selected generations and `STAT_VARIANCE`
+   regenerates most of the spread each time. Whether shape accumulates is a
+   longer-horizon question.
+4. **Then revisit population and claimers.** The unmatched rate now sits at
+   14.7%, under the warning bar, but claimer and hardcore lobby keys are still
+   the thin ones.

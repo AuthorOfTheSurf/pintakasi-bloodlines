@@ -44,6 +44,43 @@ export const STAT_NAMES = [
 ] as const;
 export type StatName = (typeof STAT_NAMES)[number];
 
+/**
+ * The four distance stats, in dial order — the axis FORMATS[].weights runs
+ * along, sprint end first. Spelled out rather than sliced off STAT_NAMES
+ * because a tuple type is what the shape arithmetic below needs; `satisfies`
+ * keeps it honest against StatName, and docs.test.ts pins it against both
+ * STAT_NAMES' first four and the weight matrix's own keys, so the two cannot
+ * drift apart in silence.
+ */
+export const DISTANCE_STATS = ["agility", "sight", "stamina", "gameness"] as const satisfies
+  readonly StatName[];
+export type DistanceStat = (typeof DISTANCE_STATS)[number];
+
+/**
+ * THE THREE BREEDING SHAPES (ruled 2026-08-06) — the ADJACENT pairs on the
+ * distance dial: agility & sight, sight & stamina, stamina & gameness.
+ *
+ * Derived from the dial order, never listed, so a re-ordering of the axis
+ * moves the shapes with it. Why adjacent pairs and not any two stats: the
+ * `pairs` balance case measured it. A bird carrying a grade step on two
+ * NEIGHBOURING stats is strong at both blades those stats key and still
+ * clearly ahead of a flat bird in the middle — one plan, two homes, and a
+ * FLOOR (never below ~62% against flat at any blade, where a single spike
+ * drops to ~55% at the blade it guessed wrong). Under round 28's fog, where
+ * nobody knows what a chick is until it has fought, that floor is what a
+ * breeder actually owns.
+ *
+ * These are the shapes the bots breed toward (BREEDING_PLAN in bot-config).
+ * Zane's ruling: aim for a pair, THEN chase station, condition and element
+ * stars on top. More advanced plans can come later — the point of this one
+ * is that a flock bred for level alone has no shape for anyone to discover,
+ * and round 29 measured exactly that (median home-blade margin: 11 points).
+ */
+export const BREEDING_SHAPES = DISTANCE_STATS.slice(0, 3).map((stat, i) => ({
+  pair: [stat, DISTANCE_STATS[i + 1]] as [DistanceStat, DistanceStat],
+  off: DISTANCE_STATS.filter((s) => s !== stat && s !== DISTANCE_STATS[i + 1]) as DistanceStat[],
+}));
+
 export const STATS = {
   MIN: 0, //    floor for any stat
   MAX: 2000, // ceiling — the PFL 0–2000 scale (letter-grade display comes later; store raw forever)
@@ -479,11 +516,26 @@ export const BATTLE = {
 // independently earns its own pace and company credit, then takes only a
 // small beaten-length mark-down.
 export const FIGURE = {
-  // The pace a maxed-out ghost sets, per blade — tuned so an even fight
-  // between STARTERS figures ~50 in every format (gaff fights run longer,
-  // so their damage-per-turn is lower by nature; this is the normalizer).
-  // Recalibrated for round 27's engine (uniform 100 wind rescaled every
-  // damageMult, so pace-per-damageMult moved on every blade).
+  // The pace a maxed-out ghost sets, per blade — the normalizer that makes
+  // figures COMPARABLE across formats (gaff fights run longer, so their
+  // damage-per-turn is lower by nature).
+  //
+  // ⚠ MEASURED, round 29: these no longer put an even starter fight at ~50,
+  // which is what this comment used to promise. The `symmetry` control reads
+  // 26.9 / 27.1 / 29.3 / 30.2 / 31.5 — flat across the dial, so the
+  // cross-format normalization is still doing its job, but the whole scale
+  // is centered ~20 points low. Round 27's uniform-100 wind rescaled every
+  // damageMult and the level calibration was never re-derived.
+  //
+  // The consequence is not cosmetic: live figures occupy roughly 5–55 of the
+  // 0–150 range, so ±NOISE eats a large share of every read and the blade-fit
+  // signal the scout exists to find (3–12 points between a specialist's home
+  // and middle blade) is proportionally quieter than it should be. Recentring
+  // on 50 would stretch the usable scale ~1.6× for free. Deferred to its own
+  // round because it moves GHOST_FIGURE, CLASS_BASE, MAX and the Handbook's
+  // figure pages together — an S+ specialist already reads 110 against the
+  // clamp at 150. SCOUT.PRIOR_FIGURE was moved to the measured value in the
+  // meantime rather than left pinned to a promise the engine stopped keeping.
   GHOST_PACE: { b1: 8.0, b2: 6.2, b3: 4.3, b4: 3.7, b5: 3.4 },
   GHOST_FIGURE: 100, //  what matching the ghost's pace scores
   CLASS_BASE: 320, //    the starter band's middle — class credit starts here
@@ -512,10 +564,29 @@ export const SCOUT = {
   REFERENCE_GRADE: "B+" as const,
   OWN_GRADE_STEP: 15,
   OPPONENT_GRADE_STEP: 5,
-  // An unread blade scores the even-starter figure — the same ~50 that
-  // GHOST_PACE is tuned to. Reading "nothing known" as "average" is what
-  // stops a single lucky 80 from looking like a destiny.
-  PRIOR_FIGURE: 50,
+  // An unread blade scores what an AVERAGE outing scores. Reading "nothing
+  // known" as "average" is what stops a single lucky 80 from looking like a
+  // destiny.
+  //
+  // Round 29 re-measured this and it was badly wrong. It was set to 50
+  // because GHOST_PACE's comment claims an even fight between starters
+  // figures ~50 — but round 27 rescaled the wind and every damageMult, and
+  // the calibration went with it. The `symmetry` control now reads 26.9–31.5
+  // across the five blades and the live world's mean normalized figure is
+  // 32.1. A prior of 50 therefore sat ~18 points ABOVE reality, which means
+  // every blade a bird had actually fought was dragged toward 32 while every
+  // blade it hadn't stayed parked at 50: EVIDENCE LOST TO IGNORANCE, by
+  // construction. Replaying the 5,505 entries of sim-20260806-1318 with only
+  // this number changed moved scout accuracy 26.5% -> 31.2% exact and
+  // 52.2% -> 56.0% on-or-adjacent. PRIOR_WEIGHT barely mattered (0.5/1/2 all
+  // landed within 0.3 points) — this was the prior itself, not the Bayes.
+  //
+  // 30 is the middle of the measured even-fight band. The proper fix is to
+  // re-tune GHOST_PACE so ~50 really is average again — that would also
+  // stretch the live figure range (currently ~5–55, a third of the 0–150
+  // scale) and shrink the ±NOISE fog relative to the signal. That is its own
+  // round: it moves GHOST_FIGURE, CLASS_BASE, MAX and the Handbook together.
+  PRIOR_FIGURE: 30,
   // Pseudo-fights behind the prior: by the third real figure at a blade,
   // the bird's own evidence carries the read.
   PRIOR_WEIGHT: 2,

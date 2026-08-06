@@ -328,11 +328,19 @@ describe("the discovery section", () => {
    * raw `win` with no mirror would trip the pit-figure invariant, and this
    * is a health measurement, not an invariant test.
    */
-  function fought(db: DB, bird: { id: string; farmId: string }, format: FightFormat) {
+  function fought(
+    db: DB,
+    bird: { id: string; farmId: string },
+    format: FightFormat,
+    opts: { figure?: number; tournament?: boolean } = {}
+  ) {
     db.insert(battleLog)
       .values({
         dayIndex: 0,
-        lobbyId: 1,
+        // Exactly one of these is set, per the schema. A tournament row is
+        // evidence but NOT a blade decision — the bracket picked the format.
+        lobbyId: opts.tournament ? null : 1,
+        tournamentId: opts.tournament ? 1 : null,
         farmId: bird.farmId,
         birdId: bird.id,
         mode: "real",
@@ -341,7 +349,7 @@ describe("the discovery section", () => {
         opponentFarmId: "house",
         opponentName: "Sparring Ghost",
         result: "loss",
-        pitFigure: 50,
+        pitFigure: opts.figure ?? 50,
         gpDeltaCents: 0,
         seed: 1,
         playByPlay: "[]",
@@ -352,44 +360,85 @@ describe("the discovery section", () => {
   const section = (db: DB) =>
     diagnose(db, ":memory:").health.find((h) => h.title === "DISCOVERY")!;
 
-  test("a world that never converges warns without demanding a full five-blade grid", () => {
+  /**
+   * Round 29 re-pointed the verdict. It used to grade RAW selected-format
+   * hits, which is not the scout's work: a card lands where the scout said
+   * AND where SCOUT.EXPLORE sent it AND where the lobby had room, so "hits
+   * climbed with age" could be true of a report that taught nobody anything.
+   * The verdict now grades the scout's OWN top-ranked blade, on mature birds
+   * that have a home worth finding (DISCOVERY_HOME_MARGIN) — the population
+   * measurement that motivated the filter is the `flock shape` line below.
+   */
+  test("the verdict warns when the scout's own ranking is no better than chance", () => {
     const w = testWorld({ rivalFlock: false });
-    // Juveniles all carded at their best blade, veterans never: the hit rate
-    // FALLS with age, which is discovery running backwards. The whole
-    // discovery year lives at one blade, which is a valid extreme-first
-    // opening rather than a diagnosis by itself.
-    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 1), "b1");
-    for (let i = 0; i < 20; i++) fought(w.db, sprinter(w.db, 4), "b5");
+    const veteran = sprinter(w.db, 4); // true home B1, by a 225-point margin
+    // Two quiet reads at the true home, then a long loud record at the wrong
+    // end of the dial. The bird IS answer-covered, and the scout still ranks
+    // B5 top every single time — a report that is confidently wrong.
+    fought(w.db, veteran, "b1", { figure: 10 });
+    fought(w.db, veteran, "b1", { figure: 10 });
+    for (let i = 0; i < 25; i++) fought(w.db, veteran, "b5", { figure: 90 });
 
     const s = section(w.db);
-    expect(s.warn).toContain("not converging");
-    expect(s.lines.join("\n")).toContain("stables are still guessing");
-    expect(s.lines.join("\n")).toContain("answer coverage");
+    expect(s.warn).toContain("the figures are not teaching");
+    expect(s.lines.join("\n")).toContain("the scout is at chance");
+    expect(bladeDiscovery(w.db).buckets[2].clearScoutHits).toBe(0);
     // Health judgement, never an invariant — the run itself stays green.
     expect(diagnose(w.db, ":memory:").ok).toBe(true);
   });
 
-  test("a converging world with a full discovery year reads clean", () => {
+  test("a world whose scout ranks the true home first reads clean", () => {
     const w = testWorld({ rivalFlock: false });
     // The discovery year spread across all five blades (chance-rate hits,
-    // exactly what SCOUT.EXPLORE is buying), then a 4+ cohort that has
-    // learned the answer.
+    // exactly what SCOUT.EXPLORE is buying), then a veteran whose figures at
+    // its true home are the loudest thing on its card.
     const juvenile = sprinter(w.db, 1);
     const veteran = sprinter(w.db, 4);
     for (let i = 0; i < 20; i++) fought(w.db, juvenile, FORMAT_NAMES[i % 5]);
-    for (let i = 0; i < 20; i++) fought(w.db, veteran, "b1");
+    for (let i = 0; i < 27; i++) fought(w.db, veteran, "b1", { figure: 90 });
 
     const s = section(w.db);
     expect(s.warn).toBeUndefined();
-    expect(s.lines.join("\n")).toContain("climbs with age");
+    expect(s.lines.join("\n")).toContain("the scout beats chance");
     expect(s.lines.join("\n")).toContain("5/5 blades saw an age-1 entry");
+    expect(s.lines.join("\n")).toContain("median home blade beats its runner-up");
 
     const d = bladeDiscovery(w.db);
     expect(d.buckets[0].hits / d.buckets[0].entries).toBeCloseTo(0.2, 5); // the chance floor
-    expect(d.buckets[2].hits).toBe(20); // the answer key, matched exactly
-    expect(d.buckets[2].covered).toBeGreaterThan(0);
-    expect(d.buckets[2].scoutHits).toBe(d.buckets[2].covered);
-    expect(diagnose(w.db, ":memory:").discovery.buckets[2].entries).toBe(20);
+    expect(d.buckets[2].hits).toBe(27); // the answer key, matched exactly
+    expect(d.buckets[2].clearCovered).toBeGreaterThan(0);
+    expect(d.buckets[2].clearScoutHits).toBe(d.buckets[2].clearCovered);
+    expect(diagnose(w.db, ":memory:").discovery.buckets[2].entries).toBe(27);
+  });
+
+  test("a bracket bout is evidence but not a blade decision", () => {
+    const w = testWorld({ rivalFlock: false });
+    const bird = sprinter(w.db, 4);
+    // Round two of a Major is nobody choosing anything — the committee fixed
+    // the format when the barn entered. Counting it graded the SCHEDULE as if
+    // it were the stable's judgement.
+    fought(w.db, bird, "b1");
+    fought(w.db, bird, "b5", { tournament: true });
+    fought(w.db, bird, "b5", { tournament: true });
+
+    const d = bladeDiscovery(w.db).buckets[2];
+    expect(d.entries).toBe(1); // the daily card only…
+    expect(d.hits).toBe(1);
+    // …but the bracket figures still landed in the history the scout reads.
+    expect(bladeDiscovery(w.db).buckets[2].covered).toBe(0); // no B1 reads yet
+  });
+
+  test("the flock-shape line warns when nothing is being bred with a home", () => {
+    // The testkit default is a near-FLAT bird: its five blade scores land
+    // within a few points of each other, so it has no home worth finding. A
+    // world of them has no discovery to DO, and that is a breeding problem
+    // the doctor must name rather than blame on the scout.
+    const w = testWorld({ rivalFlock: false });
+    for (let i = 0; i < 6; i++) makeBird(w.db, { age: 4 });
+    const d = bladeDiscovery(w.db);
+    expect(d.medianHomeMargin).toBeLessThan(10);
+    expect(d.clearHomeShare).toBeLessThan(0.5);
+    expect(section(w.db).warn).toContain("bred flat");
   });
 
   test("coverage begins only after two reads at a true home, then grades the scout", () => {
@@ -436,6 +485,37 @@ describe("the discovery section", () => {
     expect(s.lines.join("\n")).toContain("blades saw an age-1 entry");
     const d = bladeDiscovery(w.db);
     const counted = d.buckets.reduce((n, b) => n + b.entries, 0);
-    expect(counted).toBe(w.db.select().from(battleLog).all().length);
+    // Round 29: DAILY-CARD rows only. A bracket bout's format was fixed by
+    // the committee, so it is evidence but not a decision — and a live world
+    // has both kinds, which is exactly why this assertion has to name which.
+    // Whether a 9-day, 4-bot world happens to have run a bracket at all is
+    // luck, so the exclusion itself is pinned by its own unit test above; what
+    // this asserts is that the accounting holds either way.
+    const rows = w.db.select().from(battleLog).all();
+    expect(counted).toBe(rows.filter((r) => r.tournamentId === null).length);
+  });
+
+  /**
+   * The breeding plan's adoption check — the house rule that has bitten this
+   * repo three times (claiming, paid gacha, the revealed stud sheet). The
+   * `flock shape` line above is nearly BLIND to selection, because
+   * STAT_VARIANCE hands every foal ~69 points of random separation and so
+   * every bird has a home by accident. This measures the CHOICE instead.
+   */
+  test("the breeding line separates a barn that chooses from one that shuffles", () => {
+    const w = world(20);
+    const sel = bladeDiscovery(w.db).selection!;
+    expect(sel.covers).toBeGreaterThan(0);
+    // The floor: signed separations over the whole flock cancel, because an
+    // unselected population's shapes point in random directions.
+    expect(Math.abs(sel.flock)).toBeLessThan(25);
+    // …and the sires the plan actually bought sit well clear of it. If this
+    // ever collapses toward the baseline, the bots are shuffling again — which
+    // is precisely what the first cut of BREEDING_PLAN did while looking fine.
+    expect(sel.sires).toBeGreaterThan(sel.flock + 25);
+    // Dams come from whatever hens the barn happens to own, so they are the
+    // weaker half of the selection by nature — but both halves must be on the
+    // right side of the baseline, or only one of the two loops is working.
+    expect(sel.dams).toBeGreaterThan(sel.flock);
   });
 });

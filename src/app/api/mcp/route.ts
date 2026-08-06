@@ -10,9 +10,11 @@ import {
   AGE,
   BARN,
   BATTLE,
+  BREEDING_SHAPES,
   CARRIAGES,
   CLAIMER,
   COVERS,
+  DISTANCE_STATS,
   ECONOMY,
   FARM_COLORS,
   FORMATS,
@@ -144,6 +146,7 @@ export const MCP_INSTRUCTIONS: string[] = [
   `WHEN AN EGG HATCHES, reveal its sex (hidden 50-50 while an egg) and prompt the player to name the chick (name_bird). Mystery Eggs from the gacha hatch the same way. THE NAMING LAW: a bird CANNOT fight while still wearing its auto-name ('Egg of …', 'Mystery Egg (…)') — entering is refused until name_bird is called. Make naming part of the hatch-day ritual, BEFORE the first card.`,
   "ONE LIFETIME RECORD (ruled round 15): juvenile, real, and hardcore fights ALL count toward the same wins-losses line, for birds and farms alike. NOTE: the record does NOT set stud prices — stud pricing is player speculation and supply/demand (flat " + ECONOMY.BREED_FEE + " GP for now).",
   `BREEDING IS PvP TOO — THE BARN: both parents retired, hen × rooster, not close kin. list_stud stands your retired roosters (${COVERS.PER_WEEK} covers/week public + ${COVERS.OWNER_RESERVED} owner-reserved, and costs ${COVERS.STUD_LISTING_LT} LT the FIRST time you open the seat — spent outright, not staked, not refundable); browse_studs shows a hen every stud she can take, with kin exclusions NAMED. A cover costs ${ECONOMY.BREED_FEE} GP flat (min AND max for now — player pricing later) and SPLITS ${breedStakerPct}% to land stakers / ${breedJuicePct}% fight juice / ${breedOwnerPct}% to the stud's owner. Hens pay, hens keep the egg. Selling covers is income; top studs capping out is by design.`,
+  `WHAT TO BREED FOR (round 29) — the four fighting stats sit on a dial, ${DISTANCE_STATS.join(" → ")}, and the plan is to aim a line at TWO NEIGHBOURING stats on it: ${BREEDING_SHAPES.map(({ pair }) => pair.join(" & ")).join(", ")}. A pair buys a FLOOR — strong at the two blades its stats key, still ahead of a plain bird in the middle, never truly bad anywhere — and under the fog, where nobody knows a chick's sheet for months, the floor is the part the breeder actually owns. A single towering stat is a legitimate line too, just a narrower one. THEN break ties on station, condition and stars: none of them keys a blade, so none of them fights the shape. Both parents are retired, so BOTH SHEETS ARE PUBLIC on the stud card (browse_studs) — a chick's expected stats are simply the parents' midpoint, so the player can do this arithmetic before buying the cover. Coach it: a flock bred for big numbers alone drifts into birds that are mediocre everywhere and excellent nowhere, which wins no crowns and leaves the scout report nothing to find.`,
   `STAKE YOUR LAND — ALWAYS. stake_land every LT as soon as you earn it (one pool for now): staked land collects a slice of EVERY GP that changes hands, daily and pro-rata: ${claimRakePct}% of every claiming tag, ${gachaStakerPct}% of gacha spend, ${breedStakerPct}% of every breed fee, and the entire price of any Land Token someone buys.` +
     (STAKER_FLOWS.FIGHT_RAKE > 0
       ? ` Also ${fightRakePct}% of every daily-card fight pot.`
@@ -189,7 +192,7 @@ export const TOOL_DESCRIPTIONS = {
     `Buy a cover: YOUR retired hen × a retired rooster — your own, or ANY farm's listed stud (browse_studs first). Costs ${ECONOMY.BREED_FEE} GP ($${usd(ECONOMY.BREED_FEE)}, min AND max for now), which SPLITS: ${fmtGp(breedSplit.stakerPoolCents)} GP to the land-staking pool, ${fmtGp(breedSplit.juicePoolCents)} to the fight-juice pool, ${fmtGp(breedSplit.studOwnerCents)} to the stud's owner. The hen's farm keeps the egg ('Egg of <mother>'). She is pregnant until the next Friday, then the egg lays and she is free for another cover; that egg hatches the Friday after. Covers are capped per rooster per week (${COVERS.PER_WEEK} public + ${COVERS.OWNER_RESERVED} owner-reserved).`,
 
   browse_studs:
-    `The barn from one hen's point of view: every stud she CAN breed with (name, farm, stars, age, record, covers left — ${ECONOMY.BREED_FEE} GP each) plus the excluded ones WITH the reason (kin overlap named explicitly, or covered out this week). Candidates = every farm's listed studs + your own retired roosters.`,
+    `The barn from one hen's point of view: every stud she CAN breed with (name, farm, stars, age, record, covers left, AND his full revealed six-stat sheet + overall grade — he is retired, so nothing about him is fogged; ${ECONOMY.BREED_FEE} GP each) plus the excluded ones WITH the reason (kin overlap named explicitly, or covered out this week). Candidates = every farm's listed studs + your own retired roosters.`,
 
   list_stud:
     `List a retired rooster of yours in the breeding barn — any farm's hens can then buy covers at ${ECONOMY.BREED_FEE} GP, of which ${fmtGp(breedSplit.studOwnerCents)} GP lands in YOUR wallet per cover. ${COVERS.PER_WEEK} public covers/week plus ${COVERS.OWNER_RESERVED} reserved for your own hens. THE FIRST TIME you open a rooster's public slots it costs ${COVERS.STUD_LISTING_LT} LT, spent outright — not staked, not refundable; pulling him and re-listing him later is free, the land buys the seat once, not a subscription. Selling covers is real income — list your good retirees.`,

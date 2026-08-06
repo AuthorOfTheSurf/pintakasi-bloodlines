@@ -14,6 +14,7 @@ import {
   tournaments,
 } from "@/db/schema";
 import {
+  BREEDING_SHAPES,
   CADENCE,
   ELEMENTS,
   FORMAT_NAMES,
@@ -22,6 +23,7 @@ import {
   weatherOfDay,
   type FightFormat,
 } from "./config";
+import { BOT_FARMS } from "./bot-config";
 import { GameClock } from "./game-clock";
 import { ageOf } from "./lifecycle";
 import { normalizedScoutFigure } from "./scout";
@@ -79,6 +81,23 @@ const DOCTOR = {
   // ten entries swing past any threshold on one lucky card, so the honest
   // report for a thin bucket is "too few to read", not a verdict.
   DISCOVERY_MIN_SAMPLE: 20,
+  // How much better a bird's home blade must be than its second-best before
+  // the audit is willing to grade the scout on it. In weighted stat points.
+  //
+  // Round 29 measured the distribution and it is the reason this audit read
+  // so badly: the median bird's home blade beats its runner-up by 11.1
+  // points, p10 by 1.9, p90 by only 28.3. HALF THE FLOCK HAS NO HOME BLADE
+  // WORTH FINDING — those birds are unlearnable by construction, and scoring
+  // the scout on them reports noise as failure. On the same logs, restricting
+  // to a real home moved scout accuracy 31.2% -> 35.6% (>=10) -> 47.6%
+  // (>=25) against an unmoved 20% random baseline. The scout was never as
+  // blind as the number said; the DENOMINATOR was full of coin flips.
+  //
+  // 10 is deliberately the loose cut — it keeps a bit over half the
+  // decisions, so the clear-home line is still a big sample rather than a
+  // hand-picked one. Both denominators print: the gap between them is the
+  // population-shape story, and it belongs in the report, not hidden by it.
+  DISCOVERY_HOME_MARGIN: 10,
 } as const;
 
 export interface Invariant {
@@ -110,6 +129,8 @@ export interface DoctorReport {
 
 const gp = (cents: number) => (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
 const pct = (n: number, d: number) => (d === 0 ? "0.0%" : `${((n / d) * 100).toFixed(1)}%`);
+/** Signed so a baseline of ~0 and a selected +68 read as different things at a glance. */
+const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}`;
 
 // ── invariants ──────────────────────────────────────────────────────────────
 
@@ -617,12 +638,59 @@ export interface DiscoveryBucket {
   scoutHits: number;
   /** Scout's top-ranked blade was at a true-best blade or its neighbour. */
   scoutNearHits: number;
+  /** Expected exact scout hits from a random ranking, over the same decisions. */
+  scoutRandomHits: number;
+  /** Covered decisions on birds whose home beats its runner-up by DISCOVERY_HOME_MARGIN. */
+  clearCovered: number;
+  /** Scout's top-ranked blade was truly best, among clear-home covered decisions. */
+  clearScoutHits: number;
+  /** Scout's top-ranked blade was on or adjacent to home, among those. */
+  clearScoutNearHits: number;
 }
 
 export interface BladeDiscovery {
   buckets: DiscoveryBucket[];
   explored: FightFormat[];
   chance: number;
+  /** Median home-blade margin across the living answer key — the shape of the flock. */
+  medianHomeMargin: number;
+  /** Share of birds carrying a home worth finding at all. */
+  clearHomeShare: number;
+  /** Is the breeding plan actually selecting? @see breedingSelection */
+  selection: BreedingSelection | null;
+}
+
+/**
+ * THE BREEDING PLAN'S ADOPTION CHECK (round 29).
+ *
+ * This exists because of the house rule that has caught this repo out three
+ * times now: adding a door doesn't mean anyone walks through it (claiming in
+ * round 19, paid gacha in round 22, and the stud sheet in round 28 — revealed
+ * so shoppers could read it, then read by nobody). Round 29 gave the bots a
+ * BREEDING_PLAN, and the obvious place to look for it — the flock's median
+ * home-blade margin — turned out to be nearly blind to it: `STAT_VARIANCE`
+ * hands every foal ~69 points of random separation, so every bird already has
+ * a home by accident and the median barely twitches under real selection.
+ *
+ * So measure the CHOICE instead of its downstream echo. Each bot barn breeds
+ * toward a house shape; for every cover it bought, how far along THAT axis did
+ * the parents it picked actually sit, against the flock it picked them from?
+ * Sires well above the flock baseline means the plan is choosing. Sires AT the
+ * baseline means it is shuffling, whatever the config says.
+ *
+ * Bot barns only — a player farm has no declared house shape to score against,
+ * and guessing one from its flock would grade the plan on its own output.
+ */
+export interface BreedingSelection {
+  covers: number;
+  /** Median separation along a random house axis, over every bird — the floor. */
+  flock: number;
+  /** …over the sires those covers actually chose. */
+  sires: number;
+  /** …over the dams. Lower by nature: a barn breeds the hens it happens to own. */
+  dams: number;
+  /** …over the foals produced. Roughly the parents' midpoint, less variance. */
+  foals: number;
 }
 
 export function bladeDiscovery(db: DB): BladeDiscovery {
@@ -634,6 +702,10 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
   // miss would report noise as failure. (Epsilon because those weight sums
   // only agree to floating point.)
   const bestOf = new Map<string, Set<FightFormat>>();
+  // How far the home blade beats the runner-up. A bird whose top two blades
+  // are a point apart has no home to find, and grading a scout on it is
+  // grading a coin flip — see DOCTOR.DISCOVERY_HOME_MARGIN.
+  const marginOf = new Map<string, number>();
   for (const b of allBirds) {
     const score = (f: FightFormat) => {
       const w = FORMATS[f].weights;
@@ -641,14 +713,23 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
         b.agility * w.agility + b.sight * w.sight + b.stamina * w.stamina + b.gameness * w.gameness
       );
     };
-    const top = Math.max(...FORMAT_NAMES.map(score));
+    const scores = FORMAT_NAMES.map(score);
+    const top = Math.max(...scores);
+    const runnerUp = Math.max(...scores.filter((s) => s < top - 1e-9));
     bestOf.set(b.id, new Set(FORMAT_NAMES.filter((f) => score(f) >= top - 1e-6)));
+    // A tie at the top IS a zero margin — the flat bird, every blade its home.
+    marginOf.set(b.id, Number.isFinite(runnerUp) ? top - runnerUp : 0);
   }
 
+  const emptyBucket = () => ({
+    entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0,
+    covered: 0, scoutHits: 0, scoutNearHits: 0, scoutRandomHits: 0,
+    clearCovered: 0, clearScoutHits: 0, clearScoutNearHits: 0,
+  });
   const buckets = [
-    { label: "age 1  ", entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
-    { label: "age 2–3", entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
-    { label: "age 4+ ", entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0, covered: 0, scoutHits: 0, scoutNearHits: 0 },
+    { label: "age 1  ", ...emptyBucket() },
+    { label: "age 2–3", ...emptyBucket() },
+    { label: "age 4+ ", ...emptyBucket() },
   ];
   const explored = new Set<FightFormat>();
   // Rebuild every bird's report one result at a time. A final report would
@@ -664,22 +745,33 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
     // but pinned to the fight's own day instead of the current clock.
     const age = Math.max(0, GameClock.weekOf(r.dayIndex) - bird.birthWeek);
     const bucket = buckets[age <= 1 ? 0 : age <= 3 ? 1 : 2];
-    bucket.entries++;
     const best = bestOf.get(bird.id)!;
-    if (best.has(r.format)) bucket.hits++;
     const withinOne = (format: FightFormat) =>
       [...best].some((home) => Math.abs(FORMAT_NAMES.indexOf(format) - FORMAT_NAMES.indexOf(home)) <= 1);
-    if (withinOne(r.format)) bucket.nearHits++;
-    bucket.randomHits += best.size / FORMAT_NAMES.length;
-    bucket.randomNearHits += FORMAT_NAMES.filter(withinOne).length / FORMAT_NAMES.length;
-    if (age <= 1) explored.add(r.format);
+
+    // Only a DAILY CARD is a blade decision. A tournament bout's format is
+    // fixed by the bracket the barn already entered — round two of a Major is
+    // nobody choosing anything, and counting it scored the committee's
+    // schedule as if it were the stable's judgement. The row still feeds the
+    // history below: a bracket fight is real evidence even when it wasn't a
+    // choice.
+    const isDecision = r.tournamentId === null;
+    if (isDecision) {
+      bucket.entries++;
+      if (best.has(r.format)) bucket.hits++;
+      if (withinOne(r.format)) bucket.nearHits++;
+      bucket.randomHits += best.size / FORMAT_NAMES.length;
+      bucket.randomNearHits += FORMAT_NAMES.filter(withinOne).length / FORMAT_NAMES.length;
+      if (age <= 1) explored.add(r.format);
+    }
 
     const records = history.get(bird.id) ?? Object.fromEntries(
       FORMAT_NAMES.map((f) => [f, { fights: 0, figureTotal: 0 }])
     ) as Record<FightFormat, { fights: number; figureTotal: number }>;
     const covered = [...best].some((f) => records[f].fights >= SCOUT.MIN_READS);
-    if (covered) {
+    if (isDecision && covered) {
       bucket.covered++;
+      bucket.scoutRandomHits += best.size / FORMAT_NAMES.length;
       const score = (f: FightFormat) => {
         const rec = records[f];
         const average = rec.fights === 0 ? 0 : rec.figureTotal / rec.fights;
@@ -691,8 +783,15 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
       const scoutBest = FORMAT_NAMES.reduce((bestFormat, f) =>
         score(f) > score(bestFormat) ? f : bestFormat
       );
-      if (best.has(scoutBest)) bucket.scoutHits++;
-      if (withinOne(scoutBest)) bucket.scoutNearHits++;
+      const hit = best.has(scoutBest);
+      const near = withinOne(scoutBest);
+      if (hit) bucket.scoutHits++;
+      if (near) bucket.scoutNearHits++;
+      if (marginOf.get(bird.id)! >= DOCTOR.DISCOVERY_HOME_MARGIN) {
+        bucket.clearCovered++;
+        if (hit) bucket.clearScoutHits++;
+        if (near) bucket.clearScoutNearHits++;
+      }
     }
     records[r.format].fights++;
     records[r.format].figureTotal += normalizedScoutFigure(
@@ -702,43 +801,124 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
     );
     history.set(bird.id, records);
   }
+  // The shape of the flock itself. Reported beside the accuracy because it is
+  // the CEILING on it: a world breeding flat birds cannot have a discovery
+  // loop no matter how good the scout gets.
+  const margins = [...marginOf.values()].sort((a, b) => a - b);
   return {
     buckets,
     explored: FORMAT_NAMES.filter((f) => explored.has(f)),
     chance: 1 / FORMAT_NAMES.length,
+    medianHomeMargin: margins.length ? margins[Math.floor(margins.length / 2)] : 0,
+    clearHomeShare: margins.length
+      ? margins.filter((m) => m >= DOCTOR.DISCOVERY_HOME_MARGIN).length / margins.length
+      : 0,
+    selection: breedingSelection(db),
+  };
+}
+
+const median = (xs: number[]) =>
+  xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0;
+
+export function breedingSelection(db: DB): BreedingSelection | null {
+  const rows = db.select().from(birds).all();
+  const byId = new Map(rows.map((b) => [b.id, b]));
+  const houseOf = new Map(
+    BOT_FARMS.map((b) => [b.id, BREEDING_SHAPES[b.housePair % BREEDING_SHAPES.length]])
+  );
+  type Shape = (typeof BREEDING_SHAPES)[number];
+  const sep = (b: (typeof rows)[number], s: Shape) =>
+    (b[s.pair[0]] + b[s.pair[1]]) / 2 - (b[s.off[0]] + b[s.off[1]]) / 2;
+
+  const sires: number[] = [];
+  const dams: number[] = [];
+  const foals: number[] = [];
+  for (const foal of rows) {
+    if (!foal.fatherId || !foal.motherId) continue;
+    // The barn that OWNS the foal is the barn that bought the cover: a hen's
+    // owner keeps her egg, and a bird can only change hands after it hatches.
+    const shape = houseOf.get(foal.farmId);
+    if (!shape) continue; // a player farm — no declared house shape to grade
+    const sire = byId.get(foal.fatherId);
+    const dam = byId.get(foal.motherId);
+    if (sire) sires.push(sep(sire, shape));
+    if (dam) dams.push(sep(dam, shape));
+    foals.push(sep(foal, shape));
+  }
+  if (foals.length === 0) return null;
+  return {
+    covers: foals.length,
+    // The floor: the same arithmetic over the WHOLE flock on one fixed axis.
+    // An unselected population sits near zero here — separations exist, but
+    // they point in random directions, so the median of a signed measurement
+    // cancels. That is exactly what makes it the right baseline.
+    flock: median(rows.map((b) => sep(b, BREEDING_SHAPES[1]))),
+    sires: median(sires),
+    dams: median(dams),
+    foals: median(foals),
   };
 }
 
 function discovery(d: BladeDiscovery): HealthSection {
   const lines = d.buckets.map((b) =>
     b.entries < DOCTOR.DISCOVERY_MIN_SAMPLE
-      ? `${b.label}  ${b.entries} entries — too few to read`
-      : `${b.label}  ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs random ${pct(b.randomHits, b.entries)})` +
-        ` · ${b.nearHits}/${b.entries} on or adjacent (${pct(b.nearHits, b.entries)} vs random ${pct(b.randomNearHits, b.entries)})` +
-        ` · answer coverage ${b.covered}/${b.entries} (${pct(b.covered, b.entries)})` +
-        ` · scout ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)})` +
-          `, ${b.scoutNearHits}/${b.covered} on or adjacent (${pct(b.scoutNearHits, b.covered)})`}`
+      ? `${b.label}  ${b.entries} card decisions — too few to read`
+      : `${b.label}  carded ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs random ${pct(b.randomHits, b.entries)})` +
+        ` · ${pct(b.nearHits, b.entries)} on or adjacent (random ${pct(b.randomNearHits, b.entries)})` +
+        ` · answer coverage ${pct(b.covered, b.entries)}` +
+        ` · SCOUT ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)} vs random ${pct(b.scoutRandomHits, b.covered)})` +
+          `, ${pct(b.scoutNearHits, b.covered)} on or adjacent` +
+          `${b.clearCovered === 0 ? "" : ` · clear home ${b.clearScoutHits}/${b.clearCovered} (${pct(b.clearScoutHits, b.clearCovered)}, ${pct(b.clearScoutNearHits, b.clearCovered)} adjacent)`}`}`
   );
   const blades = FORMAT_NAMES.length;
   lines.push(`explored  ${d.explored.length}/${blades} blades saw an age-1 entry in the discovery year`);
+  // The answer key's own difficulty. A flock bred flat has nothing to find.
+  lines.push(
+    `flock shape  median home blade beats its runner-up by ${d.medianHomeMargin.toFixed(1)} pts · ` +
+      `${(d.clearHomeShare * 100).toFixed(1)}% of birds clear the ${DOCTOR.DISCOVERY_HOME_MARGIN}-pt bar`
+  );
+  // The plan's adoption check — see BreedingSelection for why the line above
+  // cannot answer this on its own.
+  const sel = d.selection;
+  if (sel)
+    lines.push(
+      `breeding  ${sel.covers} bot covers · along the barn's own house axis, sires ${signed(sel.sires)} · ` +
+        `dams ${signed(sel.dams)} · foals ${signed(sel.foals)} — against a flock baseline of ${signed(sel.flock)}`
+    );
 
   const [juv, , vet] = d.buckets;
   // The trend verdict needs BOTH ends of the career to be readable — a
   // young world with no 4+ fights yet has nothing to converge TO.
   const readable =
     juv.entries >= DOCTOR.DISCOVERY_MIN_SAMPLE && vet.entries >= DOCTOR.DISCOVERY_MIN_SAMPLE;
-  const converging = readable && vet.hits / vet.entries > juv.hits / juv.entries;
-  if (readable)
+  // Round 29: judged on the SCOUT'S OWN ranking against its own random
+  // baseline, not on raw selected-format hits. The old verdict graded the
+  // wrong thing — a card lands where the scout said AND where EXPLORE sent
+  // it AND where the lobby had room, so "hit rate climbed" could be true
+  // while the report itself taught nobody anything. What we actually want to
+  // know is whether the evidence, once a bird has it, ranks blades better
+  // than chance. Measured on birds that have a home to find, because the
+  // others are coin flips wearing a denominator (DISCOVERY_HOME_MARGIN).
+  const gradable = vet.clearCovered >= DOCTOR.DISCOVERY_MIN_SAMPLE;
+  const scoutRate = gradable ? vet.clearScoutHits / vet.clearCovered : 0;
+  const teaching = gradable && scoutRate > d.chance;
+  if (gradable)
     lines.push(
-      converging
-        ? "✓ hit rate climbs with age — the figures are teaching"
-        : "⚠ the 4+ rate is not above age 1 — stables are still guessing"
+      teaching
+        ? `✓ the scout beats chance on mature birds with a home — ${pct(vet.clearScoutHits, vet.clearCovered)} vs ${(d.chance * 100).toFixed(1)}%`
+        : `⚠ the scout is at chance on mature birds with a home — ${pct(vet.clearScoutHits, vet.clearCovered)} vs ${(d.chance * 100).toFixed(1)}%`
     );
+  else if (readable) lines.push("· too few mature clear-home reads to grade the scout");
 
   const warns = [
-    readable && !converging
-      ? `discovery is not converging: 4+ entries hit ${pct(vet.hits, vet.entries)} vs ` +
-        `${pct(juv.hits, juv.entries)} at age 1`
+    gradable && !teaching
+      ? `the figures are not teaching: scout ranks ${pct(vet.clearScoutHits, vet.clearCovered)} on ` +
+        `age-4+ birds with a real home, against ${(d.chance * 100).toFixed(1)}% by chance`
+      : undefined,
+    // Not a scout failure — a BREEDING failure, and it caps everything above.
+    d.clearHomeShare < 0.5
+      ? `only ${(d.clearHomeShare * 100).toFixed(1)}% of birds have a home blade worth finding — ` +
+        `the flock is being bred flat, so there is little for discovery to discover`
       : undefined,
   ].filter((w): w is string => !!w);
   return { title: "DISCOVERY", lines, warn: warns.length ? warns.join(" · ") : undefined };

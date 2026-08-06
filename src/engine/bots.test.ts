@@ -4,8 +4,17 @@ import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, lobbies, lobbyEntries } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { BOT_FARMS, WEATHER_APPETITE } from "./bot-config";
-import { Bots, bestFormat, scoutScores, weatherCardsToday, weatherOrder } from "./bots";
-import { ELEMENTS, FORMAT_NAMES, SCOUT, weatherOfDay, type Element } from "./config";
+import { Bots, bestFormat, foalScore, scoutScores, weatherCardsToday, weatherOrder } from "./bots";
+import {
+  BREEDING_SHAPES,
+  ELEMENTS,
+  FORMAT_NAMES,
+  SCOUT,
+  weatherOfDay,
+  type Element,
+  type StatName,
+} from "./config";
+import type { StudView } from "./breeding";
 import { Flock, type BirdView } from "./flock";
 import { mulberry32 } from "./rng";
 import { makeBird, world as testWorld } from "./testkit";
@@ -276,5 +285,106 @@ describe("the weather appetite", () => {
     const { ascendant, eve } = trio(day);
     expect(rateOf(ascendant, day, 1)).toBe(1);
     expect(rateOf(eve, day, 1)).toBeCloseTo(1 - WEATHER_APPETITE.HOLD_FOR_TOMORROW, 1);
+  });
+});
+
+/**
+ * THE BREEDING PLAN (round 29). Round 28 revealed every retired bird's sheet
+ * on the stud card so a shopper could read it — and then nobody read it. The
+ * bots took the first legal cover off a shuffled list, which optimises for
+ * nothing and breeds the world flat: the doctor measured a MEDIAN home-blade
+ * margin of 11 weighted points, meaning half the flock had no home for the
+ * scout to find. Discovery was pointed at a population with nothing to
+ * discover.
+ *
+ * These tests pin the appetite, in Zane's stated order: shape first, then
+ * station, condition and stars.
+ */
+describe("the breeding plan", () => {
+  const SPRINT = BREEDING_SHAPES[0]; // agility & sight
+  const DEEP = BREEDING_SHAPES[2]; //   stamina & gameness
+
+  /** A retired hen with a chosen sheet — retired, so her stats are revealed. */
+  const dam = (db: DB, sheet: Partial<Record<StatName, number>>) => {
+    const row = makeBird(db, { age: 4, status: "retired", sex: "female", ...sheet });
+    return new Flock(db, row.farmId).byId(row.id);
+  };
+
+  /** A stud card. Only `sheet`, `halfStars` and `birdId` reach the pricing. */
+  const sire = (sheet: Partial<Record<StatName, number>>, halfStars = 0): StudView =>
+    ({
+      birdId: "sire",
+      farm: "Rival",
+      name: "Sire",
+      stars: `${halfStars / 2}★ Fire`,
+      halfStars,
+      age: 4,
+      career: { wins: 0, losses: 0 },
+      sheet: {
+        agility: 350, sight: 350, stamina: 350, gameness: 350,
+        station: 350, condition: 350, ...sheet,
+      },
+      overallGrade: "B+",
+      price: 160,
+      coversLeft: 1,
+      mine: false,
+    }) as StudView;
+
+  test("a barn prefers the mate that gives its house shape, at equal total points", () => {
+    const w = testWorld({ rivalFlock: false });
+    // Two studs carrying the SAME surplus, spent at opposite ends of the dial.
+    const sprintSire = sire({ agility: 550, sight: 550, stamina: 150, gameness: 150 });
+    const deepSire = sire({ agility: 150, sight: 150, stamina: 550, gameness: 550 });
+    const flatDam = dam(w.db, {});
+
+    // Equal totals, so this is purely a question of shape — the level, anchor
+    // and star terms are identical on both sides and cancel exactly.
+    expect(foalScore(flatDam, sprintSire, SPRINT)).toBeGreaterThan(
+      foalScore(flatDam, deepSire, SPRINT)
+    );
+    expect(foalScore(flatDam, deepSire, DEEP)).toBeGreaterThan(
+      foalScore(flatDam, sprintSire, DEEP)
+    );
+  });
+
+  test("shape does not buy a weakling: a big enough level gap still wins", () => {
+    const w = testWorld({ rivalFlock: false });
+    const flatDam = dam(w.db, {});
+    // Perfectly shaped but 200 points down on every distance stat, against a
+    // shapeless bird that is simply better. A bird that loses at every blade
+    // is not a breeding plan, which is what LEVEL_WEIGHT is there to say.
+    const shapelyRunt = sire({ agility: 250, sight: 250, stamina: 50, gameness: 50 });
+    const plainGiant = sire({ agility: 650, sight: 650, stamina: 650, gameness: 650 });
+    expect(foalScore(flatDam, plainGiant, SPRINT)).toBeGreaterThan(
+      foalScore(flatDam, shapelyRunt, SPRINT)
+    );
+  });
+
+  test("with shape and level tied, the anchors and the stars break it", () => {
+    const w = testWorld({ rivalFlock: false });
+    const flatDam = dam(w.db, {});
+    const plain = sire({});
+    expect(foalScore(flatDam, sire({ station: 550, condition: 550 }), SPRINT)).toBeGreaterThan(
+      foalScore(flatDam, plain, SPRINT)
+    );
+    expect(foalScore(flatDam, sire({}, 10), SPRINT)).toBeGreaterThan(
+      foalScore(flatDam, plain, SPRINT)
+    );
+  });
+
+  test("every configured barn breeds toward one of the three shapes", () => {
+    // A housePair index off the end of the list would silently fall back to
+    // shape 0 for that barn via the modulo in playFarm — legal, but it would
+    // quietly narrow the stud market to two shapes and nobody would notice.
+    for (const profile of BOT_FARMS) {
+      expect(profile.housePair).toBeGreaterThanOrEqual(0);
+      expect(profile.housePair).toBeLessThan(BREEDING_SHAPES.length);
+    }
+    // Deliberately UNEVEN (see BotProfile.housePair) — an equal split would
+    // make every shape equally cheap forever, and scarcity is a price signal.
+    const counts = BREEDING_SHAPES.map(
+      (_, i) => BOT_FARMS.filter((b) => b.housePair === i).length
+    );
+    expect(Math.min(...counts)).toBeGreaterThan(0);
   });
 });

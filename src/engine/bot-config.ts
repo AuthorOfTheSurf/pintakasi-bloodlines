@@ -31,6 +31,18 @@ export interface BotProfile {
   claimAggression: number;
   /** Chance to breed when a legal retired pair + the fee are on hand. */
   breedDrive: number;
+  /**
+   * Which of the three BREEDING_SHAPES this barn breeds toward — an index
+   * into that list (0 = agility & sight, 1 = sight & stamina, 2 = stamina &
+   * gameness). A barn's house style, stable across reseeds.
+   *
+   * Spread deliberately unevenly across the roster rather than round-robin:
+   * if every shape had exactly the same number of barns behind it, the stud
+   * market would offer each one in equal supply forever and a player choosing
+   * a shape would face no market at all. Sprint blood being scarcer than
+   * deep-water blood is a price signal, and price signals are the game.
+   */
+  housePair: number;
   /** Chance an age-3+ card is a HARDCORE card (pit nerve). */
   hardcoreNerve: number;
   /** Chance an age-2+ card sells — a claimer at a tag instead of open. */
@@ -140,45 +152,165 @@ export const WEATHER_APPETITE = {
   HOLD_FOR_TOMORROW: 0.9,
 } as const;
 
+/**
+ * THE BREEDING PLAN (round 29) — how a barn picks a stud.
+ *
+ * Until now it did not pick one. `Bots.playFarm` shuffled the hens, shuffled
+ * the studs, and took the first cover that was legal. Round 28 revealed every
+ * retired bird's sheet on the stud card precisely so a shopper could read it,
+ * and then nobody read it — the same failure mode as claiming in round 19 and
+ * paid gacha in round 22: a door with no appetite behind it.
+ *
+ * The cost of that showed up in the doctor's answer key. Breeding for nothing
+ * in particular regresses every line to the middle, and round 29 measured the
+ * result: the MEDIAN bird's best blade beat its runner-up by 11 weighted stat
+ * points, p90 by only 28. Half the flock had no home blade at all. The fog and
+ * the scout report were built to make discovery the skill, and they were
+ * pointed at a flock with nothing to discover.
+ *
+ * So a barn now has a HOUSE SHAPE — one of BREEDING_SHAPES — and scores every
+ * legal (hen, stud) pair on the foal it would expect. Expected foal sheet is
+ * just the parents' midpoint (BREEDING.STAT_VARIANCE is symmetric noise on top
+ * of it), which makes the whole plan readable arithmetic rather than a
+ * simulation.
+ *
+ * The four terms, in Zane's stated order of priority: get the SHAPE, then take
+ * station, condition and stars where you can.
+ */
+export const BREEDING_PLAN = {
+  /**
+   * Per point the foal's target pair is expected to clear its off-pair by
+   * (both measured as two-stat averages, so this is a like-for-like gap).
+   *
+   * Sized against the LEVEL term below using the balance lab's own numbers,
+   * not by feel. A pair carrying +100 on both its stats has a separation of
+   * 100 by this arithmetic and measures 67–71% against a flat bird at its two
+   * home blades (`pairs`); +100 on all four stats is a separation of 0 and
+   * measures 76–85% (`grade`). So a point of LEVEL is genuinely worth more
+   * win rate than a point of SEPARATION — roughly 0.30 versus 0.18 in win
+   * points per stat point.
+   *
+   * This deliberately inverts that, about 3×, because the two terms are not
+   * under equal pressure. Level rises on its own no matter what anyone does:
+   * every barn retires its best birds and stands them at stud, so the stud
+   * market drifts upward for free. NOTHING pushes back on shape drifting to
+   * zero — which is precisely what the doctor found. An unbiased plan would
+   * leave the flock exactly where round 29 found it.
+   *
+   * Judge it on the doctor's `flock shape` line, not here: median home margin
+   * climbing off 11 points is this number working.
+   */
+  SHAPE_WEIGHT: 0.6,
+  /**
+   * Per point of the foal's expected four-stat average. Keeps the plan from
+   * breeding a beautifully-shaped weakling: a bird 200 points down on every
+   * stat loses at EVERY blade, and no amount of shape fixes losing everywhere.
+   * Big enough that a genuine level gap still outbids a genuine shape gap —
+   * the tilt above is a thumb on the scale, not a veto.
+   */
+  LEVEL_WEIGHT: 0.5,
+  /**
+   * Per point of the foal's expected station+condition average — the two
+   * behavioral anchors, third on Zane's list. Under the level weight because
+   * they key no blade: station pays only when outmatched (measured: +9 points
+   * of win rate at full station, and nothing at all against an equal bird) and
+   * condition is a multiplier on an edge you already have rather than an edge.
+   * They never fight the shape term, so they are pure "take it where you can".
+   */
+  ANCHOR_WEIGHT: 0.25,
+  /**
+   * Per HALF-star of the foal's expected inheritance.
+   *
+   * Lower than it first looks like it should be, and the wheel is why. Stars
+   * are the element wheel's volume knob (round 26), and at 5★ a favourable
+   * matchup is worth 77–87% — but the wheel is SYMMETRIC: one element in five
+   * is prey, one is predator, three are neutral. Averaged over the opponents
+   * a bird will actually meet, a big star rating is close to EV-neutral. What
+   * makes it worth paying for at all is that stars can be TIMED — the barn
+   * picks the day (WEATHER_APPETITE), and the doctor measures ~25% of starred
+   * entries running on their own element's day against 20% by chance.
+   *
+   * So: 15 puts a full 5★ (ten half-stars) at 150 points of score, about the
+   * same as 300 points of level. Real money, not a trump card.
+   */
+  STAR_WEIGHT: 15,
+  /**
+   * How many (hen, stud) pairs a barn is willing to price before it breeds.
+   * A cap on WORK, not a sample of the market: browseStuds is a query per hen,
+   * and a broodfarm with twenty retired hens facing a hundred listed studs
+   * would otherwise price two thousand foals to buy one cover.
+   *
+   * Both loops shuffle before the cap bites, and that is not tidiness — it is
+   * the whole difference between this plan working and not. browseStuds
+   * returns rows in insertion order, so the first cut (cap 60, unshuffled)
+   * priced every farm's covers against the SIXTY OLDEST studs in the game:
+   * the unselected founders, every single day, forever. Selection was picking
+   * perfectly out of exactly the wrong pool, and 91 days of it moved the
+   * flock's median home-blade margin from 11.1 to 10.7 — i.e. nothing.
+   *
+   * Sized to comfortably clear the whole stud market as it stands (117 listed
+   * in a 13-week world), so the cap is a runaway guard rather than a real
+   * constraint. If the market ever outgrows it, the shuffle keeps what gets
+   * dropped honest instead of systematically old.
+   */
+  MAX_PAIRS_PRICED: 150,
+  /**
+   * …and how many of those may go to any ONE hen. This is what makes the plan
+   * select a DAM as well as a sire.
+   *
+   * Without it the total cap alone spent a barn's entire budget on the first
+   * hen out of the shuffle — 117 studs priced, cap reached, done. Every cover
+   * in the game therefore had a chosen father and a RANDOM mother, which
+   * halves the selection pressure on shape before `STAT_VARIANCE` (±120 per
+   * stat, ~69 points of separation noise per foal) gets to work on what's
+   * left. Splitting the budget across several hens costs nothing but a query
+   * each and puts both halves of the pairing under the same plan.
+   *
+   * 40 of ~117 listed studs is still a wide market per hen, and 150/40 means
+   * roughly four hens compete for the day's single cover.
+   */
+  MAX_STUDS_PER_HEN: 40,
+} as const;
+
 export const BOT_FARMS: BotProfile[] = [
   // ── The claim sharks: live off the tag ladder, barely breed ─────────────
   {
     id: "bot-1", name: "Sabungero Syndicate", country: "🇵🇭",
     primaryColor: "black", secondaryColor: "gold", style: "claimer",
     flockSeed: 101, entryRate: 0.8, claimAggression: 0.75, breedDrive: 0.05,
-    hardcoreNerve: 0.05, sellRate: 0.45, tagCourage: 0.3,
+    hardcoreNerve: 0.05, sellRate: 0.45, tagCourage: 0.3, housePair: 0,
   },
   {
     id: "bot-2", name: "Tari ng Bayan", country: "🇵🇭",
     primaryColor: "teal", secondaryColor: "white", style: "claimer",
     flockSeed: 202, entryRate: 0.75, claimAggression: 0.6, breedDrive: 0.1,
-    hardcoreNerve: 0.05, sellRate: 0.35, tagCourage: 0.55,
+    hardcoreNerve: 0.05, sellRate: 0.35, tagCourage: 0.55, housePair: 1,
   },
   // ── The broodfarms: breed for the top, sell the surplus ─────────────────
   {
     id: "bot-3", name: "Bulawan Broodfarm", country: "🇵🇭",
     primaryColor: "gold", secondaryColor: "green", style: "breeder",
     flockSeed: 303, entryRate: 0.5, claimAggression: 0.05, breedDrive: 0.9,
-    hardcoreNerve: 0.02, sellRate: 0.5, tagCourage: 0.4,
+    hardcoreNerve: 0.02, sellRate: 0.5, tagCourage: 0.4, housePair: 2, // deep-water blood
   },
   {
     id: "bot-4", name: "Dugo't Dangal Farms", country: "🇵🇭",
     primaryColor: "red", secondaryColor: "white", style: "breeder",
     flockSeed: 404, entryRate: 0.55, claimAggression: 0.1, breedDrive: 0.7,
-    hardcoreNerve: 0.02, sellRate: 0.4, tagCourage: 0.25,
+    hardcoreNerve: 0.02, sellRate: 0.4, tagCourage: 0.25, housePair: 1,
   },
   // ── The pit crews: fight everything, nerve for hardcore ─────────────────
   {
     id: "bot-5", name: "Sagupaan Stables", country: "🇵🇭",
     primaryColor: "orange", secondaryColor: "black", style: "pit",
     flockSeed: 505, entryRate: 0.9, claimAggression: 0.15, breedDrive: 0.3,
-    hardcoreNerve: 0.25, sellRate: 0.1, tagCourage: 0.5,
+    hardcoreNerve: 0.25, sellRate: 0.1, tagCourage: 0.5, housePair: 2,
   },
   {
     id: "bot-6", name: "Kidlat sa Silangan", country: "🇵🇭",
     primaryColor: "blue", secondaryColor: "yellow", style: "pit",
     flockSeed: 606, entryRate: 0.85, claimAggression: 0.2, breedDrive: 0.35,
-    hardcoreNerve: 0.35, sellRate: 0.15, tagCourage: 0.6,
+    hardcoreNerve: 0.35, sellRate: 0.15, tagCourage: 0.6, housePair: 0, // "lightning" — breeds the break
   },
   // ── Round 19: three more stables — the card was running thin and the
   //    Pintakasi's fields were thinner (seven farms, three crowns a week).
@@ -187,33 +319,33 @@ export const BOT_FARMS: BotProfile[] = [
     id: "bot-7", name: "Talisay Tari Club", country: "🇵🇭",
     primaryColor: "purple", secondaryColor: "white", style: "pit",
     flockSeed: 707, entryRate: 0.9, claimAggression: 0.1, breedDrive: 0.25,
-    hardcoreNerve: 0.45, sellRate: 0.1, tagCourage: 0.45, // the nerviest barn in the game
+    hardcoreNerve: 0.45, sellRate: 0.1, tagCourage: 0.45, housePair: 2, // the nerviest barn in the game
   },
   {
     id: "bot-8", name: "Cuchillos de Sonora", country: "🇲🇽",
     primaryColor: "green", secondaryColor: "red", style: "claimer",
     flockSeed: 808, entryRate: 0.7, claimAggression: 0.8, breedDrive: 0.15,
-    hardcoreNerve: 0.1, sellRate: 0.5, tagCourage: 0.7, // shops the dear end of the tag ladder
+    hardcoreNerve: 0.1, sellRate: 0.5, tagCourage: 0.7, housePair: 0, // knife barn — shops the dear end of the tag ladder
   },
   {
     id: "bot-9", name: "Cavite Bloodlines", country: "🇵🇭",
     primaryColor: "brown", secondaryColor: "gold", style: "breeder",
     flockSeed: 909, entryRate: 0.45, claimAggression: 0.05, breedDrive: 0.95,
-    hardcoreNerve: 0.08, sellRate: 0.55, tagCourage: 0.2, // breeds first, fights second
+    hardcoreNerve: 0.08, sellRate: 0.55, tagCourage: 0.2, housePair: 1, // breeds first, fights second
   },
   // ── Round 23: the two speculators ───────────────────────────────────────
   {
     id: "bot-10", name: "Ginto Gaming Club", country: "🇵🇭", handler: "Ginto",
     primaryColor: "gold", secondaryColor: "black", style: "whale",
     flockSeed: 1010, entryRate: 0.5, claimAggression: 0.1, breedDrive: 0.2,
-    hardcoreNerve: 0.1, sellRate: 0.2, tagCourage: 0.5,
+    hardcoreNerve: 0.1, sellRate: 0.2, tagCourage: 0.5, housePair: 1,
     gachaAppetite: 1, // rolls every single day, to the bottom of the wallet
   },
   {
     id: "bot-11", name: "Lupa Land Holdings", country: "🇵🇭", handler: "Lupa",
     primaryColor: "green", secondaryColor: "brown", style: "landlord",
     flockSeed: 1111, entryRate: 0.6, claimAggression: 0.05, breedDrive: 0.3,
-    hardcoreNerve: 0.05, sellRate: 0.15, tagCourage: 0.3,
+    hardcoreNerve: 0.05, sellRate: 0.15, tagCourage: 0.3, housePair: 2,
     landAppetite: 1, // maxes the daily land cap, every day, forever
   },
   // ── Round 23: the cousins' stables ──────────────────────────────────────
@@ -223,18 +355,18 @@ export const BOT_FARMS: BotProfile[] = [
     id: "bot-marco", name: "Marco Gamefarm", country: "🇵🇭", handler: "Marco",
     primaryColor: "red", secondaryColor: "black", style: "pit",
     flockSeed: 1201, entryRate: 0.85, claimAggression: 0.25, breedDrive: 0.35,
-    hardcoreNerve: 0.3, sellRate: 0.2, tagCourage: 0.5,
+    hardcoreNerve: 0.3, sellRate: 0.2, tagCourage: 0.5, housePair: 2,
   },
   {
     id: "bot-reno", name: "Reno Gamefarm", country: "🇵🇭", handler: "Reno",
     primaryColor: "blue", secondaryColor: "white", style: "breeder",
     flockSeed: 1202, entryRate: 0.6, claimAggression: 0.1, breedDrive: 0.85,
-    hardcoreNerve: 0.1, sellRate: 0.45, tagCourage: 0.35,
+    hardcoreNerve: 0.1, sellRate: 0.45, tagCourage: 0.35, housePair: 1,
   },
   {
     id: "bot-kevin", name: "Kevin Gamefarm", country: "🇵🇭", handler: "Kevin",
     primaryColor: "purple", secondaryColor: "gold", style: "claimer",
     flockSeed: 1203, entryRate: 0.75, claimAggression: 0.7, breedDrive: 0.2,
-    hardcoreNerve: 0.15, sellRate: 0.5, tagCourage: 0.6,
+    hardcoreNerve: 0.15, sellRate: 0.5, tagCourage: 0.6, housePair: 0,
   },
 ];

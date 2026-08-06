@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { AGE, BARN, BREEDING, BREED_SPLIT, COVERS, ECONOMY, STARS } from "@/engine/config";
+import {
+  AGE,
+  BARN,
+  BREEDING,
+  BREEDING_SHAPES,
+  BREED_SPLIT,
+  COVERS,
+  DISTANCE_STATS,
+  ECONOMY,
+  STARS,
+} from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { fmtGp } from "@/engine/events";
 
@@ -179,6 +189,80 @@ export default function BreedingPage() {
         One more thing is decided at the cover and hidden from you: the egg&apos;s sex, a flat{" "}
         {femalePct}/{100 - femalePct} coin flip, sealed until hatch day. You won&apos;t know if
         you bred a hen or a rooster until the egg actually opens.
+      </p>
+
+      <h2>What to breed for</h2>
+      <p>
+        Averaging two sheets is easy. Knowing <em>which</em> two sheets to average is the game.
+        Here is the plan the game is built around, in order.
+      </p>
+      <p>
+        <strong>First, pick a shape.</strong> The four fighting stats sit on a dial, from the
+        sprint end to the deep-water end:{" "}
+        {DISTANCE_STATS.map((stat, i) => (
+          <span key={stat}>
+            {i > 0 ? " → " : ""}
+            <strong>{stat}</strong>
+          </span>
+        ))}
+        . Aim your line at <em>two stats that sit next to each other</em> on that dial. There are
+        three such pairs:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Shape</th>
+              <th>The two stats</th>
+              <th>What it makes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {BREEDING_SHAPES.map(({ pair }, i) => (
+              <tr key={pair.join()}>
+                <td>{["Sprint blood", "Middle blood", "Deep-water blood"][i]}</td>
+                <td>
+                  {pair[0]} &amp; {pair[1]}
+                </td>
+                <td>
+                  {
+                    [
+                      "Fast, sharp birds — strongest at the short blades.",
+                      "All-rounders — strongest through the middle of the dial.",
+                      "Grinders — strongest at the long blades.",
+                    ][i]
+                  }
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Why a <em>pair</em> and not one huge stat? Because a pair buys you a <strong>floor</strong>.
+        A bird built on one towering stat is wonderful at one blade and ordinary at the other four —
+        and since you can&apos;t see a chick&apos;s sheet, you won&apos;t know which blade that is
+        for months. A paired bird is strong at the two blades its two stats key, still clearly
+        ahead of a plain bird in the middle, and never truly bad anywhere. Under the fog, the floor
+        is the part you actually own.
+      </p>
+      <p>
+        <strong>Then take the extras where you can get them.</strong> Once two candidate covers
+        give a similar shape, break the tie on <strong>station</strong>, <strong>condition</strong>,
+        and <strong>stars</strong>. None of them keys a blade, so none of them fights your shape —
+        they are pure profit on top of it.
+      </p>
+      <div className="callout tip">
+        <b>Why bother?</b> A shaped bird is what wins the{" "}
+        <Link href="/wiki/pintakasi">Pintakasi</Link> crowns, and a championship is the biggest
+        prize in the game. A flock bred only for &ldquo;big numbers&rdquo; drifts toward birds that
+        are mediocre everywhere and excellent nowhere — and those birds have nothing for the scout
+        report to find, which quietly costs you the discovery game too.
+      </div>
+      <p className="dim">
+        This is the opening plan, not the only one. Single big stats are a real line as well —
+        stars, station and condition are all still on the table for a bird with one enormous
+        number. Start with a pair; deviate once you know why you&apos;re deviating.
       </p>
 
       <h2>The nest rule and the calendar</h2>

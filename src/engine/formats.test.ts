@@ -4,11 +4,14 @@ import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { converge, duel, flat, LAB, type Convergence } from "./balance/lab";
 import {
   BATTLE,
+  BREEDING_SHAPES,
+  DISTANCE_STATS,
   ELEMENTS,
   FIGURE,
   FORMAT_NAMES,
   FORMATS,
   STARS,
+  STAT_NAMES,
   WEATHER,
   weatherOfDay,
   type Element,
@@ -87,6 +90,36 @@ describe("the weapon dial (blade = distance)", () => {
     expect(r1.playByPlay).toBe(r2.playByPlay);
     expect(r1.winner).toBe(r2.winner);
     expect(r1.figures).toEqual(r2.figures);
+  });
+
+  /**
+   * DISTANCE_STATS is spelled out rather than sliced off STAT_NAMES (the shape
+   * arithmetic in BREEDING_SHAPES needs a tuple type). That buys a drift risk,
+   * so it gets pinned from both sides: it must stay the first four of the stat
+   * list AND the exact key set the weight matrix reads. If a future round adds
+   * a fifth distance stat or reorders the dial, this fails before the breeding
+   * plan silently starts optimising for the wrong axis.
+   */
+  test("DISTANCE_STATS is the weight matrix's own axis, in dial order", () => {
+    expect([...DISTANCE_STATS] as string[]).toEqual(STAT_NAMES.slice(0, 4) as string[]);
+    for (const format of FORMAT_NAMES) {
+      expect(Object.keys(FORMATS[format].weights).sort()).toEqual([...DISTANCE_STATS].sort());
+    }
+  });
+
+  /** The three breeding shapes are the ADJACENT pairs, with the rest as "off". */
+  test("BREEDING_SHAPES pairs neighbours on the dial and names the leftovers", () => {
+    expect(BREEDING_SHAPES.map((s) => s.pair)).toEqual([
+      ["agility", "sight"],
+      ["sight", "stamina"],
+      ["stamina", "gameness"],
+    ]);
+    for (const { pair, off } of BREEDING_SHAPES) {
+      expect(off).toHaveLength(2);
+      expect([...pair, ...off].sort()).toEqual([...DISTANCE_STATS].sort());
+      // Adjacent means one step apart on the dial — that is the whole claim.
+      expect(Math.abs(DISTANCE_STATS.indexOf(pair[0]) - DISTANCE_STATS.indexOf(pair[1]))).toBe(1);
+    }
   });
 });
 
