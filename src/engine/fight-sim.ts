@@ -223,26 +223,29 @@ export function simulatePair(
   }
 
   // ── The Pit Figures (rebuilt round 20 — the ghost standard) ───────────────
-  // The winner is timed against an invisible maxed-out bird: its damage
-  // output per turn, normalized by the blade so figures compare across
-  // distances, as a fraction of GHOST_PACE. The loser is scored DOWN from
-  // the winner by the finishing margin — the fight's beaten lengths. One
-  // noise roll for the whole fight (the track variant), so the fog can
-  // never put a loser above the bird that beat it.
+  // EACH bird is timed against an invisible maxed-out bird: its own damage
+  // output per turn, normalized by the blade, as a fraction of GHOST_PACE.
+  // A loss still costs beaten lengths, but a close loser earns its own
+  // ghost-paced performance rather than inheriting the winner's number.
+  // One shared track variant and the ordering cap keep a lower figure from
+  // ever winning the same fight.
   const won = winner === 0 ? a : b;
   const lost = winner === 0 ? b : a;
   const variant = randInt(rng, -FIGURE.NOISE, FIGURE.NOISE);
   const band = (raw: number) =>
     Math.max(0, Math.min(FIGURE.MAX, Math.round((raw + variant) / FIGURE.BAND) * FIGURE.BAND));
 
-  const pace = won.dealt / Math.max(1, turnsFought) / fmt.damageMult;
-  // …plus the class of the bird that was beaten (see config): pace alone
-  // can't tell a monster from a maiden, because every turn is decided by
-  // the DIFFERENCE between two rolls.
   const avg = (s: BirdStats) => Object.values(s).reduce((x, y) => x + y, 0) / 6;
-  const beatenClass = (avg(lost.stats) - FIGURE.CLASS_BASE) / FIGURE.CLASS_DIVISOR;
-  const winnerRaw =
-    (pace / FIGURE.GHOST_PACE[format]) * FIGURE.GHOST_FIGURE + beatenClass;
+  const rawFigure = (self: Fighter, opponent: Fighter) => {
+    const pace = self.dealt / Math.max(1, turnsFought) / fmt.damageMult;
+    // Company still matters, but it is the company THIS bird faced. Pace
+    // alone cannot distinguish monsters from maidens because turns roll on
+    // the difference between two books, not their absolute size.
+    const opponentClass = (avg(opponent.stats) - FIGURE.CLASS_BASE) / FIGURE.CLASS_DIVISOR;
+    return (pace / FIGURE.GHOST_PACE[format]) * FIGURE.GHOST_FIGURE + opponentClass;
+  };
+  const winnerRaw = rawFigure(won, lost);
+  const loserRaw = rawFigure(lost, won);
   // Beaten lengths: the gap in wind left at the end, as a fraction of the
   // loser's own pool. A bird that ran, or emptied, was beaten by the length
   // of the pit; a bird that lost on wind at the bell was beaten by inches.
@@ -255,16 +258,14 @@ export function simulatePair(
   // winner would tie the loser's floor — the one inversion the ghost
   // standard promises can't happen.
   const winnerFigure = Math.max(FIGURE.BAND, band(winnerRaw));
-  // The loser is scored down from the winner's CLAMPED performance, not the
-  // raw one — at ROLL_DIVISOR 85 a blowout's raw pace can sail far past
-  // FIGURE.MAX, and subtracting the beaten lengths from the unclamped number
-  // used to leave the flattened bird at 145 (a maiden crushed by a monster
-  // posted a near-elite figure). The Math.max floor closes the mirror bug,
-  // recorded in BALANCE.md, where a winner banding to 0 pushed the loser to
-  // −5, below the documented [0, MAX] range.
+  // The loser is independently ghost-scored, then marked down by its actual
+  // beaten lengths. Capping below the winner preserves the one unbreakable
+  // reading rule, even when stronger-company credit makes a loser's raw
+  // effort look bigger. Clamp the raw score before subtraction so a blowout
+  // cannot flatten at 145.
   const loserFigure = Math.max(
     0,
-    Math.min(winnerFigure - FIGURE.BAND, band(Math.min(winnerRaw, FIGURE.MAX) - beaten))
+    Math.min(winnerFigure - FIGURE.BAND, band(Math.min(loserRaw, FIGURE.MAX) - beaten))
   );
   const figures: [number, number] =
     winner === 0 ? [winnerFigure, loserFigure] : [loserFigure, winnerFigure];

@@ -457,13 +457,13 @@ export const BATTLE = {
 // an invisible maxed-out GHOST, and the rest of the field is scored down
 // from the winner by beaten lengths. Same shape here:
 //
-//  1. The WINNER's figure is absolute — its damage output per turn
+//  1. EACH bird's figure starts absolute — its damage output per turn
 //     (normalized by the blade, so figures compare across distances)
 //     measured against GHOST_PACE, the pace a maxed-out bird sets.
 //     Matching the ghost = GHOST_FIGURE (100). Typical starters ≈ 50.
-//  2. The LOSER is scored DOWN from the winner by the finishing margin —
-//     wind left, the fight's "beaten lengths." A narrow loss to a big
-//     performance still figures well; a blowout does not.
+//  2. A loss is then marked DOWN by the finishing margin — wind left, the
+//     fight's "beaten lengths." A close loser has its own near-winner pace
+//     and loses only a little; a blowout has poor pace AND a deep mark-down.
 //  3. ONE noise roll per fight, applied to both sides (PFL's track
 //     variant), so the fog never reorders the result.
 //
@@ -475,9 +475,9 @@ export const BATTLE = {
 // all. So the figure also books the CLASS of the bird that was beaten,
 // measured off the starter band. That's how graded-stakes figures work too:
 // a strong field lifts everyone's number, and beating a monster is the
-// whole point. The old "narrow loss to a monster figures well" property
-// survives — the loser now inherits it through the winner's figure instead
-// of leapfrogging it.
+// whole point. A narrow loss to a monster figures well because the loser
+// independently earns its own pace and company credit, then takes only a
+// small beaten-length mark-down.
 export const FIGURE = {
   // The pace a maxed-out ghost sets, per blade — tuned so an even fight
   // between STARTERS figures ~50 in every format (gaff fights run longer,

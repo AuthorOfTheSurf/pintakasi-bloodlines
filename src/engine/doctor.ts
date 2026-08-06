@@ -210,7 +210,8 @@ function checkNoNegatives(db: DB): Invariant {
  * regression guard on that construction — and it also catches an unmirrored
  * win row, since every fight is contracted to write two.
  *
- * `>=` not `>`: the band clamps at 0, so two dreadful performances can tie.
+ * Strict `>`: the scorer caps a loser one public band below its winner, even
+ * when both independent ghost scores hit the floor.
  */
 function checkNoInversions(db: DB): Invariant {
   const log = db.select().from(battleLog).all();
@@ -232,10 +233,10 @@ function checkNoInversions(db: DB): Invariant {
         offenders.push(`log #${w.id}: win row with no mirrored loss`);
       continue;
     }
-    if (mirror.pitFigure > w.pitFigure) {
+    if (mirror.pitFigure >= w.pitFigure) {
       inversions++;
       if (offenders.length < DOCTOR.OFFENDER_SAMPLE)
-        offenders.push(`log #${w.id}: winner ${w.pitFigure} < loser ${mirror.pitFigure}`);
+        offenders.push(`log #${w.id}: winner ${w.pitFigure} <= loser ${mirror.pitFigure}`);
     }
   }
   return {

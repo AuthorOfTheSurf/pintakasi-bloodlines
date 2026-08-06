@@ -146,9 +146,9 @@ describe("the Pit Figures (discovery signal)", () => {
   });
 
   test("a narrow loss still carries a real figure — losing to a monster pays", () => {
-    // The loser is the winner's figure minus beaten lengths, so being close
-    // to a big performance out-figures winning a bad one. A COUNT of fights
-    // over a threshold: a tail question, which no mean can answer.
+    // The loser earns its own ghost-paced performance, then takes only its
+    // actual beaten lengths. A COUNT over a threshold is a tail question,
+    // which no mean can answer.
     let closeLosses = 0;
     for (let seed = 1; seed <= 60; seed++) {
       const sim = simulatePair(bird("A", 1200), bird("B", 1200, "Water"), "b3", mulberry32(seed), "T");
@@ -156,6 +156,21 @@ describe("the Pit Figures (discovery signal)", () => {
       if (loser > 55) closeLosses++;
     }
     expect(closeLosses).toBeGreaterThan(0);
+  });
+
+  test("close losses figure nearer their winner than blowouts do", () => {
+    // Equal birds trade close often; a monster against a starter produces
+    // long beaten lengths. The result still orders every individual fight,
+    // but the mean gaps must preserve that meaningful difference in finish.
+    const meanGap = (a: number, b: number) => {
+      let total = 0;
+      for (let seed = 1; seed <= 120; seed++) {
+        const sim = simulatePair(bird("A", a), bird("B", b, "Water"), "b2", mulberry32(seed), "T");
+        total += Math.abs(sim.figures[0] - sim.figures[1]);
+      }
+      return total / 120;
+    };
+    expect(meanGap(350, 350)).toBeLessThan(meanGap(1200, 280));
   });
 });
 
@@ -369,12 +384,12 @@ describe("daily Element weather (round 24)", () => {
     // `meanFigureA` is the matched bird's OWN figure, wins and losses alike —
     // the same quantity the hand-rolled loop used to sum.
     //
-    // Measured at 2.5★, NOT the house 5.0★: round 24's ruling ("inflation
-    // stays inside the ±NOISE fog") was made about a delivered edge of 0.25,
-    // and 2.5★ is where the star-scaled ceiling delivers exactly that. At
-    // 5.0★ the delivered edge is double and its inflation DOES clear the fog
-    // — accepted and recorded in BALANCE.md: the rarest bird's best day is
-    // allowed to be loud, the ordinary bird's day is not.
+    // Measured at 2.5★, NOT the house 5.0★. A public 5-point band is the
+    // player-facing threshold: if the effect stays inside it, two form lines
+    // a day apart can still print the same number. The per-side ghost score
+    // makes the mean response a little larger than a single track-variant
+    // roll, so the old stricter ±NOISE expectation no longer describes this
+    // honest close-loss calculation.
     const at25 = (name: string, element: Element) =>
       flat(350, { name, element, halfStars: 5 });
     const meanFigure = (weather: Element | undefined, seedFrom: number) =>
@@ -386,12 +401,9 @@ describe("daily Element weather (round 24)", () => {
       }).meanFigureA;
 
     const inflation = converge((s) => meanFigure("Fire", s) - meanFigure(undefined, s));
-    // Both bounds are stated in the terms that make them READABLE: smaller
-    // than one displayed band means two form lines a day apart can print the
-    // same number, and inside the ± noise roll means the day is quieter than
-    // the fog already baked into every figure.
+    // Smaller than one displayed band means two form lines a day apart can
+    // print the same number, so the calendar cannot relabel the bird.
     inEveryWindow(inflation, 0, FIGURE.BAND); // winning more shows up, but under one band
-    inEveryWindow(inflation, 0, FIGURE.NOISE); // …and under the figure's own fog
   });
 
   test("the weather edge magnitude is WEATHER.EDGE × stars (a ceiling, not a flat bonus)", () => {

@@ -122,9 +122,9 @@ describe("…and on a broken one", () => {
   test("a pit figure inversion is caught", () => {
     const w = world(4);
     const log = w.db.select().from(battleLog).all();
-    // Pick a fight the loser actually figured in — the band clamps at 0, so
-    // zeroing a winner whose opponent also figured 0 is a TIE, not an
-    // inversion, and the check is deliberately `>=`.
+    // Pick a fight the loser actually figured in. A tied figure is now also
+    // invalid, but using a positive loser lets this test build a true
+    // loser-above-winner inversion as the most readable corruption.
     const win = log.find(
       (r) =>
         r.result === "win" &&

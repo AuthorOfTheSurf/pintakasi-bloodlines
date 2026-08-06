@@ -272,7 +272,7 @@ export default function FightingPage() {
         built the way a horse-racing speed figure is built.
       </p>
       <p>
-        <strong>The winner is timed against a ghost.</strong> Every fight is measured against an
+        <strong>Both birds are timed against a ghost.</strong> Every fight is measured against an
         invisible, maxed-out bird&apos;s pace for that exact blade. Match the ghost&apos;s pace and
         you score {FIGURE.GHOST_FIGURE}. An even fight between two starter-grade birds typically
         lands well under that — there&apos;s real room to grow into.
@@ -301,13 +301,13 @@ export default function FightingPage() {
         and you can compare one bird&apos;s B1 figure to its B5 figure honestly.
       </p>
       <p>
-        <strong>The loser is scored down from the winner.</strong> It doesn&apos;t get an
-        independent rating — it&apos;s marked down from the winner&apos;s figure by the
-        &ldquo;beaten lengths&rdquo;: how much wind the winner had left at the bell, as a share of
-        the loser&apos;s own pool. A photo-finish loss is marked down only a little; a bird that
-        ran, or emptied its wind completely, is marked down the full margin. A loss is never marked
-        down by more than {FIGURE.BEATEN_SCALE} figure points at the extreme, and never by less than{" "}
-        {FIGURE.MIN_BEATEN} — a loss always sits at least one band below the win.
+        <strong>A loss is marked down by beaten lengths.</strong> Each bird earns its own
+        ghost-paced figure first. Then the losing bird loses points for how much wind the winner had
+        left at the bell, as a share of the loser&apos;s own pool. A photo-finish loss stays close
+        to the winner&apos;s number; a bird that ran, or emptied its wind completely, takes the
+        full margin. A loss is never marked down by more than {FIGURE.BEATEN_SCALE} figure points
+        at the extreme, and never by less than {FIGURE.MIN_BEATEN} — a loss always sits at least
+        one band below the win.
       </p>
       <p>
         <strong>The figure also books the class of the bird you beat.</strong> Beating a
@@ -330,8 +330,8 @@ export default function FightingPage() {
       </p>
       <div className="callout tip">
         <b>The rule that makes figures trustworthy.</b> The winner can never figure below the bird
-        it beat. The loser&apos;s figure is built <em>from</em> the winner&apos;s by subtracting a
-        real amount — so a 45 can never beat a 55. If you ever see a lower figure win, something
+        it beat. Both birds earn their own pace number, but the loser&apos;s real beaten-length
+        mark-down keeps it below the winner — so a 45 can never beat a 55. If you ever see a lower figure win, something
         about the two figures you&apos;re comparing isn&apos;t from the same fight.
       </div>
       <div className="callout tip">
