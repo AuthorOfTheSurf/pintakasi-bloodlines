@@ -42,7 +42,43 @@ export function weightedPick<T extends string>(rng: Rng, weights: Record<T, numb
   return entries[entries.length - 1][0];
 }
 
-/** Fresh unpredictable seed for live play (tests pass their own). */
+/**
+ * THE WORLD SEED (round 35) — the one place the engine was not deterministic,
+ * and it was costing us more than we knew.
+ *
+ * `freshSeed` is called wherever the world needs unpredictability a caller
+ * didn't supply: a new lobby's draw, a gacha roll, a bracket. In live play
+ * that is exactly right. In a SIMULATION it meant every run built a different
+ * world, which quietly invalidated the two things we use simulation for:
+ *
+ *   1. A/B measurement. Round 35's speed work compared 2:37, 2:22 and 2:58
+ *      across three runs that fought 10,556, 10,000 and 10,277 fights — the
+ *      wall-clock differences were mostly different amounts of work, so the
+ *      numbers could not tell an optimization from a fluke.
+ *   2. Balance reading. Three runs of effectively identical code produced
+ *      gen-2 stat gains of +34.4, +23.4 and +23.2 — an ELEVEN POINT spread
+ *      from nothing but the seed. We had been reading five-point round-over-
+ *      round deltas on that ladder as signal for several rounds, and round 34
+ *      opened an investigation into a "fall" of 10.2 points that sat entirely
+ *      inside this band. There was nothing to find.
+ *
+ * So a run can now pin the stream. `seedWorld(n)` makes every subsequent
+ * `freshSeed()` deterministic, which makes a whole 91-day world reproducible
+ * — the same fix serves both problems, because both are the same problem.
+ * Unseeded (the default, and all of live play) behaves exactly as before.
+ *
+ * This is the sim's `--converge` moment: `bun run balance` has measured its
+ * own noise since round 26, and the world simulation never could.
+ */
+let worldRng: Rng | null = null;
+
+/** Pin the world stream — `bun run simulate --seed=N`. Null resets to live. */
+export function seedWorld(seed: number | null): void {
+  worldRng = seed === null ? null : mulberry32(seed);
+}
+
+/** Fresh seed for live play (tests pass their own; sims may pin it). */
 export function freshSeed(): number {
+  if (worldRng) return randInt(worldRng, 1, 2 ** 31 - 1);
   return (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0;
 }

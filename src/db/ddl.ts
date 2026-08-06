@@ -174,4 +174,43 @@ CREATE TABLE IF NOT EXISTS snapshots (
   data TEXT NOT NULL
 );
 
+-- ── INDEXES (round 35) ─────────────────────────────────────────────────────
+-- There were NONE until now, on any table, and it had quietly become the
+-- single biggest cost in the project. Every lookup on a non-key column was a
+-- full table scan, so the sim got slower as the square of the world's age: a
+-- 91-day run took 13 minutes, and 35 of those 21,450 battle-log rows were
+-- being re-read tens of thousands of times.
+--
+-- The hot path is the SCOUT. Lobbies.scoutReport and formatRecords fetch
+-- a bird's whole fight history to work out which blade it reads best at, and
+-- the bots call that for every active bird every day — roughly 32,000 scans
+-- of a table that ends the run at 21,450 rows. Measured on a real 91-day
+-- database, 500 of those lookups took 5.36s unindexed and 0.008s indexed.
+--
+-- Integer PRIMARY KEY columns are SQLite rowids and need nothing; text
+-- primary keys (farms.id, birds.id) already get an automatic unique index.
+-- What follows is only the columns we actually filter on and don't own a key
+-- for. Composites are ordered so the leading column serves the common
+-- single-column query too — battle_log(bird_id, day_index) answers both
+-- "this bird's whole career" and "did this bird fight today".
+CREATE INDEX IF NOT EXISTS ix_battle_log_bird_day ON battle_log(bird_id, day_index);
+CREATE INDEX IF NOT EXISTS ix_battle_log_lobby ON battle_log(lobby_id);
+CREATE INDEX IF NOT EXISTS ix_battle_log_tournament ON battle_log(tournament_id);
+CREATE INDEX IF NOT EXISTS ix_battle_log_farm ON battle_log(farm_id);
+CREATE INDEX IF NOT EXISTS ix_birds_farm_status ON birds(farm_id, status);
+CREATE INDEX IF NOT EXISTS ix_birds_status ON birds(status);
+CREATE INDEX IF NOT EXISTS ix_birds_mother ON birds(mother_id);
+CREATE INDEX IF NOT EXISTS ix_lobby_entries_lobby ON lobby_entries(lobby_id, status);
+CREATE INDEX IF NOT EXISTS ix_lobby_entries_bird_day ON lobby_entries(bird_id, day_entered);
+CREATE INDEX IF NOT EXISTS ix_lobby_entries_farm ON lobby_entries(farm_id);
+CREATE INDEX IF NOT EXISTS ix_lobbies_status_day ON lobbies(status, day_opened);
+CREATE INDEX IF NOT EXISTS ix_claims_entry ON claims(entry_id, status);
+CREATE INDEX IF NOT EXISTS ix_claims_farm ON claims(farm_id);
+CREATE INDEX IF NOT EXISTS ix_tournament_entries_tournament ON tournament_entries(tournament_id);
+CREATE INDEX IF NOT EXISTS ix_tournament_entries_bird ON tournament_entries(bird_id, status);
+CREATE INDEX IF NOT EXISTS ix_tournaments_week ON tournaments(week_index, division);
+CREATE INDEX IF NOT EXISTS ix_events_farm ON events(farm_id);
+CREATE INDEX IF NOT EXISTS ix_events_day ON events(day_index);
+CREATE INDEX IF NOT EXISTS ix_gacha_tokens_farm ON gacha_tokens(farm_id);
+
 `;

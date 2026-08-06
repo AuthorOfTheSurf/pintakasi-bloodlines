@@ -86,7 +86,27 @@ export class Game {
     return this.tick("week");
   }
 
+  /**
+   * ONE TICK IS ONE TRANSACTION (round 35).
+   *
+   * Two reasons, and the speed one is the smaller. Every `.run()` used to be
+   * its own implicit transaction, so a single day — thousands of wallet
+   * updates, entry settlements, battle-log inserts and event rows — paid the
+   * commit cost thousands of times over.
+   *
+   * The one that actually matters is ATOMICITY. A tick moves money in a dozen
+   * places and its correctness is defined by the conservation proof, which
+   * only holds ACROSS the whole day: escrow leaves a wallet at entry and comes
+   * back at settle-up, and between those two writes the books do not balance.
+   * A crash in the middle used to leave a world permanently short — exactly
+   * the "800.00 GP MISSING" shape we saw twice from interrupted sims and both
+   * times had to reason our way past. Now a day either happens or it doesn't.
+   */
   private tick(kind: "day" | "week"): TickView {
+    return this.database.transaction((): TickView => this.runTick(kind)) as TickView;
+  }
+
+  private runTick(kind: "day" | "week"): TickView {
     // Baseline snapshot for the pre-tick day, if this world has none yet —
     // the first diff needs something to diff against.
     const preDay = this.clock.currentDay();

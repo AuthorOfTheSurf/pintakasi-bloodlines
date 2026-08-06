@@ -13,6 +13,22 @@ export type DB = BetterSQLite3Database<typeof schema>;
 
 const req = createRequire(import.meta.url);
 
+/**
+ * Round 35, alongside the indexes and the per-tick transaction.
+ *
+ * `synchronous = NORMAL` is the one that matters: under WAL it stops fsyncing
+ * on every commit and syncs at checkpoints instead. The durability it trades
+ * away is narrow and, for this project, already accepted — a power cut can
+ * cost the most recent commits, but NOT integrity, because WAL still recovers
+ * a consistent database. Sim worlds are explicitly disposable (house rule),
+ * and the live world is one hand-played game we can re-tick.
+ *
+ * The cache is 64 MB rather than SQLite's 2 MB default; the working set is a
+ * 60 MB database being scanned repeatedly, so this is the difference between
+ * reading the battle log from memory and reading it from disk.
+ */
+const SPEED_PRAGMAS = ["synchronous = NORMAL", "cache_size = -64000", "temp_store = MEMORY"];
+
 /** Open (and bootstrap) a database — ":memory:" for tests. */
 export function createDb(file: string = defaultDbPath()): DB {
   if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
@@ -21,6 +37,7 @@ export function createDb(file: string = defaultDbPath()): DB {
     const { Database } = req("bun:sqlite");
     const sqlite = new Database(file);
     sqlite.run("PRAGMA journal_mode = WAL");
+    for (const p of SPEED_PRAGMAS) sqlite.run(`PRAGMA ${p}`);
     for (const stmt of splitStatements(DDL)) sqlite.run(stmt);
     const { drizzle } = req("drizzle-orm/bun-sqlite");
     return drizzle(sqlite, { schema }) as unknown as DB;
@@ -29,13 +46,31 @@ export function createDb(file: string = defaultDbPath()): DB {
   const Database = req("better-sqlite3");
   const sqlite = new Database(file);
   sqlite.pragma("journal_mode = WAL");
+  for (const p of SPEED_PRAGMAS) sqlite.pragma(p);
   sqlite.exec(DDL);
   const { drizzle } = req("drizzle-orm/better-sqlite3");
   return drizzle(sqlite, { schema }) as DB;
 }
 
+/**
+ * Split the DDL into statements for bun:sqlite, which runs one at a time
+ * (better-sqlite3's `exec` takes the whole script and needs none of this).
+ *
+ * ⚠ COMMENTS ARE STRIPPED FIRST, and that is not tidiness — it is a bug fix.
+ * This used to split the raw text on ";", so a semicolon inside a `--` comment
+ * ended a "statement" early and left the rest of the comment as a chunk with
+ * no SQL in it, which bun:sqlite rejects as an empty query. Round 35 hit it
+ * immediately: the new index block explains WHY each index exists, per the
+ * house comment rule, and one of those sentences contained a semicolon.
+ *
+ * Given how densely this codebase comments, the DDL had to become commentable
+ * rather than the comment become semicolon-free. Safe because no string
+ * literal in the DDL contains "--" (the CHECK constraints are all single words
+ * in quotes), so there is nothing for the strip to eat by mistake.
+ */
 function splitStatements(ddl: string): string[] {
   return ddl
+    .replace(/--[^\n]*/g, "")
     .split(";")
     .map((s) => s.trim())
     .filter(Boolean);

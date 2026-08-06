@@ -6,11 +6,14 @@
  * play theirs inside the tick. View the newest run with `bun dev:sim` →
  * http://localhost:3435/admin.
  *
- *   bun run simulate [days=91] [--keep] [--db=path] [--force]
+ *   bun run simulate [days=91] [--keep] [--db=path] [--force] [--seed=N]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
  * --force  required to reseed a db holding registered player farms.
+ * --seed   pin the world stream — the SAME seed replays the SAME world, which
+ *          is what makes an A/B of two code paths honest. Omit for live-style
+ *          randomness. See seedWorld in engine/rng.
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
 import { existsSync, rmSync } from "node:fs";
@@ -24,6 +27,7 @@ import { diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
+import { seedWorld } from "@/engine/rng";
 
 const args = process.argv.slice(2);
 const dayArg = args.find((a) => /^\d+$/.test(a));
@@ -33,6 +37,22 @@ const days = dayArg === undefined ? SIMULATION.DEFAULT_DAYS : Number(dayArg);
 const keep = args.includes("--keep");
 const force = args.includes("--force");
 const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
+// --seed=N pins the world stream so a run is REPRODUCIBLE (round 35). Without
+// it every run builds a different world, which is right for live play and
+// wrong for measurement: it makes an A/B of two code paths compare two
+// different worlds, and it puts an ±11-point noise band under the BLOODLINES
+// ladder that nothing was accounting for. Use the same seed to A/B a change;
+// use a spread of seeds to find out how big a delta has to be to mean
+// anything at all.
+const seedArg = args.find((a) => a.startsWith("--seed="))?.slice("--seed=".length);
+if (seedArg !== undefined) {
+  if (!/^\d+$/.test(seedArg)) {
+    console.error(`--seed must be a whole number (got "${seedArg}")`);
+    process.exit(1);
+  }
+  seedWorld(Number(seedArg));
+}
+
 const policyArg = args.find((a) => a.startsWith("--discovery-policy="))?.slice("--discovery-policy=".length);
 if (policyArg && policyArg !== "current" && policyArg !== "end-first") {
   console.error(`Unknown discovery policy "${policyArg}" — use current or end-first.`);

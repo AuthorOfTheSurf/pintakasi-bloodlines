@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { count, eq, type SQL } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { DB } from "@/db/client";
 import {
   battleLog,
@@ -60,17 +61,37 @@ export interface Topline {
   farms: number;
 }
 
+/**
+ * `SELECT count(*)` — one number out of SQLite instead of a whole table into
+ * JS. Typed loosely on purpose: it takes any table and any optional filter,
+ * and every caller here only ever wants the count.
+ */
+function countRows(db: DB, table: SQLiteTable, where?: SQL): number {
+  const q = db.select({ n: count() }).from(table);
+  return (where ? q.where(where) : q).get()!.n;
+}
+
 export function computeTopline(db: DB): Topline {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
   const allFarms = db.select().from(farms).all();
   const allBirds = db.select().from(birds).all();
-  const pendingEntries = db.select().from(lobbyEntries).all().filter((e) => e.status === "pending");
-  const pendingClaims = db.select().from(claims).all().filter((c) => c.status === "pending");
+  // ⚠ FILTER IN SQLITE, NOT IN JS (round 35). These three read `.all()` and
+  // filtered afterwards, which materialized every row the table had ever held
+  // in order to keep the handful still pending. `recordSnapshot` runs TWICE
+  // per tick, so the cost grew with the world's whole history on every single
+  // day — a quadratic hiding inside a function that looks like bookkeeping.
+  // Pending rows are a tiny slice of these tables by day 91.
+  const pendingEntries = db
+    .select()
+    .from(lobbyEntries)
+    .where(eq(lobbyEntries.status, "pending"))
+    .all();
+  const pendingClaims = db.select().from(claims).where(eq(claims.status, "pending")).all();
   const pendingCrowns = db
     .select()
     .from(tournamentEntries)
-    .all()
-    .filter((e) => e.status === "pending");
+    .where(eq(tournamentEntries.status, "pending"))
+    .all();
 
   const walletCents = allFarms.reduce((s, f) => s + f.gp * 100 + f.gpCents, 0);
   const tournamentEscrowCents = pendingCrowns.reduce((s, e) => s + e.fee * 100, 0);
@@ -94,10 +115,13 @@ export function computeTopline(db: DB): Topline {
     landMinted: landStaked + landLiquid,
     landStaked,
     landLiquid,
-    fights: db.select().from(battleLog).all().filter((r) => r.result === "win").length,
-    cancelled: db.select().from(lobbyEntries).all().filter((e) => e.status === "unmatched").length,
+    // COUNT IN SQLITE (round 35). These pulled whole tables into JS to measure
+    // their length — battle_log alone is 21,000 rows by day 91, read twice a
+    // tick for a number SQLite can produce without building a single object.
+    fights: countRows(db, battleLog, eq(battleLog.result, "win")),
+    cancelled: countRows(db, lobbyEntries, eq(lobbyEntries.status, "unmatched")),
     covers: allBirds.filter((b) => b.motherId !== null).length,
-    rolls: db.select().from(gachaTokens).all().length,
+    rolls: countRows(db, gachaTokens),
     birds: allBirds.length,
     eggs: byStatus.egg,
     active: byStatus.active,
