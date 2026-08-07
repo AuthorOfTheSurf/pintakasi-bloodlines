@@ -5,7 +5,8 @@ import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Game } from "./game";
-import { roman, uniqueName } from "./naming";
+import { drawStarterNames, NAME_POOL, roman, uniqueName } from "./naming";
+import { mulberry32 } from "./rng";
 import { onCard } from "./testkit";
 import { BARN } from "./config";
 
@@ -38,6 +39,26 @@ describe("world-unique bird names", () => {
 
   test("roman numerals hold up", () => {
     expect([2, 3, 4, 9, 14, 40].map(roman)).toEqual(["II", "III", "IV", "IX", "XIV", "XL"]);
+  });
+
+  test("past the curated pool, names are combinatorial, not roman successors", () => {
+    // A sim grows past the 58-name pool fast; the supply used to fall straight
+    // to "Hotshot II"… "Hotshot IX". Now a prefix × root tier sits between the
+    // pool and the roman successors, so a bigger world fills with two-word
+    // fighting names instead.
+    const db = createDb(":memory:");
+    seedGame(db);
+    const beyond = 40;
+    const names = drawStarterNames(db, NAME_POOL.length + beyond, mulberry32(42));
+    expect(names.length).toBe(NAME_POOL.length + beyond);
+    expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(names.length);
+
+    // Every name past the curated pool is a two-word "Prefix Root" — no
+    // trailing roman numeral, no numbered repeat of a pool name.
+    for (const name of names.slice(NAME_POOL.length)) {
+      expect(name.split(" ").length).toBe(2);
+      expect(name).not.toMatch(/\s[IVXL]+$/);
+    }
   });
 });
 
