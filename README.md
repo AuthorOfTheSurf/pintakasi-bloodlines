@@ -2,11 +2,11 @@
 
 Breed, fight, retire. A digital sabong auto-battler where **careers end in the breeding barn, not the grave** — and hardcore duels (loser force-retired) carry the stakes.
 
-**There is no UI.** Claude is the game client (MCP at `/api/mcp`); REST exists for scripted tests.
+**Claude is the game client** — the game is played through MCP at `/api/mcp`, and REST exists for scripted tests. There are two web pages, and neither of them plays the game: the **Stewards' Office** at `/admin` (what the operators watch) and **The Pintakasi Handbook** at `/wiki` (the player-facing rules, every number imported live from the engine).
 
 ## Source of truth
 
-The build spec is `wiki/projects/pintakasi-mvp.md` in the `zane-knowledge-system` repo — the scope ledger (items 1–25), age gates, and all design rulings live there. This repo implements the IN spine (1–15).
+In this repo, in order: **`src/engine/config.ts`** (every balance knob, with a comment saying what it does in gameplay terms), **`RULINGS.md`** (what changed each round and why — including the reversals), **`CLAUDE.md`** / **`AGENTS.md`** (the house rules for working here), **`PROGRESS.md`** (standing watch items). The original build spec lives in `wiki/projects/pintakasi-mvp.md` in the private `zane-knowledge-system` repo; it is the historical scope ledger, not the current rules.
 
 ## Stack
 
@@ -14,24 +14,33 @@ Next.js + TypeScript + Bun · SQLite (Drizzle + better-sqlite3) · `@modelcontex
 
 ## Layout
 
-- `src/engine/` — the game, pure TS, no HTTP: `GameClock`, `Flock`, `Breeding`, `Battle`, `Gacha`; **`config.ts` holds every balance seed** (tuning = one-line edits).
-- `src/db/` — Drizzle schema, client, seed script.
+- `src/engine/` — the game, pure TS, no HTTP: `GameClock`, `Flock`, `Breeding`, `Lobbies` (the daily card), `Tournaments` (the championships), `Gacha`, `Farms`, plus `fight-sim.ts` (the combat engine itself) and `bots.ts` / `auto-play.ts` (the stables that aren't you). **`config.ts` holds every balance seed** — tuning is a one-line edit.
+- `src/db/` — Drizzle schema, client, seed script. ⚠ `schema.ts` and `ddl.ts` are **hand-synced**: edit both. `createDb()` runs the DDL on open, so a database bootstraps itself.
 - `src/app/api/` — thin REST routes + `/api/mcp`.
+- `src/app/wiki/` — the Handbook. **Change a game rule, change the Handbook in the same commit** (see `CLAUDE.md`).
+- `scripts/` — `simulate.ts`, `doctor.ts`, `balance.ts`.
 
 ## Run
 
 ```sh
 bun install
-bun run db:push     # create the SQLite schema (data/game.db)
 bun run db:seed     # starter flock (includes retired birds so breeding works turn one)
 bun dev             # http://localhost:3434
 ```
 
-Tests: `bun test` · Types: `bun run typecheck`
+That's the whole setup — there is no migration step. `createDb()` executes the DDL in `src/db/ddl.ts` when it opens the file, so the schema exists the moment anything touches the database.
+
+The database is **per-machine**: `data/*.db` is gitignored, so a clone never carries a world with it and a `git pull` can never overwrite yours. Running `db:seed` twice is safe and does nothing the second time — "Already seeded … delete the file to reseed" is the expected message, not a failure.
+
+To play, point an MCP client at the running server. `.mcp.json` in the repo root already does this for Claude Code (`http://localhost:3434/api/mcp`) — start `bun dev` first, since the endpoint is the server.
+
+Tests: `bun test` · Types: `bun run typecheck` · Health of a world: `bun run doctor` · The combat lab: `bun run balance`
 
 ## The loop (what "playable" means)
 
-Breed an egg ("Egg of \<mother\>", age 0) → it hatches next **Hatch Friday** as an age-1 chick → practice and train through the discovery year → real fights from age 2 → **age 3 the fork opens**: hardcore runs (loser force-retired) and safe retirement unlock on the same birthday → ride the career (cap 9) or convert at peak stud value → breed the retiree (bloodline restriction: no siblings/parents/grandparents/great-grandparents) → a measurably better bird next Friday.
+Breed an egg ("Egg of \<mother\>", age 0) → it hatches next **Hatch Friday** as an age-1 chick → fight the **discovery year** as a juvenile → real fights from age 2 → **age 3 the fork opens**: hardcore runs (loser force-retired) and safe retirement unlock on the same birthday → ride the career (cap 9) or retire while ahead → breed the retiree (bloodline restriction: no siblings/parents/grandparents/great-grandparents) → a measurably better bird next Friday.
+
+⚠ **There is no training, and stats are hidden.** A bird's six stats are fixed at birth and stay behind a fog until it retires (round 28) — so the skill is *discovery*, not development: card the bird across the five blades, read its Pit Figures, and work out what it already is. Every rule the player needs is in the Handbook at `/wiki`.
 
 ## Databases — which world is which
 
