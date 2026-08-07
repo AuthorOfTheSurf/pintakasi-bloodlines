@@ -914,6 +914,10 @@ export class Lobbies {
           opponentName: other.row.name,
           selfGrade: overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition),
           opponentGrade: overallGradeOf(other.row.agility + other.row.sight + other.row.stamina + other.row.gameness + other.row.station + other.row.condition),
+          // `sides` is built in simulatePair's argument order above, so the
+          // loop index IS the side. This is the only thing that lets a fight be
+          // replayed from its seed — see schema.ts.
+          side: i,
           result: side.won ? "win" : "loss",
           pitFigure: side.figure,
           // Net to the bird's barn, in cents: the winner keeps the other

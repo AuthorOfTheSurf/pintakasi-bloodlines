@@ -172,6 +172,18 @@ export const battleLog = sqliteTable("battle_log", {
   // after retirement reveals a sheet or a later ruleset changes the ladder.
   selfGrade: text("self_grade").notNull().default("B+"),
   opponentGrade: text("opponent_grade").notNull().default("B+"),
+  // WHICH ARGUMENT THIS BIRD WAS to simulatePair — 0 or 1 (round 39).
+  // The two combatants SHARE ONE RNG, so argument order decides who gets which
+  // roll: replay the pair swapped and you get a different fight, not a mirrored
+  // one. Round 38's replay recovered the order by assuming the LOWER id was
+  // side 0, which was true only because both engines happen to insert inside a
+  // `for (const [i, side] of sides.entries())` loop. Batching those two inserts
+  // into one `.values([a, b])` — a pure-looking tidy-up — would have broken
+  // every replay in the game while compiling clean, and the drift guard would
+  // have blamed the fight engine. So the order is STORED now, not inferred.
+  // NOT NULL with no default on purpose: a new insert site must state a side or
+  // fail to compile, which a default would let it skip.
+  side: integer("side").notNull(),
   result: text("result", { enum: ["win", "loss"] }).notNull(),
   // The Pit Figure — banded performance rating, format-normalized. The
   // discovery signal: compare figures ACROSS formats to type the bird.

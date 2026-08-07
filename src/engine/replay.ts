@@ -99,13 +99,16 @@ export function replayFight(db: DB, battleLogId: number): FightReplay | null {
   // ⚠ WHICH SIDE WAS A. `simulatePair` shares ONE rng between the two
   // combatants, so the argument order decides who gets which roll — replaying
   // with the sides swapped produces a different fight, not a mirrored one.
-  // The engines insert their two rows in side order (see the `for (const [i,
-  // side] of sides.entries())` loops), so the LOWER id is side A. That is an
-  // insertion-order assumption rather than stored data, which is precisely
-  // why the drift guard checks the figures per side: get the order wrong and
-  // the figures cross over, and the replay is refused rather than shown
-  // backwards.
-  const [a, b] = row.id < sibling.id ? [row, sibling] : [sibling, row];
+  //
+  // Round 38 inferred this from insertion order (the lower id was side 0),
+  // which worked but rested on nothing enforceable: both engines merely
+  // HAPPENED to insert one row per iteration of a `sides.entries()` loop, and
+  // batching those two inserts would have broken every replay in the game
+  // while compiling clean. Round 39 stores it. A pair that doesn't hold one
+  // of each side is corrupt rather than drifted — the fight can't be
+  // reconstructed at all, so it reports unavailable.
+  const [a, b] = row.side === 0 ? [row, sibling] : [sibling, row];
+  if (a.side !== 0 || b.side !== 1) return null;
 
   const birdA = db.select().from(birds).where(eq(birds.id, a.birdId)).get();
   const birdB = db.select().from(birds).where(eq(birds.id, b.birdId)).get();

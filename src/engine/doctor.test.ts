@@ -528,6 +528,9 @@ describe("the discovery section", () => {
         opponentBirdId: "ghost",
         opponentFarmId: "house",
         opponentName: "Sparring Ghost",
+        // A half-fight against nobody: the scout reads one row at a time, so
+        // there is no sibling and the side is arbitrary.
+        side: 0,
         result: "loss",
         pitFigure: opts.figure ?? 50,
         gpDeltaCents: 0,

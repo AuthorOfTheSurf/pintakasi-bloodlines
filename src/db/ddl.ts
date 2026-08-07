@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS battle_log (
   opponent_name TEXT NOT NULL,
   self_grade TEXT NOT NULL DEFAULT 'B+',
   opponent_grade TEXT NOT NULL DEFAULT 'B+',
+  -- Round 39: which argument this bird was to simulatePair. No DEFAULT — an
+  -- insert that forgets it should fail, not guess. See schema.ts for why.
+  side INTEGER NOT NULL CHECK (side IN (0,1)),
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
   pit_figure INTEGER NOT NULL,
   gp_delta_cents INTEGER NOT NULL,

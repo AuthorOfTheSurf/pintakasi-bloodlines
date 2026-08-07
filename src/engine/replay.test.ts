@@ -386,3 +386,85 @@ describe("replayFidelity — the doctor's sample", () => {
     expect(report.drifted).toBe(0);
   });
 });
+
+/**
+ * ── THE SIDE COLUMN (round 39) ──────────────────────────────────────────────
+ *
+ * `simulatePair` shares ONE rng between the two combatants, so the argument
+ * order decides who gets which roll. Replay the pair swapped and you get a
+ * DIFFERENT fight, not a mirrored one — which makes "who was side 0" load-
+ * bearing for every transcript in the game.
+ *
+ * Round 38 inferred it: the lower battle_log id was side 0, true only because
+ * both engines happened to insert one row per turn of a `sides.entries()`
+ * loop. Nothing enforced that. Batching the two inserts into a single
+ * `.values([a, b])` — a tidy-up any reasonable person might make — would have
+ * broken every replay in the game while compiling clean, and the drift guard
+ * would have reported it as "the fight engine was retuned": a true alarm with
+ * the wrong cause on it, which is the expensive kind.
+ *
+ * These pin the order as DATA. The first one deliberately also asserts the old
+ * insertion-order property still holds, so the two agree today and the day
+ * they stop agreeing is a day nothing breaks.
+ */
+describe("which side was A is stored, not guessed", () => {
+  test("both engines write one side 0 and one side 1 per fight", () => {
+    const w = world();
+    duel(w);
+    crownDay(w);
+    const rows = rowsOf(w);
+    // A daily-card pair and at least one bracket pair — the two write their
+    // rows from different files, so proving it on one proves nothing about
+    // the other.
+    expect(rows.some((r) => r.lobbyId !== null)).toBe(true);
+    expect(rows.some((r) => r.tournamentId !== null)).toBe(true);
+
+    const pairs = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const key = [r.dayIndex, r.seed, [r.birdId, r.opponentBirdId].sort().join("|")].join("/");
+      pairs.set(key, [...(pairs.get(key) ?? []), r]);
+    }
+    expect(pairs.size).toBeGreaterThan(1);
+    for (const pair of pairs.values()) {
+      expect(pair.length).toBe(2);
+      expect(pair.map((r) => r.side).sort()).toEqual([0, 1]);
+      // Round 38's assumption, still true — and now merely a coincidence
+      // rather than the thing holding the archive up.
+      const [lower, higher] = [...pair].sort((x, y) => x.id - y.id);
+      expect(lower.side).toBe(0);
+      expect(higher.side).toBe(1);
+    }
+  });
+
+  test("the replay reads the column, not the row ids", () => {
+    const w = world();
+    duel(w);
+    const [a, b] = rowsOf(w);
+    const truth = replayFight(w.db, a.id)!;
+    expect(truth.drifted).toBe(false);
+
+    // Relabel the sides without touching a single id. Under the old inference
+    // this changed nothing at all; now it changes which bird is handed to
+    // `simulatePair` first, and the archived figures come back in the other
+    // order because the archive is read side-first.
+    w.db.update(battleLog).set({ side: 1 }).where(eq(battleLog.id, a.id)).run();
+    w.db.update(battleLog).set({ side: 0 }).where(eq(battleLog.id, b.id)).run();
+
+    const swapped = replayFight(w.db, a.id)!;
+    expect(swapped.archivedFigures).toEqual([truth.archivedFigures[1], truth.archivedFigures[0]]);
+  });
+
+  test("a pair that does not hold one of each side is unavailable, not a guess", () => {
+    const w = world();
+    duel(w);
+    const [a, b] = rowsOf(w);
+    // Two rows both claiming side 0 is corrupt, not drifted: there is no order
+    // to replay in, so the honest answer is that the fight cannot be rebuilt.
+    // Falling back to the ids here would be the round-38 assumption sneaking
+    // back in through the error path.
+    w.db.update(battleLog).set({ side: 0 }).where(eq(battleLog.id, b.id)).run();
+    expect(replayFight(w.db, a.id)).toBeNull();
+    expect(replayFight(w.db, b.id)).toBeNull();
+    expect(replayFidelity(w.db, 500).unavailable).toBe(2);
+  });
+});

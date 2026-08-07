@@ -604,6 +604,7 @@ describe("the scout report (round 28 — reading a bird through the fog)", () =>
         opponentBirdId: "rival-bird",
         opponentFarmId: w.rivalId,
         opponentName: "Rival",
+        side: 0,
         result: "win",
         pitFigure,
         gpDeltaCents: 0,

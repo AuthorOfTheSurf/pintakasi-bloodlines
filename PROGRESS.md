@@ -509,18 +509,14 @@ bottom.*
     they disagree silently — the exact failure mode the "numbers are imported,
     never typed" rule exists to prevent, applied to a string array nobody
     thought of as a number. Fold them in next time one of those pages is open.
-25. **The "lower battle_log id is side A" assumption is data that isn't
-    stored.** `replayFight` has to know which combatant was passed to
-    `simulatePair` first, because the two share one rng and swapping them
-    produces a different fight, not a mirrored one. Both engines insert their
-    two rows in side order, so the lower id is side A — but that is an
-    INSERTION-ORDER invariant with no test outside replay.test.ts. Batching
-    the two inserts into one `.values([a, b])`, or reordering the `sides`
-    array, would break it while compiling cleanly and passing everything.
-    The drift guard does catch it (the figures cross over and the replay is
-    refused) — but it would report "the engine was retuned", which is the
-    wrong diagnosis. A `side` column would turn the assumption into data. It
-    is a schema change, so: next time the schema moves anyway.
+25. ~~**The "lower battle_log id is side A" assumption is data that isn't
+    stored.**~~ **CLOSED in round 39** — `battle_log.side` stores it. The
+    lesson worth keeping is the shape of the fix rather than the fix: the
+    column is `NOT NULL` **with no default**, so a new insert site cannot
+    compile without stating a side. A default would have let it guess, and a
+    guessed side is exactly the silent, correct-looking wrong answer the whole
+    change exists to prevent. Adding it named all six other insert sites in
+    the codebase for free, which is the same argument in miniature.
 26. **A column nobody reads is invisible until you go looking.** `play_by_play`
     was 51 MB of a 90 MB database, written every fight since round 11, and a
     single grep for its own name showed nothing in the codebase ever read it

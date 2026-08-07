@@ -254,6 +254,7 @@ describe("the form book (weather on past fights)", () => {
         opponentBirdId: "rival-bird",
         opponentFarmId: "farm-2",
         opponentName: "Rival",
+        side: 0,
         result,
         pitFigure,
         gpDeltaCents: 0,
