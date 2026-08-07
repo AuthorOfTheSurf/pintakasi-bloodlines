@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { events, farms } from "@/db/schema";
-import { COVERS, LAND, LT_CENTS } from "./config";
+import { COVERS, LAND, LT_CENTS, PINTAKASI } from "./config";
 import { Gacha } from "./gacha";
 import { mulberry32 } from "./rng";
 import { onCard, world } from "./testkit";
@@ -48,6 +48,14 @@ const landOf = (db: DB, farmId: string) => {
   const f = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
   return f.landTokensCents + f.stakedLandCents;
 };
+
+/**
+ * A crown's LAND rows: since round 42 the pot settles on the same `purse_payout`
+ * event the GP shares use, carrying `lt` instead of `gpCents` (the old
+ * `crown_land` type belonged to the deleted per-fight mint).
+ */
+const crownLandRows = (db: DB) =>
+  db.select().from(events).all().filter((e) => e.type === "purse_payout" && (e.lt ?? 0) !== 0);
 
 describe("every Land Token in the world got there through a ledger row", () => {
   test("a fresh world starts at zero on both sides", () => {
@@ -104,31 +112,45 @@ describe("every Land Token in the world got there through a ledger row", () => {
   });
 
   /**
-   * The hole that made the invariant impossible before round 37. A crown
-   * fight pays BOTH barns, and the `fight` event it used to be reported on
-   * carries no farmId — so there was no honest way to attribute it. One
-   * signed row per SIDE is the fix, and this is what pins it.
+   * The hole that made the invariant impossible before round 37. A crown fight
+   * pays BOTH barns, and the `fight` event it used to be reported on carries no
+   * farmId — so there was no honest way to attribute it. One signed per-farm row
+   * per participant is the fix, and this is what pins it.
+   *
+   * ⚠ ROUND 42 MOVED THE ROW, NOT THE RULE. The `crown_land` event type is gone
+   * with the per-fight mint that emitted it; a crown now settles ONE FIXED POT at
+   * the end of the bracket, logged on the same `purse_payout` row the GP shares
+   * use (carrying `lt` instead of `gpCents`). The lesson that produced the row
+   * survives verbatim and is the reason this test still exists: an `lt` movement
+   * that is not attributed to a farm is invisible to `sum(events.lt)`, and an
+   * untestable faucet is how two silent GP burns once shipped.
    */
-  test("a championship fight writes a signed crown_land row for each side", () => {
+  test("a championship pays its land pot as signed, per-farm ledger rows", () => {
     const w = world();
     w.dev.tournaments.enter(w.bird("Sinag").id, "b1");
     w.rival.tournaments.enter(w.rivalSlot("Batong Buhay"), "b1");
     for (let i = 0; i < 7; i++) w.game.tickDay(); // through Thursday
 
-    const crownLand = w.db.select().from(events).all().filter((e) => e.type === "crown_land");
-    expect(crownLand.length).toBe(2); // one bracket fight, two barns paid
+    const crownLand = crownLandRows(w.db);
+    expect(crownLand.length).toBe(2); // a straight final: two participants paid
     // Every one of them names a farm. An `lt` delta with no farmId can never
     // reconcile against a per-farm balance, which is why the doctor flags
     // orphans before it blames anybody.
     expect(crownLand.every((e) => e.farmId !== null && (e.lt ?? 0) > 0)).toBe(true);
     expect(new Set(crownLand.map((e) => e.farmId)).size).toBe(2);
+    // The pot, whole: the two birds of a one-fight bracket split all of it, and
+    // the champion carries the flooring dust.
+    expect(crownLand.reduce((s, e) => s + (e.lt ?? 0), 0)).toBe(PINTAKASI.LAND_POT);
     expectLandConserved(w.db);
   });
 
-  test("the elimination grants and the per-fight mint are both on the books", () => {
-    // A four-bird bracket: two rounds, three fights, six per-fight rows, plus
-    // one elimination grant per entry. If either family of rows went missing
-    // the totals would still LOOK plausible — only the comparison catches it.
+  test("ONE row per participant, and the pot they add up to is the ruled one", () => {
+    // A four-bird bracket. This used to assert TWO families of rows — six
+    // per-fight mints plus four elimination grants — because a crown paid land
+    // twice on two scales that were never priced against each other, and at the
+    // juvenile crown they had inverted (champion 6.75 LT, first-round loser
+    // 10.15). One pot means one row a bird, and the comparison that matters is no
+    // longer "are both families present" but "does the one family sum to the pot".
     const w = world();
     w.dev.tournaments.enter(w.bird("Sinag").id, "b1");
     w.dev.tournaments.enter(w.bird("Batong Buhay").id, "b1");
@@ -136,9 +158,17 @@ describe("every Land Token in the world got there through a ledger row", () => {
     w.rival.tournaments.enter(w.rivalSlot("Batong Buhay"), "b1");
     for (let i = 0; i < 7; i++) w.game.tickDay();
 
-    const rows = w.db.select().from(events).all();
-    expect(rows.filter((e) => e.type === "crown_land").length).toBe(6); // 3 fights × 2 sides
-    expect(rows.filter((e) => e.type === "purse_payout" && (e.lt ?? 0) > 0).length).toBe(4);
+    const crownLand = crownLandRows(w.db);
+    expect(crownLand.length).toBe(4); // four entries, four fights fought, four rows
+    expect(crownLand.reduce((s, e) => s + (e.lt ?? 0), 0)).toBe(PINTAKASI.LAND_POT);
+    // The GP shares ride on the same event type and must not be double-counted as
+    // land: a purse row carries one currency or the other, never both.
+    const gpRows = w.db
+      .select()
+      .from(events)
+      .all()
+      .filter((e) => e.type === "purse_payout" && (e.gpCents ?? 0) !== 0);
+    expect(gpRows.every((e) => (e.lt ?? 0) === 0)).toBe(true);
     expectLandConserved(w.db);
   });
 
@@ -158,15 +188,16 @@ describe("every Land Token in the world got there through a ledger row", () => {
 });
 
 describe("the land a bird earns follows the bird, not the barn that entered it", () => {
-  test("a crown_land row is stamped with the bird that fought for it", () => {
-    // Land is per-SIDE, so the row has to say which body earned it or the
-    // office cannot show a bird what its own career paid. Cheap to assert and
-    // easy to lose in a refactor that only cares about the farm total.
+  test("a crown's land row is stamped with the bird that earned it", () => {
+    // Land is per-BIRD, so the row has to say which body earned it or the office
+    // cannot show a bird what its own career paid. Cheap to assert and easy to
+    // lose in a refactor that only cares about the farm total. (Round 42: the row
+    // is a `purse_payout` carrying `lt` — the pot settles with the purse now.)
     const w = world();
     w.dev.tournaments.enter(w.bird("Sinag").id, "b3");
     w.rival.tournaments.enter(w.rivalSlot("Sinag"), "b3");
     for (let i = 0; i < 7; i++) w.game.tickDay();
-    const rows = w.db.select().from(events).all().filter((e) => e.type === "crown_land");
+    const rows = crownLandRows(w.db);
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((e) => e.birdId !== null)).toBe(true);
   });

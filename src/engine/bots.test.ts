@@ -7,6 +7,7 @@ import { BOT_FARMS, BREEDING_PLAN, WEATHER_APPETITE } from "./bot-config";
 import {
   Bots,
   bestFormat,
+  pickOffering,
   bestShape,
   foalScore,
   scoutScores,
@@ -16,6 +17,9 @@ import {
 import {
   BREEDING_SHAPES,
   COVERS,
+  ENTRY_FEES,
+  cardOfDay,
+  feeFor,
   ELEMENTS,
   FORMAT_NAMES,
   LT_CENTS,
@@ -209,6 +213,113 @@ describe("the scout's blade pick", () => {
     expect(() =>
       w.dev.lobbies.enter(bird.id, onCard(w.db, { mode: "real", classType: "maiden" }))
     ).not.toThrow();
+  });
+});
+
+/**
+ * ── FIGHTING UP (round 42) ──────────────────────────────────────────────────
+ *
+ * `BotProfile.ladderCourage` is a NEW DOOR, and this codebase has twice shipped
+ * a door nobody walked through: claiming measured zero in round 19 and paid
+ * gacha rolls measured zero in round 22, both because no bot had an appetite for
+ * the mechanic. Round 42 priced the class ladder and made the land curve
+ * superlinear across it — but a ladder only pays off if somebody CLIMBS it, so
+ * the knob has to be shown to do something at both ends of its range.
+ *
+ * Tested against `pickOffering` directly rather than through a bot day: the
+ * knob is a probability, and one seeded day tells you nothing about a 0.35.
+ */
+describe("the ladder courage (a bot that declines its own protection)", () => {
+  /** A bot profile with only the three knobs `pickOffering` reads. */
+  const style = (ladderCourage: number) => ({ sellRate: 0, tagCourage: 0, ladderCourage });
+
+  test("a brave barn cards a STRICTLY DEARER rung; a timid one takes its protection", () => {
+    const w = testWorld({ rivalFlock: false });
+    // A maiden — the most protected rung there is, and therefore the bird with
+    // the most to decline. Unraced, so the scout has no blade opinion either.
+    const row = makeBird(w.db, { wins: 0, stakesWins: 0 });
+    const bird = new Flock(w.db, w.devId).byId(row.id);
+    const feeOf = (spec: { mode: "juvenile" | "real"; classType: "open" | "maiden" | "nw3" | "claimer"; price?: number }) =>
+      feeFor(spec.mode, spec.classType, spec.price);
+
+    // PAIRED BY SEED, which is what makes this a clean read on the knob alone.
+    // `pickOffering` spends its rng draws unconditionally and in a fixed order
+    // (blade, then the sell draw, then the courage draw), so the same seed at two
+    // courage settings picks the same blade off the same card and differs ONLY in
+    // whether the courage draw cleared. Comparing distributions would have needed
+    // hundreds of seeds to say the same thing less precisely.
+    const feeAt = (courage: number, seed: number) => {
+      const spec = pickOffering(w.db, style(courage), bird, mulberry32(seed), 0);
+      return spec === null ? null : feeOf(spec);
+    };
+    let climbed = 0;
+    let compared = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const timid = feeAt(0, seed);
+      const brave = feeAt(1, seed);
+      if (timid === null || brave === null) {
+        expect(timid).toBe(brave); // eligibility never depends on courage
+        continue;
+      }
+      compared++;
+      // COURAGE NEVER MAKES A BIRD SAFER. It either declines the protection it was
+      // entitled to — paying strictly more — or, when the card posted nothing
+      // dearer at that blade, changes nothing at all.
+      expect(brave).toBeGreaterThanOrEqual(timid);
+      if (brave > timid) climbed++;
+    }
+    expect(compared).toBeGreaterThan(0); // …or the card offered this bird nothing
+    // AND THE DOOR IS ACTUALLY WALKED THROUGH. This is the assertion that would
+    // have caught round 19's claiming and round 22's paid rolls: a knob that
+    // measures zero is a mechanic nobody has tested.
+    expect(climbed).toBeGreaterThan(0);
+  });
+
+  test("the climb is ONE rung, never straight to the top, and never into a claimer", () => {
+    // Two properties that would each be invisible in the aggregate above.
+    //
+    // ⚠ STRICTLY DEARER, NOT "the next class along": maiden and nw3 cost the same
+    // 60 GP since round 42, so a climb measured by CLASS would let a maiden move
+    // to nw3 for no extra stake and no extra land — the adoption number would
+    // show a ladder in use while nothing had moved.
+    //
+    // And a claimer is never the destination: entering one is a decision to SELL
+    // (sellRate, drawn separately), and a bird that just declined to sell must not
+    // be put up for sale as a side effect of being brave.
+    const w = testWorld({ rivalFlock: false });
+    const row = makeBird(w.db, { wins: 0, stakesWins: 0 });
+    const bird = new Flock(w.db, w.devId).byId(row.id);
+    for (let seed = 1; seed <= 40; seed++) {
+      const spec = pickOffering(w.db, style(1), bird, mulberry32(seed), 0);
+      if (spec === null) continue;
+      expect(spec.classType).not.toBe("claimer");
+      // Every rung posted at that blade which is dearer than what it took: there
+      // must be none cheaper-but-still-dearer than the pick, i.e. it stepped once.
+      const atBlade = cardOfDay(0).filter((k) => k.format === spec.format);
+      const chosen = feeFor(spec.mode, spec.classType, spec.price);
+      const skipped = atBlade.filter(
+        (k) => k.classType !== "claimer" && k.mode === spec.mode &&
+          feeFor(k.mode, k.classType, k.price) > ENTRY_FEES.real.maiden &&
+          feeFor(k.mode, k.classType, k.price) < chosen
+      );
+      expect(skipped).toEqual([]);
+    }
+  });
+
+  test("a budget the dearer rung does not fit is respected — courage is not overdraft", () => {
+    // The knob may never spend money the caller said was not there. `chaseCards`
+    // hands `pickOffering` a budget precisely so a brave barn cannot card itself
+    // broke, and an overdraft here would surface as a swallowed refusal inside
+    // `quietly()` — a fill rate that silently collapsed, with nothing said.
+    const w = testWorld({ rivalFlock: false });
+    const row = makeBird(w.db, { wins: 0, stakesWins: 0 });
+    const bird = new Flock(w.db, w.devId).byId(row.id);
+    const budget = ENTRY_FEES.real.maiden;
+    for (let seed = 1; seed <= 40; seed++) {
+      const spec = pickOffering(w.db, style(1), bird, mulberry32(seed), 0, "current", budget);
+      if (spec === null) continue;
+      expect(feeFor(spec.mode, spec.classType, spec.price)).toBeLessThanOrEqual(budget);
+    }
   });
 });
 

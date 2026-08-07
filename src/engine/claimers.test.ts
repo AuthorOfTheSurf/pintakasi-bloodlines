@@ -3,13 +3,22 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { birds, claims, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { CLAIMER, ECONOMY, STAKER_FLOWS, stakePerFight } from "./config";
+import { CLAIMER, ECONOMY, ENTRY_FEES, STAKER_FLOWS, feeFor, stakePerFight } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
 import { onCard } from "./testkit";
 
-const FEE = ECONOMY.REAL_ENTRY_FEE;
+/**
+ * WHAT A CLAIMER NIGHT COSTS — and since round 42 that depends on WHICH RUNG.
+ *
+ * There used to be one grown entry fee for every class in the game, so this file
+ * could name it once at the top. A claimer's entry is now priced by its position
+ * on CLAIMER.PRICES (48 / 96 / 144 GP grown, half that in the discovery year),
+ * so the fee has to be looked up from the tag the card actually posted — which
+ * is the same discipline this file already applies to the tag itself.
+ */
+const feeAt = (tag: number) => feeFor("real", "claimer", tag);
 /**
  * Tonight's grown claimer — blade AND tag. Since round 31 the tag is part of
  * what the day POSTS (one cheap rung, one dear), so a test can no longer pick
@@ -62,9 +71,22 @@ describe("carding a claimer", () => {
     expect(() => w.dev.enter(alab.id, { ...spec, mode: "juvenile" as never })).toThrow(/discovery year only/);
     // Juveniles CAN card a claimer since round 23 — on their own, cheaper
     // ladder. A grown tag isn't one of their rungs.
+    // ⚠ ROUND 42 MERGED THE TWO TAG LADDERS: a juvenile prices on the SAME rungs
+    // a grown bird does (CLAIMER.JUVENILE_PRICES is gone), because a chick that
+    // has campaigned a 150 GP juvenile open night is worth something like a grown
+    // bird's tag. What stayed per-division is the ENTRY fee — the tag says what
+    // the BIRD costs, the entry says what the NIGHT costs. So a grown tag is a
+    // legal juvenile tag now, and what refuses this entry is the CARD: the
+    // juvenile claimer running tonight is at one specific (blade, tag) key.
     expect(() =>
       w.dev.enter(byName(w.devFlock, "Kidlat").id, { ...spec, mode: "juvenile" as never })
-    ).toThrow(new RegExp(CLAIMER.JUVENILE_PRICES.join(" / ")));
+    ).toThrow(/isn(?:'|’)t on tonight(?:'|’)s card|tonight/i);
+    // …the grown tag IS on the ladder (widened to `number[]`: the ladder's
+    // entries are literal types, so a plain `toContain` is a compile error).
+    expect(CLAIMER.PRICES as readonly number[]).toContain(spec.price!);
+    // …and the discovery year pays HALF the grown entry at the same tag.
+    const juvenileFee: number = feeFor("juvenile", "claimer", spec.price!);
+    expect(2 * juvenileFee).toBe(feeAt(spec.price!));
     expect(() =>
       w.dev.enter(byName(w.devFlock, "Kidlat").id, onCard(w.db, { mode: "juvenile", classType: "claimer" }))
     ).not.toThrow();
@@ -113,7 +135,7 @@ describe("post time (claims settle after the fights)", () => {
     // ROUND 34: two birds are a group of two, so it is still one fight — but
     // the wager is a SHARE of the entry, not the entry, and the other two
     // thirds are refunded at settle-up. So the swing is the stake, not the fee.
-    const STAKE = stakePerFight(FEE);
+    const STAKE = stakePerFight(feeAt(TAG));
     const potRake = Math.round(STAKE * 200 * STAKER_FLOWS.FIGHT_RAKE);
     const tagNet = TAG * 100 - Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);
     expect(gpCents(w.db, w.devId)).toBe(

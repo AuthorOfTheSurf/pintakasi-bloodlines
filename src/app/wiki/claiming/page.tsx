@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CLAIMER, ECONOMY, FIGHTS_PER_GROUP_BIRD, STAKER_FLOWS } from "@/engine/config";
+import { CLAIMER, ECONOMY, FIGHTS_PER_GROUP_BIRD, STAKER_FLOWS, feeFor } from "@/engine/config";
 import { fmtGp } from "@/engine/events";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,25 @@ export default function ClaimingPage() {
 
       <h2>What a claimer is</h2>
       <p>
-        Entering a claimer costs the same entry fee as any ordinary fight for that season —{" "}
-        {ECONOMY.REAL_ENTRY_FEE} GP for a grown bird, {ECONOMY.JUVENILE_ENTRY_FEE} GP for a
-        juvenile — plus you set a separate tag price from the matching ladder below. The fee buys
-        the night&apos;s fights; the tag is what you&apos;re willing to sell the bird for if
-        somebody wants it. Anyone else&apos;s farm may then pay that exact tag to claim it.
+        A claimer entry has <strong>two prices on it</strong>, and keeping them straight is most of
+        understanding the mechanic.
+      </p>
+      <ul>
+        <li>
+          The <strong>tag</strong> — what you are willing to sell the bird for. You pick it from the
+          ladder below, and it names the lobby.
+        </li>
+        <li>
+          The <strong>entry fee</strong> — what the night&apos;s fights cost. Like every class of
+          fight, a claimer is priced (see <Link href="/wiki/ladder">Fighting up</Link>), and{" "}
+          <em>the dearer the tag, the dearer the night</em>: {feeFor("real", "claimer", CLAIMER.PRICES[0])}{" "}
+          GP at the cheap rung up to {feeFor("real", "claimer", CLAIMER.PRICES[CLAIMER.PRICES.length - 1])}{" "}
+          GP at the dear one, and half those numbers in the discovery year.
+        </li>
+      </ul>
+      <p>
+        You pay the fee whatever happens. The tag only changes hands if somebody wants your bird —
+        and then it is another farm paying you, not the house.
       </p>
       <p>
         A claimer runs the group stage like every other lobby (see{" "}
@@ -43,6 +57,8 @@ export default function ClaimingPage() {
               <th className="num">Tag</th>
               <th className="num">≈ $</th>
               <th>Vs. the {ECONOMY.BREED_FEE} GP breed fee</th>
+              <th className="num">Grown entry</th>
+              <th className="num">Juvenile entry</th>
             </tr>
           </thead>
           <tbody>
@@ -51,6 +67,8 @@ export default function ClaimingPage() {
                 <td className="num">{price} GP</td>
                 <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
                 <td>{price < ECONOMY.BREED_FEE ? "cheaper than a cover" : "dearer than a cover"}</td>
+                <td className="num">{feeFor("real", "claimer", price)} GP</td>
+                <td className="num">{feeFor("juvenile", "claimer", price)} GP</td>
               </tr>
             ))}
           </tbody>
@@ -73,33 +91,24 @@ export default function ClaimingPage() {
         to run at a rung that isn&apos;t posted, you wait a day or two.
       </div>
 
-      <h3>The juvenile ladder</h3>
+      <h3>One-year-olds use the same tags</h3>
       <p>
-        Claimers also run in the discovery year, on their own, cheaper ladder — a one-year-old is
-        an unproven animal, and pricing it against the grown rungs above would mean nobody dares
-        tag one at all:
+        Claimers run in the discovery year too, on <strong>exactly the ladder above</strong> — the
+        same {CLAIMER.PRICES.join(" / ")} GP rungs. What is cheaper for a one-year-old is the{" "}
+        <em>entry fee</em>, which is half the grown price at every rung (that is the last column of
+        the table above).
       </p>
-      <div className="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th className="num">Juvenile tag</th>
-              <th className="num">≈ $</th>
-            </tr>
-          </thead>
-          <tbody>
-            {CLAIMER.JUVENILE_PRICES.map((price) => (
-              <tr key={price}>
-                <td className="num">{price} GP</td>
-                <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
       <p>
-        The juvenile card posts a claimer every night, with the rung alternating, so both prices
-        come around quickly. Everything else about the sequence below works exactly the same whether the
+        Why the animal isn&apos;t discounted, when the night is: a one-year-old that has campaigned
+        has real money on its record, because its own entries cost real money. It is worth a grown
+        bird&apos;s price. There used to be a separate, far cheaper juvenile ladder — the rungs sat
+        well under a single breed fee — and once the discovery year stopped being nearly free, those
+        rungs would have turned it into the bargain bin of the whole game: anybody could have bought
+        a proven young bird for pocket change.
+      </p>
+      <p>
+        The juvenile card posts a claimer every night, with the rung alternating, so every price comes
+        around quickly. Everything else about the sequence below works exactly the same whether the
         bird tagged is a one-year-old or a veteran.
       </p>
 
@@ -201,6 +210,7 @@ export default function ClaimingPage() {
 
       <div className="next">
         <Link href="/wiki/card">The card →</Link>
+        <Link href="/wiki/ladder">Fighting up →</Link>
         <Link href="/wiki/money">Golden Pesos →</Link>
         <Link href="/wiki/land">Land Tokens →</Link>
       </div>

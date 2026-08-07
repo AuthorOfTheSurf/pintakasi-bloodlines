@@ -41,7 +41,22 @@ export type EventType =
   | "tournament_entry" // a bird registered for the Pintakasi (fee escrowed)
   | "tournament_bump" // the Selection Committee displaced the weakest (refund)
   | "purse_payout" // a share of a championship purse banked
-  | "crown_land" // round 37: one side's land from one championship fight
+  // ⚠ RETIRED IN ROUND 42 — NOTHING EMITS THIS ANY MORE, and it stays in the
+  // union anyway, which is the opposite of how this repo treats a dead config
+  // knob (round 31 deleted HARDCORE_ENTRY_FEE rather than keep it "just in
+  // case"). The difference is what the two things describe. A config knob
+  // describes the rules, so a stale one is a lie. An event type describes what is
+  // IN THE DATABASE — and every sim database written before round 42 is full of
+  // `crown_land` rows. The doctor and the admin view are built to read old sims,
+  // so deleting the name would make yesterday's world unreadable to prove a
+  // point about today's.
+  //
+  // What it meant: one side's land from one championship fight, back when crowns
+  // minted per fight (round 37 gave it a signed per-farm row, which is what made
+  // land conservation testable at all). Round 42 replaced the per-fight mint and
+  // the elimination grants with one fixed pot per crown, paid at settle-up as a
+  // `purse_payout` row carrying `lt`. See PINTAKASI.LAND_POT.
+  | "crown_land"
   | "champion"; // a Pintakasi crown (world event)
 
 export interface EmitInput {

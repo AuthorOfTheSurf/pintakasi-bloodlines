@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { events, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding, splitBreedFee } from "./breeding";
-import { ECONOMY, FIGHTS_PER_GROUP_BIRD, LT_CENTS, stakePerFight } from "./config";
+import { ECONOMY, ENTRY_FEES, FIGHTS_PER_GROUP_BIRD, LT_CENTS, stakePerFight } from "./config";
 import { Farms } from "./farms";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
@@ -15,6 +15,16 @@ import { onCard } from "./testkit";
  * self-contained row. These tests pin the emission points — the admin
  * view is only as honest as the ledger underneath it.
  */
+
+/**
+ * What the ADULT OPEN night costs — the one key every fight test below cards.
+ *
+ * Round 42 deleted `ECONOMY.REAL_ENTRY_FEE`: there is no such thing as "the real
+ * entry fee" any more, because every rung of the class ladder is priced
+ * separately. These tests are about what the LEDGER writes, not about pricing, so
+ * they name the rung they card and read its fee off the table.
+ */
+const OPEN_FEE = ENTRY_FEES.real.open;
 
 function world() {
   const db = createDb(":memory:");
@@ -85,7 +95,7 @@ describe("the unified ledger", () => {
 
     const entries = ofType(w.db, "entry");
     expect(entries.length).toBe(3);
-    expect(entries[0].gpCents).toBe(-ECONOMY.REAL_ENTRY_FEE * 100); // the WHOLE fee escrows
+    expect(entries[0].gpCents).toBe(-OPEN_FEE * 100); // the WHOLE fee escrows
     expect(entries[0].message).toContain("OPEN"); // "REAL" is the unsaid default (round 20)
 
     // ⚠ ROUND 34 REWROTE THE SECOND HALF OF THIS TEST, and the old shape can't
@@ -94,7 +104,7 @@ describe("the unified ledger", () => {
     // all three in one group, and the two dev birds each get a card off the
     // visitor — nobody is stranded, so nothing refunds in full. What every
     // entry gets instead is a `card_settled` row.
-    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
+    const stake = stakePerFight(OPEN_FEE);
     const fights = ofType(w.db, "fight");
     expect(fights.length).toBe(2); // one row per fight, not per side
     expect(fights[0].farmId).toBeNull();
@@ -112,10 +122,10 @@ describe("the unified ledger", () => {
     // visitor fought twice. All three lines say what came home.
     const devSettled = settled.filter((e) => e.farmId === w.devId);
     expect(devSettled.length).toBe(2);
-    expect(devSettled.every((e) => e.gpCents === (ECONOMY.REAL_ENTRY_FEE - stake) * 100)).toBe(true);
+    expect(devSettled.every((e) => e.gpCents === (OPEN_FEE - stake) * 100)).toBe(true);
     expect(devSettled[0].message).toContain("GP unfought and returned");
     const rivalSettled = settled.find((e) => e.farmId === w.rivalId)!;
-    expect(rivalSettled.gpCents).toBe((ECONOMY.REAL_ENTRY_FEE - 2 * stake) * 100);
+    expect(rivalSettled.gpCents).toBe((OPEN_FEE - 2 * stake) * 100);
     expect(rivalSettled.message).toContain(`2 of ${FIGHTS_PER_GROUP_BIRD} fights`);
   });
 
@@ -126,7 +136,7 @@ describe("the unified ledger", () => {
     const refunds = ofType(w.db, "refund");
     expect(refunds.length).toBe(1);
     expect(refunds[0].farmId).toBe(w.devId);
-    expect(refunds[0].gpCents).toBe(ECONOMY.REAL_ENTRY_FEE * 100);
+    expect(refunds[0].gpCents).toBe(OPEN_FEE * 100);
     expect(refunds[0].message).toContain("drew nobody");
     expect(ofType(w.db, "card_settled").length).toBe(0); // land is for fighting
   });

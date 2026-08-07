@@ -92,9 +92,13 @@ describe("the card is well formed", () => {
           expect(k.price).toBeUndefined();
           continue;
         }
-        const ladder: readonly number[] =
-          k.mode === "juvenile" ? CLAIMER.JUVENILE_PRICES : CLAIMER.PRICES;
-        expect(ladder).toContain(k.price!);
+        // ⚠ ONE LADDER FOR BOTH SEASONS since round 42 — CLAIMER.JUVENILE_PRICES
+        // is gone. The card used to post a cheaper set of tags in the discovery
+        // year on the reasoning that "a one-year-old is an unproven animal"; a
+        // juvenile that has campaigned a 150 GP open night is not, and pricing it
+        // at 25 GP would have made the discovery year the bargain bin of the
+        // game. What is still per-division is the ENTRY fee, not the tag.
+        expect(CLAIMER.PRICES as readonly number[]).toContain(k.price!);
       }
     }
   });

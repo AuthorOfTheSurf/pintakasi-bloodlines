@@ -17,7 +17,9 @@ import {
   PINTAKASI,
   SCOUT,
   cardOfDay,
+  feeFor,
   weatherOfDay,
+  type CardKey,
   type DistanceStat,
   type FightFormat,
   type Lobby,
@@ -484,10 +486,23 @@ export class Bots {
     // 5. Then card the rest of the flock by style — and by the going. A bird
     //    runs a little more often on its own element's day, and sometimes
     //    waits a night when tomorrow is its day (see WEATHER_APPETITE).
+    // ⚠ THE AFFORDABILITY GATE IS PER-CARD SINCE ROUND 42, and it had to be.
+    // This read `gp() <= ECONOMY.REAL_ENTRY_FEE + RESERVE` — one hardcoded fee,
+    // which was honest only while every grown fight cost the same 42 GP. With a
+    // priced ladder (24 GP up to 300) a fixed gate is wrong in both directions:
+    // it would stop a barn entering a 24 GP juvenile claimer it could easily
+    // afford, and wave it through into a 300 GP open it could not. So the BREAK
+    // tests the CHEAPEST rung posted today — below that the barn genuinely
+    // cannot card at all — and the budget is handed to pickOffering, which will
+    // not choose a rung the barn can't cover.
+    const cheapest = Math.min(
+      ...cardOfDay(today).map((k) => feeFor(k.mode, k.classType, k.price))
+    );
     for (const bird of roster()) {
       if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
-      if (gp() <= ECONOMY.REAL_ENTRY_FEE + RESERVE) break;
-      const spec = pickOffering(db, bot, bird, rng, today, discoveryPolicy);
+      const budget = gp() - RESERVE;
+      if (budget < cheapest) break;
+      const spec = pickOffering(db, bot, bird, rng, today, discoveryPolicy, budget);
       // null = today's card had nothing this bird is eligible for. Counted
       // rather than swallowed: `quietly` hides every other entry failure, so
       // without this number a card that starved a class would look like bots
@@ -557,13 +572,22 @@ export class Bots {
  */
 export function pickOffering(
   db: DB,
-  bot: { sellRate: number; tagCourage: number },
+  bot: { sellRate: number; tagCourage: number; ladderCourage: number },
   bird: BirdView,
   rng: Rng,
   today: number,
-  discoveryPolicy: DiscoveryPolicy = "current"
+  discoveryPolicy: DiscoveryPolicy = "current",
+  budget = Infinity
 ): LobbySpec | null {
-  const options = cardOfDay(today).filter((k) => entryRefusal(bird, k) === null);
+  // ELIGIBILITY FIRST, THEN AFFORDABILITY — the order matters for the caller's
+  // bookkeeping. A null return means "today's card had nothing this bird may
+  // enter", which the caller counts as `noCard`; narrowing by price before that
+  // test would file a broke barn as a starved class and hide a real card bug.
+  // The caller has already established that the cheapest rung is affordable.
+  const eligible = cardOfDay(today).filter((k) => entryRefusal(bird, k) === null);
+  if (eligible.length === 0) return null;
+  const feeOf = (k: CardKey) => feeFor(k.mode, k.classType, k.price);
+  const options = eligible.filter((k) => feeOf(k) <= budget);
   if (options.length === 0) return null;
 
   const format = bestFormat(db, bird, rng, discoveryPolicy, new Set(options.map((k) => k.format)));
@@ -584,13 +608,50 @@ export function pickOffering(
     return claimers[Math.min(claimers.length - 1, Math.round(edge * bot.tagCourage))];
   }
 
+  // Spent UNCONDITIONALLY, exactly like the sell draw above and for the same
+  // reason: if the number of rng() calls depended on what the card happened to
+  // post, a bot's whole day — its breeding picks, its claim rolls — would shift
+  // with the schedule and no sim would be reproducible against another.
+  const wantsToClimb = rng() < bot.ladderCourage;
+
   // The self-sorting ladder, most protective rung first. Reads the STAKES
   // record for grown birds (round 19) — the discovery year graduates nobody.
+  let base: CardKey | null = null;
   for (const classType of PROTECTION_ORDER) {
     const found = atBlade.find((k) => k.classType === classType);
-    if (found) return found;
+    if (found) {
+      base = found;
+      break;
+    }
   }
-  return atBlade[0] ?? null;
+  if (base === null) return atBlade[0] ?? null;
+
+  // ── FIGHTING UP (round 42) ────────────────────────────────────────────────
+  // The protection this bird is entitled to, declined on purpose. Round 42
+  // priced the class ladder and made the land curve superlinear across it, so
+  // climbing buys harder company for more GP and disproportionately more land —
+  // but only a bot that sometimes CHOOSES the dearer rung can demonstrate that.
+  // See BotProfile.ladderCourage for why this knob exists at all.
+  //
+  // ⚠ STRICTLY DEARER, not "the next class along". Maiden and nw3 cost the same
+  // 60 GP since round 42 (they became the same rung in practice — a group stage
+  // graduates a maiden almost immediately), so stepping by CLASS would let a
+  // maiden "climb" into nw3 for no extra stake and no extra land, and the
+  // measurement would show a ladder being used while nothing had moved. Sorting
+  // by fee and taking the next strictly dearer rung sends a maiden to the open,
+  // which is the choice that actually costs something.
+  //
+  // Claimers are excluded from the climb: entering one is a decision to SELL,
+  // taken above by sellRate, and a bird that just declined to sell should not be
+  // put up for sale as a side effect of being brave.
+  if (wantsToClimb) {
+    const baseFee = feeOf(base);
+    const dearer = atBlade
+      .filter((k) => k.classType !== "claimer" && feeOf(k) > baseFee)
+      .sort((a, b) => feeOf(a) - feeOf(b));
+    if (dearer.length > 0) return dearer[0]; // one rung up, not straight to the top
+  }
+  return base;
 }
 
 /** Most protective class first — the order `pickOffering` settles down. */

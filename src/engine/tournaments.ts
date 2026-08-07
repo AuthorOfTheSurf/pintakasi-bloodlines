@@ -7,7 +7,7 @@ import {
   JUVENILE_MAJOR,
   PINTAKASI,
   landForFight,
-  landForTournamentFight,
+  landPotShare,
   weatherOfDay,
   ECONOMY,
   type Element,
@@ -43,8 +43,7 @@ export const DIVISION_RULES = {
     // an 80 GP toll on age-1 chicks the moment the Majors started charging.
     entryFee: PINTAKASI.ENTRY_FEE,
     purse: PINTAKASI.PURSE,
-    landGrants: PINTAKASI.LAND_GRANTS as Record<string, number>,
-    landBasis: PINTAKASI.LAND_BASIS,
+    landPot: PINTAKASI.LAND_POT,
     dayOfWeek: PINTAKASI.DAY_OF_WEEK,
   },
   juvenile: {
@@ -53,10 +52,12 @@ export const DIVISION_RULES = {
     maxPerBarn: JUVENILE_MAJOR.MAX_PER_BARN,
     maxBracket: JUVENILE_MAJOR.MAX_BRACKET,
     minField: JUVENILE_MAJOR.MIN_FIELD,
-    entryFee: JUVENILE_MAJOR.ENTRY_FEE, // free, and see the config comment for why
+    // 48 GP since round 42 — no longer free. See the config comment for why the
+    // number is 48 and not the 80 first proposed (the juvenile juice pool is
+    // thin, and an 80 GP door puts a one-win bird under water).
+    entryFee: JUVENILE_MAJOR.ENTRY_FEE,
     purse: JUVENILE_MAJOR.PURSE,
-    landGrants: JUVENILE_MAJOR.LAND_GRANTS as Record<string, number>,
-    landBasis: ECONOMY.JUVENILE_ENTRY_FEE,
+    landPot: JUVENILE_MAJOR.LAND_POT,
     dayOfWeek: JUVENILE_MAJOR.DAY_OF_WEEK,
   },
 } as const;
@@ -93,7 +94,10 @@ export interface TournamentFightReport {
   loser: string;
   loserFarm: string;
   figures: [number, number];
-  landEach: number;
+  // `landEach` lived here until round 42, when the crowns stopped minting per
+  // fight and started dividing one fixed pot at settle-up. Land belongs to a
+  // SETTLEMENT now, not a fight — the same move round 34 made on the daily card
+  // for the same reason. The pot share is on the tournament's payouts.
   playByPlay: string;
 }
 
@@ -605,6 +609,13 @@ export class Tournaments {
     // payout divides by the total and the champion takes the dust, which is
     // exactly why that shape was worth keeping.
     const winWeight = new Map<number, number>(); // entry.id → weight
+    // FIGHTS ACTUALLY FOUGHT, per entry — what the land pot divides on since
+    // round 42. Tallied in the same place and for the same reason as the purse
+    // weight above: this loop is the only place a bye can be told from a fight,
+    // and a bye must buy no land (see PINTAKASI.LAND_POT). Both sides of every
+    // fight count, winner and loser alike — land is unconditional on the RESULT,
+    // which is the one property it has always had and keeps.
+    const fightsFought = new Map<number, number>(); // entry.id → fights
     for (let round = 1; round <= totalRounds; round++) {
       const roundName = Tournaments.roundName(round, totalRounds, bracketSize);
       const fights: TournamentFightReport[] = [];
@@ -629,6 +640,8 @@ export class Tournaments {
         }
         const report = Tournaments.runFight(database, t, a, b, round, roundName, rng, week, weather, dayIndex);
         fights.push(report);
+        fightsFought.set(a.id, (fightsFought.get(a.id) ?? 0) + 1);
+        fightsFought.set(b.id, (fightsFought.get(b.id) ?? 0) + 1);
         const winner = report.winner === nameOf.get(a.id) ? a : b;
         const loser = winner === a ? b : a;
         winWeight.set(
@@ -726,26 +739,50 @@ export class Tournaments {
       championBird.name, payouts, farmNameOf
     );
 
-    // Land to the fallen: elimination grants, earliest-out paid the most.
+    // ── LAND: ONE POT, DIVIDED BY FIGHTS FOUGHT (round 42) ──────────────────
+    //
+    // This replaced an elimination-grant ladder that paid the earliest-out the
+    // most, on top of a per-fight mint in runFight. See PINTAKASI.LAND_POT for
+    // why two scales were the bug rather than either scale's value.
+    //
+    // The divisor is every FIGHTER-SLOT in the bracket — two per fight that
+    // actually happened — so the shares sum to the pot by construction and a
+    // thin field pays each bird more. The champion takes the floor dust for the
+    // same reason it takes the purse's: the pot is MINTED land, so a hundredth
+    // dropped by `Math.floor` is a real gap between what the config says a crown
+    // pays and what the ledger records, and the land conservation proof would
+    // book it as a mystery.
+    const fighterSlots = [...fightsFought.values()].reduce((s, n) => s + n, 0);
+    const potCents = rules.landPot;
+    let landPaid = 0;
     for (const e of field) {
-      const round = eliminatedIn.get(e.id);
-      const grant =
-        e.id === championEntry.id
-          ? rules.landGrants.champion
-          : Tournaments.grantFor(totalRounds - (round ?? totalRounds), rules.landGrants);
-      const farm = database.select().from(farms).where(eq(farms.id, e.farmId)).get()!;
-      database.update(farms).set({ landTokensCents: farm.landTokensCents + grant }).where(eq(farms.id, e.farmId)).run();
-      database.update(tournamentEntries).set({ landGranted: grant }).where(eq(tournamentEntries.id, e.id)).run();
-      emit(database, {
-        type: "purse_payout",
-        farmId: e.farmId,
-        birdId: e.birdId,
-        lt: grant,
-        message: `${nameOf.get(e.id)} — ${label(t.format)} land grant: +${fmtLt(grant)} LT (${
-          e.id === championEntry.id ? "champion" : `out in the ${Tournaments.roundName(round!, totalRounds, bracketSize)}`
-        })`,
-      });
+      const fights = fightsFought.get(e.id) ?? 0;
+      // A bird that never fought gets nothing — in practice a bye-only entry in
+      // a very short bracket. It also never risked anything, so this is the same
+      // rule the daily card runs (`landForFight` pays on what was RISKED, and an
+      // unmatched entry earns no land at all).
+      if (fights === 0) continue;
+      if (e.id === championEntry.id) continue; // settled last, with the dust
+      const share = landPotShare(potCents, fighterSlots, fights);
+      Tournaments.payLandPot(database, t, e, share, fights, nameOf.get(e.id)!);
+      landPaid += share;
     }
+    // ⚠ THE CHAMPION IS WHERE THE POT BALANCES, so this guard is the one place the
+    // whole payout can silently come up short. It cannot fire today: a champion
+    // reaches the final by winning it, and the only way to take a bracket on byes
+    // alone is to be its single entrant — which `minField` (2) refuses before a
+    // bracket is ever built. It is written as a condition anyway because the
+    // failure mode is invisible: with no champion row the remainder is simply
+    // never minted, so a crown would quietly pay less land than LAND_POT says it
+    // pays, and nothing would flag it. Land is a faucet, not an escrow, so the
+    // conservation proof stays green while the config becomes a lie.
+    //
+    // If MIN_FIELD is ever lowered to 1, come back here first.
+    if ((fightsFought.get(championEntry.id) ?? 0) > 0)
+      Tournaments.payLandPot(
+        database, t, championEntry, potCents - landPaid,
+        fightsFought.get(championEntry.id)!, championBird.name
+      );
 
     database
       .update(tournamentEntries)
@@ -812,13 +849,13 @@ export class Tournaments {
       { entry: ea, row: rowA, won: sim.winner === 0, figure: sim.figures[0] },
       { entry: eb, row: rowB, won: sim.winner === 1, figure: sim.figures[1] },
     ];
-    // The Majors mint on the steep curve; the juvenile stage mints off its
-    // own (much smaller) basis — a discovery-year fight isn't worth a Major's
-    // land, and pretending otherwise would make the crowns the cheap way in.
-    const landEach =
-      divisionRules.hardcore
-        ? landForTournamentFight(divisionRules.landBasis)
-        : landForFight(divisionRules.landBasis);
+    // ⚠ NO LAND MINTS HERE ANY MORE (round 42). A crown fight used to mint on
+    // its own curve, both sides, every fight — and then the elimination grants
+    // paid a SECOND time at settle-up. Two scales that were never priced against
+    // each other, which is how the juvenile crown ended up paying its champion
+    // less land than its first-round losers. One fixed pot divides at settle-up
+    // instead (see PINTAKASI.LAND_POT and payLandPot below). What this function
+    // still owes the pot is the COUNT of fights, which the bracket loop tallies.
     const farmNames: string[] = [];
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
@@ -827,30 +864,15 @@ export class Tournaments {
       // Records move for bird AND farm (one record, ruled round 15). No GP
       // here — the purse settles at the end; land mints per fight, both sides.
       const farmRecord = side.won ? { wins: farm.wins + 1 } : { losses: farm.losses + 1 };
-      database
-        .update(farms)
-        .set({ landTokensCents: farm.landTokensCents + landEach, ...farmRecord })
-        .where(eq(farms.id, side.entry.farmId))
-        .run();
-      // ⚠ ROUND 37 — THIS is why land had no conservation proof. The mint
-      // above used to be reported only as `landEach` inside the world-level
-      // `fight` event's `data`: unsigned, unattributed to a farm, and
-      // therefore invisible to any sum over `events.lt`. Every other land
-      // path (the card, the elimination grants, gacha, buy_land, the stud
-      // seat's burn) already wrote a signed per-farm delta, so the crowns
-      // were the single hole that made `sum(events.lt) == sum(farm piles)`
-      // untestable — and an untestable faucet is exactly how the two silent
-      // GP burns survived. One row per SIDE, because the fight event has no
-      // farmId and land is owed to two different barns.
-      emit(database, {
-        type: "crown_land",
-        farmId: side.entry.farmId,
-        birdId: side.row.id,
-        lt: landEach,
-        message:
-          `${side.row.name} fought the ${label(t.format)} ${roundName} — +${fmtLt(landEach)} LT`,
-        data: { tournamentId: t.id, round },
-      });
+      database.update(farms).set(farmRecord).where(eq(farms.id, side.entry.farmId)).run();
+      // ⚠ THE `crown_land` EVENT IS GONE WITH THE PER-FIGHT MINT (round 42),
+      // but the lesson that produced it must not go with it. Round 37: this mint
+      // was once reported ONLY as a number inside the world-level `fight`
+      // event's `data` — unsigned, unattributed to a farm, invisible to any sum
+      // over `events.lt` — which made `sum(events.lt) == sum(farm piles)`
+      // untestable, and an untestable faucet is exactly how two silent GP burns
+      // survived. The pot payout below therefore writes one SIGNED, per-farm row
+      // per participant, for the same reason this used to write one per side.
       const birdRow = database.select().from(birds).where(eq(birds.id, side.row.id)).get()!;
       database
         .update(birds)
@@ -953,12 +975,12 @@ export class Tournaments {
       birdId: sides[w].row.id,
       message:
         `${sides[w].row.name} (${farmNames[w]}) def. ${sides[1 - w].row.name} (${farmNames[1 - w]}) — ` +
-        `${header} · figures ${sides[w].figure}/${sides[1 - w].figure} · +${fmtLt(landEach)} LT each · ` +
+        `${header} · figures ${sides[w].figure}/${sides[1 - w].figure} · ` +
         // Same round-37 fix as the retire event above: this said "force-retired"
         // for every bout in the game, including the juvenile stage where losing
         // costs a bird nothing but the bracket.
         `${sides[1 - w].row.name} ${hardcore ? "force-retired" : "eliminated"}`,
-      data: { tournamentId: t.id, round, figures: sim.figures, landEach },
+      data: { tournamentId: t.id, round, figures: sim.figures },
     });
     return {
       round,
@@ -967,7 +989,6 @@ export class Tournaments {
       loser: sides[1 - w].row.name,
       loserFarm: farmNames[1 - w],
       figures: sim.figures,
-      landEach,
       playByPlay: sim.playByPlay,
     };
   }
@@ -1046,9 +1067,46 @@ export class Tournaments {
     return roundName(eliminatedRound, totalRounds, bracketSize).toLowerCase().replace(/s$/, "");
   }
 
-  private static grantFor(roundsFromFinal: number, g: Record<string, number>): number {
-    const ladder = [g.runnerUp, g.sf, g.qf, g.r16, g.r32, g.r64].filter((v) => v !== undefined);
-    return ladder[roundsFromFinal] ?? ladder[ladder.length - 1];
+  /**
+   * Credit one bird's cut of the crown's land pot, and LOG IT AS A SIGNED
+   * PER-FARM ROW — which is the whole reason this is a function rather than two
+   * lines inline. See the round-37 note in `runFight`: a land movement that is
+   * not attributed to a farm in `events.lt` is invisible to the conservation
+   * proof, and the crowns were once the single hole that made it untestable.
+   *
+   * The event type stays `purse_payout` — the same row the GP shares use — because
+   * the pot settles WITH the purse now, as one act at the end of the bracket. The
+   * old `crown_land` type belonged to a per-fight mint that no longer exists.
+   */
+  private static payLandPot(
+    database: DB,
+    t: TournamentRow,
+    entry: EntryRow,
+    cents: number,
+    fights: number,
+    birdName: string
+  ): void {
+    if (cents <= 0) return;
+    const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+    database
+      .update(farms)
+      .set({ landTokensCents: farm.landTokensCents + cents })
+      .where(eq(farms.id, entry.farmId))
+      .run();
+    database
+      .update(tournamentEntries)
+      .set({ landGranted: cents })
+      .where(eq(tournamentEntries.id, entry.id))
+      .run();
+    emit(database, {
+      type: "purse_payout",
+      farmId: entry.farmId,
+      birdId: entry.birdId,
+      lt: cents,
+      message:
+        `${birdName} — ${label(t.format)} land pot: +${fmtLt(cents)} LT ` +
+        `(${fights} fight${fights === 1 ? "" : "s"})`,
+    });
   }
 
   private static roundName(round: number, totalRounds: number, bracketSize: number): string {

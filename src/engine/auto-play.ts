@@ -141,7 +141,11 @@ export function playHonestDay(
     // and priced juvenile tags uniformly at random rather than by record. With
     // a daily card there is a third thing to agree about (what is even posted
     // tonight), so the decision now lives in exactly one place.
-    const spec = pickOffering(db, AUTO_PLAY_STYLE, bird, cardRng, day, discoveryPolicy);
+    // The budget keeps auto-play from choosing a rung it cannot pay for. Without
+    // it, `lobbies.enter` throws and `quietly` swallows the failure, so a stable
+    // that ran short would silently stop carding with nothing reporting why.
+    const budget = farmsApi.rowById(farmId).gp - AUTO_RESERVE;
+    const spec = pickOffering(db, AUTO_PLAY_STYLE, bird, cardRng, day, discoveryPolicy, budget);
     if (spec === null) continue; // nothing on tonight's card this bird can enter
     quietly(() => lobbies.enter(bird.id, spec));
   }
@@ -194,7 +198,14 @@ const AUTO_RESERVE = 400; // GP never gambled into a tag
  * of the time and tags near the bottom of the ladder, which is the cautious
  * read a human learning the game would make.
  */
-const AUTO_PLAY_STYLE = { sellRate: 0.2, tagCourage: 0.3 };
+// ⚠ `ladderCourage` ADDED ROUND 42, and it is deliberately middling rather than
+// zero. A player-side stable that never declined its protection would be the
+// only barn in the world sitting permanently on the cheapest rung it qualifies
+// for — and since auto-play is what stands in for a human who hasn't logged in,
+// a zero here would quietly encode "honest players never fight up". Middling is
+// the honest default: sometimes you take the harder company. See
+// BotProfile.ladderCourage for what the knob buys.
+const AUTO_PLAY_STYLE = { sellRate: 0.2, tagCourage: 0.3, ladderCourage: 0.25 };
 /**
  * An honest stable cards everything it legally can — that has been true since
  * round 17 and this is just that rule written down, so weatherCardsToday has a

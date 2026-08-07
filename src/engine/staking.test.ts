@@ -4,7 +4,7 @@ import type { createDb } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
 import { Breeding } from "./breeding";
 import { splitBreedFee } from "./breeding";
-import { ECONOMY, LAND, LT_CENTS, STAKER_FLOWS, landForFight } from "./config";
+import { ECONOMY, ENTRY_FEES, LAND, LT_CENTS, STAKER_FLOWS, landForFight } from "./config";
 import { Farms } from "./farms";
 import { mulberry32 } from "./rng";
 import { expectConserved, world } from "./testkit";
@@ -38,12 +38,17 @@ describe("the single staking pool", () => {
 
   // The case that only exists because land is minted fractionally now: a barn
   // that FOUGHT its way to 6.73 LT has more than 6 and less than 7, and the
-  // whole-token API has to round DOWN — staking 7 must fail, not silently
-  // overdraw the column into the negative. (A night's real card pays exactly
-  // this: landForFight(REAL_ENTRY_FEE) = 673.)
-  test("a fractional holding stakes down, never up: 6.73 LT cannot stake 7", () => {
+  // whole-token API has to round DOWN — staking a whole token more than the pile
+  // holds must fail, not silently overdraw the column into the negative.
+  //
+  // ⚠ THE FIXTURE IS NOW A 300 GP OPEN NIGHT (round 42 priced the class ladder
+  // and deleted the flat REAL_ENTRY_FEE): 64.59 LT, so the fractional part is
+  // 0.59 of a token. The test never quotes either figure — what it needs is a
+  // holding that ISN'T a whole number of tokens, which the assertion below
+  // checks for itself before proving anything.
+  test("a fractional holding stakes down, never up — the change stays liquid", () => {
     const w = world({ rivalFlock: false });
-    const held = landForFight(ECONOMY.REAL_ENTRY_FEE); // 673 hundredths
+    const held = landForFight(ENTRY_FEES.real.open); // hundredths, not whole tokens
     expect(held % LT_CENTS).not.toBe(0); // the test is worthless if it lands whole
     w.db.update(farms).set({ landTokensCents: held }).where(eq(farms.id, w.devId)).run();
     expect(() => w.farms.stake(w.devId, Math.ceil(held / LT_CENTS))).toThrow(/liquid/);

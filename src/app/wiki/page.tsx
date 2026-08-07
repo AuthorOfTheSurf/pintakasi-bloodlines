@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   AGE,
+  ALL_ENTRY_FEES,
   BARN,
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
@@ -17,6 +18,10 @@ const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesd
 
 /** The hub — the whole game in five minutes, then doors to the detail. */
 export default function WikiHome() {
+  // The span of the priced class ladder (round 42). Read off config's own sweep
+  // of the fee table so a new rung cannot fall outside the sentence.
+  const cheapestNight = Math.min(...ALL_ENTRY_FEES);
+  const dearestNight = Math.max(...ALL_ENTRY_FEES);
   return (
     <>
       <h1>Pintakasi: Bloodlines</h1>
@@ -43,6 +48,11 @@ export default function WikiHome() {
           sometimes a price. Pick one of those and enter. At the day&apos;s end every lobby deals
           its birds into small groups, and each bird fights everyone else in its group — up to{" "}
           {FIGHTS_PER_GROUP_BIRD} fights off one entry.
+        </li>
+        <li>
+          <strong>Fight up.</strong> Harder classes cost more — {cheapestNight} GP to{" "}
+          {dearestNight} GP a night — and pay back more than the extra money. Climbing is the whole
+          shape of a career. <Link href="/wiki/ladder">What each class costs →</Link>
         </li>
         <li>
           <strong>Bank the land.</strong> Win or lose, both fighters earn Land Tokens. Stake them and
@@ -114,7 +124,7 @@ export default function WikiHome() {
               <td>{DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]}</td>
               <td>
                 <strong>The Juvenile Championship</strong> — two blade crowns for age-1 birds,{" "}
-                <em>not</em> hardcore
+                {JUVENILE_MAJOR.ENTRY_FEE} GP to stand, <em>not</em> hardcore
               </td>
             </tr>
             <tr>
@@ -143,7 +153,8 @@ export default function WikiHome() {
         <div className="minicard">
           <b>Want to win money?</b>
           <Link href="/wiki/fighting">Fighting</Link> explains the five blades and how to read a Pit
-          Figure — the whole skill of the game.
+          Figure — the whole skill of the game. Then{" "}
+          <Link href="/wiki/ladder">Fighting up</Link> for where to spend it.
         </div>
         <div className="minicard">
           <b>Playing the long game?</b>

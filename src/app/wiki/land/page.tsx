@@ -1,39 +1,59 @@
 import Link from "next/link";
 import {
+  ALL_ENTRY_FEES,
   BREED_SPLIT,
   CLAIMER,
   COVERS,
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
+  JUVENILE_MAJOR,
   LAND,
   LT_CENTS,
   PINTAKASI,
   STAKER_FLOWS,
+  feeFor,
   fmtLt,
   landForFight,
-  landForTournamentFight,
+  landPotShare,
   stakePerFight,
 } from "@/engine/config";
 import { fmtGp } from "@/engine/events";
 
 export const dynamic = "force-dynamic";
 
-/** Daily-card land, per fighter — read live so the curve can't go stale. */
-const CARD_MODES: { label: string; fee: number }[] = [
-  { label: "Juvenile", fee: ECONOMY.JUVENILE_ENTRY_FEE },
-  { label: "Real / Claimer", fee: ECONOMY.REAL_ENTRY_FEE },
+/**
+ * Daily-card land at five rungs of the priced ladder (round 42) — every fee
+ * read through `feeFor`, so the day a rung is re-priced this table re-prices
+ * itself. It used to be two rows, "Juvenile" and "Real / Claimer", because
+ * until round 42 there were only two prices in the whole game.
+ */
+const CARD_ROWS: { label: string; fee: number }[] = [
+  {
+    label: `Juvenile claimer, ${CLAIMER.PRICES[0]} GP tag`,
+    fee: feeFor("juvenile", "claimer", CLAIMER.PRICES[0]),
+  },
+  { label: "Juvenile maiden", fee: feeFor("juvenile", "maiden") },
+  { label: "Grown maiden or nw3", fee: feeFor("real", "maiden") },
+  { label: "Juvenile open", fee: feeFor("juvenile", "open") },
+  { label: "Grown open", fee: feeFor("real", "open") },
 ];
 
-/** Elimination grants, EARLIEST exit first — the fallen-weighted inversion. */
-const ELIMINATION_STAGES: { label: string; grant: number }[] = [
-  { label: "Round of 64 loser (earliest possible exit)", grant: PINTAKASI.LAND_GRANTS.r64 },
-  { label: "Round of 32 loser", grant: PINTAKASI.LAND_GRANTS.r32 },
-  { label: "Round of 16 loser", grant: PINTAKASI.LAND_GRANTS.r16 },
-  { label: "Quarterfinal loser", grant: PINTAKASI.LAND_GRANTS.qf },
-  { label: "Semifinal loser", grant: PINTAKASI.LAND_GRANTS.sf },
-  { label: "Runner-up", grant: PINTAKASI.LAND_GRANTS.runnerUp },
-  { label: "Champion", grant: PINTAKASI.LAND_GRANTS.champion },
-];
+/**
+ * ONE CROWN'S LAND POT, divided the way the bracket divides it: evenly across
+ * every fight fought, so a bird's share is its own fights over all of them.
+ * A full bracket of `bracketSize` runs `bracketSize − 1` fights and therefore
+ * has twice that many fighter-slots. Rows are by FIGHTS FOUGHT, not by finish,
+ * because that is genuinely what the pot pays on now — the champion and the
+ * runner-up both fought every round, so they take the same land.
+ */
+function landByFights(potCents: number, bracketSize: number) {
+  const fights = bracketSize - 1;
+  const rounds = Math.log2(bracketSize);
+  return Array.from({ length: rounds }, (_, i) => i + 1).map((mine) => ({
+    mine,
+    cents: landPotShare(potCents, fights * 2, mine),
+  }));
+}
 
 /**
  * Land quantities live in HUNDREDTHS of a token since round 36 — every figure
@@ -46,10 +66,12 @@ const ELIMINATION_STAGES: { label: string; grant: number }[] = [
 const wholeLt = (cents: number) => (cents / LT_CENTS).toLocaleString();
 
 export default function LandPage() {
-  // The "fighting up pays more land" comparison, re-anchored in round 31 on the
-  // two modes the daily card actually runs. It used to be measured against the
-  // hardcore entry, which left the card that round — the curve is unchanged,
-  // only the pair of points we quote on it.
+  // The "fighting up pays more land" comparison, re-anchored in round 42 on the
+  // two ends of ONE division's class ladder — a grown maiden against a grown
+  // open. That is the comparison the round created and the one a player can act
+  // on: same bird, same night, two prices. (It used to compare the two
+  // DIVISIONS, which was the only pair of prices that existed before the ladder
+  // was priced, and which no single bird could ever choose between.)
   //
   // ⚠ THE SIGN OF THIS ONCE FLIPPED, and round 36 removed the mechanism that
   // let it. The history, because it explains why the branch below exists: land
@@ -72,14 +94,40 @@ export default function LandPage() {
   // arithmetic says otherwise is exactly the confident nonsense the Handbook
   // exists to prevent. It reads the true branch now, and it stays as the
   // tripwire for whatever the next fee change does to a curve nobody re-checked.
-  const realLandPerGp = landForFight(ECONOMY.REAL_ENTRY_FEE) / ECONOMY.REAL_ENTRY_FEE;
-  const juvenileLandPerGp = landForFight(ECONOMY.JUVENILE_ENTRY_FEE) / ECONOMY.JUVENILE_ENTRY_FEE;
-  const upFightingBonus = Math.round((realLandPerGp / juvenileLandPerGp - 1) * 100);
-  // What the curve pays a juvenile entry before any rounding at all — kept so
-  // the false branch can still show its work if the ordering ever inverts again.
-  const juvenileRaw = Math.pow(ECONOMY.JUVENILE_ENTRY_FEE / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT);
-  const juvenileBetterPct = Math.round((juvenileLandPerGp / realLandPerGp - 1) * 100);
-  const crownLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
+  const dearFee = feeFor("real", "open");
+  const cheapFee = feeFor("real", "maiden");
+  const dearLandPerGp = landForFight(dearFee) / dearFee;
+  const cheapLandPerGp = landForFight(cheapFee) / cheapFee;
+  const upFightingBonus = Math.round((dearLandPerGp / cheapLandPerGp - 1) * 100);
+  // The same step said the other way: what the money multiplies by, against
+  // what the land multiplies by. The second number has to be the bigger one.
+  const feeMultiple = dearFee / cheapFee;
+  const landMultiple = landForFight(dearFee) / landForFight(cheapFee);
+  // What the curve pays the cheap rung before any rounding at all — kept so the
+  // false branch can still show its work if the ordering ever inverts again.
+  const cheapRaw = Math.pow(cheapFee / LAND.FEE_PER_TOKEN, LAND.FIGHT_EXPONENT);
+  const cheapBetterPct = Math.round((cheapLandPerGp / dearLandPerGp - 1) * 100);
+  // The whole span of the ladder, so the prose can quote the cheapest and
+  // dearest nights without either being typed.
+  const cheapestNight = Math.min(...ALL_ENTRY_FEES);
+  const dearestNight = Math.max(...ALL_ENTRY_FEES);
+
+  // ── The crowns' fixed land pots (round 42) ────────────────────────────────
+  // One pot per crown, split across every fight fought. A full 32-bird bracket
+  // is the ordinary shape of a Major, so it is what the worked table shows; the
+  // tiny bracket below it is there to show the thin-field effect, which is the
+  // surprising half of the rule.
+  const majorBracket = Math.min(32, PINTAKASI.MAX_BRACKET);
+  const majorLand = landByFights(PINTAKASI.LAND_POT, majorBracket);
+  const majorTopFights = majorLand[majorLand.length - 1];
+  const majorOneFight = majorLand[0];
+  const thinBracket = 4;
+  const thinLand = landByFights(PINTAKASI.LAND_POT, thinBracket);
+  const thinOneFight = thinLand[0];
+  const juvenileLand = landByFights(
+    JUVENILE_MAJOR.LAND_POT,
+    Math.min(32, JUVENILE_MAJOR.MAX_BRACKET)
+  );
 
   // Every worked number below is computed from the live config, not typed —
   // so this page can never quietly go stale.
@@ -134,9 +182,9 @@ export default function LandPage() {
         the whole entry:
       </p>
       <div className="callout tip">
-        <b>Land comes in fractions.</b> A night&apos;s fighting pays{" "}
-        {fmtLt(landForFight(ECONOMY.REAL_ENTRY_FEE))} LT, not 7 — awards are minted in hundredths of
-        a token, the same way GP is counted in centavos. That is new as of round 36, and it is there
+        <b>Land comes in fractions.</b> A grown maiden night pays{" "}
+        {fmtLt(landForFight(cheapFee))} LT, not a round number — awards are minted in hundredths of
+        a token, the same way GP is counted in centavos. That is there
         to keep the curve honest: when land only came in whole tokens, the rounding at the cheap end
         was worth more than the curve itself, and for one round the discovery year paid better land
         per peso than a real card did. Hundredths make the rounding too small to matter.
@@ -147,23 +195,24 @@ export default function LandPage() {
         unstaking it are whole-token actions.
       </div>
       <p className="dim">
-        Every land award also went slightly <em>up</em> this round, by roughly a seventh. Round 34
-        had shaved them all — it raised the amount of GP one token costs, as a way of working
-        around the rounding problem above. With the cause cured properly, that haircut is handed
-        back.
+        Every award on this page moved when the entry fees moved. Each class of fight has its own
+        price now — a maiden night and an open night are no longer the same money (see{" "}
+        <Link href="/wiki/ladder">Fighting up</Link>) — and since land is measured off what your bird
+        risked, a dearer class simply mints more of it. That is the whole point of pricing the
+        classes.
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Mode</th>
+              <th>A night at&hellip;</th>
               <th className="num">Entry fee</th>
               <th className="num">Full card of {FIGHTS_PER_GROUP_BIRD}</th>
               <th className="num">Short card of {FIGHTS_PER_GROUP_BIRD - 1}</th>
             </tr>
           </thead>
           <tbody>
-            {CARD_MODES.map((m) => (
+            {CARD_ROWS.map((m) => (
               <tr key={m.label}>
                 <td>{m.label}</td>
                 <td className="num">{m.fee} GP</td>
@@ -177,87 +226,120 @@ export default function LandPage() {
         </table>
       </div>
       <p className="dim">
+        Those five are a sample, not the whole ladder — the daily card runs prices from{" "}
+        {cheapestNight} GP up to {dearestNight} GP. <Link href="/wiki/ladder">Fighting up</Link> lists
+        every rung and what each one mints.
+      </p>
+      <p className="dim">
         A short card pays less, and honestly so — the bird risked less. It happens when your
         bird&apos;s group held one of your own barn-mates, since two birds of one farm are never
         matched against each other and that fight is simply skipped.
       </p>
       {upFightingBonus > 0 ? (
         <p className="dim">
-          A real entry costs {(ECONOMY.REAL_ENTRY_FEE / ECONOMY.JUVENILE_ENTRY_FEE).toFixed(1)}× a
-          juvenile one, but it pays about {upFightingBonus}% more land <em>per GP staked</em>. That
-          is the curve: every step up in stakes pays more than its share, and since round 36 that
-          ordering holds at every price in the game — it is checked against every entry fee from 1
-          to 300 GP. The steepest step of all is the Pintakasi Majors, below.
+          A grown open night costs {feeMultiple.toFixed(1)}× a grown maiden night, but it mints{" "}
+          {landMultiple.toFixed(1)}× the land — about {upFightingBonus}% more land{" "}
+          <em>per GP staked</em>. That is the curve: every step up in class pays more than its share
+          of the extra money you put in, and that ordering holds at every price in the game — it is
+          checked against every entry fee from 1 to 300 GP. This is the reason to climb, and it has
+          its own page: <Link href="/wiki/ladder">Fighting up</Link>.
         </p>
       ) : (
         <p className="dim">
           One honest wrinkle, at these two particular prices. The rounding on the award is worth
-          more than the curve down at the cheap end: the juvenile award works out at{" "}
-          {juvenileRaw.toFixed(2)} before rounding and is paid as{" "}
-          {fmtLt(landForFight(ECONOMY.JUVENILE_ENTRY_FEE))} LT. So per GP staked, the discovery
-          year is actually the <em>better</em> land deal right now — about {juvenileBetterPct}%
-          better. The curve underneath is still superlinear, and it shows properly once the stakes
-          are big enough for the rounding to stop mattering: the Pintakasi Majors, below, are the
-          steepest step of all. Card your one-year-olds; the land is cheap there.
+          more than the curve down at the cheap end: the cheaper award works out at{" "}
+          {cheapRaw.toFixed(2)} before rounding and is paid as {fmtLt(landForFight(cheapFee))} LT. So
+          per GP staked, the cheap rung is actually the <em>better</em> land deal right now — about{" "}
+          {cheapBetterPct}% better, which is backwards and worth reporting. The curve underneath is
+          still steeper than a straight line; it just needs bigger stakes before the rounding stops
+          mattering.
         </p>
       )}
 
-      <h3>The Pintakasi Majors pay even steeper</h3>
+      <h3>The crowns pay one fixed pot</h3>
       <p>
-        Every round of a Pintakasi Major mints land on a steeper curve than the daily card —{" "}
-        {fmtLt(crownLand)} LT to each fighter, per fight, measured against the {PINTAKASI.LAND_BASIS} GP
-        stake the Majors represent. A bird that survives several rounds banks that amount again and
-        again before it ever gets to the elimination grants below.
+        The championships do not use the curve above at all. Each crown has a{" "}
+        <strong>fixed pot of land</strong> set in advance — {wholeLt(PINTAKASI.LAND_POT)} LT for a
+        Pintakasi Major, {wholeLt(JUVENILE_MAJOR.LAND_POT)} LT for a Juvenile Championship — and that
+        pot is divided <strong>evenly across every fight actually fought in the bracket</strong>. Your
+        bird&apos;s share is simply its own fights divided by all of them.
       </p>
-      <div className="callout tip">
-        <b>
-          That {PINTAKASI.LAND_BASIS} GP is not the entry fee, and the two are meant to differ.
-        </b>{" "}
-        A Major costs {PINTAKASI.ENTRY_FEE} GP to enter (see{" "}
-        <Link href="/wiki/pintakasi">The Pintakasi</Link>). The {PINTAKASI.LAND_BASIS} GP here is a
-        separate figure: what a crown fight is <em>worth in land</em>, set by how much a career is
-        being risked, not by what the barn paid at the door. Land to the fallen only works if it is
-        big, so it is priced against the risk.
-      </div>
-      <p className="dim">
-        Every one of those per-fight awards is written into your ledger as its own line, round by
-        round. So you can add up a Major night yourself and check it against your barn&apos;s land
-        pile — every token in the world traces back to a line somebody can read.
-      </p>
+      <p>That one sentence has three consequences, and all three are meant:</p>
+      <ul>
+        <li>
+          <strong>A deeper run earns more land.</strong> Two fights is twice one fight. Nothing is
+          weighted, nothing is a bonus — it is just counting.
+        </li>
+        <li>
+          <strong>A bye earns nothing.</strong> If the field was short and your bird skipped a round,
+          that round bought it no land, because a bye is not a fight.
+        </li>
+        <li>
+          <strong>A thin field pays each bird more.</strong> The pot is the same size whether{" "}
+          {majorBracket} birds show up or {thinBracket} do, so a quiet crown divides the same land
+          across far fewer fights. Turning up early, while a stage is still small, is rewarded.
+        </li>
+      </ul>
       <p>
-        On top of the per-fight land, every eliminated bird collects a one-time grant the moment it
-        falls — and the grants run <strong>backwards</strong>. The earliest exit pays the most:
+        Here is a full {majorBracket}-bird Major, which runs {majorBracket - 1} fights in total:
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Stage</th>
-              <th className="num">One-time land grant</th>
+              <th className="num">Fights your bird took</th>
+              <th>Which birds those are</th>
+              <th className="num">Land</th>
             </tr>
           </thead>
           <tbody>
-            {ELIMINATION_STAGES.map((s) => (
-              <tr key={s.label}>
-                <td>{s.label}</td>
-                {/* Grants live in the same hundredths as every other land
-                    figure since round 36 — the farm's balance is credited with
-                    this number directly, so it must be formatted, not printed
-                    raw. */}
-                <td className="num">{fmtLt(s.grant)} LT</td>
+            {majorLand.map((r) => (
+              <tr key={r.mine}>
+                <td className="num">{r.mine}</td>
+                <td>
+                  {r.mine === 1
+                    ? "Lost its first fight"
+                    : r.mine === majorLand.length
+                      ? "The champion and the runner-up — both fought every round"
+                      : `Won ${r.mine - 1}, then lost`}
+                </td>
+                {/* Pot shares are hundredths like every land figure since round
+                    36 — format, never print raw. */}
+                <td className="num">{fmtLt(r.cents)} LT</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <div className="callout tip">
+        <b>The champion and the runner-up take the same land.</b> Land counts{" "}
+        <em>fights</em>, not wins — and both of them fought every round. The purse is what separates
+        them (see <Link href="/wiki/pintakasi">The Pintakasi</Link>); the land does not care who won.
+      </div>
+      <div className="callout tip">
+        <b>What a quiet crown is worth.</b> Take that same {wholeLt(PINTAKASI.LAND_POT)} LT pot and a
+        field of only {thinBracket} birds. Now the bracket runs {thinBracket - 1} fights instead of{" "}
+        {majorBracket - 1}, so losing your first fight pays {fmtLt(thinOneFight.cents)} LT — against{" "}
+        {fmtLt(majorOneFight.cents)} LT in the full field. Same pot, fewer ways to split it. If a
+        crown looks empty on the board, that is an argument for entering, not against.
+      </div>
       <p className="dim">
-        Every Major bout is hardcore — the loser&apos;s career ends there, and the Majors are the
-        only place in the game a hardcore fight happens at all. The grant is the game&apos;s way of
-        saying a first-round hardcore death is never a pure loss: the purse follows
-        the wins, but the land goes to the fallen. The Wednesday Juvenile Championship mints
-        per-fight land too, but off the much smaller juvenile entry fee — it&apos;s a discovery-year
-        stage, not a Major, and losing one doesn&apos;t end a career. See{" "}
-        <Link href="/wiki/pintakasi">The Pintakasi</Link> for both.
+        The Wednesday Juvenile Championship works exactly the same way off its own smaller pot: in a
+        full bracket one fight pays {fmtLt(juvenileLand[0].cents)} LT and going all the way pays{" "}
+        {fmtLt(juvenileLand[juvenileLand.length - 1].cents)} LT. Every share is written into your
+        ledger as its own line, so you can add up a crown night yourself and check it against your
+        barn&apos;s land pile — every token in the world traces back to a line somebody can read.
+      </p>
+      <p className="dim">
+        This replaced two older rules at once, and it is worth knowing what is gone, because the old
+        one was the opposite of this one. Crowns used to mint land per fight on their own separate
+        curve <em>and</em> hand every eliminated bird a consolation grant that got{" "}
+        <em>bigger the earlier it fell</em> — so a first-round loser could bank more land than the
+        champion. Two scales that nobody had priced against each other. One pot cannot invert like
+        that, because it is one division of one number. A first-round exit at a Major now simply takes
+        the smallest share on the board — {fmtLt(majorOneFight.cents)} LT of a{" "}
+        {wholeLt(PINTAKASI.LAND_POT)} LT pot, still a great deal of land — and the deep run is the one
+        that pays most.
       </p>
 
       <h3>Gacha and buying outright</h3>
@@ -462,6 +544,7 @@ export default function LandPage() {
 
       <div className="next">
         <Link href="/wiki/money">Golden Pesos →</Link>
+        <Link href="/wiki/ladder">Fighting up →</Link>
         <Link href="/wiki/card">The card →</Link>
         <Link href="/wiki/pintakasi">The Pintakasi →</Link>
         <Link href="/wiki/gacha">The gacha →</Link>

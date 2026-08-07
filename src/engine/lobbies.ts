@@ -18,6 +18,7 @@ import {
   CLAIMER,
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
+  feeFor,
   FORMATS,
   FORMAT_NAMES,
   GROUP,
@@ -50,10 +51,17 @@ import { Tournaments } from "./tournaments";
 // other, and cardOfDay needs it), but every consumer imports it from here.
 export type { FightMode };
 
-const MODE_FEES: Record<FightMode, number> = {
-  juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
-  real: ECONOMY.REAL_ENTRY_FEE,
-};
+// ⚠ `MODE_FEES` LIVED HERE AND IS GONE (round 42). It was a two-entry lookup —
+// one price per division — and every fee in the game came through it. Round 42
+// prices every rung of the class ladder separately, so the fee is a function of
+// the whole KEY (mode, class, tag) and `config.feeFor` is that function. The
+// lookup is kept in config beside the table it reads rather than here, because
+// the Handbook and the MCP tool descriptions need the same answer.
+//
+// NOTE the fee is still WRITTEN ONTO EVERY ENTRY ROW at the door (`entry.fee`),
+// which is what makes a mid-season reprice safe: settle-up, refunds and the land
+// curve all read the row, so a bird is always billed and paid at the price it
+// actually carded on, never at today's knob.
 
 /**
  * The card line for a lobby — shared by resolutions and the ledger, and
@@ -344,7 +352,7 @@ export class Lobbies {
         throw new Error(`${bird.name} is registered for the Pintakasi — tonight's crown is its card`);
     }
 
-    const fee = MODE_FEES[spec.mode];
+    const fee = feeFor(spec.mode, spec.classType, spec.price);
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     if (farm.gp < fee) throw new Error(`The ${spec.mode} entry costs ${fee} GP (escrowed) — you have ${farm.gp}`);
     this.database.update(farms).set({ gp: farm.gp - fee }).where(eq(farms.id, this.farmId)).run();
@@ -404,7 +412,7 @@ export class Lobbies {
         classType: k.classType,
         format: k.format,
         price: k.price ?? null,
-        fee: MODE_FEES[k.mode],
+        fee: feeFor(k.mode, k.classType, k.price),
         filled: 0,
         entries: [],
       }));
@@ -1136,7 +1144,7 @@ export class Lobbies {
       classType: lobby.classType,
       format: lobby.format,
       price: lobby.price,
-      fee: MODE_FEES[lobby.mode],
+      fee: feeFor(lobby.mode, lobby.classType, lobby.price ?? undefined),
       filled: entries.length,
       entries: visible.map((e) => this.card(e, this.lookupFor(entries), closed ? entries : undefined)),
     };
@@ -1291,11 +1299,11 @@ export function entryRefusal(
     return `${bird.name} has ${bird.stakesWins} stakes wins — nw3 takes fewer than ${NW_CAP}`;
 
   if (classType === "claimer") {
-    // Juveniles claim on their own, cheaper ladder — an unproven bird priced
-    // against grown stock would never be tagged at all.
-    const ladder = (
-      mode === "juvenile" ? CLAIMER.JUVENILE_PRICES : CLAIMER.PRICES
-    ) as readonly number[];
+    // ONE tag ladder for both seasons since round 42 — the juvenile rungs are
+    // gone (see CLAIMER in config). What still differs by season is the ENTRY
+    // fee, not the animal's price: the same 90 GP tag costs 24 GP to card as a
+    // juvenile and 48 as a grown bird.
+    const ladder = CLAIMER.PRICES as readonly number[];
     if (!price || !ladder.includes(price)) return `Pick a claiming tag: ${ladder.join(" / ")} GP`;
   } else if (price) {
     return "A tag price only means something in a claimer";

@@ -28,6 +28,7 @@ const NAV: { href: string; label: string; blurb: string }[] = [
   { href: "/wiki/birds", label: "Birds & stats", blurb: "what makes a fighter" },
   { href: "/wiki/fighting", label: "Fighting", blurb: "the five blades, and figures" },
   { href: "/wiki/card", label: "The card", blurb: "the daily card, classes, the fog" },
+  { href: "/wiki/ladder", label: "Fighting up", blurb: "what each class costs, and pays" },
   { href: "/wiki/claiming", label: "Claiming", blurb: "buying a bird off the card" },
   { href: "/wiki/pintakasi", label: "The Pintakasi", blurb: "Thursday's Majors" },
   { href: "/wiki/breeding", label: "Breeding", blurb: "retired birds make the next ones" },

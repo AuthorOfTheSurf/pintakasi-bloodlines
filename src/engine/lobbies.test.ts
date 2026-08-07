@@ -5,17 +5,22 @@ import { replayFight } from "./replay";
 import { battleLog, birds, farms, gameState, lobbyEntries } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import {
+  ALL_ENTRY_FEES,
+  CLAIMER,
   ECONOMY,
+  ENTRY_FEES,
   FIGHTS_PER_GROUP_BIRD,
   FORMAT_NAMES,
   GROUP,
+  JUVENILE_MAJOR,
   LAND,
   LT_CENTS,
   PINTAKASI,
   SCOUT,
   STAKER_FLOWS,
+  feeFor,
   landForFight,
-  landForTournamentFight,
+  landPotShare,
   stakePerFight,
 } from "./config";
 import { Flock } from "./flock";
@@ -29,6 +34,23 @@ import { expectConserved, makeBird, onCard } from "./testkit";
  * settle and the fog, never about which blade is running.
  */
 const REAL = (db: DB): LobbySpec => onCard(db, { mode: "real", classType: "open" });
+
+/**
+ * WHAT TONIGHT COSTS — read through the fee ladder, never typed (round 42).
+ *
+ * There used to be one price per division — a 42 GP grown night and a 9 GP
+ * juvenile one, both constants on ECONOMY — and this file quoted them roughly
+ * thirty times. Both
+ * constants are gone: every rung of the class ladder is priced separately now,
+ * so "the real entry fee" is not a thing a test can name. It has to ask which
+ * rung it is standing on — which is what `feeFor` is for, and what these two
+ * shorthands do for the open rung the fixtures above actually card.
+ */
+const feeOf = (spec: LobbySpec) => feeFor(spec.mode, spec.classType, spec.price);
+/** The adult open night — the dearest fight on any daily card. */
+const REAL_FEE = ENTRY_FEES.real.open;
+/** The discovery year's open night — the sharpest read a chick can buy. */
+const JUV_FEE = ENTRY_FEES.juvenile.open;
 
 function world() {
   const db = createDb(":memory:");
@@ -135,7 +157,7 @@ describe("entry rules (the door)", () => {
   test("the fee escrows at entry; an empty wallet cannot enter", () => {
     const w = world();
     w.dev.enter(byName(w.devFlock, "Alab").id, REAL(w.db));
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - ECONOMY.REAL_ENTRY_FEE);
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - REAL_FEE);
     w.db.update(farms).set({ gp: 10 }).where(eq(farms.id, w.devId)).run();
     expect(() => w.dev.enter(byName(w.devFlock, "Sinag").id, REAL(w.db))).toThrow(/costs/);
   });
@@ -176,6 +198,94 @@ describe("entry rules (the door)", () => {
     const sinag = byName(w.devFlock, "Sinag");
     expect(sinag.stakesWins).toBe(4);
     expect(() => w.dev.enter(sinag.id, onCard(w.db, { mode: "real", classType: "maiden" }))).toThrow(/won at stakes/);
+  });
+});
+
+/**
+ * ── THE FEE LADDER (round 42) — the flat rate dies ──────────────────────────
+ *
+ * Zane: "We have a ladder with maidens, claimers, nw, open, and then
+ * Championships… But we basically just charge a flat rate on these fights. We
+ * want the more competitive fights to cost more, more risk, more reward… We want
+ * players to ladder up."
+ *
+ * Until this round the class ladder carried NO economic weight: one price per
+ * division meant a bird climbing into harder company took on the same stake for
+ * the same reward. So what these pin is not the numbers — those are balance
+ * dials — but the SHAPE that makes the ladder a ladder: climbing costs more,
+ * every rung is priced, and the discovery year is the cheap seat at every rung.
+ */
+describe("the fee ladder prices every rung", () => {
+  test("climbing costs more: maiden ≤ nw3 < open, in both divisions", () => {
+    for (const mode of ["juvenile", "real"] as const) {
+      const rungs = ENTRY_FEES[mode];
+      // Maiden and nw3 SHARE a price on purpose (Zane: "they kinda become the
+      // same thing, since most birds should get a win in their juvi season") —
+      // asserted as ≤ rather than < so pricing them apart later is a balance
+      // decision and not a test rewrite.
+      expect(rungs.maiden).toBeLessThanOrEqual(rungs.nw3);
+      expect(rungs.nw3).toBeLessThan(rungs.open);
+      // The claimer tags climb with the price of the bird on offer.
+      for (let i = 1; i < rungs.claimer.length; i++)
+        expect(rungs.claimer[i]).toBeGreaterThan(rungs.claimer[i - 1]);
+      // One entry fee per tag on the shared ladder — an orphaned rung is a
+      // `feeFor` throw waiting to happen at a lobby nobody re-priced.
+      expect(rungs.claimer.length).toBe(CLAIMER.PRICES.length);
+    }
+    // The discovery year is HALF PRICE at every rung (Zane: "for simplicity we
+    // just double it"), which is what makes "campaign it as a juvenile" a real
+    // economic choice rather than a rounding difference.
+    // (Widened to `number` in the helper: the table's entries are literal types,
+    // and comparing one literal against arithmetic on another is a compile error
+    // rather than the runtime check this needs to be.)
+    const isDouble = (grown: number, juvenile: number) => expect(grown).toBe(2 * juvenile);
+    isDouble(ENTRY_FEES.real.maiden, ENTRY_FEES.juvenile.maiden);
+    isDouble(ENTRY_FEES.real.open, ENTRY_FEES.juvenile.open);
+    for (const [i, fee] of ENTRY_FEES.real.claimer.entries())
+      isDouble(fee, ENTRY_FEES.juvenile.claimer[i]);
+    // ⚠ AND THE JUVENILE OPEN IS DEARER THAN A GROWN MAIDEN, deliberately. Zane:
+    // "If your bird can win @ open competition at a specific blade, that is
+    // basically the best possible info in the game." Discovery is the product of
+    // the juvenile year, and the sharpest read costs the most — so this pair is
+    // NOT ordered by division, and anybody "fixing" that would be undoing the
+    // ruling the whole ladder was built to express.
+    expect(ENTRY_FEES.juvenile.open).toBeGreaterThan(ENTRY_FEES.real.maiden);
+  });
+
+  test("a claimer's entry fee is looked up by its POSITION on the tag ladder", () => {
+    // ONE tag ladder for both seasons since round 42 (CLAIMER.JUVENILE_PRICES is
+    // gone): the tag says what the BIRD costs and is shared, the entry says what
+    // the NIGHT costs and is still per-division.
+    for (const [i, price] of CLAIMER.PRICES.entries()) {
+      expect(feeFor("juvenile", "claimer", price)).toBe(ENTRY_FEES.juvenile.claimer[i]);
+      expect(feeFor("real", "claimer", price)).toBe(ENTRY_FEES.real.claimer[i]);
+    }
+    // ⚠ AN UNKNOWN TAG THROWS rather than quietly billing the cheap rung. Not
+    // hypothetical: a tag is part of a lobby's KEY, so a stale tag written before
+    // a reprice reaches this function from any old lobby row, and the bots'
+    // bare `catch` would swallow a silent underbilling forever.
+    expect(() => feeFor("real", "claimer", 999)).toThrow(/No claimer rung/);
+    expect(() => feeFor("real", "claimer")).toThrow(/No claimer rung/);
+  });
+
+  test("the door charges the rung the bird actually carded, not a division rate", () => {
+    // The engine end of the same claim: two different classes on the same night,
+    // two different bills. This is what would have gone unnoticed if `feeFor`
+    // were right and `enter` still read one constant.
+    const w = world();
+    const open = REAL(w.db);
+    const claimer = onCard(w.db, { mode: "real", classType: "claimer" });
+    expect(feeOf(open)).not.toBe(feeOf(claimer)); // …or the fixture proves nothing
+    let wallet = gp(w.db, w.devId);
+    w.dev.enter(byName(w.devFlock, "Alab").id, open);
+    expect(gp(w.db, w.devId)).toBe(wallet - feeOf(open));
+    wallet = gp(w.db, w.devId);
+    w.dev.enter(byName(w.devFlock, "Sinag").id, claimer);
+    expect(gp(w.db, w.devId)).toBe(wallet - feeOf(claimer));
+    // Escrow, not a burn: `totalGp` above counts wallets and pools only, so the
+    // full proof (which counts held entries too) is what says the money is still
+    // in the world.
+    expectConserved(w.db);
   });
 });
 
@@ -258,7 +368,7 @@ describe("the card goes off (pure PvP)", () => {
     const before = totalGp(w.db);
     const { lobby, fight } = duel(w, "Alab", REAL(w.db), 7001);
 
-    const fee = ECONOMY.REAL_ENTRY_FEE;
+    const fee = REAL_FEE;
     // ⚠ ROUND 34: a two-bird lobby is a group of two, so this is still one
     // fight — but the fee no longer IS the wager. A third of it is (the night
     // was three fights long and only one of them existed), and the other two
@@ -395,7 +505,7 @@ describe("the card goes off (pure PvP)", () => {
     expect(lobby.unmatched.length).toBe(0);
     const dev = lobby.settlements.find((s) => s.farm === "Bukidnon Farms")!;
     expect(dev.fights).toBe(2); // the only bird everyone can fight
-    expect(dev.refunded).toBe(stakePerFight(ECONOMY.REAL_ENTRY_FEE)); // one unfought third
+    expect(dev.refunded).toBe(stakePerFight(REAL_FEE)); // one unfought third
     for (const s of lobby.settlements.filter((s) => s.farm === "Rival Gamefarm"))
       expect(s.fights).toBe(1);
     expect(totalGp(w.db)).toBe(before); // refunds + pooled pots conserve GP exactly
@@ -406,10 +516,10 @@ describe("the card goes off (pure PvP)", () => {
   test("juvenile cards count toward the ONE lifetime record, at juvenile stakes", () => {
     const w = world();
     const { lobby, fight } = duel(w, "Kidlat", onCard(w.db, { mode: "juvenile", classType: "open" }), 31);
-    expect(fight.stake).toBe(stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE));
+    expect(fight.stake).toBe(stakePerFight(JUV_FEE));
     // One fight of a possible three, so the land is on that one stake.
     expect(lobby.settlements[0].land).toBe(
-      landForFight(stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE))
+      landForFight(stakePerFight(JUV_FEE))
     );
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins + kidlat.losses).toBe(1); // one record, ruled round 15
@@ -434,7 +544,7 @@ describe("the card goes off (pure PvP)", () => {
     expect(rivalSinag.status).toBe("active"); // both walk away, win or lose
     // …and both are paid for turning up, on the one stake they risked.
     for (const s of lobby.settlements)
-      expect(s.land).toBe(landForFight(stakePerFight(ECONOMY.REAL_ENTRY_FEE)));
+      expect(s.land).toBe(landForFight(stakePerFight(REAL_FEE)));
   });
 
   test("same lobby seed → identical night (replayable)", () => {
@@ -496,7 +606,7 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
     const rival = lobby.settlements.find((s) => s.farm === "Rival Gamefarm")!;
     expect(rival.fights).toBe(FIGHTS_PER_GROUP_BIRD); // a full night
     expect(rival.refunded).toBe(0);
-    expect(rival.staked).toBe(ECONOMY.REAL_ENTRY_FEE);
+    expect(rival.staked).toBe(REAL_FEE);
     for (const s of lobby.settlements.filter((s) => s.farm === "Bukidnon Farms"))
       expect(s.fights).toBe(1); // one apiece — the visitor is their only door
     expect(totalGp(w.db)).toBe(before); // every refund and pot conserves GP exactly
@@ -549,7 +659,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     Lobbies.close(w.db, "all");
     // Drew NOBODY is an empty list now, not a null (round 34).
     expect(live(w.dev)[0].entries[0].drew).toEqual([]);
-    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - ECONOMY.REAL_ENTRY_FEE); // still escrowed
+    expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP - REAL_FEE); // still escrowed
     Lobbies.complete(w.db);
     expect(gp(w.db, w.devId)).toBe(ECONOMY.STARTING_GP); // fee home at post time
   });
@@ -666,26 +776,39 @@ describe("the scout report (round 28 — reading a bird through the fog)", () =>
 });
 
 describe("the land curve (fight up)", () => {
-  test("superlinear in the fee: the two daily rungs, and the Majors above them", () => {
+  test("superlinear in the fee: the cheapest rung of the ladder against the dearest", () => {
     // ⚠ ROUND 31 dropped the hardcore rung. There is no hardcore entry fee any
-    // more — the daily card runs none, and the Majors are free — so the curve's
-    // top end is now exercised against the tournament land basis, which is what
-    // actually pays a bird for fighting up.
+    // more — the daily card runs none.
     //
     // ⚠ ROUND 34 CHANGED WHAT THE ARGUMENT MEANS. It used to be the entry fee
     // of a single fight; it is now the TOTAL a bird risked across its group,
     // which for a full night is the whole fee and for a short one is less. The
     // rungs below are therefore the FULL-NIGHT rungs.
     //
-    // ⚠ ROUND 36 CHANGED THE UNIT. landForFight returns HUNDREDTHS now, so a
-    // juvenile night is 115 (1.15 LT) and a real night 673 (6.73 LT). Both
-    // rungs are written against LT_CENTS rather than as bare integers, so the
-    // reader can see which unit they are in without going to look.
-    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE) / LT_CENTS).toBeCloseTo(1.15, 2);
-    expect(landForFight(ECONOMY.REAL_ENTRY_FEE) / LT_CENTS).toBeCloseTo(6.73, 2);
-    expect(landForTournamentFight(PINTAKASI.LAND_BASIS)).toBeGreaterThan(
-      landForFight(ECONOMY.REAL_ENTRY_FEE)
-    );
+    // ⚠ ROUND 36 CHANGED THE UNIT. landForFight returns HUNDREDTHS now, so the
+    // rungs read against LT_CENTS rather than as bare integers and the reader
+    // can see which unit they are in without going to look.
+    //
+    // ⚠ ROUND 42 CHANGED WHAT "THE RUNGS" ARE, and this is the round the curve
+    // was waiting for. There used to be exactly two prices in the game, so a
+    // "juvenile night" and a "real night" were the only two points the curve was
+    // ever fed; the class ladder charged one flat rate and the superlinear
+    // exponent had nothing to bite on. Ten rungs from 24 to 300 GP is what makes
+    // "fighting up pays extra" a thing a player can actually walk up, so the
+    // ends of the ladder are what this pins — the cheapest fight in the game
+    // (a juvenile claimer at the softest tag) and the dearest (a grown open
+    // night, two covers' worth of stake).
+    const cheapest = Math.min(...ALL_ENTRY_FEES);
+    const dearest = Math.max(...ALL_ENTRY_FEES);
+    expect([cheapest, dearest]).toEqual([ENTRY_FEES.juvenile.claimer[0], ENTRY_FEES.real.open]);
+    expect(landForFight(cheapest) / LT_CENTS).toBeCloseTo(3.54, 2);
+    expect(landForFight(dearest) / LT_CENTS).toBeCloseTo(64.59, 2);
+    // The Majors are NOT on this curve any more (round 42 deleted
+    // landForTournamentFight): a crown pays one fixed pot, divided by fights
+    // fought. What still has to be true is the ordering the two mechanisms
+    // together promise — a crown fight is worth more land than any night on the
+    // daily card. See "the crown land pot" below for the pot's own properties.
+    expect(PINTAKASI.LAND_POT).toBeGreaterThan(landForFight(dearest));
 
     // THE DIRECTION OF THE WHOLE RULING, and round 34 nearly lost it. Dearer
     // company must pay MORE LAND PER GP RISKED, not just more land. Moving the
@@ -694,7 +817,8 @@ describe("the land curve (fight up)", () => {
     // it — which is why LAND.FEE_PER_TOKEN moved with it. Pin the ratio, not
     // the rungs: the rungs above will drift, this must not.
     const perGp = (fee: number) => landForFight(fee) / fee;
-    expect(perGp(ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(perGp(ECONOMY.JUVENILE_ENTRY_FEE));
+    expect(perGp(REAL_FEE)).toBeGreaterThan(perGp(JUV_FEE));
+    expect(perGp(dearest)).toBeGreaterThan(perGp(cheapest));
 
     // WHY LAND PAYS ONCE ON THE NIGHT rather than once per fight.
     //
@@ -710,24 +834,24 @@ describe("the land curve (fight up)", () => {
     // same property as "fighting up pays extra", read on one bird's night
     // instead of across two cards. Paying per fight would have SHRUNK the
     // reward for taking a full night, which is precisely backwards.
-    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
-    expect(landForFight(ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(
+    const stake = stakePerFight(REAL_FEE);
+    expect(landForFight(REAL_FEE)).toBeGreaterThan(
       FIGHTS_PER_GROUP_BIRD * landForFight(stake)
     );
-    const juvStake = stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE);
-    expect(landForFight(ECONOMY.JUVENILE_ENTRY_FEE)).toBeGreaterThan(
+    const juvStake = stakePerFight(JUV_FEE);
+    expect(landForFight(JUV_FEE)).toBeGreaterThan(
       FIGHTS_PER_GROUP_BIRD * landForFight(juvStake)
     );
     // …and a bird that fought a SHORT card is still honestly paid short: the
     // curve is fed what it actually risked, so two fights of three pay less
     // than the full night. (That is the half of the round-34 ruling that did
     // not change.)
-    expect(landForFight(2 * stake)).toBeLessThan(landForFight(ECONOMY.REAL_ENTRY_FEE));
+    expect(landForFight(2 * stake)).toBeLessThan(landForFight(REAL_FEE));
     expect(landForFight(stake)).toBeLessThan(landForFight(2 * stake));
     // 3× the fee pays MORE than 3× the land — the "fight up" incentive, which
     // is the property the whole curve exists for.
-    expect(landForFight(3 * ECONOMY.REAL_ENTRY_FEE)).toBeGreaterThan(
-      3 * landForFight(ECONOMY.REAL_ENTRY_FEE)
+    expect(landForFight(3 * REAL_FEE)).toBeGreaterThan(
+      3 * landForFight(REAL_FEE)
     );
   });
 
@@ -799,22 +923,132 @@ describe("the land curve (fight up)", () => {
   });
 
   test("GUARD: the ordering the ruling actually names, rung by rung", () => {
-    const perGp = (lt: number, fee: number) => lt / fee;
-    const juv = perGp(landForFight(ECONOMY.JUVENILE_ENTRY_FEE), ECONOMY.JUVENILE_ENTRY_FEE);
-    const real = perGp(landForFight(ECONOMY.REAL_ENTRY_FEE), ECONOMY.REAL_ENTRY_FEE);
+    const perGp = (fee: number) => landForFight(fee) / fee;
+    const juv = perGp(JUV_FEE);
+    const real = perGp(REAL_FEE);
     // The exact pair round 34 inverted: the discovery year must pay WORSE land
     // per GP than a real card, because it is the cheaper, safer company.
     expect(real).toBeGreaterThan(juv);
 
-    // And the Majors sit above the daily card on the same measure — a steeper
-    // exponent on a dearer basis. This is the second half of "fight up": it is
-    // not only about the size of the fee but about which card you took it on.
-    const major = perGp(landForTournamentFight(PINTAKASI.LAND_BASIS), PINTAKASI.LAND_BASIS);
-    expect(major).toBeGreaterThan(real);
-    // …and the two curves agree at their shared base — the Majors are the same
-    // shape pulled steeper, not a different deal bolted on.
-    expect(landForTournamentFight(LAND.FEE_PER_TOKEN)).toBe(landForFight(LAND.FEE_PER_TOKEN));
-    expect(landForFight(LAND.FEE_PER_TOKEN)).toBe(LT_CENTS); // one fee-per-token = 1.00 LT
+    // ⚠ AND NOW THE WHOLE LADDER, which is the point of round 42 in one loop.
+    // The old version of this test compared two rungs and then reached for the
+    // Majors' separate curve to have a third; there are ten rungs to walk now,
+    // and "climbing pays" has to hold at every step of the actual price list,
+    // not merely at its ends. Sorted rather than assumed in table order: the
+    // ladder's ORDER is a property of the numbers, not of how config lists them.
+    const rungs = [...ALL_ENTRY_FEES].sort((a, b) => a - b);
+    for (let i = 1; i < rungs.length; i++) {
+      if (rungs[i] === rungs[i - 1]) continue; // maiden and nw3 share a price
+      expect(perGp(rungs[i])).toBeGreaterThan(perGp(rungs[i - 1]));
+    }
+    // The curve's anchor, unchanged since it was written: one FEE_PER_TOKEN of
+    // stake is exactly one token, which is what makes every other rung readable
+    // as a multiple of "one token's worth of company".
+    expect(landForFight(LAND.FEE_PER_TOKEN)).toBe(LT_CENTS);
+  });
+});
+
+/**
+ * ── THE CROWN LAND POT (round 42) ───────────────────────────────────────────
+ *
+ * A championship used to pay land TWICE: a per-fight mint on its own steeper
+ * curve (`landForTournamentFight`, fed `PINTAKASI.LAND_BASIS`) plus an
+ * elimination GRANT ladder that paid the earliest-eliminated the most. Two
+ * independent scales, never priced against each other — and they had drifted
+ * into an outright inversion at the juvenile crown, where a champion banked
+ * 6.75 LT against a first-round loser's 10.15.
+ *
+ * One fixed pot per crown replaces both. These pin the pot AS A PURE FUNCTION;
+ * tournaments.test.ts pins what the bracket actually pays out of it, including
+ * the champion absorbing the floor dust. Both halves are needed: the function
+ * can be exactly right and the settle-up still lose a hundredth.
+ */
+describe("the crown land pot divides by fights fought", () => {
+  /** `fighterSlots` is two seats per fight that actually happened. */
+  const slots = (fights: number) => 2 * fights;
+
+  test("EXACT: every participant's share sums to the pot, dust included", () => {
+    // THE CONSERVATION PROPERTY, and the reason the champion takes the
+    // remainder. The pot is MINTED land, so a hundredth dropped by `Math.floor`
+    // is a real gap between what config says a crown pays and what the ledger
+    // records — the same class of silent leak that cost this codebase two GP
+    // burns. Swept over bracket shapes rather than pinned at one: the awkward
+    // cases are the ones where the pot does not divide evenly by the slots.
+    for (const pot of [PINTAKASI.LAND_POT, JUVENILE_MAJOR.LAND_POT, 100_001]) {
+      // A full bracket of `size` runs size-1 fights and its birds win
+      // 0..log2(size) of them; 2^(rounds-1-w) birds win exactly w.
+      for (const size of [2, 4, 8, 16, 32, 64]) {
+        const rounds = Math.log2(size);
+        const fights = size - 1;
+        const fighterSlots = slots(fights);
+        // Fights FOUGHT per bird, in a full bracket: a bird eliminated in round
+        // r fought r times; the champion fought every round.
+        const perBird: number[] = [rounds];
+        for (let r = 1; r <= rounds; r++) perBird.push(...Array(size / 2 ** r).fill(r));
+        expect(perBird.reduce((s, n) => s + n, 0)).toBe(fighterSlots);
+        // perBird[0] is the champion, which settles LAST out of what the floors
+        // left — the same order `runChampionship` pays in.
+        const shares = perBird.map((n) => landPotShare(pot, fighterSlots, n));
+        const others = shares.slice(1).reduce((s, n) => s + n, 0);
+        const champion = pot - others;
+        expect(others + champion).toBe(pot); // to the hundredth, every bracket
+        // The dust is REAL but tiny: the champion is never paid less than its own
+        // floored share, and never more than that share plus one hundredth per
+        // seat that was floored (which is the most flooring can hide).
+        expect(champion).toBeGreaterThanOrEqual(shares[0]);
+        expect(champion).toBeLessThan(shares[0] + fighterSlots);
+      }
+    }
+  });
+
+  test("A BYE BUYS NO LAND — no fight, no share", () => {
+    // The same rule the purse already follows, and the same reason: a bye exists
+    // because the field was short, so paying for one would pay a bird that never
+    // threw a blade. Byes contribute to NEITHER side of the division, which is
+    // why a short bracket's pot still pays out whole.
+    expect(landPotShare(PINTAKASI.LAND_POT, slots(3), 0)).toBe(0);
+    expect(landPotShare(JUVENILE_MAJOR.LAND_POT, slots(2), 0)).toBe(0);
+    // …and the pot is undiminished by the bye: the two birds that DID fight the
+    // one fight of a short bracket split the whole thing between them, because
+    // a bye adds nothing to the divisor either.
+    expect(2 * landPotShare(PINTAKASI.LAND_POT, slots(1), 1)).toBe(PINTAKASI.LAND_POT);
+    expect(landPotShare(PINTAKASI.LAND_POT, 0, 0)).toBe(0); // a cancelled crown mints nothing
+  });
+
+  test("A THIN FIELD PAYS MORE PER BIRD — the same pot, fewer fights", () => {
+    // Zane: "if there's just a few participants, they should see a big LT pot,
+    // this is good because it encourages participation and maxed out finals
+    // brackets." This is the OPPOSITE of how the deleted per-fight mint behaved,
+    // and it is the reason to prefer a pot: the incentive points at showing up
+    // early in a stage's life, when the fields are short.
+    const straightFinal = landPotShare(PINTAKASI.LAND_POT, slots(1), 1);
+    const full32 = landPotShare(PINTAKASI.LAND_POT, slots(31), 1);
+    expect(straightFinal).toBeGreaterThan(full32);
+    expect(straightFinal).toBe(PINTAKASI.LAND_POT / 2); // two seats, half each
+  });
+
+  test("MONOTONE IN FIGHTS FOUGHT — a champion can never bank less than an early exit", () => {
+    // ⚠ THIS IS THE BUG ROUND 42 SET OUT TO MAKE UNREACHABLE, so it gets its own
+    // test rather than living as a consequence of the arithmetic. Under the old
+    // two-scale scheme the juvenile crown paid its champion 6.75 LT against a
+    // first-round loser's 10.15, because the grant ladder there was ~8× the
+    // per-fight mint while the Majors' was ~1:1. Nothing was wrong with either
+    // number alone; they were simply never priced against each other.
+    //
+    // One division of one number cannot disagree with itself — but the test is
+    // what says so out loud, and what would fail the moment a second scale is
+    // bolted back on.
+    for (const pot of [PINTAKASI.LAND_POT, JUVENILE_MAJOR.LAND_POT]) {
+      for (const fights of [1, 2, 3, 4, 5]) {
+        const deeper = landPotShare(pot, slots(31), fights + 1);
+        const shallower = landPotShare(pot, slots(31), fights);
+        expect(deeper).toBeGreaterThan(shallower);
+      }
+    }
+    // And a Major's pot is the bigger of the two stages, in the same ratio the
+    // purse's JUICE_SHARE gives — the two currencies say the same thing about
+    // how much a stage matters.
+    expect(PINTAKASI.LAND_POT).toBeGreaterThan(JUVENILE_MAJOR.LAND_POT);
   });
 });
 
@@ -853,18 +1087,36 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     return spec;
   }
 
-  test("THE ARITHMETIC: both entry fees divide evenly by the fights in a group", () => {
+  test("THE ARITHMETIC: EVERY rung of the fee ladder divides by the fights in a group", () => {
     // ⚠ THE LOAD-BEARING CONSTRAINT OF THE WHOLE ROUND, which is why it is
     // asserted against config and not against 42 and 9. The fee is escrowed
     // whole and spent a share at a time; if the share were fractional the
     // refund would be too, and GP is kept to the cent by an invariant that
     // does not bend. Change GROUP.SIZE and this is what breaks first.
-    for (const fee of [ECONOMY.REAL_ENTRY_FEE, ECONOMY.JUVENILE_ENTRY_FEE]) {
+    //
+    // ⚠ GENERALISED IN ROUND 42, and the widening is the point. This used to
+    // sweep the two constants that WERE the whole price list; there are ten
+    // rungs now (five classes × two divisions, claimers three deep), and any one
+    // of them reaching the escrow with a remainder breaks the same invariant.
+    // ALL_ENTRY_FEES exists so that a rung added later is swept without anybody
+    // remembering to come back here — which is exactly how 32 GP ("20% of a
+    // breed fee") would otherwise have slipped in: a defensible price, and not
+    // divisible by three.
+    expect(ALL_ENTRY_FEES.length).toBeGreaterThan(2); // …or this is the old test
+    for (const fee of ALL_ENTRY_FEES) {
       expect(fee % FIGHTS_PER_GROUP_BIRD).toBe(0);
       expect(stakePerFight(fee)).toBe(fee / FIGHTS_PER_GROUP_BIRD);
       expect(Number.isInteger(stakePerFight(fee))).toBe(true);
       expect(stakePerFight(fee) * FIGHTS_PER_GROUP_BIRD).toBe(fee);
     }
+    // And the table is TOTAL: every door a bird can walk through has a price,
+    // reached through the one function that prices them. A missing rung would
+    // throw here rather than at a bot's entry inside a swallowed `catch`.
+    for (const mode of ["juvenile", "real"] as const)
+      for (const classType of ["open", "maiden", "nw3"] as const) {
+        expect(ALL_ENTRY_FEES).toContain(feeFor(mode, classType));
+        expect(feeOf({ mode, classType, format: "b1" })).toBe(feeFor(mode, classType));
+      }
   });
 
   test("a full group: four barns, six fights, three apiece", () => {
@@ -878,7 +1130,7 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     expect(lobby.unmatched.length).toBe(0);
     for (const s of lobby.settlements) {
       expect(s.fights).toBe(FIGHTS_PER_GROUP_BIRD);
-      expect(s.staked).toBe(ECONOMY.REAL_ENTRY_FEE); // the whole entry got used
+      expect(s.staked).toBe(REAL_FEE); // the whole entry got used
       expect(s.refunded).toBe(0);
     }
     expectConserved(w.db);
@@ -900,8 +1152,8 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     expect(new Set(lobby.fights.map((f) => f.groupNo)).size).toBe(3);
     for (const s of lobby.settlements) {
       expect(s.fights).toBe(2);
-      expect(s.staked).toBe(2 * stakePerFight(ECONOMY.REAL_ENTRY_FEE));
-      expect(s.refunded).toBe(stakePerFight(ECONOMY.REAL_ENTRY_FEE));
+      expect(s.staked).toBe(2 * stakePerFight(REAL_FEE));
+      expect(s.refunded).toBe(stakePerFight(REAL_FEE));
     }
     expectConserved(w.db);
   });
@@ -921,7 +1173,7 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
       bird: "Grouper 1",
       fights: 0,
       staked: 0,
-      refunded: ECONOMY.REAL_ENTRY_FEE,
+      refunded: REAL_FEE,
       land: 0,
     });
     expect(land(w.db, only.farmId)).toBe(0);
@@ -946,7 +1198,7 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     c.lobbies.enter(c.birdId, spec);
 
     const lobby = w.game.tickDay().card.find((l) => l.settlements.length === GROUP.SIZE)!;
-    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
+    const stake = stakePerFight(REAL_FEE);
     // Six pairings less the one barn-mate pairing that is never made.
     expect(lobby.fights.length).toBe(5);
     expect(lobby.fights.every((f) => f.stake === stake)).toBe(true);
@@ -978,7 +1230,7 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     b.lobbies.enter(b.birdId, spec);
     c.lobbies.enter(c.birdId, spec);
     const lobby = w.game.tickDay().card.find((l) => l.settlements.length === GROUP.SIZE)!;
-    const stake = stakePerFight(ECONOMY.REAL_ENTRY_FEE);
+    const stake = stakePerFight(REAL_FEE);
 
     for (const s of lobby.settlements) {
       expect(s.land).toBe(landForFight(s.staked));
@@ -988,7 +1240,7 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     const full = lobby.settlements.find((s) => s.farm !== a.name)!;
     expect(short.land).toBe(landForFight(2 * stake));
     expect(short.land).toBeLessThan(full.land); // a short card is paid less…
-    expect(full.land).toBe(landForFight(ECONOMY.REAL_ENTRY_FEE)); // …and a full one on the whole fee
+    expect(full.land).toBe(landForFight(REAL_FEE)); // …and a full one on the whole fee
     // The wallet agrees with the report: barn A holds both of its birds' awards.
     expect(land(w.db, a.farmId)).toBe(2 * short.land);
     expect(land(w.db, b.farmId)).toBe(full.land);

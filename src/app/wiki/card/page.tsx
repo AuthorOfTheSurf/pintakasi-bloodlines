@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   AGE,
+  ALL_ENTRY_FEES,
   CALENDAR,
   CARD,
   CLAIMER,
@@ -15,6 +16,7 @@ import {
   PINTAKASI,
   STAKER_FLOWS,
   cardOfDay,
+  feeFor,
   fmtLt,
   landForFight,
   stakePerFight,
@@ -25,14 +27,14 @@ import { fmtGp } from "@/engine/events";
 export const dynamic = "force-dynamic";
 
 /**
- * Every mode's fee and age gate, keyed by the engine's own FIGHT_MODES — so a
- * mode that leaves the daily card (hardcore did, in round 31) leaves this page
- * with it, and a new one won't compile until it's documented.
+ * Every mode's age gate, keyed by the engine's own FIGHT_MODES — so a mode that
+ * leaves the daily card (hardcore did, in round 31) leaves this page with it,
+ * and a new one won't compile until it's documented.
+ *
+ * ⚠ THERE IS NO "MODE FEE" ANY MORE (round 42). A division used to have one
+ * price; now every CLASS is priced inside every division, so a fee needs both
+ * axes and comes through `feeFor`. What a mode still owns is who may enter it.
  */
-const MODE_FEE: Record<FightMode, number> = {
-  juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
-  real: ECONOMY.REAL_ENTRY_FEE,
-};
 const MODE_LABEL: Record<FightMode, string> = { juvenile: "Juvenile", real: "Real" };
 const MODE_WHO: Record<FightMode, React.ReactNode> = {
   juvenile: <>age {AGE.CHICK} only — the discovery year</>,
@@ -73,6 +75,29 @@ const EXAMPLE_FIELDS = [
 ];
 
 /**
+ * The classes a division actually POSTS, in ladder order — the juvenile card
+ * has no nw3 (a one-year-old has no stakes record to sort by), so listing that
+ * rung in a juvenile fee table would advertise a fight nobody can enter. Read
+ * off CARD rather than asserted, so a widened juvenile card documents itself.
+ */
+const postedClasses = (mode: FightMode): string[] => Object.keys(CARD[mode]);
+
+/** One priced rung, both divisions — the round-42 ladder in table form. */
+type Rung = { label: string; juvenile: number | null; real: number };
+const RUNGS: Rung[] = [
+  ...(["maiden", "nw3", "open"] as const).map((c) => ({
+    label: c as string,
+    juvenile: postedClasses("juvenile").includes(c) ? feeFor("juvenile", c) : null,
+    real: feeFor("real", c),
+  })),
+  ...CLAIMER.PRICES.map((price) => ({
+    label: `claimer, ${price} GP tag`,
+    juvenile: feeFor("juvenile", "claimer", price),
+    real: feeFor("real", "claimer", price),
+  })),
+];
+
+/**
  * The longest a bird ever waits for one particular blade in a division's open
  * class — MEASURED off four weeks of real cards, not asserted.
  *
@@ -106,9 +131,16 @@ export default function CardPage() {
   // these sentences by itself.
   const adultClasses = LOBBIES.filter((c) => c !== "claimer").length;
   const juvenileClasses = LOBBIES.filter((c) => c !== "claimer" && c !== "nw3").length;
+  // ⚠ CLAIMER.PRICES twice, not two different ladders (round 42 merged them):
+  // juveniles now card on the SAME tag rungs as grown birds, at half the entry
+  // fee. There is no separate juvenile tag ladder left to count.
   const possibleKeys =
     FORMAT_NAMES.length *
-    (adultClasses + CLAIMER.PRICES.length + juvenileClasses + CLAIMER.JUVENILE_PRICES.length);
+    (adultClasses + CLAIMER.PRICES.length + juvenileClasses + CLAIMER.PRICES.length);
+  // The span of the priced ladder, for the prose that has to say what a night
+  // costs now that there is no single answer.
+  const cheapestNight = Math.min(...ALL_ENTRY_FEES);
+  const dearestNight = Math.max(...ALL_ENTRY_FEES);
 
   return (
     <>
@@ -329,11 +361,16 @@ export default function CardPage() {
         fight risks one share; anything your bird never got to risk is handed straight back when the
         card settles.
       </p>
+      <p>
+        <strong>What a night costs depends on the company.</strong> Every class has its own price —
+        from {cheapestNight} GP up to {dearestNight} GP — and the whole point of that is on its own
+        page: <Link href="/wiki/ladder">Fighting up</Link>. Two rungs, for the arithmetic:
+      </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Mode</th>
+              <th>A night at&hellip;</th>
               <th className="num">Entry fee</th>
               <th className="num">Risked per fight</th>
               <th className="num">Full card of {FIGHTS_PER_GROUP_BIRD}</th>
@@ -341,13 +378,15 @@ export default function CardPage() {
             </tr>
           </thead>
           <tbody>
-            {FIGHT_MODES.map((mode) => {
-              const fee = MODE_FEE[mode];
-              const stake = stakePerFight(fee);
+            {[
+              { label: "Grown maiden or nw3", fee: feeFor("real", "maiden") },
+              { label: "Grown open", fee: feeFor("real", "open") },
+            ].map((row) => {
+              const stake = stakePerFight(row.fee);
               return (
-                <tr key={mode}>
-                  <td>{MODE_LABEL[mode]}</td>
-                  <td className="num">{fee} GP</td>
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td className="num">{row.fee} GP</td>
                   <td className="num">{stake} GP</td>
                   <td className="num">{stake * FIGHTS_PER_GROUP_BIRD} GP risked, 0 back</td>
                   <td className="num">
@@ -360,22 +399,24 @@ export default function CardPage() {
         </table>
       </div>
       <div className="callout tip">
-        <b>The fee went up and the price of a fight went down.</b> A real entry costs{" "}
-        {ECONOMY.REAL_ENTRY_FEE} GP and a juvenile one {ECONOMY.JUVENILE_ENTRY_FEE} GP — both a
-        little dearer than they were, and both now buying {FIGHTS_PER_GROUP_BIRD} times the fights.
-        Per fight your bird is risking {stakePerFight(ECONOMY.REAL_ENTRY_FEE)} GP and{" "}
-        {stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE)} GP a side. The fees are the numbers they are so
-        that they divide by {FIGHTS_PER_GROUP_BIRD} exactly, with no fraction of a peso left over.
+        <b>Every price divides by {FIGHTS_PER_GROUP_BIRD}.</b> That is not an accident. One entry
+        buys a group, the group is up to {FIGHTS_PER_GROUP_BIRD} fights, and the stake has to split
+        across them without leaving a fraction of a peso behind. So every fee on the ladder is a
+        multiple of {FIGHTS_PER_GROUP_BIRD} — the cheapest night in the game is {cheapestNight} GP and
+        the dearest is {dearestNight} GP, and both divide clean.
       </div>
       <div className="callout warn">
         <b>Land is paid once, on what you actually risked.</b> Not once per fight. When the card
         settles, your bird earns Land Tokens on the total it put up that night — a full card of{" "}
-        {FIGHTS_PER_GROUP_BIRD} real fights mints {fmtLt(landForFight(ECONOMY.REAL_ENTRY_FEE))} LT, a
-        short card of {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
-        {fmtLt(landForFight(stakePerFight(ECONOMY.REAL_ENTRY_FEE) * (FIGHTS_PER_GROUP_BIRD - 1)))} LT.
-        Those decimals are real: land is minted in hundredths of a token, so an award is almost
+        {FIGHTS_PER_GROUP_BIRD} grown open fights mints {fmtLt(landForFight(feeFor("real", "open")))}{" "}
+        LT, a short card of {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
+        {fmtLt(
+          landForFight(stakePerFight(feeFor("real", "open")) * (FIGHTS_PER_GROUP_BIRD - 1))
+        )}{" "}
+        LT. Those decimals are real: land is minted in hundredths of a token, so an award is almost
         never a round number. A bird that drew nobody at all earns none.{" "}
-        <strong>Land is for fighting, not queueing.</strong> See{" "}
+        <strong>Land is for fighting, not queueing.</strong> And because the curve underneath is
+        steeper than a straight line, a dearer class mints more land than its extra cost — see{" "}
         <Link href="/wiki/land">Land Tokens</Link>.
       </div>
 
@@ -397,23 +438,27 @@ export default function CardPage() {
           <thead>
             <tr>
               <th>Mode</th>
-              <th className="num">Entry fee</th>
               <th>Who may enter</th>
-              <th className="num">Land, for a full card of {FIGHTS_PER_GROUP_BIRD}</th>
+              <th className="num">A maiden night</th>
+              <th className="num">An open night</th>
             </tr>
           </thead>
           <tbody>
             {FIGHT_MODES.map((mode) => (
               <tr key={mode}>
                 <td>{MODE_LABEL[mode]}</td>
-                <td className="num">{MODE_FEE[mode]} GP</td>
                 <td>{MODE_WHO[mode]}</td>
-                <td className="num">{fmtLt(landForFight(MODE_FEE[mode]))} LT</td>
+                <td className="num">{feeFor(mode, "maiden")} GP</td>
+                <td className="num">{feeFor(mode, "open")} GP</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p>
+        Every juvenile rung is exactly <strong>half</strong> its grown twin. A one-year-old is still
+        learning what it is, and the year it learns in should not cost what a veteran&apos;s does.
+      </p>
       <p>
         Juveniles fight only juveniles — the discovery-year gate reads the bird&apos;s age, not its
         class, so a grown bird can never drop down and bully a chick&apos;s card.
@@ -433,22 +478,27 @@ export default function CardPage() {
         The class narrows who may enter, so the field sorts itself without a matchmaker having to
         judge anybody&apos;s strength. The {LOBBIES.length} classes: {LOBBIES.join(" · ")}.
       </p>
+      <p>
+        Each rung has its <strong>own price</strong>, and the harder the company the dearer the night.
+        That is the single most important thing to understand about placing a bird, so it has its own
+        page — <Link href="/wiki/ladder">Fighting up</Link> — and this is just the summary:
+      </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
               <th>Class</th>
               <th>Who may enter</th>
+              <th className="num">Juvenile</th>
+              <th className="num">Grown</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>open</td>
-              <td>Any eligible bird — no record requirement.</td>
-            </tr>
-            <tr>
               <td>maiden</td>
               <td>Birds with zero stakes wins — never won a real fight.</td>
+              <td className="num">{feeFor("juvenile", "maiden")} GP</td>
+              <td className="num">{feeFor("real", "maiden")} GP</td>
             </tr>
             <tr>
               <td>nw3</td>
@@ -456,17 +506,45 @@ export default function CardPage() {
                 Birds with fewer than {NW_CAP} stakes wins. The one conditioned rung between maiden
                 and open.
               </td>
+              <td className="num">not posted</td>
+              <td className="num">{feeFor("real", "nw3")} GP</td>
+            </tr>
+            <tr>
+              <td>open</td>
+              <td>Any eligible bird — no record requirement, and no protection either.</td>
+              <td className="num">{feeFor("juvenile", "open")} GP</td>
+              <td className="num">{feeFor("real", "open")} GP</td>
             </tr>
             <tr>
               <td>claimer</td>
               <td>
                 Entered with a tag price from the claiming ladder — see{" "}
-                <Link href="/wiki/claiming">Claiming</Link>.
+                <Link href="/wiki/claiming">Claiming</Link>. The cheaper the tag, the cheaper the
+                night.
+              </td>
+              <td className="num">
+                {RUNGS.filter((r) => r.label.startsWith("claimer"))
+                  .map((r) => r.juvenile)
+                  .join(" / ")}{" "}
+                GP
+              </td>
+              <td className="num">
+                {RUNGS.filter((r) => r.label.startsWith("claimer"))
+                  .map((r) => r.real)
+                  .join(" / ")}{" "}
+                GP
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p className="dim">
+        Maiden and nw3 cost the same money deliberately. A group stage hands out up to{" "}
+        {FIGHTS_PER_GROUP_BIRD} fights a night, so most birds win their first fight almost at once and
+        spend their real early career in nw3 — pricing the two rungs apart would tax an accident of
+        timing. It is the step up to <em>open</em> that costs, because that is the step where the
+        company genuinely changes.
+      </p>
       <div className="callout tip">
         <b>The rule that&apos;s easy to miss.</b> The ladder reads a bird&apos;s <em>stakes</em>{" "}
         wins — real fights only — never its lifetime record. A juvenile&apos;s practice wins
@@ -493,27 +571,39 @@ export default function CardPage() {
         whichever record the bird is actually old enough to have.
       </div>
       <p>
-        Juvenile claimers get their own, cheaper tag ladder — pricing a one-year-old against the
-        grown-bird rungs would mean nobody dares tag one at all:
+        Juvenile claimers run on the <strong>same tag ladder</strong> as grown birds — the same{" "}
+        {CLAIMER.PRICES.join(" / ")} GP rungs — but at <strong>half the entry fee</strong>:
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th className="num">Juvenile tag</th>
+              <th className="num">Tag</th>
               <th className="num">≈ $</th>
+              <th className="num">Juvenile entry</th>
+              <th className="num">Grown entry</th>
             </tr>
           </thead>
           <tbody>
-            {CLAIMER.JUVENILE_PRICES.map((price) => (
+            {CLAIMER.PRICES.map((price) => (
               <tr key={price}>
                 <td className="num">{price} GP</td>
                 <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
+                <td className="num">{feeFor("juvenile", "claimer", price)} GP</td>
+                <td className="num">{feeFor("real", "claimer", price)} GP</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="dim">
+        One ladder, two prices, and the split is the interesting part. The <em>tag</em> says what the
+        bird is worth; the <em>entry</em> says what a night costs. A one-year-old that has campaigned
+        has real earnings behind it, so it is worth a grown bird&apos;s price — but the season it
+        earned them in is still half price to run. There used to be a separate, much cheaper juvenile
+        tag ladder, and once juvenile entries cost real money that ladder would have made the
+        discovery year the bargain bin of the game.
+      </p>
       <p className="dim">
         The card posts {CARD.real.claimer} grown claimers a night — always the cheapest rung (
         {CLAIMER.PRICES[0]} GP) plus one dearer rung, rotating. The cheap rung is where nearly all
@@ -525,9 +615,11 @@ export default function CardPage() {
       <h2>The pot</h2>
       <p>
         Every fight has its own pot, and it is built from <strong>stakes, not entry fees</strong>.
-        Both birds put up one share of their entry — {stakePerFight(ECONOMY.REAL_ENTRY_FEE)} GP each
-        in a real fight — so the pot for one fight is two shares, not two entries. Win all{" "}
-        {FIGHTS_PER_GROUP_BIRD} and you take {FIGHTS_PER_GROUP_BIRD} pots.{" "}
+        Both birds put up one share of their entry — {stakePerFight(feeFor("real", "open"))} GP each in
+        a grown open fight — so the pot for one fight is two shares, not two entries. Everybody in a
+        lobby paid the same entry fee, because the price belongs to the fight and not to the bird, so
+        the two sides of a pot are always level. Win all {FIGHTS_PER_GROUP_BIRD} and you take{" "}
+        {FIGHTS_PER_GROUP_BIRD} pots.{" "}
         {STAKER_FLOWS.FIGHT_RAKE === 0
           ? "The daily card takes no cut at all: the winner banks the whole pot, and the loser loses exactly its stake — nothing more, nothing less."
           : `The winner takes the pot, less a ${(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% rake that goes to the farms staking Land Tokens, not to the house.`}{" "}
@@ -537,26 +629,34 @@ export default function CardPage() {
         <table>
           <thead>
             <tr>
-              <th>Mode</th>
+              <th>A fight in&hellip;</th>
+              <th className="num">Entry fee</th>
               <th className="num">Stake, per fight</th>
               <th className="num">Pot (2 stakes)</th>
               <th className="num">Winner banks</th>
             </tr>
           </thead>
           <tbody>
-            {FIGHT_MODES.map((mode) => {
-              const stake = stakePerFight(MODE_FEE[mode]);
-              const potCents = stake * 2 * 100;
-              const rakeCents = Math.round(potCents * STAKER_FLOWS.FIGHT_RAKE);
-              return (
-                <tr key={mode}>
-                  <td>{MODE_LABEL[mode]}</td>
-                  <td className="num">{stake} GP</td>
-                  <td className="num">{fmtGp(potCents)} GP</td>
-                  <td className="num">{fmtGp(potCents - rakeCents)} GP</td>
-                </tr>
-              );
-            })}
+            {RUNGS.filter((r) => !r.label.startsWith("claimer")).flatMap((r) =>
+              FIGHT_MODES.map((mode) => {
+                const fee = mode === "juvenile" ? r.juvenile : r.real;
+                if (fee === null) return null;
+                const stake = stakePerFight(fee);
+                const potCents = stake * 2 * 100;
+                const rakeCents = Math.round(potCents * STAKER_FLOWS.FIGHT_RAKE);
+                return (
+                  <tr key={`${mode}-${r.label}`}>
+                    <td>
+                      {MODE_LABEL[mode]} {r.label}
+                    </td>
+                    <td className="num">{fee} GP</td>
+                    <td className="num">{stake} GP</td>
+                    <td className="num">{fmtGp(potCents)} GP</td>
+                    <td className="num">{fmtGp(potCents - rakeCents)} GP</td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -574,11 +674,17 @@ export default function CardPage() {
         </p>
       )}
       <p className="dim">
-        So a real bird that sweeps its group turns {ECONOMY.REAL_ENTRY_FEE} GP into{" "}
-        {stakePerFight(ECONOMY.REAL_ENTRY_FEE) * 2 * FIGHTS_PER_GROUP_BIRD} GP, and one that loses
-        all {FIGHTS_PER_GROUP_BIRD} is out its entry and nothing more. Every fight in between just
-        adds up. A night is now a small run of results rather than a single coin flip, which is
-        exactly the point: one bad draw no longer decides what you learned about your bird.
+        So a bird that sweeps its group doubles its money: an entry of {feeFor("real", "open")} GP in
+        the grown open comes back as{" "}
+        {stakePerFight(feeFor("real", "open")) * 2 * FIGHTS_PER_GROUP_BIRD} GP, and one that loses all{" "}
+        {FIGHTS_PER_GROUP_BIRD} is out its entry and nothing more. Every fight in between just adds
+        up. That is true at every rung, because the pot is always two stakes — which is exactly why
+        the dearer classes are worth entering with a bird that can win, and exactly why they are
+        punishing with one that can&apos;t.
+      </p>
+      <p className="dim">
+        A night is a small run of results rather than a single coin flip, which is the point: one bad
+        draw no longer decides what you learned about your bird.
       </p>
 
       <h2>The fog</h2>
@@ -640,6 +746,7 @@ export default function CardPage() {
       </p>
 
       <div className="next">
+        <Link href="/wiki/ladder">Fighting up →</Link>
         <Link href="/wiki/claiming">Claiming →</Link>
         <Link href="/wiki/fighting">Fighting →</Link>
         <Link href="/wiki/pintakasi">The Pintakasi →</Link>

@@ -5,12 +5,13 @@ import {
   FIGHTS_PER_GROUP_BIRD,
   FORMATS,
   JUVENILE_MAJOR,
-  LAND,
+  LT_CENTS,
   PINTAKASI,
+  feeFor,
   fmtLt,
   landForFight,
+  landPotShare,
   purseShareOf,
-  landForTournamentFight,
 } from "@/engine/config";
 
 export const dynamic = "force-dynamic";
@@ -18,15 +19,25 @@ export const dynamic = "force-dynamic";
 /** dayIndex % 7 → day name (round 20's calendar), purely for display. */
 const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
 
-const LAND_LABELS: Record<string, string> = {
-  champion: "Champion",
-  runnerUp: "Runner-up",
-  sf: "Semifinal loser",
-  qf: "Quarterfinal loser",
-  r16: "Round of 16 loser",
-  r32: "Round of 32 loser",
-  r64: "Round of 64 loser",
-};
+/**
+ * ONE CROWN'S LAND POT, split the way the bracket splits it (round 42): evenly
+ * across every fight actually fought, so a bird takes its own fights over all
+ * of them. Rows are keyed by FIGHTS FOUGHT rather than by finish, because that
+ * is what the pot pays on — the champion and the runner-up both fought every
+ * round, so they take identical land.
+ *
+ * ⚠ This replaced a per-fight mint on a second land curve PLUS an elimination
+ * grant ladder that paid the earliest exit the most. Both are deleted from
+ * config; the inversion they produced (a first-round loser out-earning the
+ * champion) is what a single pot makes unreachable.
+ */
+function landByFights(potCents: number, bracketSize: number) {
+  const fights = bracketSize - 1;
+  return Array.from({ length: Math.log2(bracketSize) }, (_, i) => i + 1).map((mine) => ({
+    mine,
+    cents: landPotShare(potCents, fights * 2, mine),
+  }));
+}
 
 /**
  * What each finish actually takes home, worked out the SAME WAY the bracket
@@ -98,8 +109,11 @@ function classicSeedPairs(bracketSize: number): string {
 }
 
 export default function PintakasiPage() {
-  const dailyRealLand = landForFight(ECONOMY.REAL_ENTRY_FEE);
-  const crownFightLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
+  // What the dearest ordinary night pays in land, as the yardstick the crown
+  // pots are read against. `feeFor` because the daily card has a PRICED ladder
+  // since round 42 — there is no single "real entry fee" left to quote.
+  const dailyOpenFee = feeFor("real", "open");
+  const dailyOpenLand = landForFight(dailyOpenFee);
   const exampleBracket = 16;
   // One bracket size for both purse tables, so "the juvenile purse is flatter"
   // is something a reader can SEE by comparing two columns rather than take on
@@ -124,6 +138,15 @@ export default function PintakasiPage() {
   // "double" was true only while the multiplier was 2 (it moved in round 41).
   const mult = PINTAKASI.PURSE.ROUND_MULTIPLIER;
   const juvenileMult = JUVENILE_MAJOR.PURSE.ROUND_MULTIPLIER;
+  // The land pots, worked at the bracket each stage ordinarily runs, plus one
+  // deliberately tiny field to show the thin-field effect (a fixed pot divided
+  // fewer ways pays each bird MORE — the opposite of the old per-fight mint).
+  const majorLand = landByFights(PINTAKASI.LAND_POT, majorPurseBracket);
+  const juvenileLand = landByFights(JUVENILE_MAJOR.LAND_POT, juvenilePurseBracket);
+  const thinBracket = 4;
+  const thinLand = landByFights(PINTAKASI.LAND_POT, thinBracket);
+  /** A pot is stored in hundredths and RULED as a round number of tokens. */
+  const wholeLt = (cents: number) => (cents / LT_CENTS).toLocaleString();
 
   return (
     <>
@@ -133,8 +156,8 @@ export default function PintakasiPage() {
         championships, called the <strong>Pintakasi Majors</strong> (or just &ldquo;the
         Majors&rdquo;), crown the best specialist at each distance. Entry costs {fee} GP, and that
         money goes straight into the purse. Getting a seat is the hard part, and every loser goes
-        home for good. This is the biggest stage in the game — a separate, gentler stage for
-        one-year-olds runs the day before, and it is still free; see{" "}
+        home for good. This is the biggest stage in the game — a separate, gentler and cheaper stage
+        for one-year-olds runs the day before, at {juvenileFee} GP; see{" "}
         <Link href="#juvenile-championship">the Juvenile Championship</Link> below.
       </p>
 
@@ -189,8 +212,14 @@ export default function PintakasiPage() {
 
       <h3 id="the-entry-fee">What the {fee} GP buys</h3>
       <p>
-        Entry costs <strong>{fee} GP</strong>. That is {(fee / ECONOMY.REAL_ENTRY_FEE).toFixed(1)}×
-        a night on the daily card, where a grown bird&apos;s entry is {ECONOMY.REAL_ENTRY_FEE} GP.
+        Entry costs <strong>{fee} GP</strong>. Put that next to the daily card, where the classes are
+        priced (see <Link href="/wiki/ladder">Fighting up</Link>): it is{" "}
+        {(fee / feeFor("real", "maiden")).toFixed(1)}× a grown maiden night, and about{" "}
+        {((fee / dailyOpenFee) * 100).toFixed(0)}% of a grown open night at {dailyOpenFee} GP — the
+        dearest fight the ordinary card runs. Against the other anchor in the game, the{" "}
+        {ECONOMY.BREED_FEE} GP it costs to <Link href="/wiki/breeding">breed a bird</Link>, a crown is{" "}
+        {(fee / ECONOMY.BREED_FEE).toFixed(1)}× — so standing in one is priced like making a new
+        animal, which is a fair way to feel the decision.
         The fee is <em>not</em> a gate — it does not decide who stands, and it buys no advantage in
         the bracket. It buys one thing: <strong>the purse gets bigger</strong>. Every peso paid at
         the door is added to the money the same bracket pays out that day. Nothing is skimmed off
@@ -392,6 +421,15 @@ export default function PintakasiPage() {
         ones until every winner clears the door — and it costs the champion far less than you would
         think, because the entry fees grew the pot in the first place.
       </div>
+      <div className="callout tip">
+        <b>And the advancement share had to grow too.</b> When the door went up again — a crown is{" "}
+        {fee} GP now — softening the step was no longer enough on its own, because the step was
+        already soft. So the advancement slice was widened to {pct(PINTAKASI.PURSE.ADVANCEMENT)},
+        taking money off the trophy and handing it to the birds that won a fight. The rule being
+        protected is the same one every time: <strong>every win clears the door</strong>. The champion
+        still takes far more than anybody else — it just takes a little less than it used to, so that
+        all {majorPurseBracket / 2} birds who won a first-round fight go home ahead.
+      </div>
       <p className="dim">
         Fair warning about the arithmetic: this is a <em>share</em> of one pot. Double the field and
         the same pot is split among twice as many winners, so a single win in a{" "}
@@ -463,57 +501,89 @@ export default function PintakasiPage() {
         bird beat somebody — and the advancement money is for beating somebody.
       </div>
       <p className="dim">
-        Losing your first fight still isn&apos;t a pure loss. GP goes to the top; <strong>land goes
-        to the fallen</strong>, and the earliest exit takes the biggest land grant on the board.
-        That is the next section.
+        Losing your first fight still isn&apos;t nothing. Every bird that threw a blade earns{" "}
+        <Link href="/wiki/land">Land Tokens</Link> for it, win or lose. That is the next section.
       </p>
 
       <h2>The land</h2>
       <p>
-        Purses go to the birds still standing. Land goes the other way —{" "}
-        <strong>weighted to the fallen</strong>. Every fight in the bracket mints{" "}
-        <Link href="/wiki/land">Land Tokens (LT)</Link> to both birds, on a steeper curve than an
-        ordinary daily-card fight. The regular card pays land once per entry, at settle-up — a
-        dear bird that fights its whole group takes {fmtLt(dailyRealLand)} LT for the night. A
-        Pintakasi fight mints {fmtLt(crownFightLand)} LT per fighter <em>every single round</em>, no
-        matter who wins, and a bird that keeps winning keeps collecting it. (Land is minted in
-        hundredths of a token, which is why these are decimals — see{" "}
-        <Link href="/wiki/land">Land Tokens</Link>.)
+        The purse follows the wins. Land follows the <strong>fights</strong>. Each crown has a{" "}
+        <strong>fixed pot</strong> of <Link href="/wiki/land">Land Tokens (LT)</Link> — a Major&apos;s
+        is {wholeLt(PINTAKASI.LAND_POT)} LT — and the pot is divided evenly across every fight
+        actually fought in the bracket. Your bird&apos;s share is its own fights over all of them.
+        Nothing about winning enters into it.
       </p>
+      <p>Three things fall out of that, and they are all worth knowing before you enter:</p>
+      <ul>
+        <li>
+          <strong>A deeper run earns more.</strong> Two fights is twice the land of one. So the
+          champion and the runner-up take the <em>same</em> land — both fought every round.
+        </li>
+        <li>
+          <strong>A bye earns nothing.</strong> Same rule as the purse: a bye is not a fight, so it
+          buys no share.
+        </li>
+        <li>
+          <strong>A thin field pays each bird more.</strong> The pot is the same size however many
+          birds turn up, so a quiet crown divides it fewer ways. Showing up to an empty bracket is
+          rewarded, not punished.
+        </li>
+      </ul>
       <p>
-        On top of that, elimination itself pays a grant — and the grant gets bigger the{" "}
-        <strong>earlier</strong> a bird falls:
+        Worked out for a full {majorPurseBracket}-bird Major, which runs {majorPurseBracket - 1}{" "}
+        fights:
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Eliminated as</th>
-              <th className="num">Land grant (LT)</th>
+              <th className="num">Fights fought</th>
+              <th>Who that is</th>
+              <th className="num">Land</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(PINTAKASI.LAND_GRANTS)
-              .sort(([, a], [, b]) => a - b)
-              .map(([stage, grant]) => (
-                <tr key={stage}>
-                  <td>{LAND_LABELS[stage] ?? stage}</td>
-                  {/* Grants are stored in the same hundredths as every land
-                      figure since round 36 — format, never print raw. */}
-                  <td className="num">{fmtLt(grant)}</td>
-                </tr>
-              ))}
+            {majorLand.map((r) => (
+              <tr key={r.mine}>
+                <td className="num">{r.mine}</td>
+                <td>
+                  {r.mine === 1
+                    ? "Lost its first fight"
+                    : r.mine === majorLand.length
+                      ? "The champion, and the runner-up"
+                      : `Won ${r.mine - 1}, then lost`}
+                </td>
+                {/* Pot shares are hundredths like every land figure since round
+                    36 — format, never print raw. */}
+                <td className="num">{fmtLt(r.cents)} LT</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      <p className="dim">
+        For scale: a grown bird that fights its whole group on the dearest night the daily card runs
+        — the open, at {dailyOpenFee} GP — earns {fmtLt(dailyOpenLand)} LT. Losing your first fight at
+        a Major pays {fmtLt(majorLand[0].cents)} LT, or about{" "}
+        {(majorLand[0].cents / dailyOpenLand).toFixed(1)}× that. So a first-round hardcore death still
+        banks real land, which is the game&apos;s way of saying the risk was real — but the deep run
+        is the one that pays, and that is new.
+      </p>
       <div className="callout tip">
-        <b>Why the dead outscore the champion on land.</b> The champion already took most of the
-        purse. A bird that dies in the first round took the worst hardcore outcome the game has —
-        career over, day one — so its consolation is the biggest land grant on the board. A
-        first-round death at the Pintakasi is never a pure loss: {LAND.GP_PER_100_TOKENS} GP buys
-        100 LT, staked LT pays out daily forever, and that grant keeps paying long after the bird
-        itself is done fighting.
+        <b>An empty-looking crown is a good crown to enter.</b> Take the same{" "}
+        {wholeLt(PINTAKASI.LAND_POT)} LT pot and a field of only {thinBracket} birds. The bracket runs{" "}
+        {thinBracket - 1} fights instead of {majorPurseBracket - 1}, so one fight is worth{" "}
+        {fmtLt(thinLand[0].cents)} LT — against {fmtLt(majorLand[0].cents)} LT in the full field. Same
+        pot, fewer ways to split it.
       </div>
+      <p className="dim">
+        This used to work the other way round, and it is worth saying so plainly because the old rule
+        was memorable. Crowns paid land per fight on their own separate curve <em>and</em> handed
+        every eliminated bird a consolation grant that grew the <em>earlier</em> it fell — so the
+        first bird out could bank more land than the champion. Two scales that had never been priced
+        against each other. One pot cannot invert like that: it is a single number, divided by
+        counting. The consolation is gone; a fought round is the whole reward.
+      </p>
 
       <h2>How many birds</h2>
       <p>
@@ -579,25 +649,23 @@ export default function PintakasiPage() {
       </p>
       <div className="callout tip">
         <b>
-          {juvenileFee === 0
-            ? `The juvenile crown is free. A Major costs ${fee} GP; this one costs ${juvenileFee}.`
-            : `The juvenile crown costs ${juvenileFee} GP, against a Major's ${fee}.`}
+          The juvenile crown costs {juvenileFee} GP, against a Major&apos;s {fee}.
         </b>{" "}
-        {juvenileFee === 0 ? (
-          <>
-            That is on purpose, and it is the one place in the game where two stages that look
-            alike are priced apart. The discovery year exists to find out{" "}
-            <em>what a bird is</em>, and this is the only crown that doesn&apos;t end a career. A
-            price at that door would tax the exact thing the year is for: trying your chick and
-            seeing what comes back. Upstairs the fee is fine, because an age-{AGE.FORK} bird
-            entering a Major already knows what it is and is choosing to risk it.
-          </>
-        ) : (
-          <>
-            The two stages are priced apart on purpose — the discovery year is meant to be the
-            cheaper door.
-          </>
-        )}
+        The two stages are priced apart on purpose: the discovery year is meant to be the cheaper
+        door, and a chick&apos;s whole season is priced at about half a grown bird&apos;s (see{" "}
+        <Link href="/wiki/ladder">Fighting up</Link>). But it is a real price, not a token one —{" "}
+        {(juvenileFee / feeFor("juvenile", "maiden")).toFixed(1)}× a juvenile maiden night.
+      </div>
+      <div className="callout tip">
+        <b>It used to be free, and that turned out to be backwards.</b> For one round there was no
+        charge at this door at all, on the reasoning that a toll on a chick learning its trade would
+        gate the exact stage that is supposed to be open. What changed is the rest of the ladder:
+        every class of fight is priced now, and a juvenile open night costs{" "}
+        {feeFor("juvenile", "open")} GP. So a free championship had quietly become the{" "}
+        <em>cheapest</em> serious fight a one-year-old could take — the best stage in the discovery
+        year, at no stake, while an ordinary night cost real money. The price is smaller than a
+        Major&apos;s because the juvenile purse is smaller: at a bigger door a chick that won one
+        fight would go home under water, which is the one thing the purse rules refuse to allow.
       </div>
 
       <h3>Which of the two crowns?</h3>
@@ -625,16 +693,15 @@ export default function PintakasiPage() {
         <b>The only championship in the game that isn&apos;t hardcore.</b> Every Major force-retires
         its losers. This one can&apos;t: the discovery year exists to find out what a bird actually
         is, and ending careers at age one would strangle the very population the Majors are
-        supposed to inherit later. A juvenile crown costs a bird nothing but the fight itself — win
-        or lose, it goes home able to keep climbing the ladder.
+        supposed to inherit later. A juvenile crown costs a bird nothing beyond the{" "}
+        {juvenileFee} GP at the door — win or lose, it goes home able to keep climbing the ladder.
       </div>
       <p>
         Its purse comes out of the same juice pool the Majors draw from — a fixed{" "}
         {(JUVENILE_MAJOR.JUICE_SHARE * 100).toFixed(0)}% slice, taken before Thursday&apos;s Majors
-        get whatever&apos;s left, split across the two crowns — both run every week.{" "}
-        {juvenileFee === 0
-          ? "That slice is the whole purse: with no entry fee, there is nothing else to add to it."
-          : `Entry fees of ${juvenileFee} GP are added on top, the same way a Major's are.`}
+        get whatever&apos;s left, split across the two crowns — both run every week. Entry fees of{" "}
+        {juvenileFee} GP are added on top, the same way a Major&apos;s are, so a busy juvenile crown
+        pays better than a quiet one.
       </p>
       <p>
         It is paid the same way a Major&apos;s purse is — every fight won pays, and a win in each
@@ -681,16 +748,18 @@ export default function PintakasiPage() {
       </p>
       <p className="dim">
         Everything else works exactly as it does upstairs: a bye pays nothing, a chick that never
-        won a fight is paid nothing, and the remaining shares stretch to fill the purse. Every fight
-        in the bracket still mints Land Tokens to both birds, on a much smaller base than a
-        Major&apos;s: the {ECONOMY.JUVENILE_ENTRY_FEE} GP a juvenile card entry costs, not the{" "}
-        {PINTAKASI.LAND_BASIS} GP a crown fight is measured against upstairs. (That base has
-        nothing to do with what this crown charges at the door, which is {juvenileFee}.) See{" "}
+        won a fight is paid nothing, and the remaining shares stretch to fill the purse. The land
+        works the same way too, off its own smaller pot — {wholeLt(JUVENILE_MAJOR.LAND_POT)} LT a
+        crown, against a Major&apos;s {wholeLt(PINTAKASI.LAND_POT)} LT, split across every fight
+        fought. In a full {juvenilePurseBracket}-bird bracket one fight pays{" "}
+        {fmtLt(juvenileLand[0].cents)} LT and going the whole way pays{" "}
+        {fmtLt(juvenileLand[juvenileLand.length - 1].cents)} LT. See{" "}
         <Link href="/wiki/land">Land Tokens</Link>.
       </p>
 
       <div className="next">
         <Link href="/wiki/card">The card →</Link>
+        <Link href="/wiki/ladder">Fighting up →</Link>
         <Link href="/wiki/money">Golden Pesos →</Link>
         <Link href="/wiki/land">Land Tokens →</Link>
         <Link href="/wiki/breeding">Breeding →</Link>

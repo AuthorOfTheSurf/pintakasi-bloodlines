@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  ALL_ENTRY_FEES,
   CLAIMER,
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
@@ -8,6 +9,7 @@ import {
   LT_CENTS,
   PINTAKASI,
   STAKER_FLOWS,
+  feeFor,
   stakePerFight,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
@@ -24,10 +26,18 @@ const usd = (gp: number) => (gp / ECONOMY.GP_PER_DOLLAR).toFixed(2);
  * where hardcore now lives, are priced separately (PINTAKASI.ENTRY_FEE — a
  * real spend again since round 41) and get their own row below, because a
  * championship entry is not a night on the card.
+ *
+ * ⚠ ROUND 42 TURNED TWO ROWS INTO A LADDER. There used to be exactly two card
+ * fees in the game, so this listed both. Now every CLASS is priced inside every
+ * division, and a table of eleven rows on the money page would bury the point —
+ * so it quotes the SPAN and sends the reader to /wiki/ladder for the rungs. The
+ * span is computed off ALL_ENTRY_FEES, which is config's own sweep of the table,
+ * so a new rung cannot fall outside it.
  */
-const ENTRY_FEES: { label: string; fee: number }[] = [
-  { label: "Juvenile entry", fee: ECONOMY.JUVENILE_ENTRY_FEE },
-  { label: "Real entry (and claimers)", fee: ECONOMY.REAL_ENTRY_FEE },
+const CARD_FEE_ROWS: { label: React.ReactNode; fee: number }[] = [
+  { label: "A juvenile night, cheapest rung", fee: Math.min(...ALL_ENTRY_FEES) },
+  { label: "A grown maiden or nw3 night", fee: feeFor("real", "maiden") },
+  { label: "A grown open night — the dearest fight on any card", fee: feeFor("real", "open") },
 ];
 
 export default function MoneyPage() {
@@ -50,8 +60,16 @@ export default function MoneyPage() {
   const gachaStakerCents = Math.round(gachaCents * STAKER_FLOWS.GACHA_SHARE);
   const gachaJuiceCents = gachaCents - gachaStakerCents;
 
-  const realFightsPerDrip = Math.floor(ECONOMY.DAILY_DRIP / ECONOMY.REAL_ENTRY_FEE);
-  const juvenileFightsPerDrip = Math.floor(ECONOMY.DAILY_DRIP / ECONOMY.JUVENILE_ENTRY_FEE);
+  // ── What the drip actually buys, now that a night has no single price ──────
+  // Quoted at the cheapest and dearest nights on the ladder rather than at "the
+  // real entry fee", which no longer exists. A player's real question is "can I
+  // keep playing on the drip alone?", and the honest answer is a RANGE.
+  const cheapestNight = Math.min(...ALL_ENTRY_FEES);
+  const dearestNight = Math.max(...ALL_ENTRY_FEES);
+  const maidenFee = feeFor("real", "maiden");
+  const maidenNightsPerDrip = Math.floor(ECONOMY.DAILY_DRIP / maidenFee);
+  const cheapNightsPerDrip = Math.floor(ECONOMY.DAILY_DRIP / cheapestNight);
+  const dearNightsPerDrip = Math.floor(ECONOMY.DAILY_DRIP / dearestNight);
 
   return (
     <>
@@ -90,29 +108,43 @@ export default function MoneyPage() {
               <td className="num">${usd(ECONOMY.DAILY_DRIP)}</td>
             </tr>
             <tr>
-              <td>A real-fight entry (a night of up to {FIGHTS_PER_GROUP_BIRD} fights)</td>
-              <td className="num">{ECONOMY.REAL_ENTRY_FEE}</td>
-              <td className="num">${usd(ECONOMY.REAL_ENTRY_FEE)}</td>
+              <td>
+                A grown maiden entry (a night of up to {FIGHTS_PER_GROUP_BIRD} fights)
+              </td>
+              <td className="num">{maidenFee}</td>
+              <td className="num">${usd(maidenFee)}</td>
             </tr>
             <tr>
               <td>…which is, per fight</td>
-              <td className="num">{stakePerFight(ECONOMY.REAL_ENTRY_FEE)}</td>
-              <td className="num">${usd(stakePerFight(ECONOMY.REAL_ENTRY_FEE))}</td>
+              <td className="num">{stakePerFight(maidenFee)}</td>
+              <td className="num">${usd(stakePerFight(maidenFee))}</td>
+            </tr>
+            <tr>
+              <td>The dearest night on any card — a grown open entry</td>
+              <td className="num">{dearestNight}</td>
+              <td className="num">${usd(dearestNight)}</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p>
         So a new farm opens with about ${usd(ECONOMY.STARTING_GP)} to play with, and logging in
-        every day tops that up by about ${usd(ECONOMY.DAILY_DRIP)} — plenty to keep carding real
-        birds at ${usd(ECONOMY.REAL_ENTRY_FEE)} a night, forever, without ever touching a wallet.
+        every day tops that up by about ${usd(ECONOMY.DAILY_DRIP)} — plenty to keep carding grown
+        birds at ${usd(maidenFee)} a night, forever, without ever touching a wallet.
       </p>
       <div className="callout tip">
         <b>An entry is a night, not a fight.</b> One entry buys your bird a group of up to{" "}
-        {FIGHTS_PER_GROUP_BIRD} fights, and the fee splits evenly across them — so a real bird risks{" "}
-        {stakePerFight(ECONOMY.REAL_ENTRY_FEE)} GP a fight, a juvenile{" "}
-        {stakePerFight(ECONOMY.JUVENILE_ENTRY_FEE)} GP, and whatever it never got to risk is
+        {FIGHTS_PER_GROUP_BIRD} fights, and the fee splits evenly across them — so a grown maiden
+        night risks {stakePerFight(maidenFee)} GP a fight and a juvenile one{" "}
+        {stakePerFight(feeFor("juvenile", "maiden"))} GP, and whatever your bird never got to risk is
         refunded when the card settles. See <Link href="/wiki/card">The card</Link>.
+      </div>
+      <div className="callout tip">
+        <b>There is no single price for a fight.</b> Each class of fight costs its own money — from{" "}
+        {cheapestNight} GP for the cheapest juvenile claimer up to {dearestNight} GP for a grown open
+        — and the dearer classes pay back disproportionately more{" "}
+        <Link href="/wiki/land">Land Tokens</Link>. That trade is the main decision you make with your
+        GP, so it has its own page: <Link href="/wiki/ladder">Fighting up</Link>.
       </div>
 
       <h2>The one rule</h2>
@@ -151,8 +183,8 @@ export default function MoneyPage() {
             </tr>
           </thead>
           <tbody>
-            {ENTRY_FEES.map((e) => (
-              <tr key={e.label}>
+            {CARD_FEE_ROWS.map((e, i) => (
+              <tr key={i}>
                 <td>{e.label}</td>
                 <td className="num">{e.fee}</td>
                 <td className="num">${usd(e.fee)}</td>
@@ -199,6 +231,11 @@ export default function MoneyPage() {
         </table>
       </div>
       <p className="dim">
+        The three card rows above are a sample of a whole ladder — every class of fight is priced
+        separately, and <Link href="/wiki/ladder">Fighting up</Link> lists every rung in both
+        divisions.
+      </p>
+      <p className="dim">
         A Major&apos;s {PINTAKASI.ENTRY_FEE} GP is not really a spend — every peso of it goes into
         that same crown&apos;s purse, so the entrants are paying each other. It still doesn&apos;t
         buy a seat: the Selection Committee decides who stands, on what the bird has earned. See{" "}
@@ -220,8 +257,9 @@ export default function MoneyPage() {
           <p>
             Part-funds the week&apos;s championships — see{" "}
             <Link href="/wiki/pintakasi">The Pintakasi</Link>. The other part is the entry fees the
-            Majors&apos; own entrants pay ({PINTAKASI.ENTRY_FEE} GP each, added to that crown&apos;s
-            purse whole).
+            crowns&apos; own entrants pay ({PINTAKASI.ENTRY_FEE} GP at a Major,{" "}
+            {JUVENILE_MAJOR.ENTRY_FEE} GP at a Juvenile Championship, added to that crown&apos;s purse
+            whole).
             It fills from two places: {breedJuicePct}% of every breeding cover (the other half of
             what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
             {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. Wednesday&apos;s
@@ -359,11 +397,13 @@ export default function MoneyPage() {
 
       <h2>How to not go broke</h2>
       <p>
-        The daily drip alone covers about <strong>{realFightsPerDrip} real-fight entries</strong>{" "}
-        a day (or {juvenileFightsPerDrip} juvenile ones) — and each of those entries is a night of
-        up to {FIGHTS_PER_GROUP_BIRD} fights, so that is really{" "}
-        {realFightsPerDrip * FIGHTS_PER_GROUP_BIRD} fights a day out of the drip alone. You cannot
-        actually run out of GP to play with as long as you check in. The cheapest way to keep new birds coming without
+        The daily drip alone covers about <strong>{maidenNightsPerDrip} grown maiden entries</strong>{" "}
+        a day — and each of those is a night of up to {FIGHTS_PER_GROUP_BIRD} fights, so that is
+        really {maidenNightsPerDrip * FIGHTS_PER_GROUP_BIRD} fights a day out of the drip alone.
+        Spend it at the cheap end of the ladder and it is {cheapNightsPerDrip} nights; spend it all in
+        the grown open and it is {dearNightsPerDrip}. Either way you cannot actually run out of GP to
+        play with as long as you check in — you just choose how hard you want to fight with it (see{" "}
+        <Link href="/wiki/ladder">Fighting up</Link>). The cheapest way to keep new birds coming without
         touching your wallet is the free gacha pull that check-in also grants: it costs nothing,
         it always mints a little land, and on the better tokens it drops a whole mystery egg. See{" "}
         <Link href="/wiki/gacha">The gacha</Link>. Save paid rolls and covers for when you&apos;re
@@ -373,6 +413,7 @@ export default function MoneyPage() {
 
       <div className="next">
         <Link href="/wiki/land">Land Tokens →</Link>
+        <Link href="/wiki/ladder">Fighting up →</Link>
         <Link href="/wiki/gacha">The gacha →</Link>
         <Link href="/wiki/breeding">Breeding →</Link>
       </div>

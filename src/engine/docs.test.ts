@@ -7,12 +7,14 @@ import { fmtGp } from "./events";
 import type { FightFormat, FightMode } from "./config";
 import {
   AGE,
+  ALL_ENTRY_FEES,
   BATTLE,
   CALENDAR,
   CARD,
   CLAIMER,
   COVERS,
   ECONOMY,
+  ENTRY_FEES,
   FIGHT_MODES,
   FORMATS,
   FORMAT_NAMES,
@@ -164,11 +166,32 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(instructions).toMatch(/not force-retire/i);
   });
 
-  // Missing entirely #2: the discovery-year class ladder — juvenile
-  // maidens/stakes/claimers price on CLAIMER.JUVENILE_PRICES, a separate,
-  // cheaper ladder from the grown CLAIMER.PRICES rungs.
-  test("the juvenile claimer ladder (CLAIMER.JUVENILE_PRICES) is documented", () => {
-    expect(instructions).toContain(CLAIMER.JUVENILE_PRICES.join("/"));
+  /**
+   * Missing entirely #2 (round 23) was the discovery year's own claimer ladder.
+   *
+   * ⚠ ROUND 42 DELETED IT — `CLAIMER.JUVENILE_PRICES` is gone and both seasons
+   * tag on the SAME rungs, because a juvenile that has campaigned a 150 GP open
+   * night is not an unproven animal and pricing it at 25 GP would have made the
+   * discovery year the bargain bin of the game. So the pin flips rather than
+   * disappearing: the ONE ladder has to reach the reader, and the thing that IS
+   * still per-division — the entry fee at a given tag — has to be documented as
+   * the axis that survived the merge. An agent told there are two tag ladders
+   * would quote a chick a price that no longer exists.
+   */
+  test("the ONE claimer tag ladder is documented, and no second juvenile ladder is", () => {
+    // Written tolerantly on purpose: route.ts joins rungs as "90/180/270",
+    // "90 / 180 / 270" and "48 GP / 96 GP / 144 GP" in different places, and all
+    // three are honest. What the test insists on is that the RUNGS ARRIVE IN
+    // ORDER, as a ladder a player can read — pinning one punctuation style would
+    // fail an ordinary rewrite of the prose for no reason at all.
+    const ladder = (rungs: readonly number[]) =>
+      new RegExp(rungs.map(String).join("(\\s*GP)?\\s*[/·]\\s*"));
+    expect(everything).toMatch(ladder(CLAIMER.PRICES));
+    // The entry fee is the axis that stayed split — the tag says what the BIRD
+    // costs, the entry says what the NIGHT costs — so BOTH seasons' claimer
+    // entry ladders have to reach the reader, or the merge reads as total.
+    expect(everything).toMatch(ladder(ENTRY_FEES.juvenile.claimer));
+    expect(everything).toMatch(ladder(ENTRY_FEES.real.claimer));
   });
 
   // Missing entirely #3: carriage (round 23's Ground/Air axis) — data-only,
@@ -218,12 +241,24 @@ describe("MCP docs carry the CURRENT config values", () => {
     // docs". So it now walks FIGHT_MODES, which is the list of things a farm
     // can actually be charged to enter: drop a mode and this stops asking for
     // it; add one and it starts, without anybody remembering to.
-    const modeFees: Record<FightMode, number> = {
-      juvenile: ECONOMY.JUVENILE_ENTRY_FEE,
-      real: ECONOMY.REAL_ENTRY_FEE,
-    };
-    // Entry fees live on enter_lobby / enter_claimer's own tool descriptions.
-    for (const mode of FIGHT_MODES) expect(everything).toContain(`${modeFees[mode]} GP`);
+    //
+    // ⚠ RE-POINTED AGAIN IN ROUND 42, for the same reason and one rung wider.
+    // There is no "the juvenile entry fee" any more: the flat rate is dead and
+    // every class is priced separately (ENTRY_FEES). The intent is unchanged —
+    // A FEE A PLAYER PAYS MUST NEVER VANISH FROM THE DOCS — so the sweep walks
+    // the whole ladder instead of two constants. A rung the prose never quotes
+    // is a rung an agent will be surprised by at the door, and the surprise now
+    // costs up to 300 GP.
+    const quoted = (fee: number) =>
+      // Either "N GP" on its own, or N inside a slash-joined ladder ("24 / 48 / 72
+      // GP") — both are honest ways for the prose to carry a rung, and demanding
+      // one phrasing would make an ordinary rewrite of route.ts fail.
+      new RegExp(`(^|[^\\d])${fee}(\\s*GP\\b|\\s*[/·])|[/·]\\s*${fee}([^\\d]|$)`).test(everything);
+    const missing = [...new Set(ALL_ENTRY_FEES)].filter((fee) => !quoted(fee));
+    expect(missing).toEqual([]);
+    // …and both divisions are still named as chargeable doors, which is what the
+    // round-31 version of this pin walked FIGHT_MODES for.
+    for (const mode of FIGHT_MODES) expect(everything).toMatch(new RegExp(mode, "i"));
     // The other two prices a farm pays, pinned for the same reason.
     expect(everything).toContain(`${ECONOMY.BREED_FEE} GP`);
     expect(everything).toContain(`${ECONOMY.GACHA_ROLL_PRICE} GP`);
@@ -664,7 +699,13 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     const src = readWikiPage("pintakasi/page.tsx");
     expect(src).toContain("JUVENILE_MAJOR.ENTRY_FEE");
     expect(routeSrc).toContain("JUVENILE_MAJOR.ENTRY_FEE");
-    if (JUVENILE_MAJOR.ENTRY_FEE === 0) {
+    // ⚠ WIDENED TO `number` (round 42 priced this door at 48 GP, so comparing the
+    // literal type against 0 is a compile error rather than the runtime branch it
+    // needs to be). The branch stays: if a future round makes the crown free
+    // again, the test flips to demanding the free framing instead of failing for
+    // having found it.
+    const juvenileEntryFee: number = JUVENILE_MAJOR.ENTRY_FEE;
+    if (juvenileEntryFee === 0) {
       // Stated positively, and stated as a CONTRAST — "free" only means
       // something to a reader who has just been quoted the Majors' price.
       expect(src).toMatch(/juvenile crown is free/i);
@@ -674,20 +715,57 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     }
   });
 
-  test("no page confuses the crown LAND BASIS with the price of a Major entry", () => {
-    // PINTAKASI.LAND_BASIS (200) and PINTAKASI.ENTRY_FEE (80) were the same
-    // number once, and the land page still explains the basis "the Majors
-    // represent". Round 41 made them deliberately different things — what a
-    // crown fight is WORTH in land vs. what a barn PAYS — so any page quoting
-    // the basis has to say which one it means.
-    const src = readWikiPage("land/page.tsx");
-    expect(src).toContain("PINTAKASI.LAND_BASIS");
-    // Widened to `number`: the two are literal types today, so comparing them
-    // directly is a compile error rather than the runtime guard it needs to be.
-    const basis: number = PINTAKASI.LAND_BASIS;
-    const entry: number = PINTAKASI.ENTRY_FEE;
-    if (basis !== entry) expect(src).toMatch(/not the entry fee/i);
-    expect(src).not.toMatch(/the \{PINTAKASI\.LAND_BASIS\} GP entry fee/);
+  /**
+   * ⚠ THE SUBJECT OF THIS TEST WAS DELETED IN ROUND 42, so it is re-pointed
+   * rather than removed. It used to police the crown LAND BASIS — a second land
+   * curve's input, which round 41 had made deliberately different from the entry
+   * fee it once equalled — and warn any page quoting it to say which it meant.
+   *
+   * `PINTAKASI.LAND_BASIS`, `LAND_EXPONENT`, `landForTournamentFight` and both
+   * `LAND_GRANTS` ladders are gone: a crown pays ONE FIXED POT, divided across
+   * every fight actually fought. The page's job therefore changes from "don't
+   * confuse two GP numbers" to "don't describe a curve that no longer exists" —
+   * and the reversed sentences are the dangerous part, because a pot and a
+   * per-fight mint make opposite promises about a thin field.
+   */
+  test("no page still teaches the deleted crown land CURVE — a crown pays one pot", () => {
+    const land = readWikiPage("land/page.tsx");
+    const pintakasi = readWikiPage("pintakasi/page.tsx");
+    // Imported, never typed — the import rule at the spot the round changed.
+    expect(land + pintakasi).toContain("PINTAKASI.LAND_POT");
+    for (const src of [land, pintakasi]) {
+      // The deleted machinery, in every name it went by.
+      expect(src).not.toMatch(/LAND_BASIS/);
+      expect(src).not.toMatch(/LAND_GRANTS/);
+      expect(src).not.toMatch(/LAND_EXPONENT/);
+      expect(src).not.toMatch(/landForTournamentFight/);
+      // The exactly-backwards CLAIM the grant ladder left behind. Land is paid on
+      // fights fought now, so the earliest-out is paid LEAST, and a page still
+      // promising the opposite would send a player into a hardcore first round
+      // expecting a consolation prize that is now the smallest share in the pot.
+      expect(src).not.toMatch(/elimination grants?/i);
+      expect(src).not.toMatch(/land to the fallen/i);
+      expect(src).not.toMatch(/the earlier .{0,30}(go|fall)e?s? out.{0,40}(more|bigger)/i);
+    }
+    // …and the two properties a pot has that a mint does not, both surprising
+    // enough that the prose has to state them rather than imply them.
+    expect(everything).toMatch(/a bye/i);
+    expect(everything).toMatch(/fights fought|every fight fought|fought in the bracket/i);
+  });
+
+  test("both crowns' land pots are stated, in TOKENS, from their own knobs", () => {
+    // The pots are stored in hundredths (LT_CENTS) and RULED in whole tokens —
+    // 15,000 a Major, 3,000 a juvenile crown. Quoting the storage would promise a
+    // hundred-fold bigger pot than the crown pays, which is the same class of
+    // error LAND.DAILY_BUY_CAP already has a pin for.
+    const asTokens = (cents: number) => (cents / LT_CENTS).toLocaleString();
+    expect(everything).toContain(asTokens(PINTAKASI.LAND_POT));
+    expect(everything).toContain(asTokens(JUVENILE_MAJOR.LAND_POT));
+    // Read live in both places, never typed — and from the RIGHT knob each time:
+    // one shared number is how the deleted grant ladder ended up paying a
+    // juvenile champion less land than its own first-round losers.
+    expect(routeSrc).toContain("PINTAKASI.LAND_POT");
+    expect(routeSrc).toContain("JUVENILE_MAJOR.LAND_POT");
   });
 
   test("pintakasi page documents the Juvenile Championship as non-hardcore", () => {

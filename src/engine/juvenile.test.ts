@@ -125,11 +125,18 @@ describe("registration gates", () => {
    * now. Opening the Majors to any age-3 bird did NOT open the discovery-year
    * stage: a chick still ladders its way in on juvenile wins. The two crowns
    * are gated on opposite principles for opposite reasons — Thursday is
-   * hardcore and self-limiting (lose and the career ends), while Wednesday
-   * costs a chick nothing, so an open juvenile field would just be every chick
-   * in the world showing up.
+   * hardcore and self-limiting (lose and the career ends), while Wednesday ends
+   * nobody's career, so an open juvenile field would just be every chick in the
+   * world showing up.
+   *
+   * ⚠ ROUND 42 PUT A PRICE ON WEDNESDAY (48 GP, reversing round 41's freeroll),
+   * which makes the LADDER the more important half of this test rather than a
+   * less important one: a fee is not a qualification, and the two must not be
+   * allowed to merge. The wallet assertion below therefore flips from "nothing
+   * was charged" to "the door's own price was charged, once, and only to the
+   * bird that was let in".
    */
-  test("the juvenile ladder held: under QUALIFYING_WINS refused, at threshold accepted — and free", () => {
+  test("the juvenile ladder held: under QUALIFYING_WINS refused, at threshold accepted — and billed", () => {
     const w = world();
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins).toBe(0); // a fresh legacy chick has no discovery-year record yet
@@ -140,11 +147,18 @@ describe("registration gates", () => {
     // One win short still isn't enough…
     qualifyJuvenile(w.db, kidlat.id, JUVENILE_MAJOR.QUALIFYING_WINS - 1);
     expect(() => w.dev.enter(kidlat.id, "b2", "juvenile")).toThrow(/discovery ladder/);
-    // …and the wallet is untouched either way, because the crown is free.
+    // A REFUSAL IS NOT A CHARGE: the two refusals above left the wallet alone,
+    // and the accepted entry takes exactly the juvenile knob's price — never the
+    // Majors' (round 41 split the knob precisely so a chick could not be billed
+    // for Thursday, and round 42's pricing is what makes that split load-bearing
+    // instead of theoretical).
     const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
     qualifyJuvenile(w.db, kidlat.id); // exactly at the threshold
     w.dev.enter(kidlat.id, "b2", "juvenile");
-    expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(before);
+    expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(
+      before - JUVENILE_MAJOR.ENTRY_FEE
+    );
+    expect(JUVENILE_MAJOR.ENTRY_FEE).toBeLessThan(PINTAKASI.ENTRY_FEE); // the cheap seat
   });
 });
 
@@ -162,10 +176,17 @@ describe("purse & record accounting", () => {
     const tick = tickThroughCrownDay(w.game);
     const juv = tick.pintakasi.find((r) => divisionOf(w.db, r.tournamentId) === "juvenile")!;
     expect(juv.cancelled).toBe(false);
-    const expectedPurse = Math.floor(100_000 * JUVENILE_MAJOR.JUICE_SHARE);
-    expect(juv.purseCents).toBe(expectedPurse);
+    // ⚠ TWO TERMS SINCE ROUND 42: the juice slice PLUS the entry fees the two
+    // chicks paid at the door. The crown stopped being free, and fees are added
+    // whole to the purse of the crown that collected them (no rake) — exactly as
+    // the Majors have done since round 41. What the JUICE_SHARE knob still
+    // governs is only the slice taken out of the POOL, which is the thing this
+    // test is actually about, so it is asserted separately from the fees.
+    const expectedSlice = Math.floor(100_000 * JUVENILE_MAJOR.JUICE_SHARE);
+    const fees = 2 * JUVENILE_MAJOR.ENTRY_FEE * 100;
+    expect(juv.purseCents).toBe(expectedSlice + fees);
     const state = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.juicePoolCents).toBe(100_000 - expectedPurse); // the 80% left for Thursday
+    expect(state.juicePoolCents).toBe(100_000 - expectedSlice); // the 80% left for Thursday
   });
 
   test("a juvenile crown does not bank STAKES wins — the discovery year never graduates a maiden", () => {

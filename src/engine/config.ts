@@ -730,23 +730,22 @@ export const ECONOMY = {
   // 2026-08-03): player-set stud pricing comes later; today every cover
   // costs exactly this, and it SPLITS (see BREED_SPLIT below).
   BREED_FEE: 160,
-  // Entries. ⚠ ROUND 34 nudged both of these off their round numbers, and the
-  // reason is arithmetic rather than balance: one entry now buys a GROUP of
-  // three fights and the stake splits across them (see stakePerFight), so the
-  // fee has to divide by three exactly or the books stop balancing to the
-  // cent. Zane's ruling: "we slightly tweak the entry fees so that they are
-  // divisible by 3." 40 → 42 and 8 → 9 are the nearest such numbers, a 5%
-  // and 12.5% rise that buys triple the fights — so the price PER FIGHT fell
-  // hard (13.33 GP and 3 GP a side), which is the point.
-  // The winner of one fight takes 2 × the per-fight stake, NOT 2 × the entry.
-  REAL_ENTRY_FEE: 42, //      $0.53 a side for the night — CAREER record
-  // HARDCORE_ENTRY_FEE (120) lived here until round 31 took hardcore off the
-  // daily card. There is no hardcore lobby left to charge for, and the Majors
-  // — the only hardcore in the game now — are free to enter (PINTAKASI.
-  // ENTRY_FEE). A fee constant for a fight nobody can card is a lie about the
-  // rules, so it is gone rather than kept "just in case"; the land curve it
-  // used to anchor is exercised against PINTAKASI.LAND_BASIS instead.
-  JUVENILE_ENTRY_FEE: 9, //   $0.11 a night (3 GP a side) — AMATEUR, discovery year
+  // ⚠ THE TWO ENTRY-FEE CONSTANTS THAT LIVED HERE ARE GONE (round 42).
+  //
+  // There was a `REAL_ENTRY_FEE` (42) and a `JUVENILE_ENTRY_FEE` (9): ONE price
+  // per division, stamped on maidens, claimers and the open alike. That flat
+  // rate is what round 42 set out to kill — see ENTRY_FEES below, which prices
+  // every rung of the ladder separately. Keeping either constant as an alias
+  // for "the maiden rung" would have been the worst of both: a name that reads
+  // like the division's price while being one of five, and 60-odd call sites
+  // quoting it as though it still meant something.
+  //
+  // What was load-bearing about them survives in two places. The DIVISIBILITY
+  // rule (round 34: a fee must divide by FIGHTS_PER_GROUP_BIRD exactly, or the
+  // stake split stops balancing to the cent) now applies to every entry in
+  // ENTRY_FEES and is pinned there. The LAND CURVE still reads a fee — it just
+  // reads whichever rung the bird actually carded, which is the whole point.
+  // HARDCORE_ENTRY_FEE (120) died earlier, in round 31, with the hardcore lobby.
   // ROUND 23 — the gacha goes back UP to 80 GP, and stops being the cheap
   // way to fill a barn. Round 22 cut it to 16 so the bots would finally buy;
   // they did, and it worked so well that gacha out-supplied the breeding barn
@@ -788,6 +787,34 @@ export const STAKER_FLOWS = {
   // is a PURE POT again — win +entry, lose −entry, exactly as round 16 ruled.
   // The plumbing stays wired at 0 so a future season can turn it back on with
   // one number instead of a rebuild.
+  // ⚠ AND KEEPING IT AT ZERO IS A DELIBERATE BET AGAINST A KNOWN FAILURE, which
+  // is worth recording here because it is the reason nobody should "just add a
+  // small rake" the next time the GP faucet looks too generous (round 42).
+  //
+  // Zane, on the game this one is descended from: "we've kept the fights part of
+  // the economy 0 rake AND it emits LT. In PFL there was a heavy 10% rake and the
+  // CROWN was intended to offset this, and perhaps completely offset it and cause
+  // +EV racing. This occurred for just a few seasons before a negative spiral of
+  // -EV racing went on for years. We should be in a better position because our
+  // whole fight economy is +EV due to 0 rake and sprinkling in LT."
+  //
+  // The mechanism of that spiral is the thing to understand. A rake makes the
+  // AVERAGE entrant lose money on every card; a prize pool funded from that rake
+  // hands it back concentrated at the top. So the median stable bleeds and only
+  // the winners are whole, which means racing is rational for fewer and fewer
+  // barns each season — and the fewer race, the thinner the fields, the worse the
+  // median outcome. It does not correct itself, because every step is individually
+  // rational.
+  //
+  // Two things insulate this game from it, and BOTH have to keep holding. The pot
+  // is pure — win +stake, lose −stake, so the median entrant breaks even rather
+  // than bleeding. And land mints on every fight regardless of result, so the
+  // median entrant is actually +EV once the subsidy is counted. Round 42 made both
+  // matter more by multiplying the stakes: at 300 GP an open night, a 10% rake
+  // would cost a barn 30 GP a card, which is the PFL trap at PFL's scale.
+  //
+  // If GP ever needs draining, drain it somewhere a losing stable does not pay for
+  // the privilege of playing — breeding, the gacha, a tax on the top. Not here.
   FIGHT_RAKE: 0,
   CLAIM_RAKE: 0.02, //     2% of every claiming tag — the owner banks 98%
   MARKET_RAKE: 0.02, //    the same rule, reserved for the marketplace (not built)
@@ -844,11 +871,37 @@ export const LAND = {
   PER_GACHA_ROLL: 1 * LT_CENTS,
   GP_PER_100_TOKENS: 80, //          GP, not land — untouched: $1 buys 100 LT
   DAILY_BUY_CAP: 1_000 * LT_CENTS, // max LT a farm may buy per game-day ($10)
+  // ── THE PENCILLED VALUATION (round 42) — a yardstick, not a rule ──────────
+  //
+  // Nothing in the engine reads these two numbers. They exist so the doctor can
+  // report issuance in dollars instead of in tokens, because "2,876 LT a day" is
+  // a number nobody can be right or wrong about and "$0.50 of land handed out
+  // per $1 of GP sold" is.
+  //
+  // Zane's frame, and it is worth writing down because it is the only stated
+  // theory of what Land Token is FOR: "My overall vision for LT would be for us
+  // to emit 100 billion tokens, and for them to be valued at $0.01 each = A
+  // billion dollars… As a company we are more or less selling GP in exchange for
+  // fun and LT. So in a super basic sense, if we get people to spend a billion
+  // dollars on GP in pursuit of a billion dollars worth of LT, then we win."
+  //
+  // ⚠ TREAT BOTH AS ARBITRARY. There is no way to exchange LT for money today —
+  // the return is the staking yield, and the price is a pencil mark. Do NOT
+  // derive a game rule from either: the moment a fee or a cap is computed off a
+  // valuation, a marketing decision becomes a balance decision. The one honest
+  // use is a ratio the doctor prints for a human to judge.
+  PENCILLED_USD_PER_TOKEN: 0.01,
+  TARGET_SUPPLY: 100_000_000_000, // whole tokens, not hundredths — the $1B mark
 } as const;
 
-// The land curve, fed the TOTAL a bird risked in a night: a full juvenile
-// group (9 GP) → 1 LT · a full real/claimer group (42 GP) → 6 LT. Superlinear
-// on purpose — 6 is more than 4.7× the 1, so fighting up pays extra.
+// The land curve, fed the TOTAL a bird risked in a night. Superlinear on
+// purpose, and since round 42 that property is what the whole class ladder rests
+// on: a juvenile maiden risks 30 GP a night and mints 4.57 LT, a grown open
+// risks 300 and mints 64.55 — 14× the land for 10× the stake. Fighting up pays
+// EXTRA, per GP risked, and that surplus is the only thing paying a stable for
+// taking harder company. The doctor's FIGHT ECONOMY BY RUNG block prints land per
+// 100 GP risked down the whole ladder; it must RISE, and if it ever goes flat the
+// ladder is all cost and no reward.
 //
 // Worth noting for balance: the group stage tripled the fights per entry while
 // LT per real night went 7 → 6, so this round TIGHTENS the land faucet per
@@ -883,8 +936,9 @@ export const LAND = {
  * This is the structural cure for the round-34 inversion, and the reason is
  * worth stating in one line: WHOLE TOKENS MADE `ceil` LOAD-BEARING. At the
  * cheap end of a superlinear curve the rounding is worth more than the
- * exponent — a 9 GP night is genuinely 1.145 tokens, and rounding that up to 2
- * is a 75% overpayment, while the same rounding on a 42 GP night is worth 4%.
+ * exponent — the old 9 GP juvenile night was genuinely 1.145 tokens, and
+ * rounding that up to 2 was a 75% overpayment, while the same rounding on the
+ * old 42 GP grown night was worth 4%.
  * So the distortion was always largest exactly where the curve is shallowest,
  * which is how the ordering flipped. Round 34 answered by moving the base
  * until the numbers landed on friendly integers; that worked once and would
@@ -895,8 +949,10 @@ export const LAND = {
  * by itself — verified in `lobbies.test.ts` across every fee from 1 to 300,
  * which is the guard that should have existed before round 34 touched a fee.
  *
- * Fed the TOTAL a bird risked in a night (see the group stage): a full
- * juvenile group (9 GP) → 1.15 LT · a full real/claimer group (42 GP) → 6.73.
+ * Fed the TOTAL a bird risked in a night (see the group stage). Across the
+ * round-42 ladder: a juvenile claimer's 24 GP → 3.54 LT, a juvenile maiden's
+ * 30 → 4.57, a grown maiden's 60 → 10.15, a juvenile open's 150 → 29.10, a
+ * grown open's 300 → 64.55.
  */
 export function landForFight(fee: number): number {
   return Math.max(
@@ -1027,9 +1083,12 @@ export const COVERS = {
 // group of six would be five fights a bird). Four is also the smallest size
 // that survives one same-barn collision and still gives everyone a card.
 //
-// ⚠ SIZE is load-bearing arithmetic, not a preference. Both entry fees must
-// divide evenly by SIZE - 1 (see stakePerFight, and the test that pins it),
-// because the stake splits across the fights and GP is kept to the cent.
+// ⚠ SIZE is load-bearing arithmetic, not a preference. EVERY fee in ENTRY_FEES
+// must divide evenly by SIZE - 1 (see stakePerFight, and the test that sweeps
+// ALL_ENTRY_FEES to pin it), because the stake splits across the fights and GP is
+// kept to the cent. This said "both entry fees" until round 42, when there
+// stopped being two of them and started being eleven — which is exactly why the
+// test sweeps the table now instead of naming constants.
 export const GROUP = {
   SIZE: 4, //     four to a group — three fights a bird
   MIN_SIZE: 2, // below this there is no fight to make: a lone entry refunds
@@ -1042,9 +1101,9 @@ export const FIGHTS_PER_GROUP_BIRD = GROUP.SIZE - 1;
 // If the bird is the odd bird out and only gets two fights, then I'd expect
 // them to get refunded 20." One entry fee buys a night, not a fight — it is
 // escrowed whole at the door, spent a third at a time, and whatever the bird
-// never got to risk comes back at post time. So a 42 GP entry is three 14 GP
-// fights, and a bird whose group was short of a barn-mate fights twice, risks
-// 28 and is handed 14 back.
+// never got to risk comes back at post time. So a 60 GP grown maiden entry is
+// three 20 GP fights, and a bird whose group was short of a barn-mate fights
+// twice, risks 40 and is handed 20 back.
 //
 // The pot per fight is therefore 2 × this, NOT 2 × the entry fee — a fact that
 // is easy to get wrong in prose. Land is the other way round: it pays ONCE per
@@ -1112,15 +1171,132 @@ export const NW_CAP = 3;
 // TWO entries in 84 days. At three grown rungs and two juvenile the same
 // traffic concentrates about 13× and the marketplace gets healthier, not
 // smaller.
+//
+// ⚠ ROUND 42 — ONE LADDER FOR BOTH SEASONS, AND THE JUVENILE RUNGS ARE GONE.
+// Round 23 gave the discovery year its own cheap tags (25/100) on the reasoning
+// that "a one-year-old is an unproven animal — pricing it against the grown-bird
+// ladder would mean nobody dares tag one." Zane reversed that deliberately:
+// "let's adjust the claimer tags to 90, 180, and 270… this positions tags above
+// and below the breed cost."
+//
+// What changed underneath is that a juvenile is no longer cheap to campaign. The
+// discovery year's own entries now run 24–150 GP (see ENTRY_FEES), so a
+// one-year-old that has fought a real card has real earnings behind it and is
+// worth something like a grown bird's tag. Pricing juveniles at 25 GP against
+// that would have made the discovery year the bargain bin of the whole game.
+//
+// A SEPARATE ENTRY PRICE, THOUGH — this is the axis that survived the merge. The
+// tag says what the BIRD costs and is shared; the entry says what the NIGHT
+// costs and is still per-division (24/48/72 juvenile against 48/96/144 grown).
+// Same animal price, half the cost to campaign it as a juvenile.
 export const CLAIMER = {
-  PRICES: [50, 200, 600], // $0.625 · $2.50 · $7.50 — 50 under the breed floor, 200/600 over
-  // The DISCOVERY-YEAR ladder (round 23): juveniles get their own, cheaper
-  // rungs. A one-year-old is an unproven animal — pricing it against the
-  // grown-bird ladder would mean nobody dares tag one, and the whole point of
-  // opening claimers in the juvenile season is to get birds CHANGING HANDS
-  // while they're still a guess.
-  JUVENILE_PRICES: [25, 100], // $0.31 · $1.25
+  // 90 under the 160 GP breed floor, 180 and 270 over it — the round-31 shape
+  // ("one rung below, two above") re-priced rather than re-thought.
+  PRICES: [90, 180, 270], // $1.125 · $2.25 · $3.375
 } as const;
+
+// ── THE FEE LADDER (round 42) — the flat rate dies ──────────────────────────
+//
+// Zane: "The other problem with the costing is the flat cost among fight types.
+// This is not intended. We have a ladder with maidens, claimers, nw, open, and
+// then Championships… But we basically just charge a flat rate on these fights.
+// We want the more competitive fights to cost more, more risk, more reward…
+// We want players to ladder up."
+//
+// Until now there was ONE price per division — 42 GP grown, 9 GP juvenile — so
+// a maiden and the open cost the same and the class ladder carried no economic
+// weight at all. A bird climbing it took on harder company for exactly no extra
+// stake and no extra reward. Now every rung is priced, and the land curve
+// (landForFight, superlinear at 1.15) turns each step up into disproportionately
+// more Land Token — which is the incentive to climb, paid in the currency that
+// is supposed to be the subsidy.
+//
+// ⚠ EVERYTHING IS PRICED AGAINST THE 160 GP BREED FEE, and that is the ruling
+// worth understanding. Zane: "we want fights to cost more vs. the min breed fee,
+// so that a profitable bird is worth many multiples the amount that it took to
+// create it. If profit potential per bird is high, then speculation on bird
+// value can go high, which will drive potential demand for buying birds and
+// breeding birds… This also means that the birds are cheaper vs. fights, which
+// is good, allows players to have more birds and their funds are focused on
+// fighting rather than acquiring the instruments to fight."
+//
+// So a body is cheap and a night is dear. A juvenile maiden is 30 GP — 18.75% of
+// what it costs to make the bird — and one grown open night is 300, nearly two
+// covers. A bird that can win in the open earns back its own creation cost in a
+// single evening, which is what makes a good one worth speculating on. When
+// player-set stud pricing unlocks, THAT is the demand it will be priced against.
+//
+// ⚠ EVERY FEE MUST DIVIDE BY FIGHTS_PER_GROUP_BIRD (3), because one entry buys
+// a GROUP and the stake splits across it to the cent — see stakePerFight, and
+// the test that pins it over this whole table. Zane's rule: keep the numbers
+// divisible by 6. This is why the maiden rungs are 30/60 and not the 32/64 that
+// "20% of the breed fee" would have given: 32 is not divisible by 3, and making
+// the split carry a remainder would have put arithmetic into the one place this
+// codebase has already lost money twice.
+export const ENTRY_FEES = {
+  // THE DISCOVERY YEAR, roughly half the grown price at every rung — a
+  // one-year-old is still learning what it is, and the season it learns in
+  // should not cost what a veteran's does.
+  juvenile: {
+    maiden: 30, //  the home number: 18.75% of a breed fee
+    nw3: 30, //     never posted (the juvenile card has no nw3 — see CARD), priced
+    //              anyway so the lookup is total and a future card cannot crash
+    // ⚠ THE OPEN IS THE EXPENSIVE ONE, and deliberately more than a grown
+    // maiden. Zane: "This should be high… This allows for players to fight
+    // their strongest birds hard, and it also should result in the best quality
+    // discovery. If your bird can win @ open competition at a specific blade,
+    // that is basically the best possible info in the game." Discovery is the
+    // product of the juvenile year, and the sharpest read costs the most.
+    open: 150,
+    claimer: [24, 48, 72], // against CLAIMER.PRICES — cheapest rung is the
+    //                        cheapest fight in the game, because the bird is
+    //                        for sale at 90 GP while it runs
+  },
+  // GROWN — exactly 2× the juvenile at every rung. Zane: "for simplicity we
+  // just double it." The ratio is worth keeping deliberate rather than letting
+  // the rungs drift apart: it is what makes "campaign it as a juvenile" a real
+  // economic choice instead of a rounding difference.
+  real: {
+    maiden: 60,
+    // ⚠ MAIDEN AND NW3 ARE THE SAME PRICE, on purpose. Zane: "I'll group them
+    // together because they kinda become the same thing, since most birds should
+    // get a win in their juvi season with the multi-fight lobbies." A group
+    // stage hands out three fights a night, so a maiden graduates almost
+    // immediately and nw3 is where a bird actually spends its early career.
+    // Pricing them apart would tax an accident of timing.
+    nw3: 60,
+    open: 300, //   the dearest fight on any daily card — two covers a night
+    claimer: [48, 96, 144],
+  },
+} as const;
+
+/**
+ * WHAT ONE NIGHT COSTS at a given rung — the single door every entry fee comes
+ * through, replacing round 31's `MODE_FEES[mode]` lookup in lobbies.ts.
+ *
+ * Claimers index by their POSITION on CLAIMER.PRICES rather than by the tag
+ * value, so re-pricing the tag ladder cannot silently orphan a fee: an unknown
+ * tag throws here instead of quietly billing the cheap rung. That failure mode
+ * is not hypothetical — the tag is part of a lobby's key, so a stale tag reaches
+ * this function from any lobby row written before a reprice.
+ */
+export function feeFor(mode: FightMode, classType: Lobby, price?: number): number {
+  const rungs = ENTRY_FEES[mode];
+  if (classType !== "claimer") return rungs[classType];
+  const rung = CLAIMER.PRICES.indexOf(price as (typeof CLAIMER.PRICES)[number]);
+  if (rung < 0)
+    throw new Error(
+      `No claimer rung at a ${price} GP tag — the ladder is ${CLAIMER.PRICES.join(" / ")} GP`
+    );
+  return rungs.claimer[rung];
+}
+
+/** Every fee on the ladder, for the tests and the docs that sweep it. */
+export const ALL_ENTRY_FEES: number[] = FIGHT_MODES.flatMap((mode) =>
+  LOBBIES.map((classType) =>
+    classType === "claimer" ? ENTRY_FEES[mode].claimer : [ENTRY_FEES[mode][classType]]
+  ).flat()
+);
 
 // ── THE CARD (round 31) — a published daily schedule ────────────────────────
 // Until now lobbies were CONJURED ON DEMAND: entering created the lobby if it
@@ -1290,8 +1466,13 @@ export function cardOfDay(dayIndex: number): CardKey[] {
 
   add("juvenile", "open", CARD.juvenile.open);
   add("juvenile", "maiden", CARD.juvenile.maiden);
+  // The juvenile card posts ONE claimer a day, so its tag simply walks the
+  // shared ladder (round 42 merged the two ladders — see CLAIMER). A rotation
+  // rather than a draw, for the same reason the blades rotate: the discovery
+  // year is seven days long and a tag that vanished for a week by luck would
+  // cost a generation its shot at the marketplace.
   add("juvenile", "claimer", CARD.juvenile.claimer, {
-    prices: [CLAIMER.JUVENILE_PRICES[dayIndex % CLAIMER.JUVENILE_PRICES.length]],
+    prices: [CLAIMER.PRICES[dayIndex % CLAIMER.PRICES.length]],
   });
   return keys;
 }
@@ -1344,28 +1525,42 @@ export const JUVENILE_MAJOR = {
   // money rides on ADVANCEMENT and less on the trophy: showing up with a live
   // one and winning a fight should pay a juvenile barn, because that is the
   // whole behaviour the discovery year is trying to buy.
-  PURSE: { ADVANCEMENT: 0.65, CHAMPION: 0.2, RUNNER_UP: 0.15, ROUND_MULTIPLIER: 1.5 },
-  // ⚠ FREE, AND DELIBERATELY SO (round 41). The Majors now cost 80 GP to
-  // enter; this crown does not, and it needs its own knob to stay that way —
-  // until round 41 a single `PINTAKASI.ENTRY_FEE` was stamped on every
-  // tournament row in the game, juveniles included. The discovery year exists
-  // to find out what a bird IS, this is the one crown that doesn't end a
-  // career, and putting a nine-nights-of-card-entries toll on a chick learning
-  // its trade would gate the exact stage that is supposed to be open.
-  ENTRY_FEE: 0,
-  // Land to the fallen, on the discovery year's much smaller scale. The
-  // Majors' grants (40/25/15/10/5) are priced against a 200 GP stake and a
-  // career-ending loss; a juvenile risks neither, so paying it Major money
-  // would make the cheap crown the best land in the game.
-  // ⚠ IN HUNDREDTHS since round 36, like every land figure. Written as
-  // `n * LT_CENTS` so the ruled shape — the EARLIEST exit is paid the most —
-  // stays readable at a glance. Left as bare integers these silently became
-  // hundredths of a token, and a juvenile champion's grant would have been
-  // 0.01 LT instead of 1.
-  LAND_GRANTS: {
-    champion: 1 * LT_CENTS, runnerUp: 2 * LT_CENTS, sf: 3 * LT_CENTS,
-    qf: 5 * LT_CENTS, r16: 7 * LT_CENTS, r32: 9 * LT_CENTS,
-  },
+  //
+  // ⚠ ROUND 42 PUSHED IT FLATTER STILL (0.65 → 0.80), and it was forced rather
+  // than chosen. The crown stopped being free the same round, and a 48 GP door
+  // has to be cleared by a bird that won ONE fight — round 41's standing rule.
+  // A first-round win in a 32-bracket is structurally about 1% of the purse (16
+  // of the 31 fights happen in that round), so the only lever big enough to
+  // cover a real entry fee is the advancement share itself. Measured at 0.65 the
+  // one-win bird came home at −11 GP; at 0.80 it clears at +7.
+  PURSE: { ADVANCEMENT: 0.8, CHAMPION: 0.12, RUNNER_UP: 0.08, ROUND_MULTIPLIER: 1.5 },
+  // ⚠ NO LONGER FREE (round 42, reversing round 41). Zane: "We wont do freeroll
+  // like PFL. We want a cost here. There is no forced retirement, and the
+  // discovery potential is high. And there is Juice."
+  //
+  // Round 41 made this the one free crown in the game, reasoning that a toll on
+  // "a chick learning its trade would gate the exact stage that is supposed to
+  // be open." What changed is the rest of the ladder: a juvenile open night now
+  // costs 150 GP (see ENTRY_FEES), so a free championship had become the
+  // CHEAPEST serious fight available to a one-year-old — the discovery year's
+  // best stage, at no stake, which is backwards.
+  //
+  // ⚠ WHY 48 AND NOT THE 80 FIRST PROPOSED. The juvenile juice pool is thin
+  // (JUICE_SHARE 0.2, split across two crowns — about 2,360 GP each), so at an
+  // 80 GP door the entrants would fund 42% of their own purse and a one-win
+  // bird lands at −14 GP even with the advancement share at 0.80. Raising
+  // JUICE_SHARE just moves the same failure onto the Majors, since the pool is
+  // finite. 48 is where one win still pays (+7) — and it is still 1.6× a
+  // juvenile maiden night, so it is a real price, not a token one.
+  ENTRY_FEE: 48,
+  // ⚠ ONE FIXED POT, replacing a per-fight mint AND an elimination-grant ladder
+  // (round 42). See PINTAKASI.LAND_POT for the whole argument — it applies to
+  // both crowns and this is the smaller of the two.
+  //
+  // 3,000 LT a crown, 6,000 a week across the two. Sized as a fifth of a
+  // Major's pot, the same ratio JUICE_SHARE gives the purse, so the two
+  // currencies say the same thing about how much this stage matters.
+  LAND_POT: 3_000 * LT_CENTS,
 } as const;
 
 // ── The Pintakasi (ruled 2026-08-03 round 18) — the weekly blade Majors ─────
@@ -1450,7 +1645,14 @@ export const PINTAKASI = {
   // Fees are additive on top of the juice (see runChampionship), take no
   // staker rake, and are escrowed per entry — so a mid-season reprice refunds
   // everyone what they actually paid, not what the knob says today.
-  ENTRY_FEE: 80, // 2× a night's card (REAL_ENTRY_FEE 42) — the big stage costs more
+  // ⚠ DOUBLED TO 160 IN ROUND 42, when the whole fee ladder doubled. Zane:
+  // "Pintakasi Finals: 160 GP (doubled, easy, done)." It reads as roughly half
+  // a grown open night (300 GP) rather than the "2× a night's card" the round-41
+  // comment claimed — that comparison died with the flat 42 GP rate it was
+  // measured against. Against the ladder it now sits between the dearest
+  // claimer (144) and the open, which is about right for a stage you qualify
+  // into on earnings.
+  ENTRY_FEE: 160,
   MAX_BRACKET: 64,
   // Which day the crowns run. dayIndex % 7: 0 = Friday (day 0 of the game
   // week) … 5 = Wednesday, 6 = THURSDAY. Moved Wed → Thu in round 20 so a
@@ -1461,23 +1663,49 @@ export const PINTAKASI = {
   // three specialists, and the fields should start OVERFLOWING.
   MAX_PER_BARN: 3,
   MIN_FIELD: 2, //    a straight final still crowns; below this, cancelled
-  LAND_EXPONENT: 1.25, // vs. LAND.FIGHT_EXPONENT 1.15 — the Majors mint hard
-  // What the crown land curve is measured against. It used to be the entry
-  // fee, but round 22 made entry free — and landForTournamentFight(0) mints
-  // 1 LT, which would have quietly gutted "land to the fallen" from 40 LT a
-  // fight to 1. So the basis is its own number.
+  // ── ONE FIXED LAND POT, replacing a curve and a grant ladder (round 42) ───
   //
-  // ⚠ IT IS NO LONGER THE ENTRY FEE, AND IT IS NOT MEANT TO BE (round 41).
-  // This read "the old 200 GP entry, held as the STAKE the crowns represent
-  // rather than a price anyone pays" — true while entry was free, and false
-  // the moment round 41 put a real 80 GP price on the door. The two numbers
-  // are now deliberately different things: 80 is what a barn PAYS, 200 is what
-  // a crown fight is WORTH in land. Nothing derives one from the other, and
-  // pointing this at 80 would cut crown land 55.90 → 17.78 LT per fighter per
-  // fight — a two-thirds cut to the thing that makes losing a Major survivable,
-  // arrived at by accident. Move it only on purpose, and re-read the doctor's
-  // LAND SUPPLY block after.
-  LAND_BASIS: 200,
+  // Zane: "I actually don't know why we are both minting and granting LT here.
+  // I think we could just have one number. We juice the whole season by a fixed
+  // 2400 GP right? We can do the same thing with both of the finals. Where we
+  // just assign a fixed number of LT to each finals and then it gets auto-split
+  // up between rounds and participants."
+  //
+  // WHAT THIS DELETES, and why all of it had to go together. A crown used to pay
+  // land twice: a per-fight MINT off `landForTournamentFight(LAND_BASIS)` (a
+  // second land curve, with its own exponent), plus an elimination GRANT ladder
+  // paying the earliest-out the most. Two independent scales, and they had
+  // drifted into an outright inversion at the juvenile crown — a champion banked
+  // 6.75 LT against a first-round loser's 10.15, because the grants there were
+  // ~8× the per-fight mint while the Majors' were ~1:1. Nothing was wrong with
+  // either number on its own; they were simply never priced against each other.
+  //
+  // A single pot makes that class of bug UNREACHABLE rather than fixed. Land is
+  // now strictly monotone in fights fought, because it is one division of one
+  // number — there is no second scale left to disagree with the first.
+  //
+  // HOW IT SPLITS: evenly across every fight actually FOUGHT, so a bird's share
+  // is (its fights ÷ every fighter-slot in the bracket) of the pot. Three
+  // consequences, all intended. A deep run earns more than an early exit — Zane:
+  // "It's ok for a first round loss to be a little disappointing because the
+  // overall fight economy is so rewarding." A BYE PAYS NOTHING, the same rule
+  // the purse already follows (a bye is not a fight, so it buys no share). And a
+  // THIN FIELD PAYS BETTER per bird, because the same pot divides across fewer
+  // fights — Zane: "if there's just a few participants, they should see a big LT
+  // pot, this is good because it encourages participation and maxed out finals
+  // brackets." That last one is the opposite of how a per-fight mint behaved,
+  // and it is the reason to prefer a pot: the incentive now points at showing up
+  // early in a stage's life, when the fields are short.
+  //
+  // ⚠ SIZED TO LOOK GENEROUS ON PURPOSE. Zane: "It's good if the finals look
+  // super rewarding, especially early on. We want to jumpstart the economy and
+  // have everyone wanting to breed every single one of their hens to produce
+  // fighters." 15,000 LT a crown is 45,000 a week across the three Majors, and
+  // against the round-41 world's ~2,876 LT/day total mint that is a large step
+  // up — deliberately. These are starter numbers and the easiest knob in the
+  // game to walk back; read the doctor's LAND SUPPLY block and the LT-per-GP
+  // faucet ratio after moving them.
+  LAND_POT: 15_000 * LT_CENTS,
   // ── THE PURSE: EVERY WIN PAYS (re-ruled round 40) ────────────────────────
   //
   // Zane: "Every round should pay the winners something, even if the winners
@@ -1504,6 +1732,29 @@ export const PINTAKASI = {
   // The three shares must sum to 1 (docs.test.ts pins it). ROUND_MULTIPLIER is
   // separate — it redistributes WITHIN the advancement slice and cannot change
   // the total.
+  //
+  // ── ROUND 42: THE ADVANCEMENT SHARE ABSORBS A DOUBLED DOOR ────────────────
+  //
+  // The shares were 0.50 / 0.35 / 0.15. Round 42 doubled entry to 160 GP, and
+  // the round-41 rule below — every winner clears the door — broke immediately:
+  // a one-win bird in a 32-bracket came home at −37 GP. The multiplier could not
+  // fix it this time (it is already down at 1.5, and flattening it further to
+  // 1.25 buys only +27 while costing the champion a thousand GP), so the shares
+  // moved instead: 0.70 advancement clears one win at +13.
+  //
+  // ⚠ THE ROUND-41 COMMENT BELOW SAYS THE SHARES CANNOT FIX THIS. It was right
+  // at the time and it is worth keeping rather than quietly deleting, because
+  // the reason it stopped being true is instructive: it was measured at
+  // ROUND_MULTIPLIER 2, where the first round takes so small a slice of the
+  // advancement pool that no plausible share covers a fee. At 1.5 the first
+  // round already holds a third of the pool, so the share IS the lever. The two
+  // knobs are not independent — read them together.
+  //
+  // The champion still takes about 4,522 GP of a 12,000 GP purse, against 5,677
+  // at the old shares: a ~20% haircut on the trophy to keep 16 first-round
+  // winners whole. Zane's round-41 framing ("Champion should still receive a
+  // lot, but I suspect there's a happier median") is the same trade, one notch
+  // further along.
   //
   // ── WHY 1.5 AND NOT 2 (round 41, when entry stopped being free) ───────────
   //
@@ -1544,26 +1795,10 @@ export const PINTAKASI = {
   // champion everything, because the runner-up won nothing and the remaining
   // shares renormalize. Rounding dust still crowns the champion.
   PURSE: {
-    ADVANCEMENT: 0.5,
-    CHAMPION: 0.35,
-    RUNNER_UP: 0.15,
+    ADVANCEMENT: 0.7,
+    CHAMPION: 0.2,
+    RUNNER_UP: 0.1,
     ROUND_MULTIPLIER: 1.5,
-  },
-  // LT grants by ELIMINATION STAGE — the fallen-weighted inversion.
-  // Keyed by "rounds from the final" at elimination (champion included).
-  // ⚠ IN HUNDREDTHS since round 36 — see the note on JUVENILE_MAJOR's grants.
-  // "Land to the fallen" is the whole point of this table (the earliest exit
-  // is paid the most, because the purse pays the latest), and leaving these as
-  // bare integers would have paid a champion 0.05 LT and a round-of-64 loser
-  // 0.70 — a 100× cut to the one thing that makes losing a Major survivable.
-  LAND_GRANTS: {
-    champion: 5 * LT_CENTS,
-    runnerUp: 10 * LT_CENTS,
-    sf: 15 * LT_CENTS,
-    qf: 25 * LT_CENTS,
-    r16: 40 * LT_CENTS,
-    r32: 55 * LT_CENTS,
-    r64: 70 * LT_CENTS,
   },
   // The week's three blades — FIXED at the ends and the middle of the dial
   // (re-ruled 2026-08-04, round 27). With B5 the dial has a true midpoint,
@@ -1623,16 +1858,31 @@ export function purseShareOf(
   );
 }
 
-// The Majors' land curve — same shape as landForFight, steeper exponent, and
-// ⚠ ALSO IN HUNDREDTHS since round 36. On the 200 GP basis: (200/8)^1.25 =
-// 55.90 LT per fighter per fight. (It read 56 before round 34, then 49 while
-// FEE_PER_TOKEN sat at 9; round 36 hands that haircut back. The two curves are
-// meant to differ in STEEPNESS, not in their base.)
-export function landForTournamentFight(fee: number): number {
-  return Math.max(
-    1,
-    Math.round(LT_CENTS * Math.pow(fee / LAND.FEE_PER_TOKEN, PINTAKASI.LAND_EXPONENT))
-  );
+// ⚠ `landForTournamentFight` LIVED HERE AND IS GONE (round 42). It was the
+// Majors' own land curve — landForFight's shape at a steeper 1.25 exponent, fed
+// a standalone LAND_BASIS — and it paid a per-fight mint that the elimination
+// grant ladder then paid on top of. Both are replaced by one fixed pot per
+// crown; see PINTAKASI.LAND_POT for why two scales were the problem rather than
+// either scale's value. The daily card still has its curve (landForFight) —
+// that one is fed a real entry fee and is the ladder incentive.
+
+/**
+ * ONE BIRD'S CUT OF A CROWN'S LAND POT — the pot divided across every fight
+ * actually fought in the bracket, times the fights this bird took.
+ *
+ * `fighterSlots` is 2 × the fights that happened, i.e. every seat in every fight
+ * of the bracket. Byes contribute nothing to either side of the division, which
+ * is what makes a bye worth no land (see LAND_POT).
+ *
+ * Returns HUNDREDTHS, floored. The floor is why `runChampionship` hands the
+ * remainder to the champion rather than letting it evaporate: the pot is minted
+ * land, so a lost hundredth is a silent gap between what the config says a crown
+ * pays and what the ledger shows it paid — exactly the class of leak the land
+ * conservation proof exists to catch.
+ */
+export function landPotShare(potCents: number, fighterSlots: number, fights: number): number {
+  if (fighterSlots <= 0 || fights <= 0) return 0;
+  return Math.floor((potCents * fights) / fighterSlots);
 }
 
 // ── Fight cadence ───────────────────────────────────────────────────────────

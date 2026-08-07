@@ -16,12 +16,16 @@ import {
 import {
   BREEDING_SHAPES,
   CADENCE,
+  ECONOMY,
   ELEMENTS,
   FIGHTS_PER_GROUP_BIRD,
   FORMAT_NAMES,
   FORMATS,
+  LAND,
   LT_CENTS,
   SCOUT,
+  landForFight,
+  stakePerFight,
   weatherOfDay,
   type FightFormat,
 } from "./config";
@@ -1012,6 +1016,90 @@ function generations(db: DB): HealthSection {
 }
 
 /**
+ * IS THE LADDER ACTUALLY BEING CLIMBED? (round 42)
+ *
+ * The number this round exists to move, and nothing reported it. Round 42 priced
+ * every rung of the class ladder separately — a juvenile claimer at 24 GP up to a
+ * grown open at 300 — on the ruling that "we want the more competitive fights to
+ * cost more, more risk, more reward… We want players to ladder up." Before it,
+ * every fight in a division cost the same and this table would have been one row
+ * per division with nothing to compare.
+ *
+ * ⚠ READ THE ENTRIES COLUMN FIRST, AND READ IT AS AN ADOPTION CHECK. A priced
+ * ladder nobody climbs is worse than a flat fee: it is a flat fee with extra
+ * machinery, and the dear rungs sit empty while the cheap ones carry the world.
+ * That failure has a specific cause here — `pickOffering` takes the most
+ * PROTECTIVE class a bird is eligible for, so without an explicit appetite to
+ * decline that protection (BotProfile.ladderCourage) the open would only ever
+ * hold birds with no cheaper option, and this table would show it as a near-empty
+ * top rung. If the dearest rungs read single digits over a 91-day world, the knob
+ * is too low and the round did not land.
+ *
+ * ⚠ AND READ THE LAST COLUMN AS THE INCENTIVE. `LT / 100 GP` is what actually
+ * pays a stable for climbing: the land curve is superlinear (FIGHT_EXPONENT
+ * 1.15), so land per GP RISKED must RISE as you go down this table. If it is flat
+ * the ladder costs more for nothing and no rational barn should ever climb; if it
+ * falls, the cheapest company in the game is paying the best land in it, which is
+ * the exact inversion round 34 spent a whole round chasing out of the juvenile
+ * card. This column is the standing guard against it coming back.
+ *
+ * GP RISKED is `stakePerFight(fee) × fights`, not the fee: an entry buys a night
+ * of up to three fights and refunds whatever it never got to risk, so billing a
+ * short card at the full fee would overstate the dear rungs (which are the ones
+ * most likely to run short, being the thinnest lobbies).
+ *
+ * HEALTH, never an invariant — there is no correct distribution across the
+ * ladder, only one a human should look at after moving a fee.
+ */
+function fightEconomy(db: DB): HealthSection {
+  const byLobby = new Map(db.select().from(lobbies).all().map((l) => [l.id, l]));
+  type Rung = { entries: number; risked: number; land: number; fights: number };
+  const rungs = new Map<string, Rung>();
+  const feeOfKey = new Map<string, number>();
+  for (const e of db.select().from(lobbyEntries).all()) {
+    const l = byLobby.get(e.lobbyId);
+    if (!l) continue;
+    const key = `${l.mode}/${l.classType}${l.price ? `@${l.price}` : ""}`;
+    feeOfKey.set(key, e.fee);
+    const r = rungs.get(key) ?? { entries: 0, risked: 0, land: 0, fights: 0 };
+    r.entries++;
+    r.fights += e.fights;
+    // Recomputed from the stored fee rather than read off a ledger, because the
+    // card's land is emitted as one `card_settled` row per entry and this table
+    // needs it split by RUNG — which the event does not carry.
+    const risked = stakePerFight(e.fee) * e.fights;
+    r.risked += risked;
+    if (risked > 0) r.land += landForFight(risked);
+    rungs.set(key, r);
+  }
+  // Cheapest rung first, so the table reads as the ladder it describes and the
+  // LT/100 GP column can be scanned for monotonicity in one pass.
+  const ordered = [...rungs.entries()].sort(
+    (a, b) => (feeOfKey.get(a[0]) ?? 0) - (feeOfKey.get(b[0]) ?? 0)
+  );
+  const totalEntries = ordered.reduce((n, [, r]) => n + r.entries, 0);
+  return {
+    title: "FIGHT ECONOMY BY RUNG",
+    lines: [
+      `  ${"rung".padEnd(24)}${"fee".padStart(5)}${"entries".padStart(9)}` +
+        `${"share".padStart(7)}${"GP risked".padStart(12)}${"LT minted".padStart(12)}${"LT/100GP".padStart(10)}`,
+      ...ordered.map(([key, r]) => {
+        const perHundred = r.risked > 0 ? (r.land / LT_CENTS / r.risked) * 100 : 0;
+        return (
+          `  ${key.padEnd(24)}${String(feeOfKey.get(key) ?? 0).padStart(5)}` +
+          `${r.entries.toLocaleString("en-US").padStart(9)}${pct(r.entries, totalEntries).padStart(7)}` +
+          `${r.risked.toLocaleString("en-US").padStart(12)}${lt(r.land).padStart(12)}` +
+          `${perHundred.toFixed(2).padStart(10)}`
+        );
+      }),
+    ],
+    warn: ordered.some(([, r]) => r.entries === 0)
+      ? "a rung on the card drew ZERO entries — nothing has an appetite for it"
+      : undefined,
+  };
+}
+
+/**
  * HOW MUCH LAND HAS THE WORLD MINTED? (round 36)
  *
  * Nothing reported this before, and round 36 is why it now has to. Land is a
@@ -1064,8 +1152,61 @@ function landSupply(db: DB, topline: Topline): HealthSection {
         ([type, amount]) =>
           `  ${type.padEnd(14)}${lt(amount).padStart(12)} LT  ${pct(amount, minted).padStart(6)}`
       ),
+      ...faucetRatio(db, minted, days),
     ],
   };
+}
+
+/**
+ * ISSUANCE IN DOLLARS — the two lines that make the land faucet arguable.
+ *
+ * Every figure above this is in tokens, and a token count is a number nobody can
+ * judge: is 2,876 LT a day generous or stingy? Against what? The only stated
+ * theory of what land is worth is Zane's pencil mark (see LAND.PENCILLED_USD_PER_TOKEN
+ * — $0.01 a token, 100 billion of them, a billion dollars), and the only thing
+ * GP is worth is its peg ($1 = 80 GP). Put together they give a RATIO: for every
+ * dollar of GP the faucet prints, how many dollars of land does the world hand
+ * out?
+ *
+ * That ratio is the company's gross margin in miniature, on Zane's own framing —
+ * "we are more or less selling GP in exchange for fun and LT". Above 1.0 the
+ * world is giving away more land value than it sells in GP, which is not
+ * automatically wrong (an early world should be generous, and none of it is
+ * redeemable) but is certainly something a human should have decided on purpose.
+ *
+ * ⚠ THE DENOMINATOR IS THE FAUCET, NOT THE SPEND. GP is never printed or burned
+ * here, so the only GP entering the world is the starting stake, the daily drip
+ * and the one-time genesis juice. Everything else is players moving the same
+ * coins between each other, and counting that would inflate the denominator with
+ * churn until any issuance looked cheap.
+ *
+ * HEALTH, never an invariant — there is no correct ratio, only one worth reading
+ * after moving a land knob. The supply-exhaustion line is the same idea on a
+ * longer clock: at today's rate, how long until the 100-billion mark, and is
+ * that a decade or a fortnight?
+ */
+function faucetRatio(db: DB, mintedCents: number, days: number): string[] {
+  let gpFaucetCents = 0;
+  for (const e of db.select().from(events).all())
+    if (e.gpCents && (e.type === "check_in" || e.type === "farm_registered"))
+      gpFaucetCents += e.gpCents;
+  gpFaucetCents += ECONOMY.SEED_JUICE * 100; // printed once, at genesis
+  const landUsd = (mintedCents / LT_CENTS) * LAND.PENCILLED_USD_PER_TOKEN;
+  const gpUsd = gpFaucetCents / 100 / ECONOMY.GP_PER_DOLLAR;
+  // Years to the target at today's rate. Reported in years because the answer is
+  // meant to be read as "is this a business or a fortnight" — a day count at
+  // these magnitudes is unreadable.
+  const perDay = mintedCents / LT_CENTS / days;
+  const years = perDay > 0 ? LAND.TARGET_SUPPLY / perDay / 365 : Infinity;
+  return [
+    `valuation   at $${LAND.PENCILLED_USD_PER_TOKEN.toFixed(2)}/LT (pencilled) the world has issued ` +
+      `$${landUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} of land ` +
+      `against $${gpUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} of GP faucet ` +
+      `— $${(gpUsd > 0 ? landUsd / gpUsd : 0).toFixed(2)} of LT per $1 of GP`,
+    `runway      ${(LAND.TARGET_SUPPLY / 1e9).toFixed(0)}B-token target reached in ` +
+      `${years > 1e4 ? "10,000+" : years.toLocaleString("en-US", { maximumFractionDigits: 0 })} year(s) ` +
+      `at this population's rate — scales with farms, not with time`,
+  ];
 }
 
 /**
@@ -1730,6 +1871,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // Right after POPULATION: that section counts the flock, this one asks
     // whether the birds coming out of it are any better than the ones going in.
     generations(db),
+    // The priced ladder before the land it mints: LAND SUPPLY reports the total,
+    // this one reports which rungs made it and whether climbing paid.
+    fightEconomy(db),
     // Land before the pool it feeds: STAKER POOL reports what a stake EARNS,
     // which is unreadable without knowing how much land the world made.
     landSupply(db, topline),
