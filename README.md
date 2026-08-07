@@ -8,6 +8,8 @@ Breed, fight, retire. A digital sabong auto-battler where **careers end in the b
 
 In this repo, in order: **`src/engine/config.ts`** (every balance knob, with a comment saying what it does in gameplay terms), **`RULINGS.md`** (what changed each round and why — including the reversals), **`CLAUDE.md`** / **`AGENTS.md`** (the house rules for working here), **`PROGRESS.md`** (standing watch items). The original build spec lives in `wiki/projects/pintakasi-mvp.md` in the private `zane-knowledge-system` repo; it is the historical scope ledger, not the current rules.
 
+Future design explorations may live in that sibling knowledge base without becoming rules here. The current idle-gathering brainstorm is **[Pintakasi Idle Expeditions — Callings, Barn Skills, and Cooperative Parties](../zane-knowledge-system/wiki/games/pintakasi-idle-expeditions.md)**. It explores replacing Ground/Air carriage with inherited gathering Callings, async three-bird expeditions, persistent barn skills, missions, and optional friend-composed parties. Until a ruling and implementation land in this repo, it is a design note only.
+
 ## Stack
 
 Next.js + TypeScript + Bun · SQLite (Drizzle + better-sqlite3) · `@modelcontextprotocol/server` for MCP. Local-first — a SQLite file doesn't persist on Vercel serverless; deploy = later swap to Turso/libSQL.
