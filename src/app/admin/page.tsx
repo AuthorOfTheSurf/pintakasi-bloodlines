@@ -869,6 +869,8 @@ export default function Admin() {
     const tournament = r.tournamentId ? allTournaments.find((t) => t.id === r.tournamentId) : undefined;
     const round = r.tournamentId ? eliminatedRound.get(`${r.tournamentId}|${loserId}`) : null;
     return {
+      // Carried so the pane can ask the server to replay this exact fight.
+      logId: r.id,
       birdId: r.birdId,
       day: r.dayIndex,
       card: r.tournamentId

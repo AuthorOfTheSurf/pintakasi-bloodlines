@@ -180,8 +180,14 @@ export const battleLog = sqliteTable("battle_log", {
   // staker rake, which doesn't land on a whole GP (a 40 GP card pays
   // +38.40). Whole-GP deltas would have quietly rounded the rake away.
   gpDeltaCents: integer("gp_delta_cents").notNull(),
-  seed: integer("seed").notNull(), // replay the fight from this
-  playByPlay: text("play_by_play").notNull(),
+  // ⚠ THIS IS THE WHOLE FIGHT, and it is the last column here for a reason.
+  // Round 38 deleted `play_by_play` — 1.8 KB of narration a row, 51 MB of a
+  // 90 MB database, written 28,710 times a sim and read back exactly never.
+  // The transcript is REGENERATED from this seed instead (see engine/replay.ts),
+  // which works only because stats are fixed at birth and the weather is a
+  // pure function of the day. Do not add a derived column back beside it
+  // without asking what actually reads it.
+  seed: integer("seed").notNull(),
 });
 
 // A LOBBY — one slot on tonight's card, keyed by (mode, class, format[, tag]).

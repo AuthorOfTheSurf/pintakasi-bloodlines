@@ -532,7 +532,6 @@ describe("the discovery section", () => {
         pitFigure: opts.figure ?? 50,
         gpDeltaCents: 0,
         seed: 1,
-        playByPlay: "[]",
       })
       .run();
   }

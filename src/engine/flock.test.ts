@@ -258,7 +258,6 @@ describe("the form book (weather on past fights)", () => {
         pitFigure,
         gpDeltaCents: 0,
         seed: 1,
-        playByPlay: "[]",
       })
       .run();
   }

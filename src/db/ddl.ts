@@ -92,8 +92,7 @@ CREATE TABLE IF NOT EXISTS battle_log (
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
   pit_figure INTEGER NOT NULL,
   gp_delta_cents INTEGER NOT NULL,
-  seed INTEGER NOT NULL,
-  play_by_play TEXT NOT NULL
+  seed INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS lobbies (

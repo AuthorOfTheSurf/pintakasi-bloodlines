@@ -78,7 +78,6 @@ function earned(db: DB, birdId: string, farmId: string, cents: number): void {
       pitFigure: 50,
       gpDeltaCents: cents,
       seed: 1,
-      playByPlay: "[]",
     })
     .run();
 }
@@ -577,7 +576,7 @@ describe("the juvenile crown chase declares before it sends", () => {
           mode: "juvenile", format,
           opponentBirdId: "ghost", opponentFarmId: "house", opponentName: "Sparring Ghost",
           selfGrade: SCOUT.REFERENCE_GRADE, opponentGrade: SCOUT.REFERENCE_GRADE,
-          result: "win", pitFigure: figure, gpDeltaCents: 0, seed: i, playByPlay: "[]",
+          result: "win", pitFigure: figure, gpDeltaCents: 0, seed: i,
         })
         .run();
     }

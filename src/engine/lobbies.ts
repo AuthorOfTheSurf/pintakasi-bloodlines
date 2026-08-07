@@ -40,7 +40,7 @@ import { emit, fmtGp } from "./events";
 import { creditCents, payStakers } from "./farms";
 import { overallGradeOf } from "./grades";
 import { normalizedScoutFigure } from "./scout";
-import { simulatePair, type Combatant } from "./fight-sim";
+import { simulatePair, toCombatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canJuvenile, canRealFight } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
@@ -55,8 +55,12 @@ const MODE_FEES: Record<FightMode, number> = {
   real: ECONOMY.REAL_ENTRY_FEE,
 };
 
-/** The card line for a lobby — shared by resolutions and the ledger. */
-function labelOf(lobby: {
+/**
+ * The card line for a lobby — shared by resolutions and the ledger, and
+ * exported since round 38 so a REPLAY can rebuild a fight's title line from
+ * the battle-log row instead of storing it.
+ */
+export function labelOf(lobby: {
   mode: FightMode;
   classType: Lobby;
   format: FightFormat;
@@ -917,7 +921,6 @@ export class Lobbies {
           // stake, not the entry fee — one fight is a third of the night.
           gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
           seed: simSeed,
-          playByPlay: sim.playByPlay,
         })
         .returning({ id: battleLog.id })
         .get();
@@ -1296,18 +1299,3 @@ export function entryRefusal(
   return null;
 }
 
-function toCombatant(row: BirdRow): Combatant {
-  return {
-    name: row.name,
-    stats: {
-      agility: row.agility,
-      sight: row.sight,
-      stamina: row.stamina,
-      gameness: row.gameness,
-      station: row.station,
-      condition: row.condition,
-    },
-    element: row.element as Element,
-    halfStars: row.halfStars,
-  };
-}

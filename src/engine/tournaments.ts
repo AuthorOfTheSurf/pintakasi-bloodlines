@@ -15,7 +15,7 @@ import {
   fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
-import { simulatePair, type Combatant } from "./fight-sim";
+import { simulatePair, toCombatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile } from "./lifecycle";
 import { overallGradeOf } from "./grades";
@@ -598,7 +598,7 @@ export class Tournaments {
           next.push(null);
           continue;
         }
-        const report = Tournaments.runFight(database, t, a, b, round, roundName, rng, week, weather);
+        const report = Tournaments.runFight(database, t, a, b, round, roundName, rng, week, weather, dayIndex);
         fights.push(report);
         const winner = report.winner === nameOf.get(a.id) ? a : b;
         const loser = winner === a ? b : a;
@@ -715,7 +715,8 @@ export class Tournaments {
     roundName: string,
     rng: Rng,
     week: number,
-    weather: Element
+    weather: Element,
+    dayIndex: number
   ): TournamentFightReport {
     const divisionRules = DIVISION_RULES[(t.division ?? "major") as Division];
     const hardcore = divisionRules.hardcore;
@@ -834,7 +835,19 @@ export class Tournaments {
       database
         .insert(battleLog)
         .values({
-          dayIndex: t.weekIndex * 7 + PINTAKASI.DAY_OF_WEEK, // the day this crown was fought
+          // ⚠ ROUND 38 — THIS WAS HARDCODED TO PINTAKASI.DAY_OF_WEEK, so every
+          // JUVENILE Championship fight was archived under THURSDAY's date
+          // while it was actually fought on Wednesday. Two harms. The archive
+          // dated a whole division's fights one day late, which any per-day
+          // reading — the office's fights-per-day chart, the doctor, any SQL
+          // anyone writes — silently inherited. And the fight's WEATHER is
+          // `weatherOfDay(dayIndex)` of the REAL day, so a replay rebuilt from
+          // the logged day fought under the wrong element: 2 of 201 sampled
+          // fights failed to reproduce, and every one of them was a juvenile
+          // crown. Found by the round-38 replay check, which is the entire
+          // argument for building it — nothing else in the project compares
+          // the archive against anything.
+          dayIndex,
           lobbyId: null,
           tournamentId: t.id,
           farmId: side.entry.farmId,
@@ -852,7 +865,6 @@ export class Tournaments {
           pitFigure: side.figure,
           gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle
           seed: simSeed,
-          playByPlay: sim.playByPlay,
         })
         .run();
     }
@@ -1044,18 +1056,3 @@ export class Tournaments {
   }
 }
 
-function toCombatant(row: typeof birds.$inferSelect): Combatant {
-  return {
-    name: row.name,
-    stats: {
-      agility: row.agility,
-      sight: row.sight,
-      stamina: row.stamina,
-      gameness: row.gameness,
-      station: row.station,
-      condition: row.condition,
-    },
-    element: row.element,
-    halfStars: row.halfStars,
-  };
-}

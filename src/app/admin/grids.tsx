@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -10,6 +10,9 @@ import {
   type SizeColumnsToContentStrategy,
 } from "ag-grid-community";
 import { LT_CENTS } from "@/engine/config";
+// Type-only, so nothing from the engine (or drizzle) is pulled into the client
+// bundle — the replay itself happens on the server, behind /api/fight/[id].
+import type { FightReplay } from "@/engine/replay";
 import { gradeColor, gradeOf, overallGradeOf, type Grade } from "@/engine/grades";
 import {
   BASE_COAT_HEX,
@@ -149,6 +152,10 @@ export interface BirdRowUI {
  * server.
  */
 export interface BirdFightRowUI {
+  // The battle-log row id — never shown as a column, but it is the handle the
+  // replay panel needs (round 38): the narration is no longer stored, so
+  // reading a fight means asking /api/fight/[id] to rebuild it from the seed.
+  logId: number;
   birdId: string;
   day: number;
   card: string;
@@ -823,6 +830,121 @@ for (const cols of [
   }
 }
 
+/** The small outline button the Birds pane uses to walk back up its levels. */
+const CHIP: React.CSSProperties = {
+  font: "inherit",
+  fontSize: ".8em",
+  cursor: "pointer",
+  color: "#9a8f78",
+  background: "transparent",
+  border: "1px solid #3a342a",
+  borderRadius: 4,
+  padding: ".1rem .5rem",
+  marginLeft: ".4rem",
+};
+
+/** What the replay panel is currently showing. */
+type ReplayState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ok"; replay: FightReplay };
+
+/**
+ * ── READING A FIGHT (round 38) ─────────────────────────────────────────────
+ *
+ * The narration is not in the database any more — it is rebuilt from the
+ * fight's seed on request — so this is the one thing in the office that talks
+ * to the server after the page loads, and the only place a spinner exists.
+ *
+ * It REPLACES the fight-history grid rather than stacking under it. The Birds
+ * tab was already two grids deep in a fixed-height pane; a third level would
+ * have pushed the flock off-screen, and the transcript is a hundred lines of
+ * text that wants the room. Every level keeps its own way back — the fight
+ * list is still there behind "← back", and the bird's row above is untouched —
+ * so nobody loses their place by clicking through.
+ */
+function FightReplayPanel({
+  fight,
+  state,
+  onBack,
+}: {
+  fight: BirdFightRowUI;
+  state: ReplayState;
+  onBack: () => void;
+}) {
+  return (
+    <div>
+      <p style={{ margin: "0 0 .5rem", fontSize: ".85rem" }}>
+        <button onClick={onBack} style={{ ...CHIP, marginLeft: 0 }}>
+          ← back to the fight list
+        </button>{" "}
+        <span className="world">
+          day {fight.day} · {fight.card} · vs {fight.opponent} · {fight.result}
+        </span>
+      </p>
+      {state.status === "loading" ? (
+        // Worth saying WHY it takes a moment: this is a fight being fought
+        // again, not a row being fetched.
+        <p className="world">Replaying fight #{fight.logId} from its seed…</p>
+      ) : state.status === "error" ? (
+        <p className="world" style={{ color: "#c86a5a" }}>{state.message}</p>
+      ) : (
+        <>
+          {state.replay.drifted ? (
+            // NEVER hidden and never shown as if it were fine. The engine has
+            // changed since this fight was fought, so the text below is a
+            // fight between these two birds under TODAY's rules — the archive
+            // is what actually happened, and it wins.
+            <div
+              style={{
+                border: "1px solid #7a5a1a",
+                background: "#2a2110",
+                borderRadius: 4,
+                padding: ".5rem .7rem",
+                margin: "0 0 .5rem",
+                fontSize: ".8rem",
+                color: "#e8b64c",
+              }}
+            >
+              <b>⚠ This transcript is no longer trustworthy.</b> The fight engine has
+              changed since this fight was fought, so replaying its seed no longer
+              reproduces the result stored beside it. The archive is the true record:{" "}
+              <b>
+                Pit Figures {state.replay.archivedFigures[0]} / {state.replay.archivedFigures[1]}
+              </b>
+              . The replay below says {state.replay.figures[0]} / {state.replay.figures[1]} —{" "}
+              {state.replay.driftDetail}.
+            </div>
+          ) : null}
+          <pre
+            style={{
+              height: 300,
+              overflow: "auto",
+              margin: 0,
+              padding: ".6rem .8rem",
+              background: "#1c1914",
+              color: "#e8e0d0",
+              border: "1px solid #3a342a",
+              borderRadius: 4,
+              fontFamily: "ui-monospace, Menlo, monospace",
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              // The narration is laid out with its own newlines but has no
+              // fixed width, so it wraps rather than growing a horizontal bar.
+              whiteSpace: "pre-wrap",
+              // Drifted text stays legible but visibly demoted, so a screenshot
+              // of it can't be mistaken for the real record.
+              opacity: state.replay.drifted ? 0.65 : 1,
+            }}
+          >
+            {state.replay.playByPlay}
+          </pre>
+        </>
+      )}
+    </div>
+  );
+}
+
 // "The Card" and "The Pintakasi" ride in the tab bar too (rounds 19–20) —
 // worth a look each, not two thirds of the page above every table.
 const TABS = [
@@ -867,10 +989,43 @@ export function AdminTabs({
   // same row again closes it, so the click that opened the pane is also the way
   // out of it.
   const [openBird, setOpenBird] = useState<string | null>(null);
+  // …and which of that bird's fights is being read. The whole ROW is held, not
+  // just the id, so the panel can title itself from data already in hand while
+  // the transcript is still in flight.
+  const [openFight, setOpenFight] = useState<BirdFightRowUI | null>(null);
+  const [replay, setReplay] = useState<ReplayState>({ status: "loading" });
   const selectedBird = openBird ? birds.find((b) => b.id === openBird) ?? null : null;
   const selectedFights = selectedBird
     ? birdFights.filter((f) => f.birdId === selectedBird.id)
     : [];
+
+  // The office's only fetch. The abort matters more than it looks: clicking
+  // down a bird's history faster than the server replays means several fights
+  // in flight at once, and without it the LAST response to land wins rather
+  // than the last one asked for.
+  useEffect(() => {
+    if (!openFight) return;
+    setReplay({ status: "loading" });
+    const ac = new AbortController();
+    const logId = openFight.logId;
+    fetch(`/api/fight/${logId}`, { signal: ac.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        // A 404 here is the replay's "unavailable" — the fight cannot be
+        // reconstructed at all — and the route sends the reason with it.
+        if (!res.ok)
+          throw new Error(body?.error ?? `The archive answered ${res.status} for fight #${logId}.`);
+        setReplay({ status: "ok", replay: body as FightReplay });
+      })
+      .catch((err: unknown) => {
+        if (ac.signal.aborted) return;
+        setReplay({
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+    return () => ac.abort();
+  }, [openFight]);
   const counts: Record<Tab, number> = {
     Farms: farms.length,
     Fights: fights.length,
@@ -917,9 +1072,12 @@ export function AdminTabs({
             defaultColDef={{ ...base, floatingFilter: true }}
             rowHeight={38}
             autoSizeStrategy={AUTOSIZE}
-            onRowClicked={(e) =>
-              setOpenBird((cur) => (cur === e.data?.id ? null : e.data?.id ?? null))
-            }
+            onRowClicked={(e) => {
+              setOpenBird((cur) => (cur === e.data?.id ? null : e.data?.id ?? null));
+              // A transcript belongs to one bird's history; changing birds (or
+              // closing this one) must not leave the other bird's fight open.
+              setOpenFight(null);
+            }}
             getRowStyle={(p) =>
               p.data && p.data.id === openBird ? { background: "#33291a" } : undefined
             }
@@ -938,38 +1096,48 @@ export function AdminTabs({
               {/* Clicking the row again closes it too — this is the affordance
                   for anyone who doesn't guess that. */}
               <button
-                onClick={() => setOpenBird(null)}
-                style={{
-                  font: "inherit",
-                  fontSize: ".8em",
-                  cursor: "pointer",
-                  color: "#9a8f78",
-                  background: "transparent",
-                  border: "1px solid #3a342a",
-                  borderRadius: 4,
-                  padding: ".1rem .5rem",
-                  marginLeft: ".4rem",
+                onClick={() => {
+                  setOpenBird(null);
+                  setOpenFight(null);
                 }}
+                style={CHIP}
               >
                 close ✕
               </button>
             </h3>
-            {selectedFights.length === 0 ? (
+            {openFight ? (
+              <FightReplayPanel
+                fight={openFight}
+                state={replay}
+                onBack={() => setOpenFight(null)}
+              />
+            ) : selectedFights.length === 0 ? (
               // An empty grid reads as a loading bug. Say the plain thing instead:
               // most birds on this list are eggs, chicks, or simply unmatched.
               <p className="world">
                 {selectedBird.name} has never been in the pit — no fight history yet.
               </p>
             ) : (
-              <div style={{ height: 300 }}>
-                <AgGridReact<BirdFightRowUI>
-                  theme={officeTheme}
-                  rowData={selectedFights}
-                  columnDefs={BIRD_FIGHT_COLS}
-                  defaultColDef={base}
-                  autoSizeStrategy={AUTOSIZE}
-                />
-              </div>
+              // The grid fills its box, so the hint sits OUTSIDE it — a
+              // paragraph inside the fixed 300px would push rows off the bottom.
+              <>
+                {/* Nothing else in the office rewards a click on a row of a
+                    second-level grid, so it has to be said out loud. */}
+                <p className="world" style={{ margin: "0 0 .35rem", fontSize: ".8rem" }}>
+                  Click a fight to read the play-by-play.
+                </p>
+                <div style={{ height: 300 }}>
+                  <AgGridReact<BirdFightRowUI>
+                    theme={officeTheme}
+                    rowData={selectedFights}
+                    columnDefs={BIRD_FIGHT_COLS}
+                    defaultColDef={base}
+                    autoSizeStrategy={AUTOSIZE}
+                    // A row here is a fight worth reading, not just a result.
+                    onRowClicked={(e) => e.data && setOpenFight(e.data)}
+                  />
+                </div>
+              </>
             )}
           </div>
         ) : null}

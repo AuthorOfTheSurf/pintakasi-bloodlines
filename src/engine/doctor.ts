@@ -27,6 +27,7 @@ import {
 } from "./config";
 import { BOT_FARMS } from "./bot-config";
 import { GameClock } from "./game-clock";
+import { replayFidelity } from "./replay";
 import { gradeOf } from "./grades";
 import { ageOf } from "./lifecycle";
 import { normalizedScoutFigure } from "./scout";
@@ -123,6 +124,15 @@ const DOCTOR = {
   // a backlog after a heavy Friday.
   BRED_BAND_GRACE_WEEKS: 2,
   OFFENDER_SAMPLE: 5,
+  // How many archived fights the replay check rebuilds (round 38).
+  //
+  // Sampled because replaying all ~29,000 would cost more than the entire
+  // rest of the report, and cheap because the failure it watches for is not
+  // subtle: a change to simulatePair, FORMATS, BATTLE, FIGURE or the rng
+  // orphans EVERY fight fought before it, so 200 either comes back clean or
+  // comes back obviously broken. A reading strictly between the two means
+  // something weirder than a retune and deserves the dig.
+  REPLAY_SAMPLE: 200,
   // How far above pure chance the weather-timing rate has to sit before we
   // believe anyone is actually timing entries. 1.15 is loose on purpose: the
   // appetite in bot-config is a deliberate nudge, so the honest expected
@@ -1013,6 +1023,46 @@ function landSupply(db: DB, topline: Topline): HealthSection {
   };
 }
 
+/**
+ * CAN THE ARCHIVE STILL BE READ? (round 38)
+ *
+ * Round 38 stopped storing `play_by_play` and regenerates it from the stored
+ * seed instead — 51 MB of a 90 MB database, written every fight and read by
+ * nothing. That trade is only honest while the engine still reproduces what
+ * it once produced, and NOTHING ELSE IN THE PROJECT WOULD NOTICE IF IT
+ * STOPPED: a retuned fight engine breaks no test and moves no invariant, it
+ * just quietly makes every historical transcript fiction.
+ *
+ * So this replays a sample and checks each one against what the archive
+ * already knows — both Pit Figures and who won are stored per row. HEALTH
+ * rather than an invariant, deliberately: drift is not a bug, it is the
+ * expected consequence of tuning a fight engine, and the right response is a
+ * human deciding whether the old fights still matter. An invariant here would
+ * fail the build every time somebody touched a blade.
+ */
+function replayHealth(db: DB): HealthSection {
+  const r = replayFidelity(db, DOCTOR.REPLAY_SAMPLE);
+  if (r.checked === 0)
+    return { title: "REPLAY", lines: ["no fights in the archive yet"] };
+  const clean = r.checked - r.drifted;
+  return {
+    title: "REPLAY",
+    lines: [
+      // ROWS, not fights: one fight is two rows, and a broken fight fails
+      // both of them. A count that said "fights" would read 2 when 1 fight
+      // is wrong.
+      `${clean}/${r.checked} sampled fight rows rebuild exactly from their seed` +
+        (r.unavailable > 0 ? ` · ${r.unavailable} could not be reconstructed` : ""),
+      ...r.examples.map((e) => `  ${e}`),
+    ],
+    warn:
+      r.drifted > 0
+        ? `${r.drifted} of ${r.checked} sampled fight rows no longer replay — the fight engine has ` +
+          `changed since they were fought, so their transcripts contradict their stored results`
+        : undefined,
+  };
+}
+
 /** What has actually fed the staker pool, by source. */
 function stakerInflows(db: DB): HealthSection {
   const bySource = new Map<string, number>();
@@ -1590,6 +1640,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // Land before the pool it feeds: STAKER POOL reports what a stake EARNS,
     // which is unreadable without knowing how much land the world made.
     landSupply(db, topline),
+    replayHealth(db),
     stakerInflows(db),
     championships(db),
     adoption(db),

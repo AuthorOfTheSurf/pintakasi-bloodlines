@@ -31,6 +31,42 @@ export interface Combatant {
   halfStars: number;
 }
 
+/**
+ * A bird row → its combat slice. Lives here, beside `Combatant`, because THREE
+ * callers need it and until round 38 there were two byte-identical private
+ * copies (lobbies.ts and tournaments.ts) with a third about to be written for
+ * replay. Structurally typed rather than importing the schema: fight-sim is
+ * the one engine file that touches no database, and it should stay that way.
+ *
+ * Note what is NOT copied — records, age, farm, status. None of them enter a
+ * fight. That is what makes a fight replayable from a seed years later.
+ */
+export function toCombatant(row: {
+  name: string;
+  agility: number;
+  sight: number;
+  stamina: number;
+  gameness: number;
+  station: number;
+  condition: number;
+  element: string;
+  halfStars: number;
+}): Combatant {
+  return {
+    name: row.name,
+    stats: {
+      agility: row.agility,
+      sight: row.sight,
+      stamina: row.stamina,
+      gameness: row.gameness,
+      station: row.station,
+      condition: row.condition,
+    },
+    element: row.element as Element,
+    halfStars: row.halfStars,
+  };
+}
+
 export interface SimResult {
   winner: 0 | 1;
   playByPlay: string;

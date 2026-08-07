@@ -509,3 +509,22 @@ bottom.*
     they disagree silently — the exact failure mode the "numbers are imported,
     never typed" rule exists to prevent, applied to a string array nobody
     thought of as a number. Fold them in next time one of those pages is open.
+25. **The "lower battle_log id is side A" assumption is data that isn't
+    stored.** `replayFight` has to know which combatant was passed to
+    `simulatePair` first, because the two share one rng and swapping them
+    produces a different fight, not a mirrored one. Both engines insert their
+    two rows in side order, so the lower id is side A — but that is an
+    INSERTION-ORDER invariant with no test outside replay.test.ts. Batching
+    the two inserts into one `.values([a, b])`, or reordering the `sides`
+    array, would break it while compiling cleanly and passing everything.
+    The drift guard does catch it (the figures cross over and the replay is
+    refused) — but it would report "the engine was retuned", which is the
+    wrong diagnosis. A `side` column would turn the assumption into data. It
+    is a schema change, so: next time the schema moves anyway.
+26. **A column nobody reads is invisible until you go looking.** `play_by_play`
+    was 51 MB of a 90 MB database, written every fight since round 11, and a
+    single grep for its own name showed nothing in the codebase ever read it
+    back. Nothing flagged that: not the doctor, not a test, not a type error.
+    Worth a periodic sweep — for every column the schema declares, what reads
+    it? The same question would have found this one at any point in twenty
+    rounds.

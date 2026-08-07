@@ -179,7 +179,7 @@ describe("the scout's blade pick", () => {
         dayIndex: i, lobbyId: 1, farmId: bird.farmId, birdId: bird.id,
         mode: "real", format: "b1", opponentBirdId: "ghost", opponentFarmId: "house",
         opponentName: "Sparring Ghost", result: "loss", pitFigure: 50,
-        gpDeltaCents: 0, seed: i, playByPlay: "[]",
+        gpDeltaCents: 0, seed: i,
       }).run();
     }
     const explore = () => 0;

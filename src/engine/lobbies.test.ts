@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
+import { replayFight } from "./replay";
 import { battleLog, birds, farms, gameState, lobbyEntries } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import {
@@ -289,7 +290,15 @@ describe("the card goes off (pure PvP)", () => {
     const rows = w.db.select().from(battleLog).all();
     expect(rows.length).toBe(2);
     expect(rows[0].seed).toBe(rows[1].seed);
-    expect(rows[0].playByPlay).toBe(rows[1].playByPlay);
+    // Round 38 stopped STORING the narration, so this used to compare two
+    // stored strings and now compares two REPLAYS. It is the stronger claim:
+    // both rows are the same fight, so replaying either from its seed must
+    // rebuild the identical transcript — and neither may have drifted.
+    const rA = replayFight(w.db, rows[0].id)!;
+    const rB = replayFight(w.db, rows[1].id)!;
+    expect(rA.playByPlay).toBe(rB.playByPlay);
+    expect(rA.drifted).toBe(false);
+    expect(rB.drifted).toBe(false);
     expect(rows[0].opponentBirdId).toBe(rows[1].birdId);
     expect([rows[0].result, rows[1].result].sort()).toEqual(["loss", "win"]);
     // Career records moved on both sides (Alab seeds at 1W-1L).
@@ -599,7 +608,6 @@ describe("the scout report (round 28 — reading a bird through the fog)", () =>
         pitFigure,
         gpDeltaCents: 0,
         seed: 1,
-        playByPlay: "[]",
       })
       .run();
   }
