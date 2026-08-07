@@ -136,6 +136,11 @@ export class Game {
       if (Tournaments.isCrownDay(d)) pintakasi.push(...Tournaments.resolveCrownDay(this.database, d));
     }
     const staking = Farms.distributeStaking(this.database);
+    // …and only now do the bot barns bank tonight's land. Their day ran before
+    // the card did, so everything the pit paid them arrived after they last
+    // walked past the land office — see Bots.sweepStakes for why this sits
+    // AFTER the payout rather than before it.
+    Bots.sweepStakes(this.database);
     // The office's memory: today's top-line metrics, for tomorrow's diffs.
     recordSnapshot(this.database);
     return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, pintakasi, bots, staking };

@@ -1339,9 +1339,12 @@ export const JUVENILE_MAJOR = {
   // remember. A discovery year still sees both halves of the spectrum —
   // and the two crowns no other stage runs.
   BLADES: ["b2", "b4"],
-  // Purse shares — flatter than the Majors on purpose. This is a discovery
-  // stage, so spreading the money rewards showing up with a live one.
-  PURSE_SHARES: { champion: 0.45, runnerUp: 0.25, sfLoser: 0.15 },
+  // Purse shape — flatter than the Majors on purpose (see PINTAKASI.PURSE for
+  // how the three numbers work). This is a discovery stage, so more of the
+  // money rides on ADVANCEMENT and less on the trophy: showing up with a live
+  // one and winning a fight should pay a juvenile barn, because that is the
+  // whole behaviour the discovery year is trying to buy.
+  PURSE: { ADVANCEMENT: 0.65, CHAMPION: 0.2, RUNNER_UP: 0.15 },
   // Land to the fallen, on the discovery year's much smaller scale. The
   // Majors' grants (40/25/15/10/5) are priced against a 200 GP stake and a
   // career-ending loss; a juvenile risks neither, so paying it Major money
@@ -1434,15 +1437,50 @@ export const PINTAKASI = {
   // fight to 1. So the basis is now its own number: the old 200 GP entry,
   // held as the STAKE the crowns represent rather than a price anyone pays.
   LAND_BASIS: 200,
-  // GP purse shares by FINISHING STAGE. First-round losers are zeroed
-  // whatever stage they fell at, and the remaining shares renormalize —
-  // so an 8-bracket pays champion/runner-up/SF only, and a straight final
-  // pays the champion everything. Rounding dust goes to the champion.
-  PURSE_SHARES: {
-    champion: 0.5,
-    runnerUp: 0.2,
-    sfLoser: 0.1, //  each (×2)
-    qfLoser: 0.025, // each (×4)
+  // ── THE PURSE: EVERY WIN PAYS (re-ruled round 40) ────────────────────────
+  //
+  // Zane: "Every round should pay the winners something, even if the winners
+  // get to continue on towards championship contention."
+  //
+  // It used to be a table of shares by FINISHING STAGE — champion 0.5,
+  // runner-up 0.2, each semifinalist 0.1, each quarterfinalist 0.025, and
+  // nothing below that. In a 32-bracket that paid 8 birds out of 31, so a bird
+  // could WIN a championship fight — the hardest fight in the game, hardcore,
+  // with its own career on the line — and take home exactly zero GP for it.
+  // The stage table also had to special-case its own edges: the shares were
+  // renormalized per bracket size, and first-round losers were struck out by
+  // an explicit `round > 1` clause bolted on beside it.
+  //
+  // Now the purse is split three ways and the FIGHTS decide most of it:
+  //
+  //   ADVANCEMENT — split across every fight WON in the bracket, with a win
+  //                 in each round worth DOUBLE a win in the round before.
+  //                 That doubling is the whole design: each round distributes
+  //                 the same total money over half as many birds, so the
+  //                 deeper you go the more a single win is worth, and the
+  //                 curve stays steep without anybody being paid nothing.
+  //   CHAMPION    — the trophy bonus, on top of the five wins it took.
+  //   RUNNER_UP   — the same, smaller, for losing the last one.
+  //
+  // The three must sum to 1 (docs.test.ts pins it). What each stage actually
+  // takes home falls out of the bracket rather than being typed here — in a
+  // 32-bird Major: champion ~54%, runner-up ~24%, each semifinalist ~4.4%,
+  // each quarterfinalist ~1.9%, and each first-round winner ~0.6%. Small, but
+  // it is no longer nothing, and it rides on top of a 40 LT land grant.
+  //
+  // ⚠ A BYE IS NOT A WIN. Byes exist because the field was short, and paying
+  // for one would pay a bird that never threw a blade — so the weight counts
+  // fights actually fought and won, tracked as the bracket runs.
+  //
+  // The old ruling SURVIVES, but as a consequence instead of a special case:
+  // a bird that never won a fight has zero weight and no bonus, so it is paid
+  // nothing without anything having to say so. A straight final still pays its
+  // champion everything, because the runner-up won nothing and the remaining
+  // shares renormalize. Rounding dust still crowns the champion.
+  PURSE: {
+    ADVANCEMENT: 0.5,
+    CHAMPION: 0.35,
+    RUNNER_UP: 0.15,
   },
   // LT grants by ELIMINATION STAGE — the fallen-weighted inversion.
   // Keyed by "rounds from the final" at elimination (champion included).
@@ -1469,6 +1507,46 @@ export const PINTAKASI = {
   // SOMEWHERE every single week.
   BLADES: ["b1", "b3", "b5"],
 } as const;
+
+/**
+ * WHAT A BIRD THAT WON `wins` FIGHTS TAKES, as a share of the purse — the
+ * closed form of the payout the bracket pays out fight by fight.
+ *
+ * ⚠ THIS IS A SECOND IMPLEMENTATION, AND IT IS DELIBERATE. `runChampionship`
+ * cannot use it: it accumulates weight as the fights happen, because that is
+ * the only place a bye can be told from a win, and a short field means the two
+ * do not agree. This one assumes a FULL bracket, which is what a page
+ * describing the rules to a player wants — "win your first fight in a 32-bird
+ * Major and you take about 0.6%" is a sentence you can only write about the
+ * general case.
+ *
+ * It lives here, exported, because the alternative was three copies: the
+ * Handbook and the MCP tool descriptions each grew their own within an hour of
+ * the rule landing. Two implementations that a test can compare is a guard;
+ * three that nothing compares is how documentation starts lying. docs.test.ts
+ * pins this against what the engine actually pays in a full bracket.
+ *
+ * Weights: round `r` runs `bracketSize / 2^r` fights, each paying its winner
+ * `2^(r-1)`, so every round distributes the same total across half as many
+ * birds. A bird that won `w` of them banked 1 + 2 + … + 2^(w-1) = 2^w − 1.
+ */
+export function purseShareOf(
+  bracketSize: number,
+  purse: { readonly ADVANCEMENT: number; readonly CHAMPION: number; readonly RUNNER_UP: number },
+  wins: number,
+  bonus: "champion" | "runnerUp" | "none" = "none"
+): number {
+  // No win, no money — including the bonus. See PINTAKASI.PURSE for why the
+  // two are coupled (a straight final's runner-up is also a first-round loser).
+  if (wins <= 0) return 0;
+  const rounds = Math.log2(bracketSize);
+  let totalWeight = 0;
+  for (let r = 1; r <= rounds; r++) totalWeight += (bracketSize / 2 ** r) * 2 ** (r - 1);
+  return (
+    (purse.ADVANCEMENT * (2 ** wins - 1)) / totalWeight +
+    (bonus === "champion" ? purse.CHAMPION : bonus === "runnerUp" ? purse.RUNNER_UP : 0)
+  );
+}
 
 // The Majors' land curve — same shape as landForFight, steeper exponent, and
 // ⚠ ALSO IN HUNDREDTHS since round 36. On the 200 GP basis: (200/8)^1.25 =

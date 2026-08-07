@@ -120,6 +120,15 @@ interface BracketFighter {
   gpWonCents: number;
   landGranted: number; // hundredths of a token (round 36) — render via ltFmt
   won: boolean;
+  // CAREER TO DATE (round 40), read live off the bird row and the ledgers —
+  // so it is the number AFTER this fight, not a pre-fight snapshot: by the
+  // time a championship has resolved, birds.wins/losses and every gp row it
+  // produced are already written. A bracket is read after the fact, so
+  // "current" and "post-fight" are the same figure and nothing has to be
+  // reconstructed backwards.
+  wins: number;
+  losses: number;
+  netCents: number; // NET lifetime GP — negative for a bird that lost more stake than it won
 }
 interface BracketMatch {
   isBye: boolean;
@@ -149,6 +158,7 @@ function buildBracket(
   log: LogRow[],
   tournamentId: number,
   birdCard: (id: string) => { name: string; grade: Grade; element: string; stars: number },
+  career: (id: string) => { wins: number; losses: number; netCents: number },
   fname: (id: string | null) => string,
   championBirdId: string | null
 ): BracketRound[] {
@@ -173,6 +183,7 @@ function buildBracket(
     showAwards = false
   ): BracketFighter => {
     const card = birdCard(e.birdId);
+    const c = career(e.birdId);
     return {
       bird: card.name,
       farm: fname(e.farmId),
@@ -183,6 +194,9 @@ function buildBracket(
       gpWonCents: showAwards ? e.gpWonCents : 0,
       landGranted: showAwards ? e.landGranted : 0,
       won,
+      wins: c.wins,
+      losses: c.losses,
+      netCents: c.netCents,
     };
   };
 
@@ -227,39 +241,35 @@ function buildBracket(
 // 2^r of them, which is what makes a CSS grid line it up as a real tree with
 // zero JS: a Quarterfinal card centers itself exactly between the two
 // Round-of-16 cards that fed it, because it spans both their row ranges.
-const BRACKET_ROW_UNIT = "3.25rem";
+// ⚠ THE SEAT UNIT IS LOAD-BEARING, not taste: a round-1 card spans exactly
+// TWO of these rows and clips (overflow: hidden) if its content is taller, so
+// this is the tightest number that still fits the fullest possible round-1
+// card. That card is two fighters × three lines each — identity, farm+awards,
+// career (round 40) — plus the divider and .bmatch's own padding. Measured at
+// the office's 13px base: ~14.5px a line (the 12px element sprite sets the
+// first line's box), 3 lines ≈ 43px a fighter, ×2 = 86, + ~5px divider +
+// ~9px padding + 2px border ≈ 102px ⇒ 51px a seat. 3.2rem (51.2px) is that
+// minimum with nothing spare; round 40 cut the old 3.25rem's slack out of the
+// LINES instead, which is what actually tightened the tree — every gap
+// between round-1 cards was the difference between the card and 2 units.
+const BRACKET_ROW_UNIT = "3.2rem";
 const BRACKET_COL_WIDTH = "clamp(250px, 22vw, 320px)";
 
 /**
- * The bracket tree for one completed championship — round columns left to
- * right, the champion's own card at the far right. Pure CSS grid (see
- * BRACKET_ROW_UNIT above) — no client JS, so this has to be a server
- * component throughout, same as the rest of the Stewards' Office.
+ * The bracket tree for one completed championship — one column per round,
+ * left to right, ending at the Final. There is no champion column (round 40
+ * dropped it): the winner of the Final IS the champion, so it wears the 🏆
+ * in the last card rather than being restated in a box of its own. Pure CSS
+ * grid (see BRACKET_ROW_UNIT above) — no client JS, so this has to be a
+ * server component throughout, same as the rest of the Stewards' Office.
  */
 function Bracket({
   rounds,
-  champion,
   bracketSize,
 }: {
   rounds: BracketRound[];
-  champion: {
-    bird: string;
-    farm: string;
-    grade: Grade;
-    element: string;
-    stars: number;
-    wonCents: number;
-    landGranted: number;
-  };
   bracketSize: number;
 }) {
-  const fighterName = (f: Pick<BracketFighter, "bird" | "grade" | "element" | "stars">) => (
-    <>
-      <b className="grade" style={{ color: gradeColor(f.grade) }}>{f.grade}</b>{" "}
-      <span className="bname">{f.bird}</span>{" "}
-      <span className="belement"><ElementSprite element={f.element} size={12} /> {f.stars}★</span>
-    </>
-  );
   const awards = (f: Pick<BracketFighter, "gpWonCents" | "landGranted">) =>
     f.gpWonCents > 0 || f.landGranted > 0 ? (
       <span className="bawards">
@@ -267,9 +277,41 @@ function Bracket({
         {f.landGranted > 0 && <><LtIcon size={11} /> +{ltFmt(f.landGranted)}</>}
       </span>
     ) : null;
+  /**
+   * One side of a card: identity, farm + what it took home tonight, and the
+   * career line. `crown` marks the Final's winner — the champion is named
+   * here now rather than in a column of its own.
+   */
+  const Fighter = ({ f, crown }: { f: BracketFighter; crown: boolean }) => (
+    <div className={`bfighter ${f.won ? "won" : "lost"}`}>
+      <div className="btop">
+        <span className="bidentity">
+          <b className="grade" style={{ color: gradeColor(f.grade) }}>{f.grade}</b>{" "}
+          <span className="bname">{f.bird}</span>
+          {crown && " 🏆"}{" "}
+          <span className="belement"><ElementSprite element={f.element} size={12} /> {f.stars}★</span>
+        </span>
+        {f.figure !== null && <span className="bfig">PF {f.figure}</span>}
+      </div>
+      <div className="bmeta">
+        <span className="bfarm">{f.farm}</span>
+        {awards(f)}
+      </div>
+      {/* THE CAREER LINE — record and NET lifetime GP as they stand after
+          this fight. Net can be negative and is shown signed rather than
+          floored at zero: a bird that has paid more into the pots than it
+          has drawn out is the ordinary case, and hiding it would make every
+          bracket look profitable. */}
+      <div className="bmeta bcareer">
+        <span className="brec">{f.wins}–{f.losses}</span>
+        <span className={`bnet${f.netCents < 0 ? " neg" : ""}`}>
+          <GpIcon size={11} /> {f.netCents < 0 ? "−" : "+"}{gpFmt(Math.abs(f.netCents))}
+        </span>
+      </div>
+    </div>
+  );
   const totalRounds = rounds.length;
-  const columns = totalRounds + 1; // + the champion's own column
-  const colTemplate = `repeat(${columns}, ${BRACKET_COL_WIDTH})`;
+  const colTemplate = `repeat(${totalRounds}, ${BRACKET_COL_WIDTH})`;
   return (
     // overflow-x: auto lives here, not on the page — a 64-bracket is six
     // columns wide and would otherwise blow out the whole admin layout.
@@ -280,7 +322,6 @@ function Bracket({
             {r.name}
           </div>
         ))}
-        <div className="final">Champion</div>
       </div>
       <div
         className="bracket-grid"
@@ -289,57 +330,29 @@ function Bracket({
         {rounds.map((r, ri) => {
           const round = ri + 1;
           const span = 2 ** round; // how many leaf seats this round's card covers
+          const isFinal = round === totalRounds;
           return r.matches.map((m, mi) => (
             <div
               key={`${round}-${mi}`}
               // has-prev/has-next grow the little connector stubs (see CSS) —
-              // round one has nothing feeding it, every round feeds either
-              // the next round or the champion box.
-              className={`bmatch${m.onPath ? " on-path" : ""}${round > 1 ? " has-prev" : ""} has-next`}
+              // round one has nothing feeding it, and since round 40 the
+              // Final has nothing to its right either, so its stub would
+              // dangle into empty space.
+              className={`bmatch${m.onPath ? " on-path" : ""}${round > 1 ? " has-prev" : ""}${isFinal ? "" : " has-next"}`}
               style={{ gridColumn: round, gridRow: `${mi * span + 1} / span ${span}` }}
             >
-              <div className={`bfighter ${m.a.won ? "won" : "lost"}`}>
-                <div className="btop">
-                  <span className="bidentity">{fighterName(m.a)}</span>
-                  {m.a.figure !== null && <span className="bfig">PF {m.a.figure}</span>}
-                </div>
-                <div className="bmeta">
-                  <span className="bfarm">{m.a.farm}</span>
-                  {awards(m.a)}
-                </div>
-              </div>
+              {/* The 🏆 goes to whoever WON the Final — including the
+                  degenerate bye case, where the unopposed side is still the
+                  champion. */}
+              <Fighter f={m.a} crown={isFinal && m.a.won} />
               {m.isBye ? (
                 <div className="bfighter bye">— bye —</div>
               ) : (
-                <div className={`bfighter ${m.b!.won ? "won" : "lost"}`}>
-                  <div className="btop">
-                    <span className="bidentity">{fighterName(m.b!)}</span>
-                    {m.b!.figure !== null && <span className="bfig">PF {m.b!.figure}</span>}
-                  </div>
-                  <div className="bmeta">
-                    <span className="bfarm">{m.b!.farm}</span>
-                    {awards(m.b!)}
-                  </div>
-                </div>
+                <Fighter f={m.b!} crown={isFinal && m.b!.won} />
               )}
             </div>
           ));
         })}
-        <div
-          className="bmatch bchamp has-prev on-path"
-          style={{ gridColumn: columns, gridRow: `1 / span ${bracketSize}` }}
-        >
-          <div className="bfighter won champ">
-            <div className="btop">
-              🏆 <span className="bidentity">{fighterName(champion)}</span>
-            </div>
-            <div className="bmeta"><span className="bfarm">{champion.farm}</span></div>
-          </div>
-          <div className="bpurse">
-            <GpIcon size={11} /> +{gpFmt(champion.wonCents)}
-            {champion.landGranted > 0 && <> · <LtIcon size={11} /> +{ltFmt(champion.landGranted)}</>}
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -579,6 +592,26 @@ export default function Admin() {
     ? Math.max(...allTournaments.map((t) => t.weekIndex))
     : null;
   const FORMAT_LABEL = (f: string) => FORMATS[f as FightFormat]?.label ?? f;
+  // CAREER LOOKUPS for the bracket (round 40) — built ONCE by folding the two
+  // ledgers already in memory, never per bird: a 32-bracket asking for its own
+  // rows would be ~64 round trips per championship and there are several on
+  // this page. The two sources are disjoint by construction — battle_log
+  // carries the per-fight stake swing (signed, so a loser's row is negative),
+  // tournament_entries carries the crown award, which is settled on the entry
+  // and never written as a battle_log delta — so summing both is the bird's
+  // whole GP life and double-counts nothing.
+  const careerNetByBird = new Map<string, number>();
+  for (const r of log)
+    careerNetByBird.set(r.birdId, (careerNetByBird.get(r.birdId) ?? 0) + r.gpDeltaCents);
+  for (const e of allTEntries)
+    careerNetByBird.set(e.birdId, (careerNetByBird.get(e.birdId) ?? 0) + e.gpWonCents);
+  // wins/losses come off the bird row rather than being counted out of the
+  // log: the engine maintains them, and a championship has already written
+  // tonight's result by the time this page reads it.
+  const birdCareer = (id: string) => {
+    const b = birdById.get(id);
+    return { wins: b?.wins ?? 0, losses: b?.losses ?? 0, netCents: careerNetByBird.get(id) ?? 0 };
+  };
   // Show the two most recent weeks: last week's crowns stay visible
   // while the new week's registrations gather.
   const pintakasiBoxes = allTournaments
@@ -592,9 +625,18 @@ export default function Admin() {
       // boxes fall back to the plain states below.
       const rounds =
         t.status === "completed" && t.bracketSize
-          ? buildBracket(t.bracketSize, totalRounds, fieldEntries, log, t.id, birdCard, fname, champion?.birdId ?? null)
+          ? buildBracket(
+              t.bracketSize,
+              totalRounds,
+              fieldEntries,
+              log,
+              t.id,
+              birdCard,
+              birdCareer,
+              fname,
+              champion?.birdId ?? null
+            )
           : [];
-      const championCard = champion ? birdCard(champion.birdId) : null;
       return {
         id: t.id,
         weekIndex: t.weekIndex,
@@ -605,17 +647,10 @@ export default function Admin() {
         field: fieldEntries.length,
         pending: entries.filter((e) => e.status === "pending").length,
         purseCents: t.purseCents,
-        champion: champion
-          ? {
-              bird: championCard!.name,
-              farm: fname(champion.farmId),
-              grade: championCard!.grade,
-              element: championCard!.element,
-              stars: championCard!.stars,
-              wonCents: champion.gpWonCents,
-              landGranted: champion.landGranted,
-            }
-          : null,
+        // Only ever a render GUARD now (round 40 dropped the champion column):
+        // a completed crown with no champion row is a broken tree, and the
+        // 🏆 itself is drawn inside the Final.
+        hasChampion: champion !== undefined,
         rounds,
       };
     })
@@ -1389,8 +1424,8 @@ export default function Admin() {
                             : `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP`}
                       </span>
                     </div>
-                    {t.status === "completed" && t.bracketSize && t.champion && (
-                      <Bracket rounds={t.rounds} champion={t.champion} bracketSize={t.bracketSize} />
+                    {t.status === "completed" && t.bracketSize && t.hasChampion && (
+                      <Bracket rounds={t.rounds} bracketSize={t.bracketSize} />
                     )}
                     {/* Hardcore is a Majors-only rule (round 23) — the
                         Juvenile Championship's losers fight another day. */}
@@ -1518,7 +1553,7 @@ const CSS = `
     padding-bottom: .3rem; margin-bottom: .3rem; border-bottom: 1px solid #3a342a; }
   .bracket-head > div.final { color: #e8b64c; font-weight: 600; }
   .bmatch { align-self: center; position: relative; background: #171410; border: 1px solid #3a342a;
-    border-radius: 5px; padding: .35rem .55rem; overflow: hidden; }
+    border-radius: 5px; padding: .28rem .5rem; overflow: hidden; }
   /* The connector stubs — cheap CSS-only gesture at the lines a real bracket
      draws between rounds; on-path turns them gold so the champion's run is
      traceable at a glance across every column it touches. */
@@ -1527,30 +1562,44 @@ const CSS = `
   .bmatch.has-prev::before { left: -1.1rem; }
   .bmatch.has-next::after { right: -1.1rem; }
   .bmatch.on-path.has-prev::before, .bmatch.on-path.has-next::after { background: #e8b64c; height: 2px; }
-  .bfighter { display: block; font-size: .82em; line-height: 1.45; min-width: 0; }
-  .bfighter + .bfighter { border-top: 1px solid #2b271f; margin-top: .2rem; padding-top: .25rem; }
+  /* Tight line-height (round 40): each fighter now carries THREE lines, and
+     the seat unit is sized off exactly this figure — loosening it here will
+     clip round-1 cards, which overflow: hidden above makes silent. */
+  .bfighter { display: block; font-size: .82em; line-height: 1.25; min-width: 0; }
+  .bfighter + .bfighter { border-top: 1px solid #2b271f; margin-top: .16rem; padding-top: .16rem; }
   .bfighter .btop, .bfighter .bmeta { display: flex; align-items: center; gap: .45em; min-width: 0; }
   .bfighter .btop { justify-content: space-between; }
-  .bfighter .bmeta { margin-top: .08rem; }
+  .bfighter .bmeta { margin-top: .04rem; }
   .bfighter.won { color: #f4e9d0; }
   .bfighter.won .bname { color: #e8b64c; font-weight: 600; }
   .bfighter.lost { color: #6a6252; }
   .bfighter.bye { color: #6a6252; font-style: italic; }
   .bfighter .bidentity { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bfighter .belement { color: #9a8f78; }
-  .bfighter .bfarm { color: #9a8f78; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  /* nowrap is load-bearing since round 40, not cosmetic: a long farm name used
+     to WRAP to a second line, and a round-1 card has no spare height left to
+     absorb one — it would clip under overflow: hidden. Ellipsis instead.
+     (text-overflow only ever worked with nowrap anyway.) */
+  .bfighter .bfarm { color: #9a8f78; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; flex: 1; }
   .bfighter.lost .bfarm { color: #524b3d; }
   .bfighter .bfig { color: #9a8f78; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
   .bfighter .bawards { display: inline-flex; align-items: center; gap: .25em; color: #7fc97f;
-    font-variant-numeric: tabular-nums; }
+    font-variant-numeric: tabular-nums; flex: 0 0 auto; white-space: nowrap; }
   /* The winner's side gets the gold rail the ask asked for; a bye still
      shows one (it IS the winner, just an unopposed one). */
   .bfighter.won { border-left: 2px solid #e8b64c; padding-left: .35em; margin-left: -.35em; }
-  .bmatch.bchamp { display: flex; flex-direction: column; align-items: stretch; gap: .25rem;
-    justify-content: center; padding: .5rem .6rem; }
-  .bfighter.champ { font-size: .95em; border-left: none; padding-left: 0; margin-left: 0; }
-  .bfighter.champ .bname { font-size: 1.05em; }
-  .bpurse { color: #7fc97f; font-size: .82em; }
+  /* The career line (round 40): record left, net lifetime GP right. Muted
+     against the farm row above it — it is context, not the result. */
+  .bfighter .bcareer { justify-content: space-between; color: #9a8f78;
+    font-variant-numeric: tabular-nums; }
+  .bfighter.lost .bcareer { color: #524b3d; }
+  .bfighter .brec { flex: 0 0 auto; }
+  .bfighter .bnet { flex: 0 0 auto; display: inline-flex; align-items: center; gap: .25em; }
+  /* Net can be negative — a subdued red, dimmer again on the losing side, so
+     it reads as a fact about the bird rather than an error on the page. */
+  .bfighter .bnet.neg { color: #b8695c; }
+  .bfighter.lost .bnet.neg { color: #7d4b44; }
   .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }

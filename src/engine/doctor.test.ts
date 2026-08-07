@@ -14,7 +14,7 @@ import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
 import { Farms } from "./farms";
 import { seedWorld } from "./rng";
-import { ELEMENTS, FORMAT_NAMES, weatherOfDay, type FightFormat } from "./config";
+import { ELEMENTS, FORMAT_NAMES, LT_CENTS, weatherOfDay, type FightFormat } from "./config";
 import { bladeDiscovery, diagnose, formatReport, generationLadder, weatherTiming } from "./doctor";
 import { makeBird, world as testWorld } from "./testkit";
 import { Game } from "./game";
@@ -276,9 +276,23 @@ describe("…and on a broken one", () => {
     // The one legitimate way a farm's liquid land goes down without a ledger
     // row. The invariant sums BOTH piles for this reason; an implementation
     // that read only `landTokensCents` would call every staker a thief.
+    //
+    // ⚠ THE FIXTURE MOVED IN ROUND 40 AND THE REASON IS WORTH KNOWING. It used
+    // to grab whichever farm happened to be holding a whole token after three
+    // days of play, which was always a bot. `Bots.sweepStakes` now banks every
+    // bot's liquid land at the end of each tick, so no bot ENDS a day holding
+    // one — the search came back empty. The human barn is the honest staker to
+    // test with anyway: the sweep is bots-only on purpose, so this fixture no
+    // longer depends on a bot's appetite for land it hasn't spent yet.
     const w = world(3);
-    const rich = w.db.select().from(farms).all().find((f) => f.landTokensCents >= 100)!;
-    new Farms(w.db).stake(rich.id, 1);
+    const farmsApi = new Farms(w.db);
+    farmsApi.buyLand(w.devId, 1); // a LEDGERED mint — the invariant's other half
+    const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
+    expect(before.landTokensCents).toBeGreaterThanOrEqual(LT_CENTS);
+    farmsApi.stake(w.devId, 1);
+    const after = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
+    expect(after.landTokensCents).toBe(before.landTokensCents - LT_CENTS);
+    expect(after.stakedLandCents).toBe(before.stakedLandCents + LT_CENTS);
     const invariant = check(w.db, "LT conservation");
     expect(invariant.passed).toBe(true);
     expect(diagnose(w.db, ":memory:").ok).toBe(true);

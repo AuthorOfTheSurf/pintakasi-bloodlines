@@ -6,6 +6,7 @@ import { BOT_FARMS, BREEDING_PLAN, CROWN_CHASE, WEATHER_APPETITE, type BotProfil
 import {
   BREEDING_SHAPES,
   CLAIMER,
+  COVERS,
   DISTANCE_STATS,
   ECONOMY,
   FORMATS,
@@ -140,6 +141,56 @@ export class Bots {
     return reports;
   }
 
+  /**
+   * ── THE OVERNIGHT SWEEP (round 40) ─────────────────────────────────────────
+   *
+   * Every bot already stakes every whole token it holds, first thing, as step
+   * 1c of its day. So why did a 91-day world end with 16,224 LT — 6.7% of all
+   * land — sitting IDLE, earning nobody anything?
+   *
+   * Because a bot's day happens BEFORE the card goes off. Land is minted when
+   * fights settle and when the crowns pay their grants, which is hours after
+   * the last bot walked past the land office. Every barn's idle balance was
+   * exactly one night's winnings waiting for tomorrow morning — measured on
+   * the round-39 sim, farm by farm, to the token: Pulang Bagwis idle 1,804.04
+   * against 1,803.21 earned that day, and so on down the table. Not a missing
+   * appetite; a missing hour.
+   *
+   * Zane: "They should be immediately staking everything they get." So the
+   * tick sweeps them after settlement — the barn walks out to the land office
+   * the moment the card ends, rather than waiting for the morning.
+   *
+   * ⚠ IT RUNS AFTER `distributeStaking`, ON PURPOSE. Sweeping first would let
+   * tonight's winnings draw tonight's payout, which is a different and better
+   * deal than any player gets — the land was minted after the pool was earned.
+   * Staked overnight, it starts paying tomorrow, which is what "immediately"
+   * honestly means here.
+   *
+   * ⚠ BOTS ONLY. A real barn's land is its own business, and auto-play already
+   * stakes a player farm at the start of its honest day.
+   */
+  static sweepStakes(db: DB): number {
+    const farmsApi = new Farms(db);
+    let staked = 0;
+    for (const bot of db.select().from(farms).where(eq(farms.isBot, 1)).all()) {
+      // Whole tokens only — `stake` refuses a fraction, and the remainder
+      // simply waits for tomorrow's earnings to round it up past a token.
+      //
+      // ⚠ NOT WRAPPED IN `quietly`, unlike everything else the bots do. The
+      // floor guarantees `stake` cannot refuse this (it holds at least what we
+      // ask for), so a throw here is a bug in the arithmetic, not a house rule
+      // saying no — and swallowing it would repeat round 36 exactly, where a
+      // hundredths/whole-tokens mixup stopped every bot in the world staking
+      // and nothing anywhere said a word.
+      const whole = Math.floor(bot.landTokensCents / LT_CENTS);
+      if (whole > 0) {
+        farmsApi.stake(bot.id, whole);
+        staked += whole;
+      }
+    }
+    return staked;
+  }
+
   private static playFarm(
     db: DB,
     bot: BotProfile,
@@ -219,10 +270,32 @@ export class Bots {
     // 1b. Stand the retired roosters at stud — selling covers is income.
     //     BEFORE staking, since round 23 a stud seat costs 100 LT and a barn
     //     that has already staked every token has nothing liquid to pay with.
+    //
+    // ⚠ AND SINCE ROUND 40, BEFORE STAKING IS NO LONGER ENOUGH — IT HAS TO
+    // UNSTAKE. The overnight sweep (see Bots.sweepStakes) banks every whole
+    // token the moment the card settles, so a barn now wakes up with nothing
+    // liquid and the ordering above protects nothing. The sim said so
+    // immediately and in exactly the shape AGENTS.md warns about: the doctor's
+    // adoption block read **studs listed 4 of 20**, down from 19, with no
+    // error anywhere — `quietly` ate twenty refusals a day. A door that was
+    // wide open the round before had quietly closed.
+    //
+    // Zane's ordering, stated plainly: stake everything, and the ONE thing
+    // worth pulling land back out for is a stud seat. So that is what this
+    // does — it unstakes exactly the shortfall, and only when there is a
+    // rooster standing there waiting for it.
     const breeding = new Breeding(db, bot.id, rng);
-    for (const rooster of flock.all().filter(
-      (b) => b.status === "retired" && b.sex === "male" && !b.listedStud
-    )) {
+    const unlisted = flock
+      .all()
+      .filter((b) => b.status === "retired" && b.sex === "male" && !b.listedStud);
+    if (unlisted.length > 0) {
+      const row = db.select().from(farms).where(eq(farms.id, bot.id)).get()!;
+      // One seat at a time: a barn with three roosters lists one today and the
+      // rest tomorrow, rather than emptying the pool in one morning.
+      const short = COVERS.STUD_LISTING_LT - row.landTokensCents;
+      if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
+    }
+    for (const rooster of unlisted) {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
     }
 

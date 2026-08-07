@@ -9,6 +9,7 @@ import {
   PINTAKASI,
   fmtLt,
   landForFight,
+  purseShareOf,
   landForTournamentFight,
 } from "@/engine/config";
 
@@ -16,13 +17,6 @@ export const dynamic = "force-dynamic";
 
 /** dayIndex % 7 → day name (round 20's calendar), purely for display. */
 const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
-
-const PURSE_LABELS: Record<string, string> = {
-  champion: "Champion",
-  runnerUp: "Runner-up",
-  sfLoser: "Semifinal loser (each — two of these every time)",
-  qfLoser: "Quarterfinal loser (each — four of these, when the bracket is big enough)",
-};
 
 const LAND_LABELS: Record<string, string> = {
   champion: "Champion",
@@ -33,6 +27,60 @@ const LAND_LABELS: Record<string, string> = {
   r32: "Round of 32 loser",
   r64: "Round of 64 loser",
 };
+
+/**
+ * What each finish actually takes home, worked out the SAME WAY the bracket
+ * pays it (see PINTAKASI.PURSE and Tournaments.resolve): ADVANCEMENT is split
+ * across every fight WON, a win in round r scoring 2^(r-1), and CHAMPION /
+ * RUNNER_UP are bonuses on top of that.
+ *
+ * ⚠ Nothing in the table below is typed. Move a knob in config, or change the
+ * bracket size, and every percentage on the page moves with it — which is the
+ * whole reason this is a function and not a table of literals. (The engine
+ * counts weight as the fights happen, because that is the only place a bye can
+ * be told from a win; a FULL bracket has no byes, so counting it forwards from
+ * the bracket size like this gives the identical answer.)
+ */
+function purseStages(
+  bracketSize: number,
+  purse: { readonly ADVANCEMENT: number; readonly CHAMPION: number; readonly RUNNER_UP: number }
+) {
+  const rounds = Math.log2(bracketSize);
+  // The arithmetic itself lives in config beside the knobs it reads, so this
+  // page and the MCP tool descriptions cannot drift apart from each other —
+  // they had grown two separate copies of it within an hour of the rule
+  // landing. This function is only the SHAPE OF THE TABLE now.
+  const share = (wins: number, bonus: "champion" | "runnerUp" | "none") =>
+    purseShareOf(bracketSize, purse, wins, bonus);
+
+  const rows = [
+    { label: "Champion", birds: 1, wins: rounds, share: share(rounds, "champion") },
+    {
+      label: "Runner-up — lost the final",
+      birds: 1,
+      wins: rounds - 1,
+      share: share(rounds - 1, "runnerUp"),
+    },
+  ];
+  // Down to ONE win: a bird with zero wins is paid nothing, and the pages below
+  // give that its own row rather than listing a 0.0% finish here.
+  for (let wins = rounds - 2; wins >= 1; wins--) {
+    // How many rounds from the final the bird went out: 1 = semifinal.
+    const fromFinal = rounds - 1 - wins;
+    rows.push({
+      label:
+        fromFinal === 1
+          ? "Lost the semifinal"
+          : fromFinal === 2
+            ? "Lost the quarterfinal"
+            : `Lost in the round of ${2 ** (fromFinal + 1)}`,
+      birds: bracketSize / 2 ** (wins + 1),
+      wins,
+      share: share(wins, "none"),
+    });
+  }
+  return rows;
+}
 
 /** The classic single-elimination pattern, whatever the bracket size. */
 function classicSeedPairs(bracketSize: number): string {
@@ -48,7 +96,15 @@ export default function PintakasiPage() {
   const dailyRealLand = landForFight(ECONOMY.REAL_ENTRY_FEE);
   const crownFightLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
   const exampleBracket = 16;
-  const juvenilePurseTotal = Object.values(JUVENILE_MAJOR.PURSE_SHARES).reduce((a, b) => a + b, 0);
+  // One bracket size for both purse tables, so "the juvenile purse is flatter"
+  // is something a reader can SEE by comparing two columns rather than take on
+  // trust. Both divisions cap at the same size today; if they ever diverge,
+  // each table still describes its own division's real ceiling.
+  const majorPurseBracket = Math.min(32, PINTAKASI.MAX_BRACKET);
+  const juvenilePurseBracket = Math.min(32, JUVENILE_MAJOR.MAX_BRACKET);
+  const majorStages = purseStages(majorPurseBracket, PINTAKASI.PURSE);
+  const juvenileStages = purseStages(juvenilePurseBracket, JUVENILE_MAJOR.PURSE);
+  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
   return (
     <>
@@ -228,32 +284,104 @@ export default function PintakasiPage() {
         <Link href="/wiki/money">Golden Pesos</Link> for where juice comes from). Wednesday&apos;s
         Juvenile Championship draws its own fixed slice first (see below); the Majors take
         <strong> everything left in the pool</strong>, split evenly across however many Majors run
-        that week — and each blade&apos;s share becomes its purse, paid out top-heavy, with every
-        bird eliminated in round one taking zero.
+        that week — and each blade&apos;s share becomes its purse.
+      </p>
+
+      <h3>Every win pays</h3>
+      <p>
+        The purse is cut three ways. The biggest single part of it is paid on the{" "}
+        <em>fights themselves</em>:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Part of the purse</th>
+              <th className="num">Share</th>
+              <th>Who it goes to</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Advancement</td>
+              <td className="num">{pct(PINTAKASI.PURSE.ADVANCEMENT)}</td>
+              <td>Split across every fight won in the bracket</td>
+            </tr>
+            <tr>
+              <td>Champion bonus</td>
+              <td className="num">{pct(PINTAKASI.PURSE.CHAMPION)}</td>
+              <td>The bird that wins the last fight</td>
+            </tr>
+            <tr>
+              <td>Runner-up bonus</td>
+              <td className="num">{pct(PINTAKASI.PURSE.RUNNER_UP)}</td>
+              <td>The bird that loses the last fight</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        <strong>Win a fight here and you are paid for it.</strong> Not the same amount as everyone
+        else, though. A win in each round is worth <strong>double</strong> a win in the round
+        before. So round one pays a little, the semifinal pays a lot, and the final pays most. The
+        reason is simple arithmetic: each round hands out the <em>same total money</em> spread over
+        <em> half as many birds</em>, so the deeper your bird goes, the more one win is worth.
+      </p>
+      <div className="callout tip">
+        <b>Why it works this way.</b> The purse used to be a table of finishing places: champion,
+        runner-up, the two semifinal losers, the four quarterfinal losers, and nothing at all below
+        that. In a big bracket, most of the birds that won a fight were paid nothing for it. A bird
+        could win a Major fight — the hardest fight in the game, with its own career on the line —
+        and go home empty. That was wrong. If a bird risked everything and won, it gets paid.
+      </div>
+      <p>
+        You don&apos;t have to do this arithmetic yourself. Here is what each finish actually takes
+        home in a full {majorPurseBracket}-bird bracket:
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
               <th>Finish</th>
-              <th className="num">Share of the purse</th>
+              <th className="num">Fights won</th>
+              <th className="num">How many birds</th>
+              <th className="num">Each takes</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(PINTAKASI.PURSE_SHARES).map(([stage, share]) => (
-              <tr key={stage}>
-                <td>{PURSE_LABELS[stage] ?? stage}</td>
-                <td className="num">{(share * 100).toFixed(1)}%</td>
+            {majorStages.map((row) => (
+              <tr key={row.label}>
+                <td>{row.label}</td>
+                <td className="num">{row.wins}</td>
+                <td className="num">{row.birds}</td>
+                <td className="num">{pct(row.share)}</td>
               </tr>
             ))}
+            <tr>
+              <td>Lost its first fight</td>
+              <td className="num">0</td>
+              <td className="num">{majorPurseBracket / 2}</td>
+              <td className="num">0%</td>
+            </tr>
           </tbody>
         </table>
       </div>
       <p className="dim">
-        First-round losers are zeroed outright, and the remaining shares stretch to cover whatever
-        the bracket size actually pays out — a straight final pays the champion everything; an
-        eight-bird bracket pays only champion, runner-up, and the two semifinal losers. Rounding
-        dust always lands with the champion.
+        A bird that never won a fight is paid nothing — not because there is a rule against it, but
+        because there is nothing to pay it <em>for</em>. Its share is zero wins&apos; worth of the
+        advancement money and no bonus. The shares that <em>are</em> earned then stretch to fill the
+        purse, so nothing is ever held back — a small bracket simply pays its few winners more
+        each. Rounding dust always lands with the champion.
+      </p>
+      <div className="callout warn">
+        <b>A bye is not a win.</b> If the field is short, the top seeds skip round one. That skipped
+        round pays them nothing. Byes exist because there weren&apos;t enough birds, not because a
+        bird beat somebody — and the advancement money is for beating somebody.
+      </div>
+      <p className="dim">
+        Losing your first fight still isn&apos;t a pure loss. GP goes to the top; <strong>land goes
+        to the fallen</strong>, and the earliest exit takes the biggest land grant on the board.
+        That is the next section.
       </p>
 
       <h2>The land</h2>
@@ -397,32 +525,56 @@ export default function PintakasiPage() {
       <p>
         Its purse comes out of the same juice pool the Majors draw from — a fixed{" "}
         {(JUVENILE_MAJOR.JUICE_SHARE * 100).toFixed(0)}% slice, taken before Thursday&apos;s Majors
-        get whatever&apos;s left, split across the two crowns — both run every week — and paid
-        out flatter than a Major&apos;s purse — a discovery-year stage rewards showing up with a
-        live one, not just winning it all:
+        get whatever&apos;s left, split across the two crowns — both run every week.
+      </p>
+      <p>
+        It is paid the same way a Major&apos;s purse is — every fight won pays, and a win in each
+        round is worth double a win in the round before — but the three parts are set{" "}
+        <strong>flatter</strong> on purpose. More of the money rides on winning fights and less on
+        lifting the trophy:
       </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>Finish</th>
-              <th className="num">Share of the purse</th>
+              <th>Part of the purse</th>
+              <th className="num">Juvenile</th>
+              <th className="num">A Major, for comparison</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(JUVENILE_MAJOR.PURSE_SHARES).map(([stage, share]) => (
-              <tr key={stage}>
-                <td>{PURSE_LABELS[stage] ?? stage}</td>
-                <td className="num">{((share / juvenilePurseTotal) * 100).toFixed(1)}%</td>
-              </tr>
-            ))}
+            <tr>
+              <td>Advancement (split across every fight won)</td>
+              <td className="num">{pct(JUVENILE_MAJOR.PURSE.ADVANCEMENT)}</td>
+              <td className="num">{pct(PINTAKASI.PURSE.ADVANCEMENT)}</td>
+            </tr>
+            <tr>
+              <td>Champion bonus</td>
+              <td className="num">{pct(JUVENILE_MAJOR.PURSE.CHAMPION)}</td>
+              <td className="num">{pct(PINTAKASI.PURSE.CHAMPION)}</td>
+            </tr>
+            <tr>
+              <td>Runner-up bonus</td>
+              <td className="num">{pct(JUVENILE_MAJOR.PURSE.RUNNER_UP)}</td>
+              <td className="num">{pct(PINTAKASI.PURSE.RUNNER_UP)}</td>
+            </tr>
           </tbody>
         </table>
       </div>
+      <p>
+        What that adds up to: in a full {juvenilePurseBracket}-bird juvenile bracket the champion
+        takes {pct(juvenileStages[0].share)}, where a Major champion takes{" "}
+        {pct(majorStages[0].share)} of its own purse — and a chick that wins one fight and goes out
+        takes {pct(juvenileStages[juvenileStages.length - 1].share)} against a Major&apos;s{" "}
+        {pct(majorStages[majorStages.length - 1].share)}. The discovery year is trying to buy one
+        behaviour: <strong>show up with a live one and win a fight</strong>. So that is the thing it
+        pays for.
+      </p>
       <p className="dim">
-        Renormalized to whatever the bracket actually pays out, the same rule as the Majors above.
-        Every fight in the bracket still mints Land Tokens to both birds, off the juvenile entry
-        fee&apos;s much smaller base — see <Link href="/wiki/land">Land Tokens</Link>.
+        Everything else works exactly as it does upstairs: a bye pays nothing, a chick that never
+        won a fight is paid nothing, and the remaining shares stretch to fill the purse. Every fight
+        in the bracket still mints Land Tokens to both birds, off the juvenile entry fee&apos;s much
+        smaller base — see <Link href="/wiki/land">Land Tokens</Link>.
       </p>
 
       <div className="next">

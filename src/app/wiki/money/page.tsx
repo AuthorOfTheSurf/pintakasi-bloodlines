@@ -210,9 +210,10 @@ export default function MoneyPage() {
             what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
             {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. Wednesday&apos;s
             Juvenile Championship takes its slice first — the pool sends it a fixed share, split
-            across whichever of its two blades run that week — and Thursday&apos;s Pintakasi Majors
-            take the entire remainder, split evenly across however many Majors run, then paid out
-            top-heavy by finish.
+            across its two crowns — and Thursday&apos;s Pintakasi Majors take the entire remainder,
+            split evenly across however many Majors run. Each crown then pays its purse out on{" "}
+            <em>fights won</em>: every win in the bracket takes a share, and a win in each round is
+            worth double a win in the round before.
           </p>
         </div>
         <div className="minicard">

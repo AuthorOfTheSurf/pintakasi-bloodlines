@@ -243,8 +243,8 @@ export default function LandPage() {
       <p className="dim">
         Every Major bout is hardcore — the loser&apos;s career ends there, and the Majors are the
         only place in the game a hardcore fight happens at all. The grant is the game&apos;s way of
-        saying a first-round hardcore death is never a pure loss: the money goes
-        to the champion, but the land goes to the fallen. The Wednesday Juvenile Championship mints
+        saying a first-round hardcore death is never a pure loss: the purse follows
+        the wins, but the land goes to the fallen. The Wednesday Juvenile Championship mints
         per-fight land too, but off the much smaller juvenile entry fee — it&apos;s a discovery-year
         stage, not a Major, and losing one doesn&apos;t end a career. See{" "}
         <Link href="/wiki/pintakasi">The Pintakasi</Link> for both.

@@ -25,6 +25,7 @@ import {
   LAND,
   LT_CENTS,
   PINTAKASI,
+  purseShareOf,
   STAKER_FLOWS,
   WEATHER,
 } from "./config";
@@ -501,6 +502,72 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
       expect(TOOL_DESCRIPTIONS.enter_pintakasi).toContain(FORMATS[blade].label);
   });
 
+  /**
+   * ── Round 40: THE PURSE IS PAID ON FIGHTS WON ─────────────────────────────
+   *
+   * PINTAKASI.PURSE_SHARES / JUVENILE_MAJOR.PURSE_SHARES — a table of shares by
+   * FINISHING STAGE — are deleted, so a stale `{PINTAKASI.PURSE_SHARES.champion}`
+   * can't compile. What CAN survive a rename is the prose around it: "paid to
+   * the top", "first-round losers take zero" stated as a rule of its own, a
+   * worked example built on the stage table, or a hand-typed "champion ~54%"
+   * pasted out of a ruling. Those are what these pin.
+   *
+   * The shape itself is pinned first, because every percentage in the Handbook
+   * and in route.ts is DERIVED from these three knobs: if they stop summing to
+   * 1 the derivation is silently wrong everywhere at once, and nothing else in
+   * the suite would notice.
+   */
+  test("both purses are three knobs summing to 1", () => {
+    for (const purse of [PINTAKASI.PURSE, JUVENILE_MAJOR.PURSE]) {
+      expect(Object.keys(purse).sort()).toEqual(["ADVANCEMENT", "CHAMPION", "RUNNER_UP"]);
+      expect(purse.ADVANCEMENT + purse.CHAMPION + purse.RUNNER_UP).toBeCloseTo(1, 10);
+    }
+    // The ruling that makes the juvenile stage a DIFFERENT stage rather than a
+    // small one: more of its money rides on winning fights. Both pages say
+    // "flatter" out loud, so if this ever reverses the word has to go too.
+    expect(JUVENILE_MAJOR.PURSE.ADVANCEMENT).toBeGreaterThan(PINTAKASI.PURSE.ADVANCEMENT);
+  });
+
+  test("the Handbook teaches fights-won, computed from PURSE, not a stage table", () => {
+    const src = readWikiPage("pintakasi/page.tsx");
+    // Derived, never typed — the import rule, checked at its most load-bearing
+    // spot: a pasted "54.4%" here would be a lie the first time a knob moves.
+    expect(src).toContain("PINTAKASI.PURSE.ADVANCEMENT");
+    expect(src).toContain("JUVENILE_MAJOR.PURSE.ADVANCEMENT");
+    expect(src).not.toMatch(/PURSE_SHARES/);
+    expect(src).not.toMatch(/\d\d(\.\d)?% of the purse/i);
+    // The mechanic, in the words a player has to learn it in.
+    expect(src).toMatch(/every fight won|every win/i);
+    expect(src).toMatch(/double a win in the round before/i);
+    // The bye carve-out. It is the one part of the rule that is genuinely
+    // surprising, so the page has to state it rather than leave it implied.
+    expect(src).toMatch(/a bye is not a win/i);
+    // And the OLD framing must be gone: zero for a first-round loser is now a
+    // consequence of winning nothing, not a rule that zeroes anybody.
+    expect(src).not.toMatch(/first-round losers are zeroed/i);
+    expect(src).not.toMatch(/paid out top-heavy/i);
+  });
+
+  test("no wiki page still describes the purse as paid by finishing place", () => {
+    for (const page of ["pintakasi/page.tsx", "money/page.tsx", "land/page.tsx", "page.tsx"]) {
+      const src = readWikiPage(page);
+      expect(src).not.toMatch(/top-heavy by finish/i);
+      expect(src).not.toMatch(/the money goes\s+to the champion/i);
+    }
+  });
+
+  test("MCP prose teaches the fights-won purse, including that a bye pays nothing", () => {
+    expect(everything).toMatch(/every fight won|fights won/i);
+    expect(everything).toMatch(/double a win in the round before/i);
+    expect(everything).toMatch(/a bye is not a win/i);
+    // The three knobs reach the agent as numbers it can quote, read live.
+    for (const k of ["ADVANCEMENT", "CHAMPION", "RUNNER_UP"] as const)
+      expect(everything).toContain(`${(PINTAKASI.PURSE[k] * 100).toFixed(0)}%`);
+    // The reversed claim, in the two phrasings route.ts actually used to carry.
+    expect(everything).not.toMatch(/paid to the top \(champion/i);
+    expect(everything).not.toMatch(/weighted to the TOP \(first-round losers/i);
+  });
+
   test("pintakasi page documents the Juvenile Championship as non-hardcore", () => {
     const src = readWikiPage("pintakasi/page.tsx");
     expect(src).toMatch(/juvenile championship/i);
@@ -524,5 +591,80 @@ describe("The two WHY comments this round's audit flagged stay fixed", () => {
     const src = readFileSync(join(import.meta.dir, "lobbies.ts"), "utf8");
     expect(src).not.toMatch(/sale (doesn't|does not) need the fight/i);
     expect(src).toMatch(/no fight,? no claim/i);
+  });
+});
+
+/**
+ * ── THE CLOSED FORM AGAINST THE RULE (round 40) ─────────────────────────────
+ *
+ * `purseShareOf` in config is a SECOND implementation of the purse, on
+ * purpose: the engine accumulates weight as the fights happen (the only place
+ * a bye can be told from a win), while a page describing the rules to a player
+ * wants the general case. Two implementations that a test compares is a guard.
+ * Three that nothing compares — which is what the Handbook and the MCP tool
+ * descriptions each grew within an hour of this rule landing — is how docs
+ * start lying, so both now read this one function and this pins it.
+ */
+describe("the purse's closed form matches the rule it describes", () => {
+  /** The rule, re-derived independently: a round-r win is worth 2^(r-1). */
+  const byHand = (bracketSize: number, wins: number) => {
+    let total = 0;
+    for (let r = 1; r <= Math.log2(bracketSize); r++) total += (bracketSize / 2 ** r) * 2 ** (r - 1);
+    let mine = 0;
+    for (let r = 1; r <= wins; r++) mine += 2 ** (r - 1);
+    return mine / total;
+  };
+
+  for (const size of [4, 8, 16, 32, 64]) {
+    test(`a ${size}-bird bracket pays out the whole purse and not a cent more`, () => {
+      const rounds = Math.log2(size);
+      for (const purse of [PINTAKASI.PURSE, JUVENILE_MAJOR.PURSE]) {
+        // Every seat, from the champion down to the birds that lost first.
+        let total = purseShareOf(size, purse, rounds, "champion");
+        total += purseShareOf(size, purse, rounds - 1, "runnerUp");
+        for (let wins = rounds - 2; wins >= 0; wins--) {
+          // 2^(rounds-1-wins) birds go out having won exactly `wins` fights.
+          total += 2 ** (rounds - 1 - wins) * purseShareOf(size, purse, wins);
+        }
+        // A FULL bracket has no byes, so the closed form and the engine's
+        // fight-by-fight accumulation describe the same money — and all of it.
+        expect(total).toBeCloseTo(1, 10);
+      }
+    });
+  }
+
+  test("the advancement slice tracks the doubling rule exactly", () => {
+    for (const size of [4, 16, 64])
+      for (let wins = 1; wins <= Math.log2(size); wins++)
+        expect(purseShareOf(size, PINTAKASI.PURSE, wins)).toBeCloseTo(
+          PINTAKASI.PURSE.ADVANCEMENT * byHand(size, wins),
+          10
+        );
+  });
+
+  test("a STRAIGHT FINAL is the one bracket that does not sum to 1 — and that is the ruling", () => {
+    // Two birds, one fight. The loser is also a first-round loser, so it takes
+    // nothing and the runner-up bonus is never allocated: the shares come to
+    // ADVANCEMENT + CHAMPION, and the engine renormalizes the champion up to
+    // the whole purse. Pinned rather than smoothed over, because "the numbers
+    // don't add up here" is exactly the shape somebody would try to fix.
+    const champion = purseShareOf(2, PINTAKASI.PURSE, 1, "champion");
+    expect(champion).toBeCloseTo(PINTAKASI.PURSE.ADVANCEMENT + PINTAKASI.PURSE.CHAMPION, 10);
+    expect(purseShareOf(2, PINTAKASI.PURSE, 0, "runnerUp")).toBe(0);
+    expect(champion).toBeLessThan(1);
+  });
+
+  test("no win, no money — the bonuses do not pay a bird that never won", () => {
+    // The straight final's runner-up is the case this protects: it is also a
+    // first-round loser, and round 18 ruled those take nothing.
+    expect(purseShareOf(2, PINTAKASI.PURSE, 0, "runnerUp")).toBe(0);
+    expect(purseShareOf(32, PINTAKASI.PURSE, 0)).toBe(0);
+  });
+
+  test("a deeper win is always worth more than a shallower one", () => {
+    for (let wins = 2; wins <= 5; wins++)
+      expect(purseShareOf(32, PINTAKASI.PURSE, wins)).toBeGreaterThan(
+        purseShareOf(32, PINTAKASI.PURSE, wins - 1)
+      );
   });
 });

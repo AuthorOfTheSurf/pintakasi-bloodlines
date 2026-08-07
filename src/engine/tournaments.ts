@@ -37,7 +37,7 @@ export const DIVISION_RULES = {
     maxPerBarn: PINTAKASI.MAX_PER_BARN,
     maxBracket: PINTAKASI.MAX_BRACKET,
     minField: PINTAKASI.MIN_FIELD,
-    purseShares: PINTAKASI.PURSE_SHARES as Record<string, number>,
+    purse: PINTAKASI.PURSE,
     landGrants: PINTAKASI.LAND_GRANTS as Record<string, number>,
     landBasis: PINTAKASI.LAND_BASIS,
     dayOfWeek: PINTAKASI.DAY_OF_WEEK,
@@ -48,7 +48,7 @@ export const DIVISION_RULES = {
     maxPerBarn: JUVENILE_MAJOR.MAX_PER_BARN,
     maxBracket: JUVENILE_MAJOR.MAX_BRACKET,
     minField: JUVENILE_MAJOR.MIN_FIELD,
-    purseShares: JUVENILE_MAJOR.PURSE_SHARES as Record<string, number>,
+    purse: JUVENILE_MAJOR.PURSE,
     landGrants: JUVENILE_MAJOR.LAND_GRANTS as Record<string, number>,
     landBasis: ECONOMY.JUVENILE_ENTRY_FEE,
     dayOfWeek: JUVENILE_MAJOR.DAY_OF_WEEK,
@@ -576,6 +576,13 @@ export class Tournaments {
 
     const rounds: TournamentResolution["rounds"] = [];
     const eliminatedIn = new Map<number, number>(); // entry.id → round
+    // ROUND 40 — what the purse is actually paid on. A win in round r is worth
+    // 2^(r-1), so every round hands out the same total across half as many
+    // birds and a deeper win is worth more. Accumulated HERE, as the fights
+    // happen, because that is the only place a bye can be told from a win:
+    // the bye branches below push a bird through without adding weight, which
+    // is the ruling — a bird that never threw a blade is not paid for it.
+    const winWeight = new Map<number, number>(); // entry.id → weight
     for (let round = 1; round <= totalRounds; round++) {
       const roundName = Tournaments.roundName(round, totalRounds, bracketSize);
       const fights: TournamentFightReport[] = [];
@@ -602,6 +609,7 @@ export class Tournaments {
         fights.push(report);
         const winner = report.winner === nameOf.get(a.id) ? a : b;
         const loser = winner === a ? b : a;
+        winWeight.set(winner.id, (winWeight.get(winner.id) ?? 0) + 2 ** (round - 1));
         eliminatedIn.set(loser.id, round);
         next.push(winner);
       }
@@ -612,36 +620,78 @@ export class Tournaments {
     const championBird = database.select().from(birds).where(eq(birds.id, championEntry.birdId)).get()!;
     const championFarm = farmNameOf(championEntry.farmId);
 
-    // GP to the top: shares by finishing stage, first-round losers zeroed,
-    // the rest renormalized. Rounding dust crowns the champion too.
+    // ── GP: EVERY WIN PAYS (round 40) ────────────────────────────────────────
+    //
+    // A bird's share is what its FIGHTS earned plus what its FINISH earned:
+    //
+    //   ADVANCEMENT × (this bird's win weight / the bracket's total weight)
+    //   + CHAMPION or RUNNER_UP, if it is one of those two
+    //
+    // The three knobs sum to 1, so when every seat is filled and both bonuses
+    // land, the raw shares sum to 1 too and the normalization below is the
+    // identity. It stops being the identity exactly where it should: a bird
+    // that never won a fight has no weight and no bonus, so a straight final
+    // (whose runner-up won nothing) renormalizes the champion back up to the
+    // whole purse. That is the round-18 ruling — first-round losers take
+    // nothing — surviving as arithmetic rather than as the `round > 1` clause
+    // that used to sit here.
+    //
+    // The stage string is still worked out per bird, because it is what the
+    // ledger line and the office read. It is now DESCRIPTION, not the thing
+    // being paid on: moving a bird between stages no longer moves its money.
     const rules = DIVISION_RULES[(t.division ?? "major") as Division];
-    const shareTable = rules.purseShares;
+    const purse = rules.purse;
+    const totalWeight = [...winWeight.values()].reduce((s, w) => s + w, 0);
     const shares = new Map<number, { share: number; stage: string }>(); // entry.id →
-    shares.set(championEntry.id, { share: shareTable.champion, stage: "champion" });
     for (const e of field) {
       const round = eliminatedIn.get(e.id);
-      if (round === undefined || e.id === championEntry.id) continue;
-      const fromFinal = totalRounds - round;
-      const raw =
-        fromFinal === 0
-          ? { share: shareTable.runnerUp, stage: "runner-up" }
-          : fromFinal === 1
-            ? shareTable.sfLoser
-              ? { share: shareTable.sfLoser, stage: "semifinal" }
-              : null
-            : fromFinal === 2
-              ? shareTable.qfLoser
-                ? { share: shareTable.qfLoser, stage: "quarterfinal" }
-                : null
-              : null;
-      if (raw && round > 1) shares.set(e.id, raw); // first-round losers take ZERO (the ruling)
+      const weight = winWeight.get(e.id) ?? 0;
+      // ⚠ NO WIN, NO MONEY — INCLUDING THE PLACEMENT BONUSES. This is the one
+      // place the two parts of the purse are not independent, and it is what
+      // keeps round 18's ruling intact: in a STRAIGHT FINAL the runner-up is
+      // also a first-round loser, and paying it a placement bonus for losing
+      // the only fight of the night would quietly reverse a rule nobody asked
+      // to reverse. A bird is paid for what it won; placing is a bonus on top
+      // of that, never instead of it.
+      if (weight === 0) continue;
+      const advancement = totalWeight > 0 ? (purse.ADVANCEMENT * weight) / totalWeight : 0;
+      const bonus =
+        e.id === championEntry.id
+          ? purse.CHAMPION
+          : round !== undefined && totalRounds - round === 0
+            ? purse.RUNNER_UP
+            : 0;
+      shares.set(e.id, {
+        share: advancement + bonus,
+        stage: Tournaments.stageOf(e.id === championEntry.id, round, totalRounds, bracketSize),
+      });
     }
     const totalShare = [...shares.values()].reduce((s, v) => s + v.share, 0);
     const payouts: TournamentResolution["payouts"] = [];
     let paid = 0;
+    // ⚠ A CENT IS THE FLOOR, NOT ZERO — and this is the round's own promise
+    // being kept at the edge. `Math.floor` on a shallow win in a big bracket
+    // rounds to nothing on a thin purse: measured, a 64-bracket paying out of
+    // a 3.00 GP purse left 16 of its 32 fight-winners with a row that
+    // `payPurse` skips entirely, and NOTHING would have said so — the purse
+    // still settles, because the champion absorbs the remainder, so the
+    // conservation proof stays green while "every win pays" quietly stops
+    // being true. The break-even is tiny (a 64-bracket needs 3.84 GP, a
+    // 32-bracket 1.60) and a real Major purse is a thousand times that — but
+    // a rule that holds only in the healthy case is a rule with a trapdoor,
+    // and an early world with a split juice pool is exactly where a big field
+    // meets a thin purse.
+    //
+    // The fallback is honest rather than clever: if the purse cannot cover a
+    // cent for every winner AND leave one for the champion, there is no
+    // arithmetic that keeps the promise, so it pays the plain shares and the
+    // deepest winners take what there is.
+    const others = [...shares.keys()].filter((id) => id !== championEntry.id).length;
+    const canFloor = purseCents >= others + 1;
     for (const [entryId, { share, stage }] of shares) {
       if (entryId === championEntry.id) continue; // champion settles last, with the dust
-      const cents = Math.floor((purseCents * share) / totalShare);
+      const exact = Math.floor((purseCents * share) / totalShare);
+      const cents = canFloor ? Math.max(1, exact) : exact;
       const entry = field.find((e) => e.id === entryId)!;
       Tournaments.payPurse(database, t, entry, cents, stage, nameOf.get(entryId)!, payouts, farmNameOf);
       paid += cents;
@@ -950,6 +1000,27 @@ export class Tournaments {
    * stage has its own, much smaller table; paying discovery-year birds Major
    * money would have made the free crown the best land in the game).
    */
+  /**
+   * How far a bird got, as the words the ledger and the office print.
+   *
+   * Round 40 split this off from the money. It used to be inseparable — the
+   * share table WAS the stage table, so naming a stage and paying it were one
+   * lookup. Now the purse is paid on fights won, and the stage is a label:
+   * "semifinal" is where the bird stopped, not what it was paid for.
+   */
+  private static stageOf(
+    isChampion: boolean,
+    eliminatedRound: number | undefined,
+    totalRounds: number,
+    bracketSize: number
+  ): string {
+    if (isChampion) return "champion";
+    if (eliminatedRound === undefined) return "unbeaten"; // can't happen — a bracket has one survivor
+    if (totalRounds - eliminatedRound === 0) return "runner-up";
+    // "Semifinals" → "semifinal": the round is plural, one bird's exit is not.
+    return roundName(eliminatedRound, totalRounds, bracketSize).toLowerCase().replace(/s$/, "");
+  }
+
   private static grantFor(roundsFromFinal: number, g: Record<string, number>): number {
     const ladder = [g.runnerUp, g.sf, g.qf, g.r16, g.r32, g.r64].filter((v) => v !== undefined);
     return ladder[roundsFromFinal] ?? ladder[ladder.length - 1];

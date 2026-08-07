@@ -1110,6 +1110,30 @@ function championships(db: DB): HealthSection {
       `${division.padEnd(9)} ${run.length} run / ${cancelled.length} cancelled · ` +
         `field ${avg.toFixed(1)} · purse ${gp(run.reduce((s, t) => s + (t.purseCents ?? 0), 0))}`
     );
+    // ── WHO ACTUALLY GOT PAID (round 40) ──────────────────────────────────
+    // The purse used to be a table of shares by finishing stage, and in a
+    // 32-bird bracket it paid 8 birds out of 31 — a bird could WIN a hardcore
+    // championship fight and take home nothing. Nothing in this report said
+    // so: the line above prints the purse, never its spread, so "the money is
+    // there" and "the money reaches the winners" looked like the same
+    // sentence. Round 40 pays on fights won; this is the line that shows it
+    // landed, and that would show it drifting back.
+    const settled = run.map((t) => t.id);
+    const paidField = entries.filter(
+      (e) => settled.includes(e.tournamentId) && e.status !== "bumped" && e.status !== "refunded"
+    );
+    if (paidField.length > 0) {
+      const paid = paidField.filter((e) => e.gpWonCents > 0);
+      const takes = paid.map((e) => e.gpWonCents).sort((a, b) => b - a);
+      const share = (n: number) =>
+        `${((n / takes.reduce((s, c) => s + c, 0)) * 100).toFixed(1)}%`;
+      lines.push(
+        `${" ".repeat(10)}paid ${paid.length}/${paidField.length} entrants ` +
+          `(${((paid.length / paidField.length) * 100).toFixed(0)}%) · ` +
+          `biggest take ${share(takes[0] ?? 0)} of all purse GP · ` +
+          `smallest ${gp(takes[takes.length - 1] ?? 0)} GP`
+      );
+    }
     const decided = run.length + cancelled.length;
     if (decided > 0 && cancelled.length / decided > DOCTOR.CANCELLED_CROWNS_WARN)
       warn = `${division}: ${cancelled.length} of ${decided} crowns cancelled — the field isn't there`;

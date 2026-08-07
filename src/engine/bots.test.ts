@@ -18,12 +18,15 @@ import {
   COVERS,
   ELEMENTS,
   FORMAT_NAMES,
+  LT_CENTS,
   SCOUT,
   weatherOfDay,
   type Element,
   type StatName,
 } from "./config";
 import type { StudView } from "./breeding";
+import { diagnose } from "./doctor";
+import { Farms } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { mulberry32 } from "./rng";
 import { expectConserved, makeBird, onCard, world as testWorld } from "./testkit";
@@ -603,5 +606,140 @@ describe("how deep a barn breeds in a day", () => {
     // and the broodfarm still stops at the runaway cap. Style shows in between.
     expect(covered(idle)).toBe(BREEDING_PLAN.MIN_HENS_COVERED);
     expect(covered(eager)).toBe(BREEDING_PLAN.MAX_COVERS_PER_DAY);
+  });
+});
+
+/**
+ * THE NIGHTLY LAND SWEEP (round 40).
+ *
+ * The bots have staked every whole Land Token they hold since round 22 — as
+ * step 1c of their day, alongside checking in. The trouble is WHEN their day
+ * runs: `Game.runTick` plays the bots BEFORE the card goes off, so everything
+ * the pit paid a stable tonight — the per-fight land mint, the crown
+ * elimination grants — landed after the stable had already walked past the
+ * land office. It sat liquid until the following morning, earning nothing.
+ * Measured across a 91-day world: 6.7% of all land in the game, permanently
+ * idle for no reason anybody designed.
+ *
+ * `Bots.sweepStakes` banks it the moment the card ends. Three things make it
+ * correct rather than merely convenient, and each gets a test: it happens
+ * AFTER the day's staking payout (tonight's land starts earning tomorrow, not
+ * retroactively), it moves land between one farm's own two piles and never
+ * mints a hundredth, and it is BOTS ONLY — a real barn's land is its own
+ * business, and a game that silently stakes a player's tokens has decided
+ * something on their behalf.
+ */
+describe("the nightly land sweep", () => {
+  const landOf = (db: DB, id: string) => db.select().from(farms).where(eq(farms.id, id)).get()!;
+  /** Every token in the world, both piles, in hundredths. */
+  const allLand = (db: DB) =>
+    db
+      .select()
+      .from(farms)
+      .all()
+      .reduce((s, f) => s + f.landTokensCents + f.stakedLandCents, 0);
+
+  test("no bot ends a night holding a whole token — tonight's land is banked tonight", () => {
+    const w = world({ only: FAST_ROSTER });
+    for (let i = 0; i < 3; i++) w.game.tickDay();
+    const bots = w.db.select().from(farms).where(eq(farms.isBot, 1)).all();
+    let staked = 0;
+    for (const bot of bots) {
+      // Under a token left liquid is the signature of the sweep: `stake`
+      // refuses a fraction, so the remainder is simply change waiting for
+      // tomorrow's card to round it up past a whole token.
+      expect(bot.landTokensCents).toBeLessThan(LT_CENTS);
+      staked += bot.stakedLandCents;
+    }
+    // …and the sweep is banking real land, not an empty set of farms. Three
+    // nights of a full card mints plenty.
+    expect(staked).toBeGreaterThan(0);
+  });
+
+  test("tonight's land starts earning TOMORROW — the sweep runs after the payout", () => {
+    // The ordering ruling, pinned as arithmetic. `Game.runTick` calls
+    // `Farms.distributeStaking` and then `Bots.sweepStakes`, in that order and
+    // for this reason: the pool is SHARED, so a stake that goes live before
+    // tonight's payout is paid for by every barn that was staked all along.
+    // Land earned tonight has held for no time at all, and paying it is
+    // retroactive interest.
+    //
+    // Built from the two calls directly rather than from a tick, because a
+    // tick's own noise (the bots stake their free gacha token in the morning,
+    // long before either of these runs) would drown the one number this is
+    // about.
+    const w = world({ only: ["bot-1"] });
+    const farmsApi = new Farms(w.db);
+    const devId = w.db.select().from(farms).where(eq(farms.isBot, 0)).all()[0].id;
+    const botId = w.db.select().from(farms).where(eq(farms.isBot, 1)).all()[0].id;
+    // The incumbent: a human barn that has been staked since yesterday.
+    farmsApi.buyLand(devId, 10);
+    farmsApi.stake(devId, 10);
+    // …and tonight the bot comes into a pile of land, liquid and unswept.
+    farmsApi.buyLand(botId, 90);
+    w.db.update(gameState).set({ stakerPoolCents: 10_000 }).where(eq(gameState.id, 1)).run();
+
+    const devBefore = w.db.select().from(farms).where(eq(farms.id, devId)).get()!;
+    const paid = Farms.distributeStaking(w.db);
+    // ONE staker tonight, and it takes the whole pool: the bot's 90 tokens
+    // were not staked when the pool paid out, so they earn nothing from it.
+    expect(paid.stakers).toBe(1);
+    const devAfter = w.db.select().from(farms).where(eq(farms.id, devId)).get()!;
+    expect(devAfter.gp * 100 + devAfter.gpCents).toBe(devBefore.gp * 100 + devBefore.gpCents + 10_000);
+    // Had the sweep gone first, the bot's fresh 90 tokens would have taken 9/10
+    // of that pool off the barn that had held its land all day.
+    expect(w.db.select().from(farms).where(eq(farms.id, botId)).get()!.stakedLandCents).toBe(0);
+
+    // …and only now does the land go to work, for tomorrow.
+    expect(Bots.sweepStakes(w.db)).toBe(90);
+    w.db.update(gameState).set({ stakerPoolCents: 10_000 }).where(eq(gameState.id, 1)).run();
+    expect(Farms.distributeStaking(w.db).stakers).toBe(2);
+  });
+
+  test("the sweep moves land between two piles — it never mints or burns a hundredth", () => {
+    const w = world({ only: FAST_ROSTER });
+    w.game.tickDay();
+    // Hand a bot some land through the front door — `buyLand` is a LEDGERED
+    // mint, so the doctor's LT invariant can still reconcile it. (Fabricating
+    // the column directly would break that invariant before the sweep ever
+    // ran, and the test would be proving nothing about the sweep.)
+    const bot = w.db.select().from(farms).where(eq(farms.isBot, 1)).all()[0];
+    new Farms(w.db).buyLand(bot.id, 3);
+    const before = { total: allLand(w.db), staked: landOf(w.db, bot.id).stakedLandCents };
+
+    expect(Bots.sweepStakes(w.db)).toBe(3);
+    const after = landOf(w.db, bot.id);
+    expect(after.stakedLandCents).toBe(before.staked + 3 * LT_CENTS);
+    expect(after.landTokensCents).toBeLessThan(LT_CENTS);
+    // ABSOLUTE, not a delta on one farm: a sweep that took a token off one
+    // barn and gave it to another would pass a per-farm check.
+    expect(allLand(w.db)).toBe(before.total);
+    // GP is not involved at all, and the world-level LT proof still closes.
+    expectConserved(w.db);
+    expect(diagnose(w.db, ":memory:").invariants.find((i) => i.name === "LT conservation")!.passed).toBe(
+      true
+    );
+  });
+
+  test("a human barn is never swept — its land is its own business", () => {
+    // The line the sweep must not cross. A player may be saving tokens for a
+    // stud seat (100 LT, the game's one land SINK) or simply holding them;
+    // staking is reversible but it is still a decision, and the engine does
+    // not get to make it. Round 22's posture — stack it, stake it — is the
+    // BOTS' modelled behaviour, not a house rule.
+    const w = world({ only: FAST_ROSTER });
+    const devId = w.db.select().from(farms).where(eq(farms.isBot, 0)).all()[0].id;
+    new Farms(w.db).buyLand(devId, 5);
+    const before = landOf(w.db, devId);
+    w.game.tickDay();
+    const after = landOf(w.db, devId);
+    expect(after.landTokensCents).toBe(before.landTokensCents);
+    expect(after.stakedLandCents).toBe(0);
+  });
+
+  test("a world with no bots sweeps nothing and doesn't fall over", () => {
+    const db = createDb(":memory:");
+    seedGame(db, { flock: "legacy" });
+    expect(Bots.sweepStakes(db)).toBe(0);
   });
 });

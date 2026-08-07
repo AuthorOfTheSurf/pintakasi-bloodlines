@@ -524,3 +524,22 @@ bottom.*
     Worth a periodic sweep — for every column the schema declares, what reads
     it? The same question would have found this one at any point in twenty
     rounds.
+27. **A change that makes one number better can close a door somewhere else,
+    and only the adoption block will say so.** Round 40's overnight stake sweep
+    took idle land 6.7% → 0.5%, and in the same stroke took **studs listed 19
+    of 20 → 4**: a stud seat needs 100 LT *liquid*, the bots' day was ordered to
+    list before staking so they would have it, and the sweep meant they now
+    woke up with nothing. Every invariant passed. Every test passed. `quietly`
+    ate twenty refusals a day. **The only thing in the whole project that knew
+    was the adoption bar chart** — which is the third time that has been true
+    (claiming in round 19, paid gacha in round 22, this). The rule to carry: a
+    change to WHEN money moves is a change to what is affordable, and the
+    adoption block is not a nice-to-have on those, it is the test.
+28. **A report that prints a total can hide a distribution — ask what the sum
+    is concealing.** The doctor printed each division's purse for twenty-two
+    rounds and never printed its SPREAD, so "the money is there" and "the money
+    reaches the winners" read as the same sentence, and a purse that paid 8
+    birds out of 31 sat in plain sight the whole time. It took a player
+    noticing. Every other aggregate in the report deserves the same question
+    asked of it once: what would a badly-shaped version of this look like, and
+    would this line look any different?
