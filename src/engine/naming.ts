@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds } from "@/db/schema";
 import type { Rng } from "./rng";
@@ -87,34 +88,63 @@ export function roman(n: number): string {
   return out;
 }
 
-function takenNames(database: DB): Set<string> {
-  return new Set(
-    database
-      .select({ name: birds.name })
-      .from(birds)
-      .all()
-      .map((r) => r.name.toLowerCase())
-  );
+/**
+ * ── ONE NAME, ONE QUERY (round 43) ──────────────────────────────────────────
+ *
+ * `uniqueName` and `nameTaken` used to build a Set of EVERY name in the world
+ * and then ask it one question. That is a full `birds` scan per bird created,
+ * and since the table grows all run it is quadratic in the length of a
+ * simulation — the exact shape that hurts when the default run doubles to 182
+ * days. Every bred egg and every gacha egg paid it.
+ *
+ * ⚠ WHY THIS IS A QUERY AND NOT A CACHED SET, because a cache is the obvious
+ * idea and it is a trap. Names are minted at four doors (`seedStarterFlock`,
+ * `Breeding.breed`, `Gacha.roll`, and `Flock.rename` — which also FREES the old
+ * name), so a module-level Set would be a fifth thing to keep in sync with no
+ * test that would notice it drifting. And the failure mode is silent: uniqueness
+ * here is enforced in CODE, not by a DB constraint (see the header note), so two
+ * birds would simply end up with the same name and nothing would ever throw.
+ * A query cannot go stale.
+ *
+ * ⚠ ONE DELIBERATE NARROWING. SQLite's `lower()` is ASCII-only where JS
+ * `toLowerCase()` is Unicode-aware, so two names differing only in the case of a
+ * non-ASCII letter now both pass. Every name this game generates is ASCII (see
+ * the banks below); the only door taking arbitrary text is `Flock.rename`. This
+ * is a narrowing of a code-enforced rule, not of anything the engine produces,
+ * and `naming.test.ts` pins the ASCII behaviour so the trade stays visible.
+ *
+ * The index that makes it cheap is `ix_birds_name_lower`, declared in BOTH
+ * `db/schema.ts` and `db/ddl.ts` (they are hand-synced).
+ */
+function nameIsTaken(database: DB, name: string, exceptBirdId?: string): boolean {
+  const clash = database
+    .select({ id: birds.id })
+    .from(birds)
+    .where(
+      exceptBirdId === undefined
+        ? sql`lower(${birds.name}) = lower(${name})`
+        : sql`lower(${birds.name}) = lower(${name}) and ${birds.id} <> ${exceptBirdId}`
+    )
+    .limit(1)
+    .get();
+  return clash !== undefined;
 }
 
 /** `base` if free, else the first free roman successor ("base II", "base III"…). */
 export function uniqueName(database: DB, base: string): string {
-  const taken = takenNames(database);
-  if (!taken.has(base.toLowerCase())) return base;
+  if (!nameIsTaken(database, base)) return base;
+  // Probes one candidate at a time rather than pre-loading the world. The chain
+  // is short in practice — a prolific hen's "Egg of Dalisay VII" is about as far
+  // as it goes — so a handful of indexed lookups beats one full scan.
   for (let n = 2; ; n++) {
     const candidate = `${base} ${roman(n)}`;
-    if (!taken.has(candidate.toLowerCase())) return candidate;
+    if (!nameIsTaken(database, candidate)) return candidate;
   }
 }
 
 /** Is this exact name (case-insensitive) already worn by another bird? */
 export function nameTaken(database: DB, name: string, exceptBirdId?: string): boolean {
-  const lower = name.toLowerCase();
-  return database
-    .select({ id: birds.id, name: birds.name })
-    .from(birds)
-    .all()
-    .some((r) => r.id !== exceptBirdId && r.name.toLowerCase() === lower);
+  return nameIsTaken(database, name, exceptBirdId);
 }
 
 /** Fisher–Yates shuffle driven by `rng` — deterministic under `--seed`. */
@@ -143,7 +173,20 @@ function shuffle<T>(arr: readonly T[], rng: Rng): T[] {
  * `drawStarterNames(db, 1, …)` call never materialises the whole bank.
  */
 export function drawStarterNames(database: DB, count: number, rng: Rng): string[] {
-  const taken = takenNames(database);
+  // ⚠ THIS ONE KEEPS THE FULL SCAN, and it is not an oversight (round 43 moved
+  // `uniqueName`/`nameTaken` to per-name queries and deliberately left this
+  // alone). A draw walks up to PREFIXES × ROOTS ≈ 3,000 candidates looking for
+  // free ones, so probing per candidate would trade a single scan for thousands
+  // of queries — a pessimisation, not a fix. It is also SAFE as a snapshot in a
+  // way the other two are not: nothing writes to `birds` between this read and
+  // the caller's insert, because the whole draw happens before any bird exists.
+  const taken = new Set(
+    database
+      .select({ name: birds.name })
+      .from(birds)
+      .all()
+      .map((r) => r.name.toLowerCase())
+  );
   const out: string[] = [];
   const claim = (name: string): void => {
     const key = name.toLowerCase();

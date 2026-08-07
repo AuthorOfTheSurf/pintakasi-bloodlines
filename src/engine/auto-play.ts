@@ -169,7 +169,10 @@ export function shopClaimers(db: DB, farmId: string): void {
   const lobbies = new Lobbies(db, farmId);
   const rng = mulberry32(1700 + state.dayIndex);
   let placed = 0;
-  for (const lobby of lobbies.board()) {
+  // Claimers only, with cards — see the same call in bots.ts. A claim is placed
+  // on a named bird, so this is the one board consumer that genuinely needs the
+  // field built.
+  for (const lobby of lobbies.board({ classType: "claimer", detail: "field" })) {
     if (placed >= AUTO_CLAIMS_PER_DAY) break;
     if (lobby.classType !== "claimer" || lobby.status !== "open") continue;
     for (const entry of lobby.entries) {

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
@@ -459,12 +459,20 @@ export class Bots {
     //    two of the barn's birds would both fill an odd lobby, the one whose
     //    element is ascendant today goes. Costs the card nothing — it's the
     //    same number of entries, just a better-chosen bird.
-    const roster = () =>
-      weatherOrder(
-        shuffle(flock.all().filter((b) => b.status === "active" && b.age >= 1), rng),
-        today
-      );
-    for (const lobby of lobbies.board()) {
+    // ⚠ THE FLOCK IS FETCHED ONCE, THE SHUFFLE STILL HAPPENS PER LOBBY (round
+    // 43). `roster()` used to call `flock.all()` on every iteration — a query
+    // plus a view built for every bird in the barn, per lobby, per bot, per day.
+    // Entering a lobby does not modify a bird row, so the rows are stable for the
+    // whole loop and re-reading them bought nothing.
+    //
+    // The SHUFFLE deliberately stays inside the closure. `shuffle` draws from
+    // `rng` once per element, so hoisting it would change how much of the stream
+    // this loop consumes and every later decision in the barn's day would land
+    // differently — a "pure" speed change that silently rewrites the world. Same
+    // number of draws in, same world out.
+    const rosterRows = flock.all().filter((b) => b.status === "active" && b.age >= 1);
+    const roster = () => weatherOrder(shuffle(rosterRows, rng), today);
+    for (const lobby of lobbies.board({ detail: "fills" })) {
       if (lobby.lobbyId === null) continue; // a phantom — posted, nobody in it yet
       if (lobby.status !== "open") continue; // closed = entries locked
       if (lobby.filled % 2 === 0) continue;
@@ -518,10 +526,13 @@ export class Bots {
 
     // 6. Shop the claimer fields — public info only (record vs. the tag).
     if (bot.claimAggression > 0) {
-      for (const lobby of lobbies.board()) {
+      // Cards ARE needed here — a claim is placed on a specific bird, read off
+      // the public claimer field — but only for claimers, which is what the
+      // filter buys (round 43: this used to build cards for every open lobby on
+      // the board and then skip all but the claimers).
+      for (const lobby of lobbies.board({ classType: "claimer", detail: "field" })) {
         if (report.claimsPlaced >= MAX_CLAIMS_PER_DAY) break;
         if (lobby.lobbyId === null) continue; // a phantom has no field to shop
-        if (lobby.classType !== "claimer") continue;
         for (const entry of lobby.entries) {
           if (report.claimsPlaced >= MAX_CLAIMS_PER_DAY) break;
           if (entry.mine) continue;
@@ -1071,12 +1082,26 @@ export function chaseCrowns(
   // Committee seats it last anyway, and feeding a total unknown into a bracket
   // that force-retires losers is how a bot culls its own barn. Everything
   // above this line is the barn deciding; the committee decides the rest.
+  //
+  // ⚠ THIS WAS A FULL `birds` SCAN UNTIL ROUND 43, and it was the most expensive
+  // line in the simulation. `db.select().from(birds).all()` then filtered in JS —
+  // every bot, EVERY DAY (chaseCrowns is not gated on crown day), over a table
+  // that grows all run. On a 91-day world that is 1,820 whole-table
+  // materializations of ~1,300 thirty-column rows to find the handful belonging
+  // to one barn. The measured symptom was a day taking 1s at the start of a run
+  // and 14s at the end; the predicate belongs in SQL, where `ix_birds_farm_status`
+  // already covers the farm side.
   const proven = new Set(
     db
-      .select()
+      .select({ id: birds.id })
       .from(birds)
+      .where(
+        and(
+          eq(birds.farmId, farmId),
+          gte(birds.stakesWins, CROWN_CHASE.CROWN_MIN_REAL_WINS)
+        )
+      )
       .all()
-      .filter((b) => b.farmId === farmId && b.stakesWins >= CROWN_CHASE.CROWN_MIN_REAL_WINS)
       .map((b) => b.id)
   );
   const eligible = flock

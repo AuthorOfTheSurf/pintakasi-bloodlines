@@ -1,4 +1,4 @@
-import { count, eq, type SQL } from "drizzle-orm";
+import { count, eq, isNotNull, type SQL } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { DB } from "@/db/client";
 import {
@@ -74,7 +74,13 @@ function countRows(db: DB, table: SQLiteTable, where?: SQL): number {
 export function computeTopline(db: DB): Topline {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
   const allFarms = db.select().from(farms).all();
-  const allBirds = db.select().from(birds).all();
+  // ⚠ `allBirds` IS GONE (round 43) — this used to read the WHOLE birds table to
+  // produce four numbers, and round 35's lesson below applies to it word for
+  // word. It was the last full-table read left in a function that runs twice a
+  // tick, so it grew with the world every single day: 1,295 rows by day 91, and
+  // the round that doubled the default run length is exactly the wrong time to
+  // leave it. The status counts are one grouped query, `covers` and the total are
+  // COUNT(*)s — see below.
   // ⚠ FILTER IN SQLITE, NOT IN JS (round 35). These three read `.all()` and
   // filtered afterwards, which materialized every row the table had ever held
   // in order to keep the handful still pending. `recordSnapshot` runs TWICE
@@ -101,8 +107,16 @@ export function computeTopline(db: DB): Topline {
     tournamentEscrowCents;
   const landStaked = allFarms.reduce((s, f) => s + f.stakedLandCents, 0);
   const landLiquid = allFarms.reduce((s, f) => s + f.landTokensCents, 0);
-  const byStatus = { egg: 0, active: 0, retired: 0 };
-  for (const b of allBirds) byStatus[b.status]++;
+  // One grouped pass instead of materialising every bird to tally three buckets.
+  // `ix_birds_status` covers it. Zero-filled first: SQLite omits a group with no
+  // rows, and a world with no eggs must report 0 rather than undefined.
+  const byStatus: Record<"egg" | "active" | "retired", number> = { egg: 0, active: 0, retired: 0 };
+  for (const row of db
+    .select({ status: birds.status, n: count() })
+    .from(birds)
+    .groupBy(birds.status)
+    .all())
+    byStatus[row.status] = row.n;
 
   return {
     day: state.dayIndex,
@@ -120,9 +134,10 @@ export function computeTopline(db: DB): Topline {
     // tick for a number SQLite can produce without building a single object.
     fights: countRows(db, battleLog, eq(battleLog.result, "win")),
     cancelled: countRows(db, lobbyEntries, eq(lobbyEntries.status, "unmatched")),
-    covers: allBirds.filter((b) => b.motherId !== null).length,
+    // A bred bird is one with a dam — `ix_birds_mother` covers the predicate.
+    covers: countRows(db, birds, isNotNull(birds.motherId)),
     rolls: countRows(db, gachaTokens),
-    birds: allBirds.length,
+    birds: countRows(db, birds),
     eggs: byStatus.egg,
     active: byStatus.active,
     retired: byStatus.retired,

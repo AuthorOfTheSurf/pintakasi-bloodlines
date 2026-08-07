@@ -1733,3 +1733,92 @@ describe("the juvenile crown chase declares before it sends", () => {
     expect(fieldAt(w.db, w.devId, second)).toBe(JUVENILE_MAJOR.MAX_PER_BARN);
   });
 });
+
+/**
+ * ── THE COMMITTEE'S BOOK, AFTER THE BULK REWRITE (round 43) ─────────────────
+ *
+ * `committeeCards` went from three indexed queries PER BIRD to three grouped
+ * queries for the whole set, because round 43 made the bump path hot (a per-barn
+ * cap of 5 against a 32-bracket means declarations outnumber seats, and every
+ * rejected barn re-declares daily). A rewrite of the thing that decides WHO
+ * STANDS in a hardcore bracket needs its arithmetic pinned, not just its speed.
+ *
+ * The three cases below are the three ways a grouped query can lie: a bird with
+ * no rows at all (SQL omits the group entirely), a bird with exactly one, and a
+ * bird whose average has to round. Purse money is checked alongside because it
+ * comes from a different table and is ADDED to the log's earnings.
+ */
+describe("the committee's book", () => {
+  test("a bird with NO fights is still in the book, at zero", () => {
+    const w = world();
+    const unraced = makeBird(w.db, { name: "Unraced", age: 3 });
+    const cards = Tournaments.committeeCards(w.db, [unraced.id]);
+    // The bug this guards: a grouped query returns no row for a bird with no
+    // fights, so a naive rewrite drops it from the map — and an unraced bird is
+    // exactly the one sitting on the bump line.
+    expect(cards.has(unraced.id)).toBe(true);
+    expect(cards.get(unraced.id)!.earningsCents).toBe(0);
+    expect(cards.get(unraced.id)!.avgFigure).toBe(0);
+  });
+
+  test("earnings sum only the POSITIVE deltas, and add banked purse money", () => {
+    const w = world();
+    const bird = makeBird(w.db, { name: "Earner", age: 3 });
+    earned(w.db, bird.id, w.devId, 1_000);
+    earned(w.db, bird.id, w.devId, -400); // a loss must not subtract
+    earned(w.db, bird.id, w.devId, 250);
+    w.db
+      .insert(tournamentEntries)
+      .values({
+        tournamentId: 999,
+        birdId: bird.id,
+        farmId: w.devId,
+        fee: 0,
+        dayEntered: 0,
+        gpWonCents: 5_000,
+      })
+      .run();
+    // 1,000 + 250 from the log (the −400 floored to 0), plus 5,000 of purse.
+    expect(Tournaments.committeeCards(w.db, [bird.id]).get(bird.id)!.earningsCents).toBe(6_250);
+  });
+
+  test("avgFigure rounds the mean, and one fight is its own average", () => {
+    const w = world();
+    const one = makeBird(w.db, { name: "Single", age: 3 });
+    const many = makeBird(w.db, { name: "Campaigner", age: 3 });
+    figured(w.db, one.id, w.devId, 61);
+    // 60, 61, 62 → mean 61 exactly; 60, 61 → 60.5, which MUST round to 61 the
+    // way Math.round does. Rounding in SQL instead would be a silent one-off in
+    // a bump tie-breaker.
+    for (const f of [60, 61]) figured(w.db, many.id, w.devId, f);
+    const cards = Tournaments.committeeCards(w.db, [one.id, many.id]);
+    expect(cards.get(one.id)!.avgFigure).toBe(61);
+    expect(cards.get(many.id)!.avgFigure).toBe(61);
+  });
+
+  test("an empty request is an empty book, not a crash", () => {
+    expect(Tournaments.committeeCards(world().db, []).size).toBe(0);
+  });
+});
+
+/** As `earned`, but the figure is what matters and the money is zero. */
+function figured(db: DB, birdId: string, farmId: string, pitFigure: number): void {
+  db.insert(battleLog)
+    .values({
+      dayIndex: 0,
+      lobbyId: 1,
+      farmId,
+      birdId,
+      mode: "real",
+      format: "b1",
+      opponentBirdId: "ghost",
+      opponentFarmId: "house",
+      opponentName: "Sparring Ghost",
+      side: 0,
+      result: "win",
+      pitFigure,
+      gpDeltaCents: 0,
+      seed: 1,
+    })
+    .run();
+}

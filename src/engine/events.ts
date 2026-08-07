@@ -38,6 +38,11 @@ export type EventType =
   | "stake"
   | "unstake"
   | "buy_land"
+  // Round 43: LAND SPENT ON BARN SLOTS — the game's second LT sink after the
+  // stud seat, and the first one a player buys for capacity rather than access.
+  // Carries a NEGATIVE `lt` delta, like every burn, so the land conservation
+  // proof can see it. See BARN.EXPANSION_BASE_LT for the escalating price.
+  | "barn_expanded"
   | "tournament_entry" // a bird registered for the Pintakasi (fee escrowed)
   | "tournament_bump" // the Selection Committee displaced the weakest (refund)
   | "purse_payout" // a share of a championship purse banked

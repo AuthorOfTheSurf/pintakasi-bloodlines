@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { count, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, type BirdRow } from "@/db/schema";
 import { weatherOfDay, type Element, type FightFormat, type StatName } from "./config";
@@ -197,9 +197,22 @@ export class Flock {
     return this.byId(id);
   }
 
-  /** Eggs count toward the barn — capacity is checked at breeding time. */
+  /**
+   * Eggs count toward the barn — capacity is checked at breeding time.
+   *
+   * ⚠ A `COUNT(*)`, NOT `.all().length` (round 43). This sits on the breeding hot
+   * path — `Breeding.breed` calls it per cover, not just the UI — so materialising
+   * every row of a barn to discard all but its length was paid hundreds of times a
+   * day. `ix_birds_farm_status` covers the farm side.
+   */
   barnCount(): number {
-    return this.database.select().from(birds).where(eq(birds.farmId, this.farmId)).all().length;
+    return (
+      this.database
+        .select({ n: count() })
+        .from(birds)
+        .where(eq(birds.farmId, this.farmId))
+        .get()?.n ?? 0
+    );
   }
 
   /**
@@ -210,7 +223,22 @@ export class Flock {
    */
   processHatchFriday(weekIndex: number): HatchFridayEvents {
     const events: HatchFridayEvents = { weekIndex, hatched: [], forceRetired: [] };
-    for (const row of this.database.select().from(birds).all()) {
+    // ⚠ NARROWED TO EGGS AND ACTIVE BIRDS (round 43), and this is provably
+    // equivalent rather than a shortcut: the loop below has exactly two branches,
+    // one for `status === "egg"` and one for `status === "active"`, and nothing
+    // ever transitions OUT of `retired`. So a retired bird was read, aged, and
+    // matched against both branches every single week to do nothing.
+    //
+    // It matters more the longer a world runs. Retired birds never leave the barn
+    // (the only outflow is being claimed away), so they become the MAJORITY of the
+    // table — 43-70% of a full barn at day 91, and rising — which made this
+    // world-wide weekly scan grow without bound in the one direction round 43
+    // doubles. `ix_birds_status` covers it.
+    for (const row of this.database
+      .select()
+      .from(birds)
+      .where(inArray(birds.status, ["egg", "active"]))
+      .all()) {
       const mine = row.farmId === this.farmId;
       const age = ageOf(row, weekIndex);
       if (row.status === "egg" && !isEggAge(age)) {

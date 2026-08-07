@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import {
@@ -995,27 +995,70 @@ export class Tournaments {
 
   // ── committee, purse & helpers ────────────────────────────────────────────
 
-  /** The committee's book on a set of birds — earnings, wins, figure. */
+  /**
+   * The committee's book on a set of birds — earnings, wins, figure.
+   *
+   * ── THREE QUERIES, NOT THREE PER BIRD (round 43) ───────────────────────────
+   *
+   * This looped over `birdIds` doing three indexed reads each, and `enter()`
+   * calls it whenever a field is FULL — so it was 3N queries on the bump path.
+   * That path had never been hot: the Majors could not fill (20 farms × the old
+   * MAX_PER_BARN 3 = 60 seats against a 64 bracket), so every bump in a 91-day
+   * world was a juvenile one. Round 43 raised the per-barn cap to 5 and capped
+   * the bracket at 32, which means ~124 declarations now chase 96 seats and every
+   * rejected barn re-declares the next day, because `chaseCrowns` runs daily. A
+   * 65-bird book cost 195 queries per attempt, thousands of times a season.
+   *
+   * ⚠ THE ARITHMETIC IS DELIBERATELY UNCHANGED, to the cent and the rounding.
+   * `avgFigure` sums and counts in SQL but DIVIDES AND ROUNDS IN JS, because the
+   * old code did `Math.round(sum / count)` and moving that into SQLite would
+   * change results in the last digit — and this value is a bump tie-breaker, so a
+   * one-off would silently reorder who stands in a hardcore bracket.
+   *
+   * ⚠ AND EVERY REQUESTED BIRD MUST APPEAR IN THE MAP. A grouped query omits
+   * birds with no `battle_log` rows, and an unraced bird is precisely the one
+   * likeliest to be on the bump line. They are seeded first, at zero, so a
+   * missing group means "no fights" rather than "not in the book".
+   */
   static committeeCards(database: DB, birdIds: string[]): Map<string, CommitteeCard> {
     const out = new Map<string, CommitteeCard>();
-    for (const id of birdIds) {
-      const logRows = database.select().from(battleLog).where(eq(battleLog.birdId, id)).all();
-      const bird = database.select().from(birds).where(eq(birds.id, id)).get()!;
-      const purse = database
-        .select()
-        .from(tournamentEntries)
-        .where(eq(tournamentEntries.birdId, id))
-        .all()
-        .reduce((s, e) => s + e.gpWonCents, 0);
-      out.set(id, {
-        earningsCents: logRows.reduce((s, r) => s + Math.max(0, r.gpDeltaCents), 0) + purse,
-        wins: bird.wins,
-        avgFigure:
-          logRows.length === 0
-            ? 0
-            : Math.round(logRows.reduce((s, r) => s + r.pitFigure, 0) / logRows.length),
-      });
+    if (birdIds.length === 0) return out;
+    for (const id of birdIds) out.set(id, { earningsCents: 0, wins: 0, avgFigure: 0 });
+
+    for (const row of database
+      .select({
+        birdId: battleLog.birdId,
+        earned: sql<number>`sum(max(0, ${battleLog.gpDeltaCents}))`,
+        figureSum: sql<number>`sum(${battleLog.pitFigure})`,
+        fights: sql<number>`count(*)`,
+      })
+      .from(battleLog)
+      .where(inArray(battleLog.birdId, birdIds))
+      .groupBy(battleLog.birdId)
+      .all()) {
+      const card = out.get(row.birdId)!;
+      card.earningsCents += row.earned ?? 0;
+      card.avgFigure = row.fights > 0 ? Math.round((row.figureSum ?? 0) / row.fights) : 0;
     }
+
+    for (const row of database
+      .select({
+        birdId: tournamentEntries.birdId,
+        purse: sql<number>`sum(${tournamentEntries.gpWonCents})`,
+      })
+      .from(tournamentEntries)
+      .where(inArray(tournamentEntries.birdId, birdIds))
+      .groupBy(tournamentEntries.birdId)
+      .all())
+      out.get(row.birdId)!.earningsCents += row.purse ?? 0;
+
+    for (const row of database
+      .select({ id: birds.id, wins: birds.wins })
+      .from(birds)
+      .where(inArray(birds.id, birdIds))
+      .all())
+      out.get(row.id)!.wins = row.wins;
+
     return out;
   }
 

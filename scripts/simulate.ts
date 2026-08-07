@@ -23,7 +23,7 @@ import { farms } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { playAllHonestDays } from "@/engine/auto-play";
 import { SIMULATION } from "@/engine/config";
-import { diagnose, formatReport } from "@/engine/doctor";
+import { cardHealth, diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
@@ -91,33 +91,114 @@ if (!keep && existsSync(dbPath)) {
   }
 }
 const db = createDb(dbPath);
+// The clock starts here so `seed + bots` in the TIMING block below measures the
+// seeding it names, rather than measuring nothing because it began after.
+const t0 = performance.now();
 if (!keep) {
   seedGame(db);
   Bots.seed(db);
   console.log(`Fresh world seeded at ${dbPath} — day 0, Friday\n`);
 }
+const seedMs = performance.now() - t0;
 
 const game = new Game(db, DEV_FARM_ID, discoveryPolicy);
 
+// ── TIMING (round 43) ───────────────────────────────────────────────────────
+// There was NO instrumentation here until this round, and the cost of that was
+// concrete: the only way anyone could say how long a 91-day run took was to read
+// the mtimes of the files in data/ and subtract. Round 43 doubles the default run
+// length and reworks half a dozen hot paths, so "is it faster" had to become a
+// question with an answer.
+//
+// ⚠ IT LIVES IN THE SCRIPT, NOT THE ENGINE, and that is deliberate. Putting
+// performance.now() inside Game.runTick would make timing the first non-game
+// concern in the engine, and the three phases that actually matter (seeding, the
+// honest-play pass, the tick) are all owned right here.
+//
+// ⚠ AND THE PER-UNIT LINE IS THE POINT. Wall clock alone cannot compare a
+// 91-day run to a 182-day one, and round 35 already learned this the hard way —
+// see the note in engine/rng.ts: that round compared 2:37 / 2:22 / 2:58 across
+// runs that fought 10,556 / 10,000 / 10,277 fights, so most of what it measured
+// was different amounts of work, not different speed. ms/fight and ms/entry are
+// the numbers an A/B can actually be run on.
+let honestMs = 0;
+let tickMs = 0;
+const dayMs: { day: number; ms: number }[] = [];
+const fmtSec = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+
+let weekStart = performance.now();
+let weekDays = 0;
+
 for (let day = 1; day <= days; day++) {
+  const dayStart = performance.now();
+
   // ── Every player-owned stable plays its honest day ───────────────────
   playAllHonestDays(db, discoveryPolicy);
+  const afterHonest = performance.now();
+  honestMs += afterHonest - dayStart;
 
   // ── The day turns: bots play, the card goes off, staking pays ────────
   const tick = game.tickDay();
+  tickMs += performance.now() - afterHonest;
+  const elapsed = performance.now() - dayStart;
+  dayMs.push({ day: tick.clock.dayIndex, ms: elapsed });
+
   const fights = tick.card.reduce((s, l) => s + l.fights.length, 0);
   const unmatched = tick.card.reduce((s, l) => s + l.unmatched.length, 0);
   const claims = tick.card.reduce((s, l) => s + l.claims.length, 0);
   console.log(
     `Day ${tick.clock.dayIndex} (${tick.clock.date.split(",")[0]}): ${fights} fights, ${unmatched} unmatched, ` +
       `${claims} claims settled, staking paid ${tick.staking.paidGp.toFixed(2)} GP to ${tick.staking.stakers} stakers` +
-      (tick.fridays.length ? ` — HATCH FRIDAY (${tick.fridays[0].hatched.length} hatched)` : "")
+      (tick.fridays.length ? ` — HATCH FRIDAY (${tick.fridays[0].hatched.length} hatched)` : "") +
+      ` — ${fmtSec(elapsed)}`
   );
+
+  // A weekly roll-up on Hatch Friday, which the day line already detects. One
+  // line a week is readable in a 182-day scrollback; one line a day is not, and
+  // the shape of the curve (is it getting slower as the world grows?) is the
+  // thing worth seeing while a long run is still going.
+  weekDays++;
+  if (tick.fridays.length > 0) {
+    const weekTotal = performance.now() - weekStart;
+    console.log(
+      `        wk ${Math.ceil(tick.clock.dayIndex / 7)} · ${weekDays} days in ${fmtSec(weekTotal)} · ` +
+        `avg ${(weekTotal / weekDays / 1000).toFixed(2)}s/day`
+    );
+    weekStart = performance.now();
+    weekDays = 0;
+  }
 }
+const simMs = performance.now() - t0 - seedMs;
 
 // Every run ends with a check-up (round 24). Before this, a sim printed four
 // numbers a day and asserted nothing — which is how two GP burns shipped.
+const doctorStart = performance.now();
 const report = diagnose(db, path.relative(process.cwd(), dbPath));
+const doctorMs = performance.now() - doctorStart;
+
+// Printed BEFORE the health report rather than after, so the report stays the
+// last thing on screen — it is what a human is here to read.
+const totalFights = report.topline.fights;
+const totalEntries = cardHealth(db).entries;
+const slowest = [...dayMs].sort((a, b) => b.ms - a.ms).slice(0, 3);
+console.log(
+  "\nTIMING\n" +
+    `  seed + bots  ${fmtSec(seedMs).padStart(8)}\n` +
+    `  simulation   ${fmtSec(simMs).padStart(8)}   (${days} day(s), avg ` +
+    `${(simMs / Math.max(1, days) / 1000).toFixed(2)}s/day · honest ` +
+    `${Math.round((honestMs / Math.max(1, honestMs + tickMs)) * 100)}% / tick ` +
+    `${Math.round((tickMs / Math.max(1, honestMs + tickMs)) * 100)}%)\n` +
+    `  doctor       ${fmtSec(doctorMs).padStart(8)}\n` +
+    `  total        ${fmtSec(performance.now() - t0).padStart(8)}\n` +
+    (slowest.length
+      ? `  slowest days ${slowest.map((d) => `d${d.day} ${fmtSec(d.ms)}`).join(" · ")}\n`
+      : "") +
+    // ⚠ THE COMPARABLE NUMBERS. Everything above scales with how much work the
+    // world happened to generate; these two do not. Compare THESE across runs.
+    `  per unit     ${totalFights > 0 ? (simMs / totalFights).toFixed(2) : "—"} ms/fight · ` +
+    `${totalEntries > 0 ? (simMs / totalEntries).toFixed(2) : "—"} ms/entry`
+);
+
 console.log("\n" + formatReport(report));
 
 console.log(`\nDone → ${dbPath}`);

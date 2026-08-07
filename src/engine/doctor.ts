@@ -361,11 +361,15 @@ function checkPursesSettle(db: DB): Invariant {
   // Only completed crowns: a cancelled one never sets purseCents at all.
   const done = db.select().from(tournaments).all().filter((t) => t.status === "completed");
   const entries = db.select().from(tournamentEntries).all();
+  // Grouped once (round 43): this used to re-filter every tournament entry in the
+  // world per completed crown, which is O(crowns × entries) for a sum SQLite-shaped
+  // data already knows how to bucket. Same arithmetic, one pass.
+  const paidBy = new Map<number, number>();
+  for (const e of entries)
+    paidBy.set(e.tournamentId, (paidBy.get(e.tournamentId) ?? 0) + e.gpWonCents);
   const offenders: string[] = [];
   for (const t of done) {
-    const paid = entries
-      .filter((e) => e.tournamentId === t.id)
-      .reduce((s, e) => s + e.gpWonCents, 0);
+    const paid = paidBy.get(t.id) ?? 0;
     if (paid !== (t.purseCents ?? 0))
       offenders.push(
         `crown #${t.id} wk${t.weekIndex} ${t.format}: paid ${gp(paid)} of ${gp(t.purseCents ?? 0)}`
@@ -850,15 +854,30 @@ function lobbyFill(db: DB): HealthSection {
 function fragmentation(db: DB): HealthSection {
   const all = db.select().from(lobbies).all();
   const entries = db.select().from(lobbyEntries).all();
+  // ⚠ ONE PASS, NOT A FILTER PER LOBBY (round 43). This was
+  // `for (lobbies) { for (entries.filter(e => e.lobbyId === l.id)) }` — a full
+  // walk of every entry in the world for every lobby in it, which on a 91-day
+  // world is 768 × 10,483 ≈ 8 million comparisons to bucket ten thousand rows.
+  // Both factors grow with run length, so it was the report's only true
+  // quadratic; keying the lobbies once and walking the entries once makes it
+  // linear in both.
+  const keyOf = new Map<number, string>(
+    all.map((l) => [
+      l.id,
+      `${l.mode}/${l.classType}/${l.format}${l.price ? `@${l.price}` : ""}`,
+    ])
+  );
   const byKey = new Map<string, { entries: number; unmatched: number }>();
-  for (const l of all) {
-    const k = `${l.mode}/${l.classType}/${l.format}${l.price ? `@${l.price}` : ""}`;
-    const acc = byKey.get(k) ?? { entries: 0, unmatched: 0 };
-    for (const e of entries.filter((e) => e.lobbyId === l.id)) {
-      acc.entries++;
-      if (e.status === "unmatched") acc.unmatched++;
-    }
-    byKey.set(k, acc);
+  // Seeded from the lobbies rather than the entries so a posted key that drew
+  // NOTHING still appears with zero — the old shape reported those too, and a
+  // dead key is exactly what this section exists to surface.
+  for (const k of keyOf.values()) if (!byKey.has(k)) byKey.set(k, { entries: 0, unmatched: 0 });
+  for (const e of entries) {
+    const k = keyOf.get(e.lobbyId);
+    if (k === undefined) continue;
+    const acc = byKey.get(k)!;
+    acc.entries++;
+    if (e.status === "unmatched") acc.unmatched++;
   }
   const ranked = [...byKey.entries()]
     .filter(([, v]) => v.entries >= DOCTOR.KEY_MIN_SAMPLE)
@@ -876,9 +895,23 @@ function fragmentation(db: DB): HealthSection {
   };
 }
 
+/**
+ * ── ONE READ OF `events`, PASSED DOWN (round 43) ────────────────────────────
+ *
+ * Five health sections each did their own `select().from(events).all()`, so a
+ * single `diagnose` walked the whole ledger five times — 57,478 rows at 91 days,
+ * and it grows with both population and run length. `diagnose` reads it once now
+ * and hands the array around.
+ *
+ * The two INVARIANT checks that also read it (`checkConservation`,
+ * `checkLandConservation`) deliberately keep their own reads: both are inside a
+ * failure branch and cost nothing on a healthy world, and an invariant that
+ * borrows state from the caller is harder to trust than one that fetches its own.
+ */
+type EventRow = typeof events.$inferSelect;
+
 /** Where birds come from and where they go — the supply question. */
-function population(db: DB, topline: Topline): HealthSection {
-  const ev = db.select().from(events).all();
+function population(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
   const week = GameClock.weekOf(topline.day);
   const ages = new Map<number, number>();
   for (const b of db.select().from(birds).all()) {
@@ -1127,11 +1160,11 @@ function fightEconomy(db: DB): HealthSection {
  * HEALTH, never an invariant: there is no correct amount of land, only a rate
  * somebody should read after changing the curve.
  */
-function landSupply(db: DB, topline: Topline): HealthSection {
+function landSupply(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
   const circulating = topline.landStaked + topline.landLiquid;
   let burned = 0;
   const minting = new Map<string, number>();
-  for (const e of db.select().from(events).all()) {
+  for (const e of ev) {
     if (e.lt === null || e.lt === 0) continue;
     if (e.lt < 0) burned -= e.lt;
     else minting.set(e.type, (minting.get(e.type) ?? 0) + e.lt);
@@ -1152,7 +1185,7 @@ function landSupply(db: DB, topline: Topline): HealthSection {
         ([type, amount]) =>
           `  ${type.padEnd(14)}${lt(amount).padStart(12)} LT  ${pct(amount, minted).padStart(6)}`
       ),
-      ...faucetRatio(db, minted, days),
+      ...faucetRatio(ev, minted, days),
     ],
   };
 }
@@ -1185,9 +1218,9 @@ function landSupply(db: DB, topline: Topline): HealthSection {
  * longer clock: at today's rate, how long until the 100-billion mark, and is
  * that a decade or a fortnight?
  */
-function faucetRatio(db: DB, mintedCents: number, days: number): string[] {
+function faucetRatio(ev: EventRow[], mintedCents: number, days: number): string[] {
   let gpFaucetCents = 0;
-  for (const e of db.select().from(events).all())
+  for (const e of ev)
     if (e.gpCents && (e.type === "check_in" || e.type === "farm_registered"))
       gpFaucetCents += e.gpCents;
   gpFaucetCents += ECONOMY.SEED_JUICE * 100; // printed once, at genesis
@@ -1250,9 +1283,9 @@ function replayHealth(db: DB): HealthSection {
 }
 
 /** What has actually fed the staker pool, by source. */
-function stakerInflows(db: DB): HealthSection {
+function stakerInflows(db: DB, ev: EventRow[]): HealthSection {
   const bySource = new Map<string, number>();
-  for (const e of db.select().from(events).all()) {
+  for (const e of ev) {
     if (e.type !== "pool_accrual" || !e.data) continue;
     const d = JSON.parse(e.data) as { stakerPoolCents?: number; source?: string };
     if (!d.stakerPoolCents) continue;
@@ -1285,12 +1318,14 @@ function championships(db: DB): HealthSection {
     if (mine.length === 0) continue;
     const run = mine.filter((t) => t.status === "completed");
     const cancelled = mine.filter((t) => t.status === "cancelled");
-    const fields = run.map(
-      (t) =>
-        entries.filter(
-          (e) => e.tournamentId === t.id && e.status !== "bumped" && e.status !== "refunded"
-        ).length
-    );
+    // Bucketed once rather than a filter per crown (round 43) — the same
+    // O(crowns × entries) shape as checkPursesSettle had. `stood` is the field
+    // that actually took the post: a bumped or refunded entry never stood.
+    const stoodBy = new Map<number, number>();
+    for (const e of entries)
+      if (e.status !== "bumped" && e.status !== "refunded")
+        stoodBy.set(e.tournamentId, (stoodBy.get(e.tournamentId) ?? 0) + 1);
+    const fields = run.map((t) => stoodBy.get(t.id) ?? 0);
     const avg = fields.length ? fields.reduce((s, n) => s + n, 0) / fields.length : 0;
     lines.push(
       `${division.padEnd(9)} ${run.length} run / ${cancelled.length} cancelled · ` +
@@ -1304,9 +1339,11 @@ function championships(db: DB): HealthSection {
     // there" and "the money reaches the winners" looked like the same
     // sentence. Round 40 pays on fights won; this is the line that shows it
     // landed, and that would show it drifting back.
-    const settled = run.map((t) => t.id);
+    // A Set, not an array (round 43): `settled.includes(...)` inside a filter over
+    // every entry made this O(crowns × entries) as well.
+    const settled = new Set(run.map((t) => t.id));
     const paidField = entries.filter(
-      (e) => settled.includes(e.tournamentId) && e.status !== "bumped" && e.status !== "refunded"
+      (e) => settled.has(e.tournamentId) && e.status !== "bumped" && e.status !== "refunded"
     );
     if (paidField.length > 0) {
       const paid = paidField.filter((e) => e.gpWonCents > 0);
@@ -1356,13 +1393,29 @@ function championships(db: DB): HealthSection {
  * appetite for it (claiming in round 19, paid gacha in round 22), and both
  * times it took a whole round to notice.
  */
-function adoption(db: DB): HealthSection {
-  const ev = db.select().from(events).all();
+function adoption(db: DB, ev: EventRow[]): HealthSection {
   const allFarms = db.select().from(farms).all();
   const tEntries = db.select().from(tournamentEntries).all();
   const tById = new Map(db.select().from(tournaments).all().map((t) => [t.id, t]));
-  const farmsWhere = (pred: (e: (typeof ev)[number]) => boolean) =>
-    new Set(ev.filter((e) => pred(e) && e.farmId).map((e) => e.farmId!));
+  // ⚠ ONE PASS OVER `events`, NOT ONE PER DOOR (round 43). `farmsWhere` walked the
+  // whole table each time it was called, so three event-backed doors meant three
+  // full traversals — plus a JSON.parse of every gacha row on the bundle door.
+  // Collected in a single sweep instead; the doors below just read the sets.
+  const studFarms = new Set<string>();
+  const landFarms = new Set<string>();
+  const bundleFarms = new Set<string>();
+  const expandFarms = new Set<string>();
+  for (const e of ev) {
+    if (!e.farmId) continue;
+    if (e.type === "stud_listed") studFarms.add(e.farmId);
+    else if (e.type === "buy_land") landFarms.add(e.farmId);
+    else if (e.type === "barn_expanded") expandFarms.add(e.farmId);
+    else if (e.type === "gacha" && e.data) {
+      // A bundle's payload is shaped differently from a single roll's — parse it
+      // rather than matching on the message text. Only gacha rows pay the parse.
+      if ((JSON.parse(e.data) as { bundle?: boolean }).bundle === true) bundleFarms.add(e.farmId);
+    }
+  }
   const crownFarms = (division: string) =>
     new Set(
       tEntries
@@ -1372,19 +1425,10 @@ function adoption(db: DB): HealthSection {
 
   const doors: [string, Set<string>][] = [
     ["claims placed", new Set(db.select().from(claims).all().map((c) => c.farmId))],
-    ["studs listed", farmsWhere((e) => e.type === "stud_listed")],
-    ["land purchased", farmsWhere((e) => e.type === "buy_land")],
-    [
-      "gacha bundles bought",
-      // A bundle's payload is shaped differently from a single roll's — parse
-      // it rather than matching on the message text.
-      farmsWhere(
-        (e) =>
-          e.type === "gacha" &&
-          !!e.data &&
-          (JSON.parse(e.data) as { bundle?: boolean }).bundle === true
-      ),
-    ],
+    ["studs listed", studFarms],
+    ["land purchased", landFarms],
+    ["gacha bundles bought", bundleFarms],
+    ["barn expanded", expandFarms],
     ["Major entries", crownFarms("major")],
     ["juvenile championship", crownFarms("juvenile")],
   ];
@@ -1826,6 +1870,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
   const topline = computeTopline(db);
   const clockState = GameClock.stateOf(topline.day);
   const card = cardHealth(db);
+  // Read ONCE, handed to every section that needs it (round 43) — see EventRow.
+  // Five sections used to fetch this table for themselves.
+  const allEvents = db.select().from(events).all();
 
   const conservation = checkConservation(db);
   const invariants = [
@@ -1867,7 +1914,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     groupStage(db),
     lobbyFill(db),
     fragmentation(db),
-    population(db, topline),
+    population(db, topline, allEvents),
     // Right after POPULATION: that section counts the flock, this one asks
     // whether the birds coming out of it are any better than the ones going in.
     generations(db),
@@ -1876,11 +1923,11 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     fightEconomy(db),
     // Land before the pool it feeds: STAKER POOL reports what a stake EARNS,
     // which is unreadable without knowing how much land the world made.
-    landSupply(db, topline),
+    landSupply(db, topline, allEvents),
     replayHealth(db),
-    stakerInflows(db),
+    stakerInflows(db, allEvents),
     championships(db),
-    adoption(db),
+    adoption(db, allEvents),
     discovery(discoveryAudit),
   ];
 

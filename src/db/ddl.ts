@@ -201,6 +201,16 @@ CREATE INDEX IF NOT EXISTS ix_battle_log_farm ON battle_log(farm_id);
 CREATE INDEX IF NOT EXISTS ix_birds_farm_status ON birds(farm_id, status);
 CREATE INDEX IF NOT EXISTS ix_birds_status ON birds(status);
 CREATE INDEX IF NOT EXISTS ix_birds_mother ON birds(mother_id);
+-- ⚠ AN EXPRESSION INDEX, and it must match nameIsTaken's predicate EXACTLY
+-- (round 43). Bird names are unique world-wide, enforced in code at every
+-- creation door rather than by a constraint, and the check used to load every
+-- name in the world into a Set per bird created — a full scan per bird, so
+-- quadratic over a run. It is one indexed lookup now. SQLite will only use this
+-- index for a lower(name) = ? comparison, so if that predicate in
+-- engine/naming.ts ever changes shape, this silently stops being used and the
+-- lookup quietly becomes a scan again with nothing failing.
+-- (No backticks in this file: the whole DDL is one template literal.)
+CREATE INDEX IF NOT EXISTS ix_birds_name_lower ON birds(lower(name));
 CREATE INDEX IF NOT EXISTS ix_lobby_entries_lobby ON lobby_entries(lobby_id, status);
 CREATE INDEX IF NOT EXISTS ix_lobby_entries_bird_day ON lobby_entries(bird_id, day_entered);
 CREATE INDEX IF NOT EXISTS ix_lobby_entries_farm ON lobby_entries(farm_id);

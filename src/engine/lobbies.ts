@@ -147,6 +147,25 @@ export interface EntryCard {
   // Claims on claimer entries are SEALED — no count shown until post time.
 }
 
+/**
+ * HOW MUCH OF THE BOARD TO BUILD (round 43) — a cost dial, not a different view.
+ *
+ *   "full"  — every visible entry with its per-blade past performance. What a
+ *             human or an agent reads; the API and the Handbook use this.
+ *   "field" — who is entered, without the past-performance line. Enough to place
+ *             a claim (a claim needs a NAMED bird and its record), and it skips
+ *             the one field that scans a bird's whole career.
+ *   "fills" — no entries at all: the key, the fee, the fill count. What the bots'
+ *             liquidity pass reads, and all it ever read.
+ *
+ * This exists because building the board was measured as the largest single cost
+ * in the simulation — ~82% of a tick was inside `Bots.playDay`, and most of that
+ * was cards nobody looked at. The fog rules are UNCHANGED by the dial: what a
+ * farm may see is decided in `viewLobby`, and asking for less detail can never
+ * reveal more.
+ */
+export type BoardDetail = "full" | "field" | "fills";
+
 export interface LobbyView {
   // null on a PHANTOM — a key today's card posted that nobody has entered yet.
   // Explicitly paired with `offered` rather than left as a bare null, so a
@@ -390,13 +409,19 @@ export class Lobbies {
    * liquidity pass and the claim shoppers) do — a phantom has no entries and an
    * even fill of zero.
    */
-  board(): LobbyView[] {
+  board(opts: { detail?: BoardDetail; classType?: Lobby } = {}): LobbyView[] {
+    const detail = opts.detail ?? "full";
+    // Scoped in SQL (round 43): completed lobbies leave the board, but the table
+    // keeps every one a world ever ran — 768 rows by day 91 and climbing — and
+    // this read the lot to keep the dozen still live. `ix_lobbies_status_day`
+    // covers the predicate.
     const real = this.database
       .select()
       .from(lobbies)
+      .where(inArray(lobbies.status, ["open", "closed"]))
       .all()
-      .filter((l) => l.status === "open" || l.status === "closed")
-      .map((l) => this.viewLobby(l.id));
+      .filter((l) => opts.classType === undefined || l.classType === opts.classType)
+      .map((l) => this.viewLobby(l.id, detail));
     const sameKey = (a: LobbyView, b: CardKey) =>
       a.mode === b.mode &&
       a.classType === b.classType &&
@@ -1122,7 +1147,19 @@ export class Lobbies {
       .get();
   }
 
-  private viewLobby(lobbyId: number): LobbyView {
+  /**
+   * `cards: false` returns the lobby WITHOUT its entry cards — the fill count,
+   * the key, the fee, nothing else (round 43).
+   *
+   * Building a card is expensive: three queries per entered bird (the bird, its
+   * week, and its per-blade format records), and round 36's `lookupFor` only
+   * amortises two of them. The bots' liquidity pass reads `filled` and `fee` and
+   * NOTHING ELSE, yet it called this for every open lobby twice a day per barn —
+   * which measured as the single largest cost in the whole simulation, ~82% of a
+   * tick spent inside `Bots.playDay` and most of that here. A cheap board is not
+   * a different view; it is the same view with the part nobody asked for omitted.
+   */
+  private viewLobby(lobbyId: number, detail: BoardDetail = "full"): LobbyView {
     const lobby = this.database.select().from(lobbies).where(eq(lobbies.id, lobbyId)).get()!;
     const entries = this.database
       .select()
@@ -1146,8 +1183,26 @@ export class Lobbies {
       price: lobby.price,
       fee: feeFor(lobby.mode, lobby.classType, lobby.price ?? undefined),
       filled: entries.length,
-      entries: visible.map((e) => this.card(e, this.lookupFor(entries), closed ? entries : undefined)),
+      // ⚠ THE LOOKUP IS BUILT ONCE, OUTSIDE THE MAP (round 43). It used to be
+      // `visible.map((e) => this.card(e, this.lookupFor(entries), …))`, which
+      // constructs the whole per-lobby lookup FOR EVERY ENTRY — silently undoing
+      // the round-36 N+1 fix that the comment on `lookupFor` still claims. A
+      // fifteen-bird lobby paid thirty redundant queries and re-primed a Flock
+      // cache that could never hit.
+      entries: detail === "fills" ? [] : this.cardsFor(visible, entries, closed, detail),
     };
+  }
+
+  /** The reveal for one lobby's visible entries, sharing a single lookup. */
+  private cardsFor(
+    visible: (typeof lobbyEntries.$inferSelect)[],
+    all: (typeof lobbyEntries.$inferSelect)[],
+    closed: boolean,
+    detail: BoardDetail
+  ): EntryCard[] {
+    if (visible.length === 0) return [];
+    const lookup = this.lookupFor(all);
+    return visible.map((e) => this.card(e, lookup, closed ? all : undefined, detail === "full"));
   }
 
   /**
@@ -1197,7 +1252,8 @@ export class Lobbies {
   private card(
     entry: typeof lobbyEntries.$inferSelect,
     lookup: LobbyLookup,
-    field?: (typeof lobbyEntries.$inferSelect)[]
+    field?: (typeof lobbyEntries.$inferSelect)[],
+    records = true
   ): EntryCard {
     const bird = lookup.flockFor(entry.farmId).byId(entry.birdId);
     const farm = lookup.farms.get(entry.farmId)!;
@@ -1216,7 +1272,12 @@ export class Lobbies {
         stars: bird.stars,
         // ONE lifetime record (ruled round 15) — juvenile fights included.
         career: { wins: bird.wins, losses: bird.losses },
-        formatRecords: this.formatRecords(bird.id),
+        // ⚠ THE ONE EXPENSIVE FIELD ON A CARD (round 43). `formatRecords` scans a
+        // bird's WHOLE career to build its per-blade past-performance line, so it
+        // grows for every bird all run — and the bots' claim shopper, which reads
+        // only `career` and `age`, was paying it for every bird on every claimer
+        // field twice a day. Omitted at detail "field"; see BoardDetail.
+        formatRecords: records ? this.formatRecords(bird.id) : {},
       },
       mine: entry.farmId === this.farmId,
     };
