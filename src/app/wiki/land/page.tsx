@@ -209,6 +209,11 @@ export default function LandPage() {
         stake the Majors represent. A bird that survives several rounds banks that amount again and
         again before it ever gets to the elimination grants below.
       </p>
+      <p className="dim">
+        Every one of those per-fight awards is written into your ledger as its own line, round by
+        round. So you can add up a Major night yourself and check it against your barn&apos;s land
+        pile — every token in the world traces back to a line somebody can read.
+      </p>
       <p>
         On top of the per-fight land, every eliminated bird collects a one-time grant the moment it
         falls — and the grants run <strong>backwards</strong>. The earliest exit pays the most:
@@ -259,7 +264,12 @@ export default function LandPage() {
             <tr>
               <td>Every gacha roll</td>
               <td className="num">{wholeLt(LAND.PER_GACHA_ROLL)} LT</td>
-              <td>Free or paid — every roll pays land, whatever else drops.</td>
+              <td>
+                Free or paid — every roll pays land, whatever else drops. The{" "}
+                {ECONOMY.BUNDLE_ROLLS}-roll bundle pays for all {ECONOMY.BUNDLE_ROLLS} of its rolls
+                ({wholeLt(LAND.PER_GACHA_ROLL * ECONOMY.BUNDLE_ROLLS)} LT), banked as one line in
+                your ledger rather than {ECONOMY.BUNDLE_ROLLS} separate ones.
+              </td>
             </tr>
             <tr>
               <td>Buying land outright</td>

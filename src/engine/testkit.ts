@@ -46,14 +46,19 @@ export interface WorldOptions {
   rivalFlock?: boolean;
   rivalFlockSeed?: number;
   /**
-   * Stamp every bird already in the world with enough qualification points to
-   * stand in a championship.
+   * Give every bird already in the world a career worth seating — enough for
+   * the Selection Committee to rank it above an unraced newcomer.
    *
-   * ⚠ OPT-IN, and it must stay that way. Tests that assert a fresh win banks
-   * exactly POINTS_FOR.real would still PASS with pre-stamped birds while
-   * testing nothing at all. It also deliberately does NOT reach birds a test
-   * inserts afterwards — the Selection Committee's bump test depends on that
-   * asymmetry to build a field weaker than its newcomer.
+   * Round 37 changed what this MEANS. It used to stamp qualification points,
+   * because a crown had a hard points gate. That gate is gone: Thursday is
+   * open to any age-FORK bird, and the committee seats on CAREER EARNINGS. So
+   * the flag now stamps a real win apiece — which is what the bots' own
+   * appetite asks for (CROWN_CHASE.CROWN_MIN_REAL_WINS) and what puts a bird
+   * above the earnings floor.
+   *
+   * ⚠ OPT-IN, and it must stay that way. It deliberately does NOT reach birds
+   * a test inserts afterwards — the Selection Committee's bump test depends on
+   * that asymmetry to build a field weaker than its newcomer.
    */
   qualified?: boolean;
   /** Extra registered barns, in order. */
@@ -152,7 +157,7 @@ export function world(opts: WorldOptions = {}): World {
   // After every flock is seeded, before anything a test inserts — see the
   // warning on the option itself.
   if (opts.qualified)
-    db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run();
+    db.update(birds).set({ wins: 1, stakesWins: 1 }).run();
 
   const devFlock = new Flock(db, dev.farmId);
   return {

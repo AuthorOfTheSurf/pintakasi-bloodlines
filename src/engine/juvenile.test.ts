@@ -28,10 +28,9 @@ function world() {
     secondaryColor: "red",
   });
   seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
-  // The Majors' gate (fully covered in tournaments.test.ts) is qualification
-  // points, not age — stamp the veterans qualified so the contrast test
-  // below doesn't have to campaign its way in too.
-  db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run();
+  // Round 37 deleted a line here that stamped every bird with the Majors'
+  // qualification points. Thursday is open on age alone now, so the hardcore
+  // contrast test below simply enters its veterans.
   return {
     db,
     devId: dev.farmId,
@@ -121,11 +120,23 @@ describe("registration gates", () => {
     expect(() => w.dev.enter(kidlat.id, "b2", "juvenile")).not.toThrow();
   });
 
-  test("the qualification ladder: under QUALIFYING_WINS refused, at threshold accepted — and free", () => {
+  /**
+   * ⚠ UNTOUCHED BY ROUND 37, deliberately — and that is the point of the test
+   * now. Opening the Majors to any age-3 bird did NOT open the discovery-year
+   * stage: a chick still ladders its way in on juvenile wins. The two crowns
+   * are gated on opposite principles for opposite reasons — Thursday is
+   * hardcore and self-limiting (lose and the career ends), while Wednesday
+   * costs a chick nothing, so an open juvenile field would just be every chick
+   * in the world showing up.
+   */
+  test("the juvenile ladder held: under QUALIFYING_WINS refused, at threshold accepted — and free", () => {
     const w = world();
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins).toBe(0); // a fresh legacy chick has no discovery-year record yet
     expect(() => w.dev.enter(kidlat.id, "b2", "juvenile")).toThrow(/discovery ladder/);
+    // …and it cannot dodge the ladder by walking into the open Major instead:
+    // the fork gate refuses it two years early.
+    expect(() => w.dev.enter(kidlat.id, "b1")).toThrow(/age 3/);
     // One win short still isn't enough…
     qualifyJuvenile(w.db, kidlat.id, JUVENILE_MAJOR.QUALIFYING_WINS - 1);
     expect(() => w.dev.enter(kidlat.id, "b2", "juvenile")).toThrow(/discovery ladder/);
@@ -146,8 +157,8 @@ describe("purse & record accounting", () => {
     qualifyJuvenile(w.db, "rival-5"); // the rival's own Kidlat-slot chick
     w.dev.enter(kidlat.id, "b2", "juvenile");
     w.rival.enter("rival-5", "b2", "juvenile");
-    // No qualified Major entrants this week, so the Majors' own crowns
-    // cancel for want of a field — the juvenile slice is the only spend.
+    // Nobody registered for a Major this week, so Thursday's crowns cancel
+    // for want of a field — the juvenile slice is the only spend.
     const tick = tickThroughCrownDay(w.game);
     const juv = tick.pintakasi.find((r) => divisionOf(w.db, r.tournamentId) === "juvenile")!;
     expect(juv.cancelled).toBe(false);
@@ -195,8 +206,8 @@ describe("it is NOT hardcore — the discovery-year contrast with the Majors", (
     qualifyJuvenile(w.db, "rival-5");
     w.dev.enter(kidlat.id, "b2", "juvenile");
     w.rival.enter("rival-5", "b2", "juvenile");
-    // The Major bracket: one qualified veteran per farm (already stamped
-    // crownPoints in world()).
+    // The Major bracket: one age-3+ veteran per farm — since round 37 that is
+    // the whole of what a Major asks for.
     const sinag = byName(w.devFlock, "Sinag");
     w.dev.enter(sinag.id, "b1");
     w.rival.enter("rival-8", "b1");

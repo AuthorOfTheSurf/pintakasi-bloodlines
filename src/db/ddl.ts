@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS birds (
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
   stakes_wins INTEGER NOT NULL DEFAULT 0,
-  crown_points INTEGER NOT NULL DEFAULT 0,
   retired_by TEXT CHECK (retired_by IN ('manual','age','hardcore')),
   retired_week INTEGER,
   listed_stud INTEGER NOT NULL DEFAULT 0,

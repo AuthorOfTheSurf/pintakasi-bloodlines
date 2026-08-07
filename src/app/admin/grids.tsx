@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { AgGridReact } from "ag-grid-react";
-import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  themeQuartz,
+  type ColDef,
+  type SizeColumnsToContentStrategy,
+} from "ag-grid-community";
 import { LT_CENTS } from "@/engine/config";
 import { gradeColor, gradeOf, overallGradeOf, type Grade } from "@/engine/grades";
 import {
@@ -36,6 +42,32 @@ const officeTheme = themeQuartz.withParams({
   fontFamily: "ui-monospace, Menlo, monospace",
   fontSize: 12.5,
 });
+
+/**
+ * Every grid sizes itself to its contents on first render (round 37) — the
+ * hand-tuned pixel widths below are only a starting guess, and the office was
+ * being read with half the headers and half the farm names clipped, which meant
+ * dragging columns wider by hand on every visit.
+ *
+ * `skipHeader: false` is the point of the exercise: measure the HEADER as well
+ * as the cells, so "GP per staked LT" gets its own column back. The scale-up
+ * pass then spends whatever width is left over on the columns that can take it,
+ * which is what `flex` used to be doing for one column per grid.
+ *
+ * Two things are deliberately NOT here. There is no `defaultMaxWidth` /
+ * `defaultMinWidth`: those OVERRIDE a column's own min/max, which would unlock
+ * the six stat columns from their identical width (see `statCol`) and let them
+ * go ragged again — the exact complaint round 19 fixed. Instead the one column
+ * that can genuinely run away, the ledger's free-text message, is capped by
+ * name; it has `tooltipField` for the overflow. And nothing here is sticky: the
+ * grid stays `resizable`, so a drag afterwards still wins.
+ */
+const AUTOSIZE: SizeColumnsToContentStrategy = {
+  type: "fitCellContents",
+  skipHeader: false,
+  scaleUpToFitGridWidth: true,
+  columnLimits: [{ colId: "message", maxWidth: 620 }],
+};
 
 export interface FarmRowUI {
   name: string;
@@ -74,6 +106,7 @@ export interface FightRowUI {
 }
 
 export interface BirdRowUI {
+  id: string; // never shown — the key the fight-history pane filters on
   name: string;
   grade: Grade;
   farm: string;
@@ -104,9 +137,37 @@ export interface BirdRowUI {
   netLt: number; // hundredths of a token (round 36)
 }
 
+/**
+ * One row per fight a bird has had (round 37). The Fights tab answers "what
+ * happened in the pit last night"; this answers the other question a barn asks
+ * — "what has THIS bird actually done?" — which used to mean filtering the
+ * Fights grid twice, once on winner and once on loser.
+ *
+ * Rows arrive for every bird at once and the pane filters on `birdId` in the
+ * browser: the whole set is already in memory for the Birds grid, and a
+ * per-click round trip would be the only thing on the page that talks to the
+ * server.
+ */
+export interface BirdFightRowUI {
+  birdId: string;
+  day: number;
+  card: string;
+  opponent: string;
+  opponentFarm: string;
+  opponentFarmP: string;
+  opponentFarmS: string;
+  result: string; // "win" | "loss"
+  figure: number;
+  opponentFigure: number | null;
+  gp: number; // signed whole GP
+}
+
 export interface BreedingRowUI {
   seq: number;
-  conceived: number; // day the cover was bought
+  // Day the cover was bought. No longer a column of its own (round 37) — the
+  // stage tells the story and the sprite wanted the room — but kept on the row
+  // because it is the natural thing to show if the book ever grows a detail view.
+  conceived: number;
   egg: string;
   eggGrade: Grade;
   hen: string;
@@ -183,8 +244,18 @@ export interface LedgerRowUI {
   lt: number | null; // signed, in hundredths of a token (round 36)
 }
 
+/**
+ * GP, always to the centavo (round 37). The minimum matters as much as the
+ * maximum: with only a maximum, a column of purses rendered "40", "40.5" and
+ * "39.75" down the same rail, three different-looking units for one currency —
+ * the same complaint `ltNum` below was written to answer for land. Callers that
+ * pass a `dp` are quoting a RATE, not an amount; they get that many places,
+ * fixed, for the same reason.
+ */
 const num = (v: number | null | undefined, dp = 2) =>
-  v == null ? "" : v.toLocaleString("en-US", { maximumFractionDigits: dp });
+  v == null
+    ? ""
+    : v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 
 const signed = (v: number | null | undefined) =>
   v == null || v === 0 ? "" : `${v > 0 ? "+" : "−"}${num(Math.abs(v))}`;
@@ -246,12 +317,14 @@ function TokenAmountCell(props: {
   // land rows in hundredths of a token (round 36). `dp` only means anything to
   // GP — land is fixed at two places by ltNum.
   const isLt = props.token === "lt";
-  const mag = (v: number, dpFallback = 2) =>
-    isLt ? ltNum(v) : num(v, props.dp ?? dpFallback);
+  // Two places whichever door the value comes through: the "positive" path used
+  // to round to whole units, so one column of the same currency disagreed with
+  // its neighbours about how much precision GP has (round 37).
+  const mag = (v: number) => (isLt ? ltNum(v) : num(v, props.dp ?? 2));
   const text = props.display === "signed"
     ? (isLt ? signedLt(props.value) : signed(props.value))
     : props.display === "positive"
-      ? (props.value ? `+${mag(props.value, 0)}` : "")
+      ? (props.value ? `+${mag(props.value)}` : "")
       : mag(props.value);
   if (!text) return null;
   return (
@@ -369,7 +442,7 @@ const FIGHT_COLS: ColDef<FightRowUI>[] = [
     type: "rightAligned",
     sortable: false,
   },
-  { field: "pot", headerName: "pot GP", type: "rightAligned", width: 95 },
+  { field: "pot", headerName: "pot GP", type: "rightAligned", width: 95, valueFormatter: (p) => num(p.value) },
   { field: "element", width: 115, cellRenderer: ElementCell },
 ];
 
@@ -429,6 +502,29 @@ function GachaEggCell(props: { value?: string; data?: GachaRowUI }) {
   );
 }
 
+/**
+ * The breeding book's egg — sprite, then grade, then name (round 37). It reads
+ * as a clutch rather than a spreadsheet, which is what the tab is for; the day
+ * the cover was bought went away to make room, since `stage` already says where
+ * in the pregnant → nest → hatched arc the egg is.
+ *
+ * The shell is Cream for everything: a breeding row carries no coat, and the
+ * coat isn't decided until the chick hatches anyway. To tint these properly the
+ * row would need a coat field fed from the egg record.
+ */
+function BreedingEggCell(props: { value?: string; data?: BreedingRowUI }) {
+  if (!props.value || !props.data) return null;
+  return (
+    <span>
+      <EggSprite shell={BASE_COAT_HEX.Cream} size={18} />{" "}
+      <b className="grade" style={{ color: gradeColor(props.data.eggGrade) }}>
+        {props.data.eggGrade}
+      </b>{" "}
+      {props.value}
+    </span>
+  );
+}
+
 // The six stats, spelled out and all the same width (round 19) — abbreviated
 // headers ("agi / sig / sta") read like a spreadsheet nobody explained, and
 // ragged widths made the block hard to scan across rows.
@@ -452,6 +548,9 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
     sortable: false,
     filter: false,
     resizable: false,
+    // A sprite has no text to measure, so leave it out of the auto-size pass —
+    // fitting it to "contents" would squeeze the photo against the row edge.
+    suppressAutoSize: true,
     cellRenderer: BirdAvatarCell,
     // Kill the default cell padding — it was squeezing the sprite and
     // showing an overflow ellipsis beside it.
@@ -515,15 +614,50 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   { field: "trimColor", headerName: "trim", width: 105 },
 ];
 
-const BREEDING_COLS: ColDef<BreedingRowUI>[] = [
-  { field: "seq", hide: true, sort: "desc" },
-  { field: "conceived", headerName: "day", type: "rightAligned", width: 80 },
+const BIRD_FIGHT_COLS: ColDef<BirdFightRowUI>[] = [
+  // Most recent fight first — a bird's history is read backwards from tonight.
+  { field: "day", type: "rightAligned", width: 80, sort: "desc", sortIndex: 0 },
+  { field: "card", minWidth: 200 },
+  { field: "opponent", width: 175 },
+  farmCol("opponentFarm", "opponent's farm", "opponentFarm"),
   {
-    field: "egg",
-    minWidth: 190,
-    cellRenderer: GradedNameCell,
-    cellRendererParams: { gradeField: "eggGrade" },
+    field: "result",
+    width: 100,
+    // Same green/red the ΔGP columns use, so a losing streak is visible from
+    // across the room without reading a word.
+    cellClassRules: {
+      up: (p) => p.value === "win",
+      down: (p) => p.value === "loss",
+    },
   },
+  {
+    colId: "figures",
+    headerName: "figures",
+    // Its own figure first, always — the Fights tab reads winner/loser, this one
+    // reads mine/theirs, which is the only way to see a bird beaten by a shorter
+    // price. A null opponent figure means the bout had no quoted counter-price.
+    valueGetter: (p) =>
+      p.data ? `${p.data.figure} / ${p.data.opponentFigure ?? "—"}` : "",
+    width: 110,
+    type: "rightAligned",
+    sortable: false,
+  },
+  {
+    field: "gp",
+    headerName: "GP",
+    type: "rightAligned",
+    width: 110,
+    cellRenderer: TokenAmountCell,
+    cellRendererParams: { token: "gp", display: "signed" },
+    cellClassRules: deltaClasses,
+  },
+];
+
+const BREEDING_COLS: ColDef<BreedingRowUI>[] = [
+  // Newest cover first. This is the sort key, not the (now removed) day column,
+  // so dropping the visible day changes nothing about the order.
+  { field: "seq", hide: true, sort: "desc" },
+  { field: "egg", minWidth: 190, cellRenderer: BreedingEggCell },
   {
     field: "hen",
     width: 165,
@@ -539,8 +673,14 @@ const BREEDING_COLS: ColDef<BreedingRowUI>[] = [
   farmCol("studFarm", "stud's farm", "studFarm"),
   farmCol("nestFarm", "nest (egg's farm)", "nestFarm"),
   { field: "stage", width: 120 },
-  { field: "fee", headerName: "fee GP", type: "rightAligned", width: 90 },
-  { field: "studShare", headerName: "stud share GP", type: "rightAligned", width: 125 },
+  { field: "fee", headerName: "fee GP", type: "rightAligned", width: 90, valueFormatter: (p) => num(p.value) },
+  {
+    field: "studShare",
+    headerName: "stud share GP",
+    type: "rightAligned",
+    width: 125,
+    valueFormatter: (p) => num(p.value),
+  },
 ];
 
 const GACHA_COLS: ColDef<GachaRowUI>[] = [
@@ -620,6 +760,8 @@ const STAKING_COLS: ColDef<StakingRowUI>[] = [
     headerName: "GP per staked LT",
     type: "rightAligned",
     width: 160,
+    // The one money-ish column that is NOT two places: this is a rate, and at
+    // two places most barns would read a flat "0.01".
     valueFormatter: (p) => num(p.value, 3),
   },
   {
@@ -669,6 +811,7 @@ for (const cols of [
   FARM_COLS,
   FIGHT_COLS,
   BIRD_COLS,
+  BIRD_FIGHT_COLS,
   BREEDING_COLS,
   GACHA_COLS,
   GP_COLS,
@@ -692,6 +835,7 @@ export function AdminTabs({
   farms,
   fights,
   birds,
+  birdFights,
   breeding,
   gacha,
   gp,
@@ -706,6 +850,7 @@ export function AdminTabs({
   farms: FarmRowUI[];
   fights: FightRowUI[];
   birds: BirdRowUI[];
+  birdFights: BirdFightRowUI[]; // every bird's fights; the pane filters by birdId
   breeding: BreedingRowUI[];
   gacha: GachaRowUI[];
   gp: GpRowUI[];
@@ -718,6 +863,14 @@ export function AdminTabs({
   pintakasiCount: number;
 }) {
   const [tab, setTab] = useState<Tab>("Farms");
+  // Which bird's fight history is open under the Birds grid, by id. Clicking the
+  // same row again closes it, so the click that opened the pane is also the way
+  // out of it.
+  const [openBird, setOpenBird] = useState<string | null>(null);
+  const selectedBird = openBird ? birds.find((b) => b.id === openBird) ?? null : null;
+  const selectedFights = selectedBird
+    ? birdFights.filter((f) => f.birdId === selectedBird.id)
+    : [];
   const counts: Record<Tab, number> = {
     Farms: farms.length,
     Fights: fights.length,
@@ -745,20 +898,93 @@ export function AdminTabs({
           </button>
         ))}
       </nav>
-      {pane("Farms", 720, <AgGridReact<FarmRowUI> theme={officeTheme} rowData={farms} columnDefs={FARM_COLS} defaultColDef={base} />)}
-      {pane("Fights", 640, <AgGridReact<FightRowUI> theme={officeTheme} rowData={fights} columnDefs={FIGHT_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
-      {pane("Birds", 640, <AgGridReact<BirdRowUI> theme={officeTheme} rowData={birds} columnDefs={BIRD_COLS} defaultColDef={{ ...base, floatingFilter: true }} rowHeight={38} />)}
-      {pane("Breeding", 640, <AgGridReact<BreedingRowUI> theme={officeTheme} rowData={breeding} columnDefs={BREEDING_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
-      {pane("Gacha", 640, <AgGridReact<GachaRowUI> theme={officeTheme} rowData={gacha} columnDefs={GACHA_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
-      {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
+      {pane("Farms", 720, <AgGridReact<FarmRowUI> theme={officeTheme} rowData={farms} columnDefs={FARM_COLS} defaultColDef={base} autoSizeStrategy={AUTOSIZE} />)}
+      {pane("Fights", 640, <AgGridReact<FightRowUI> theme={officeTheme} rowData={fights} columnDefs={FIGHT_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      {/*
+        Birds is the one tab that stacks two grids (round 37): the flock on top,
+        and — once a row is clicked — that bird's fight history underneath. It
+        can't go through `pane` because of the second grid, but it keeps the same
+        display:none trick, so the flock grid stays mounted and its sort, filters
+        and the open bird all survive a trip to another tab and back.
+      */}
+      <div style={{ display: tab === "Birds" ? "block" : "none" }}>
+        {/* The flock gives up height when the history opens, so both fit on one screen. */}
+        <div style={{ height: selectedBird ? 420 : 640 }}>
+          <AgGridReact<BirdRowUI>
+            theme={officeTheme}
+            rowData={birds}
+            columnDefs={BIRD_COLS}
+            defaultColDef={{ ...base, floatingFilter: true }}
+            rowHeight={38}
+            autoSizeStrategy={AUTOSIZE}
+            onRowClicked={(e) =>
+              setOpenBird((cur) => (cur === e.data?.id ? null : e.data?.id ?? null))
+            }
+            getRowStyle={(p) =>
+              p.data && p.data.id === openBird ? { background: "#33291a" } : undefined
+            }
+          />
+        </div>
+        {selectedBird ? (
+          <div style={{ marginTop: "1rem" }}>
+            <h3 style={{ margin: "0 0 .5rem", fontSize: ".95rem" }}>
+              <b className="grade" style={{ color: gradeColor(selectedBird.grade) }}>
+                {selectedBird.grade}
+              </b>{" "}
+              {selectedBird.name}{" "}
+              <span className="world">
+                {selectedBird.farm} · {selectedBird.wins}-{selectedBird.losses}
+              </span>{" "}
+              {/* Clicking the row again closes it too — this is the affordance
+                  for anyone who doesn't guess that. */}
+              <button
+                onClick={() => setOpenBird(null)}
+                style={{
+                  font: "inherit",
+                  fontSize: ".8em",
+                  cursor: "pointer",
+                  color: "#9a8f78",
+                  background: "transparent",
+                  border: "1px solid #3a342a",
+                  borderRadius: 4,
+                  padding: ".1rem .5rem",
+                  marginLeft: ".4rem",
+                }}
+              >
+                close ✕
+              </button>
+            </h3>
+            {selectedFights.length === 0 ? (
+              // An empty grid reads as a loading bug. Say the plain thing instead:
+              // most birds on this list are eggs, chicks, or simply unmatched.
+              <p className="world">
+                {selectedBird.name} has never been in the pit — no fight history yet.
+              </p>
+            ) : (
+              <div style={{ height: 300 }}>
+                <AgGridReact<BirdFightRowUI>
+                  theme={officeTheme}
+                  rowData={selectedFights}
+                  columnDefs={BIRD_FIGHT_COLS}
+                  defaultColDef={base}
+                  autoSizeStrategy={AUTOSIZE}
+                />
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+      {pane("Breeding", 640, <AgGridReact<BreedingRowUI> theme={officeTheme} rowData={breeding} columnDefs={BREEDING_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      {pane("Gacha", 640, <AgGridReact<GachaRowUI> theme={officeTheme} rowData={gacha} columnDefs={GACHA_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
       {/* Staking leads with the world's two totals, then the farm-by-farm book. */}
       <div style={{ display: tab === "Staking" ? "block" : "none" }}>
         {stakingSummary}
         <div style={{ height: 420 }}>
-          <AgGridReact<StakingRowUI> theme={officeTheme} rowData={staking} columnDefs={STAKING_COLS} defaultColDef={base} />
+          <AgGridReact<StakingRowUI> theme={officeTheme} rowData={staking} columnDefs={STAKING_COLS} defaultColDef={base} autoSizeStrategy={AUTOSIZE} />
         </div>
       </div>
-      {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} />)}
+      {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
       <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
       <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>
     </section>

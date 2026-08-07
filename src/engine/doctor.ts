@@ -459,6 +459,81 @@ function checkFightCounts(db: DB): Invariant {
   };
 }
 
+/**
+ * LT CONSERVATION (round 37) — the land twin of the GP proof.
+ *
+ * GP has had a conservation proof since round 11 and it has caught two silent
+ * burns (gacha in round 14, buyLand in round 22). Land had none, for one
+ * structural reason: the Majors minted per fight but recorded the award as
+ * `data.landEach` on a world-level `fight` event — unsigned, and belonging to
+ * no farm — so there was nothing to sum. Round 37 gives that mint its own
+ * signed per-farm `crown_land` row, which makes this checkable at all.
+ *
+ * The claim: every Land Token in the world got there through a ledger row.
+ *
+ *   sum(events.lt)  ==  sum(farms.landTokensCents + farms.stakedLandCents)
+ *
+ * Land is a strictly simpler thing to prove than GP: there are no escrows and
+ * no pools, so there is no timing window where the books are legitimately out.
+ * A mismatch is a bug, always. Staking is deliberately silent here — it moves
+ * a farm's land between its own two piles and writes NO `lt`, which is why the
+ * right-hand side sums both piles rather than just the liquid one.
+ *
+ * Two things this refuses that nothing else could: a path that mints land
+ * without a ledger row (the gacha bundle did exactly that until round 37 —
+ * one token per bundle, forever), and a path that writes a row without moving
+ * the land.
+ */
+function checkLandConservation(db: DB): Invariant {
+  const allFarms = db.select().from(farms).all();
+  const held = allFarms.reduce((s, f) => s + f.landTokensCents + f.stakedLandCents, 0);
+  const ledgered = db
+    .select()
+    .from(events)
+    .all()
+    .reduce((s, e) => s + (e.lt ?? 0), 0);
+  const delta = held - ledgered;
+  const offenders: string[] = [];
+  if (delta !== 0) {
+    // Name the barns, not the days. Land moves in small awards spread over
+    // every farm, so "which farm is out" is the question a human can act on —
+    // and a per-farm sum is exact, unlike the GP series which has to hedge
+    // around escrow crossing a tick boundary.
+    const byFarm = new Map<string, number>();
+    for (const e of db.select().from(events).all()) {
+      if (e.lt === null || e.farmId === null) continue;
+      byFarm.set(e.farmId, (byFarm.get(e.farmId) ?? 0) + e.lt);
+    }
+    // An `lt` delta with no farmId can never reconcile — flag it first.
+    const orphaned = db
+      .select()
+      .from(events)
+      .all()
+      .filter((e) => e.lt !== null && e.lt !== 0 && e.farmId === null);
+    if (orphaned.length > 0)
+      offenders.push(
+        `${orphaned.length} lt delta(s) belong to no farm (types: ${[
+          ...new Set(orphaned.map((e) => e.type)),
+        ].join(", ")})`
+      );
+    for (const f of allFarms) {
+      const d = f.landTokensCents + f.stakedLandCents - (byFarm.get(f.id) ?? 0);
+      if (d !== 0) offenders.push(`${f.name} holds ${lt(d)} LT more than its ledger rows`);
+    }
+  }
+  return {
+    name: "LT conservation",
+    passed: delta === 0,
+    detail:
+      delta === 0
+        ? `${lt(held)} LT held = ${lt(ledgered)} LT ledgered`
+        : `${lt(held)} held vs ${lt(ledgered)} ledgered — ${lt(Math.abs(delta))} LT ${
+            delta > 0 ? "UNRECORDED" : "PHANTOM"
+          }`,
+    offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE),
+  };
+}
+
 // ── health ──────────────────────────────────────────────────────────────────
 
 /**
@@ -897,10 +972,14 @@ function generations(db: DB): HealthSection {
  * of every farm's two piles, and the single sink is the only negative `lt`
  * delta any engine path writes, so `minted = circulating + burned` holds.
  *
- * Per-source attribution is deliberately NOT here. The Majors mint per fight
- * inside a `fight` event's `data`, not as an `lt` delta, so a by-source table
- * built off the ledger would quietly under-count the crowns — and a table that
- * is wrong in a way only its author knows about is worse than no table.
+ * ROUND 37 ADDS THE BY-SOURCE TABLE. It could not be written before: the
+ * Majors minted per fight inside a `fight` event's `data` rather than as an
+ * `lt` delta, so any table built off the ledger silently under-counted the
+ * crowns, and a table wrong in a way only its author knows about is worse
+ * than no table. Now that every mint writes a signed row — and the LT
+ * conservation invariant refuses any that doesn't — the split is exact, and
+ * it is the number to argue from when somebody asks whether to rebalance
+ * issuance or to tune the fees that issuance is priced off.
  *
  * HEALTH, never an invariant: there is no correct amount of land, only a rate
  * somebody should read after changing the curve.
@@ -908,9 +987,17 @@ function generations(db: DB): HealthSection {
 function landSupply(db: DB, topline: Topline): HealthSection {
   const circulating = topline.landStaked + topline.landLiquid;
   let burned = 0;
-  for (const e of db.select().from(events).all()) if (e.lt !== null && e.lt < 0) burned -= e.lt;
+  const minting = new Map<string, number>();
+  for (const e of db.select().from(events).all()) {
+    if (e.lt === null || e.lt === 0) continue;
+    if (e.lt < 0) burned -= e.lt;
+    else minting.set(e.type, (minting.get(e.type) ?? 0) + e.lt);
+  }
   const minted = circulating + burned;
   const days = topline.day + 1; // day 0 was a day of fighting too
+  // Biggest faucet first — the question this answers is always "what is
+  // actually making the land", and the tail is rarely the answer.
+  const sources = [...minting.entries()].sort((a, b) => b[1] - a[1]);
   return {
     title: "LAND SUPPLY",
     lines: [
@@ -918,6 +1005,10 @@ function landSupply(db: DB, topline: Topline): HealthSection {
         `(${pct(topline.landStaked, circulating)}) · ${lt(topline.landLiquid)} idle`,
       `minted      ${lt(minted)} LT over ${days} day(s) · ${lt(Math.round(minted / days))} LT per day`,
       `burned      ${lt(burned)} LT into stud seats — the only way land leaves the world`,
+      ...sources.map(
+        ([type, amount]) =>
+          `  ${type.padEnd(14)}${lt(amount).padStart(12)} LT  ${pct(amount, minted).padStart(6)}`
+      ),
     ],
   };
 }
@@ -1456,6 +1547,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
   const conservation = checkConservation(db);
   const invariants = [
     conservation.invariant,
+    checkLandConservation(db), // beside its GP twin, deliberately — round 37
     checkNoNegatives(db),
     checkNoInversions(db),
     checkPursesSettle(db),

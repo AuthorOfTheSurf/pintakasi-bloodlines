@@ -116,7 +116,14 @@ export class Gacha {
 
     const rolls: GachaResult[] = [];
     for (let i = 0; i < ECONOMY.BUNDLE_ROLLS; i++) {
-      const drawn = this.draw(today, 0, false, i === ECONOMY.BUNDLE_ROLLS - 1);
+      // ⚠ ROUND 37 — this read `i === ECONOMY.BUNDLE_ROLLS - 1`, which
+      // silenced only the LAST roll: the bundle wrote twelve ledger lines
+      // rather than the one its doc comment promises, and that one silent
+      // roll minted a Land Token that no `lt` delta ever recorded. A single
+      // gacha bundle therefore put the world's land books permanently one
+      // token out. Every roll is silent now; the summary below carries the
+      // whole bundle's land, and an egg still announces itself.
+      const drawn = this.draw(today, 0, false, true);
       rolls.push({
         ...drawn,
         pricePaid: 0, // the bundle paid, not this roll
@@ -128,15 +135,19 @@ export class Gacha {
       });
     }
     const eggs = rolls.filter((r) => r.egg).length;
+    // The bundle's land is banked ONCE, here, for all eleven rolls — see the
+    // note on the silent flag above.
+    const land = LAND.PER_GACHA_ROLL * ECONOMY.BUNDLE_ROLLS;
     emit(this.database, {
       type: "gacha",
       farmId: this.farmId,
       gpCents: -ECONOMY.BUNDLE_PRICE * 100,
+      lt: land,
       message:
         `bought the ${ECONOMY.BUNDLE_ROLLS}-roll bundle (${ECONOMY.BUNDLE_PRICE} GP — ` +
-        `${ECONOMY.BUNDLE_ROLLS - 1} rolls, one on the house) — ` +
+        `${ECONOMY.BUNDLE_ROLLS - 1} rolls, one on the house) — +${fmtLt(land)} LT · ` +
         (eggs > 0 ? `${eggs} mystery egg${eggs === 1 ? "" : "s"} dropped!` : "no eggs"),
-      data: { bundle: true, rolls: ECONOMY.BUNDLE_ROLLS, price: ECONOMY.BUNDLE_PRICE, eggs },
+      data: { bundle: true, rolls: ECONOMY.BUNDLE_ROLLS, price: ECONOMY.BUNDLE_PRICE, eggs, land },
     });
     return { rolls, pricePaid: ECONOMY.BUNDLE_PRICE, eggs };
   }
@@ -245,10 +256,17 @@ export class Gacha {
         farmId: this.farmId,
         birdId: egg?.id ?? null,
         gpCents: -price * 100,
-        lt: LAND.PER_GACHA_ROLL,
+        // ⚠ ROUND 37 — the land delta belongs to exactly ONE ledger row.
+        // A silent roll only reaches this emit because it dropped an egg,
+        // and its land is already counted in the bundle's summary line. If
+        // this reported it again the world would show more land in its
+        // ledger than in its farms, which is precisely what the new LT
+        // conservation invariant refuses.
+        lt: silent ? undefined : LAND.PER_GACHA_ROLL,
         message:
           `rolled the gacha${freePullUsed ? " (free pull)" : price > 0 ? ` (${price} GP)` : " (bundle)"}` +
-          ` — ${token} token, +${fmtLt(LAND.PER_GACHA_ROLL)} LT` +
+          ` — ${token} token` +
+          (silent ? "" : `, +${fmtLt(LAND.PER_GACHA_ROLL)} LT`) +
           (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
         data: { token, price, free: freePullUsed, land: LAND.PER_GACHA_ROLL, egg: egg?.name ?? null },
       });

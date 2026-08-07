@@ -311,8 +311,8 @@ export default function MoneyPage() {
           <Link href="/wiki/claiming">Claiming</Link>.
         </li>
         <li>
-          <strong>A cancelled championship.</strong> If too few birds qualify for a Pintakasi
-          bracket, the whole thing cancels and any entry escrowed for it refunds — moot today,
+          <strong>A cancelled championship.</strong> If too few birds are standing in a Pintakasi
+          bracket on the day, the whole thing cancels and any entry escrowed for it refunds — moot today,
           since entry currently costs{" "}
           {PINTAKASI.ENTRY_FEE === 0 ? "nothing" : `${PINTAKASI.ENTRY_FEE} GP`}, but the machinery
           is there the day that changes.

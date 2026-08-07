@@ -24,8 +24,10 @@ import { baselineBefore, computeTopline, stakingBook, type Topline } from "@/eng
 import { cardHealth } from "@/engine/doctor";
 import { DIVISION_RULES, roundName, seedPlacement, type Division } from "@/engine/tournaments";
 import { ElementSprite, GpIcon, LtIcon } from "./sprites";
+import { CHART_CSS, ChartStrip, type DayChartProps } from "./charts";
 import {
   AdminTabs,
+  type BirdFightRowUI,
   type BirdRowUI,
   type BreedingRowUI,
   type FarmRowUI,
@@ -48,6 +50,18 @@ export const dynamic = "force-dynamic";
 
 const LEDGER_LIMIT = 3000;
 const FIGHT_LIMIT = 1000;
+/**
+ * The per-bird fight histories behind the Birds grid's detail panel — ONE ROW
+ * PER BIRD PER FIGHT (so a fight contributes two), across every bird, because
+ * the grid filters to the clicked bird on the client.
+ *
+ * The most recent rows win: a long world holds tens of thousands of them, and
+ * the whole array is serialized into the page. WHAT FALLS OFF: the OLDEST
+ * fights, so a long-retired bird can show a short history — or none — while
+ * everything the current card produced is always present. Raise it if the
+ * panel starts lying about veterans; the cost is page weight, nothing else.
+ */
+const BIRD_FIGHT_LIMIT = 6000;
 
 function gpFmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -397,7 +411,8 @@ export default function Admin() {
   const rolls = d.select().from(gachaTokens).all().length;
   const allEntries = d.select().from(lobbyEntries).all();
   const pendingEntries = allEntries.filter((e) => e.status === "pending");
-  const pendingClaims = d.select().from(claims).all().filter((c) => c.status === "pending");
+  const allClaims = d.select().from(claims).all();
+  const pendingClaims = allClaims.filter((c) => c.status === "pending");
   const allEvents = d.select().from(events).all();
   const birdCard = (id: string) => {
     const bird = birdById.get(id);
@@ -607,6 +622,81 @@ export default function Admin() {
     // This week's crowns first, last week's underneath.
     .sort((a, b) => b.weekIndex - a.weekIndex || a.id - b.id);
 
+  // ── The chart strip (round 37) ────────────────────────────────────────────
+  // Three histories of the whole world, one slot per game day from day 0 to
+  // today. Days with nothing in them are kept as zeros rather than dropped:
+  // a gap in the fight calendar is exactly the thing worth seeing, and a
+  // compacted axis would hide it by closing the hole.
+  const chartDays = Array.from({ length: state.dayIndex + 1 }, (_, i) => i);
+  const perDay = (rows: { day: number; amount: number }[]) => {
+    const out = new Array(chartDays.length).fill(0) as number[];
+    // Anything stamped past today (or before day 0) would land outside the
+    // axis — clamp it away rather than writing past the end of the array.
+    for (const r of rows) if (r.day >= 0 && r.day < out.length) out[r.day] += r.amount;
+    return out;
+  };
+  const running = (series: number[]) => {
+    let total = 0;
+    return series.map((v) => (total += v));
+  };
+
+  const fightsPerDay = perDay(winRows.map((r) => ({ day: r.dayIndex, amount: 1 })));
+
+  // COVERS, off the events rather than off the bird rows: `breed` is emitted
+  // once per cover with the buyer's signed GP on it, so the count and the
+  // money come from the same row and cannot disagree. (A bird's own birthDay
+  // would count the same covers, but its price would have to be re-derived
+  // from config — and a fee change would then rewrite history.)
+  const breedEvents = allEvents.filter((e) => e.type === "breed");
+  const breedsPerDay = perDay(breedEvents.map((e) => ({ day: e.dayIndex, amount: 1 })));
+  // The breeder's whole outlay — stud share + pool cuts together, i.e. the GP
+  // that actually left a wallet. gpCents is negative on a purchase.
+  const breedSpend = running(
+    perDay(breedEvents.map((e) => ({ day: e.dayIndex, amount: -(e.gpCents ?? 0) / 100 })))
+  );
+
+  // CLAIMS are counted where they were SEALED (dayPlaced) — a claim is placed
+  // and settled inside the same day's tick, so there is no second date to
+  // choose between. Spend counts only the WON tags: several barns can claim
+  // the same bird and the losers are refunded in full, so their escrow never
+  // changed hands and quoting it as spend would overstate the barn's cost.
+  const claimsPerDay = perDay(allClaims.map((c) => ({ day: c.dayPlaced, amount: 1 })));
+  const claimSpend = running(
+    perDay(
+      allClaims.filter((c) => c.status === "won").map((c) => ({ day: c.dayPlaced, amount: c.price }))
+    )
+  );
+
+  const charts: DayChartProps[] = [
+    {
+      title: "Fights per day",
+      days: chartDays,
+      bars: fightsPerDay,
+      barUnit: "fights",
+      note: "every bout on every card, daily and Pintakasi",
+    },
+    {
+      title: "Breeds per day",
+      days: chartDays,
+      bars: breedsPerDay,
+      barUnit: "covers",
+      line: breedSpend,
+      lineUnit: "GP",
+      lineLabel: "spent on covers to date",
+      note: "covers bought, and the GP they cost",
+    },
+    {
+      title: "Claims per day",
+      days: chartDays,
+      bars: claimsPerDay,
+      barUnit: "claims",
+      line: claimSpend,
+      lineUnit: "GP",
+      lineLabel: "paid for won tags to date",
+      note: "tags sealed, and the GP that changed hands",
+    },
+  ];
+
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {
     const mine = allBirds.filter((b) => b.farmId === f.id);
@@ -721,6 +811,9 @@ export default function Admin() {
     const total = b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
     const stat = (v: number) => (retired ? v : null);
     return {
+    // The join key for the fight-history panel — never shown as a column,
+    // only matched against BirdFightRowUI.birdId.
+    id: b.id,
     name: b.name,
     grade: overallGradeOf(total),
     farm: fname(b.farmId),
@@ -748,6 +841,58 @@ export default function Admin() {
     losses: b.losses,
     netGp: (netGpCents.get(b.id) ?? 0) / 100,
     netLt: netLt.get(b.id) ?? 0,
+    };
+  });
+
+  // ── Every bird's fight history (round 37) ─────────────────────────────────
+  // Feeds the Birds grid's detail panel. One row per battle_log row — the
+  // bird's OWN side of the fight — so a bout appears twice in this array,
+  // once under each fighter, and the panel never has to know which seat its
+  // bird sat in.
+  //
+  // The opponent's Pit Figure lives on the opponent's own row. Single
+  // elimination in the Majors and one meeting per group on the daily card
+  // (round 34) make (lobby|tournament, birdId, opponentBirdId) unique, so the
+  // reciprocal row is addressable exactly — same reasoning the Fights grid's
+  // `mirror` lookup runs on, done once as a map because this pass covers the
+  // whole log rather than a thousand winners.
+  const figureKey = (r: LogRow) => `${r.lobbyId}|${r.tournamentId}|${r.birdId}|${r.opponentBirdId}`;
+  const figureByPair = new Map(log.map((r) => [figureKey(r), r.pitFigure]));
+  // Which round of a bracket a fight was: a bird's `eliminatedRound` is the
+  // round of the fight that beat it, so the LOSER's number names the bout for
+  // both sides — and the champion, who never has one, reads off its victims.
+  const eliminatedRound = new Map(
+    allTEntries.map((e) => [`${e.tournamentId}|${e.birdId}`, e.eliminatedRound])
+  );
+  const birdFights: BirdFightRowUI[] = log.slice(-BIRD_FIGHT_LIMIT).map((r) => {
+    const loserId = r.result === "win" ? r.opponentBirdId : r.birdId;
+    const tournament = r.tournamentId ? allTournaments.find((t) => t.id === r.tournamentId) : undefined;
+    const round = r.tournamentId ? eliminatedRound.get(`${r.tournamentId}|${loserId}`) : null;
+    return {
+      birdId: r.birdId,
+      day: r.dayIndex,
+      card: r.tournamentId
+        ? `🏆 ${FORMATS[r.format].label} PINTAKASI${
+            tournament?.bracketSize && round
+              ? ` · ${roundName(round, Math.log2(tournament.bracketSize), tournament.bracketSize)}`
+              : ""
+          }`
+        : `${FORMATS[r.format].label} · ${cardLabel(r.mode, r.lobby)}${r.claimPrice ? ` @${r.claimPrice}` : ""}`,
+      opponent: r.opponentName,
+      opponentFarm: fname(r.opponentFarmId),
+      opponentFarmP: fcolors(r.opponentFarmId).P ?? "",
+      opponentFarmS: fcolors(r.opponentFarmId).S ?? "",
+      result: r.result,
+      figure: r.pitFigure,
+      // Null rather than 0 when the mirror is missing — a Pit Figure of zero
+      // is a legal (terrible) fight, and inventing one would read as a rout.
+      opponentFigure: figureByPair.get(
+        `${r.lobbyId}|${r.tournamentId}|${r.opponentBirdId}|${r.birdId}`
+      ) ?? null,
+      // The signed net for THIS bird, rake already deducted by the engine.
+      // Pintakasi rows carry 0 — the purse settles on the tournament entry,
+      // not per fight (see the netGpCents pass above).
+      gp: r.gpDeltaCents / 100,
     };
   });
 
@@ -875,7 +1020,7 @@ export default function Admin() {
 
   return (
     <main className="office">
-      <style>{CSS}</style>
+      <style>{CSS + CHART_CSS}</style>
       <header>
         <h1>
           <img className="office-mark" src="/icon.svg" alt="" /> Pintakasi — Stewards&apos; Office{" "}
@@ -990,10 +1135,16 @@ export default function Admin() {
         </div>
       </section>
 
+      {/* The trend strip sits between the standing totals and the grids: the
+          cards say where the world IS, these say how it got there, and both
+          are readable before anyone has to pick a tab. */}
+      <ChartStrip charts={charts} />
+
       <AdminTabs
         farms={farmRows}
         fights={fightRows}
         birds={birdRows}
+        birdFights={birdFights}
         breeding={breedingRows}
         gacha={gachaRows}
         gp={gpRows}

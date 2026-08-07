@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import {
+  DAY_NAMES,
   FORMATS,
   JUVENILE_MAJOR,
   PINTAKASI,
@@ -121,7 +122,8 @@ export interface ChampionshipView {
 
 /** Committee ranking key — bigger is stronger. */
 interface CommitteeCard {
-  crownPoints: number; //  qualification points won on the daily card (round 22)
+  // `crownPoints` led this key from round 22 until 37, when the concept was
+  // deleted. Earnings leads now — see compareRank.
   earningsCents: number; // battle_log deltas + banked purse shares
   wins: number;
   avgFigure: number;
@@ -246,17 +248,13 @@ export class Tournaments {
     } else {
       if (!canHardcore(bird.age))
         throw new Error(`${bird.name} is ${bird.age} — the Pintakasi is hardcore, which opens at age 3`);
-      // Qualification, not money (round 22): the crowns are FREE and a bird
-      // earns its way in on the daily card. See PINTAKASI.POINTS_FOR.
-      if (birdRow.crownPoints < PINTAKASI.QUALIFYING_POINTS)
-        throw new Error(
-          `${bird.name} holds ${birdRow.crownPoints} of the ${PINTAKASI.QUALIFYING_POINTS} qualification points a crown asks for — ` +
-            // Round 31 took hardcore off the daily card, so POINTS_FOR.hardcore
-            // is unreachable and telling a player about it sends them looking
-            // for a lobby that no longer exists. The knob survives in config
-            // against a future per-entry risk choice; the ADVICE must not.
-            `campaign on the daily card first (a real win banks ${PINTAKASI.POINTS_FOR.real})`
-        );
+      // ROUND 37 — THURSDAY IS OPEN. A qualification-points threshold stood
+      // here from round 22: 3 points, banked one per real win on the daily
+      // card. It is gone. Age is now the only hard gate on a Major, and the
+      // Selection Committee's bump line below — which ranks on CAREER
+      // EARNINGS — is what actually decides who stands once the field fills.
+      // The contest moved from a threshold nobody could see to a seating list
+      // anybody can read off the board.
     }
 
     const today = this.today();
@@ -347,6 +345,17 @@ export class Tournaments {
       .values({ tournamentId: tournament.id, birdId, farmId: this.farmId, fee, dayEntered: today })
       .returning({ id: tournamentEntries.id })
       .get();
+    // ⚠ ROUND 37 — BOTH OF THESE USED TO SAY "hardcore" UNCONDITIONALLY, and
+    // had since the juvenile division arrived in round 23. For a juvenile
+    // registrant all three claims were false: it runs Wednesday, not Thursday,
+    // and it is the one crown in the game that does NOT end a career. This is
+    // the exact prose an agent reads back to a player before asking them to
+    // confirm risking a bird's life, so a wrong word here is a correctness
+    // problem, not a typo. Both lines now branch on the division's charter.
+    const charter = DIVISION_RULES[division];
+    const risk = charter.hardcore
+      ? "hardcore: lose and the career ends"
+      : "not hardcore — a beaten chick is out of the bracket, not out of the game";
     emit(this.database, {
       type: "tournament_entry",
       farmId: this.farmId,
@@ -354,12 +363,20 @@ export class Tournaments {
       gpCents: -fee * 100,
       message:
         `registered ${bird.name} for the ${label(tournament.format)} (week ${week}, ` +
-        (fee > 0 ? `${fee} GP escrowed` : `free — qualified on ${birdRow.crownPoints} points`) +
-        `) — hardcore: lose and the career ends`,
+        (fee > 0
+          ? `${fee} GP escrowed`
+          : charter.hardcore
+            ? `free to enter — the committee seats on earnings`
+            : `free to enter`) +
+        `) — ${risk}`,
     });
     return {
       entryId: inserted.id,
-      note: `Registered. The ${label(tournament.format)} runs Thursday — every loser force-retires; the champion takes the purse.`,
+      note:
+        `Registered. The ${label(tournament.format)} runs ${DAY_NAMES[charter.dayOfWeek]} — ` +
+        (charter.hardcore
+          ? "every loser force-retires; the champion takes the purse."
+          : "losing costs nothing but the bracket; the champion takes the purse."),
     };
   }
 
@@ -739,6 +756,25 @@ export class Tournaments {
         .set({ landTokensCents: farm.landTokensCents + landEach, ...farmRecord })
         .where(eq(farms.id, side.entry.farmId))
         .run();
+      // ⚠ ROUND 37 — THIS is why land had no conservation proof. The mint
+      // above used to be reported only as `landEach` inside the world-level
+      // `fight` event's `data`: unsigned, unattributed to a farm, and
+      // therefore invisible to any sum over `events.lt`. Every other land
+      // path (the card, the elimination grants, gacha, buy_land, the stud
+      // seat's burn) already wrote a signed per-farm delta, so the crowns
+      // were the single hole that made `sum(events.lt) == sum(farm piles)`
+      // untestable — and an untestable faucet is exactly how the two silent
+      // GP burns survived. One row per SIDE, because the fight event has no
+      // farmId and land is owed to two different barns.
+      emit(database, {
+        type: "crown_land",
+        farmId: side.entry.farmId,
+        birdId: side.row.id,
+        lt: landEach,
+        message:
+          `${side.row.name} fought the ${label(t.format)} ${roundName} — +${fmtLt(landEach)} LT`,
+        data: { tournamentId: t.id, round },
+      });
       const birdRow = database.select().from(birds).where(eq(birds.id, side.row.id)).get()!;
       database
         .update(birds)
@@ -771,13 +807,29 @@ export class Tournaments {
           .set({ status: "eliminated", eliminatedRound: round })
           .where(eq(tournamentEntries.id, side.entry.id))
           .run();
-        emit(database, {
-          type: "retire",
-          farmId: side.entry.farmId,
-          birdId: side.row.id,
-          message: `${side.row.name} fell in the ${label(t.format)} ${roundName} — force-retired (${birdRow.wins}–${birdRow.losses + 1})`,
-          data: { by: "hardcore", tournamentId: t.id },
-        });
+        // ⚠ ROUND 37 — THIS EMIT WAS OUTSIDE THE `hardcore` GUARD, and had been
+        // since the juvenile division was added in round 23. Every juvenile
+        // championship loser wrote a `retire` event saying it had been
+        // force-retired while the bird walked home perfectly alive: 67 of them
+        // in a 21-day sim against 0 actual retirements. Two costs, and the
+        // second is the serious one. It lied to the player in the ledger — and
+        // it poisoned the doctor's POPULATION line, which counts `retire`
+        // events by `data.by` and warns when attrition outruns supply. The
+        // single most important balance signal in the game was reading pure
+        // fiction, and it would have made round 37's open Thursday look like a
+        // population collapse that never happened.
+        //
+        // A juvenile elimination is not a retirement, so it emits nothing: the
+        // bout already has its own `fight` event, and the bracket's own rows
+        // record who went out and when.
+        if (hardcore)
+          emit(database, {
+            type: "retire",
+            farmId: side.entry.farmId,
+            birdId: side.row.id,
+            message: `${side.row.name} fell in the ${label(t.format)} ${roundName} — force-retired (${birdRow.wins}–${birdRow.losses + 1})`,
+            data: { by: "hardcore", tournamentId: t.id },
+          });
       }
       database
         .insert(battleLog)
@@ -810,7 +862,11 @@ export class Tournaments {
       birdId: sides[w].row.id,
       message:
         `${sides[w].row.name} (${farmNames[w]}) def. ${sides[1 - w].row.name} (${farmNames[1 - w]}) — ` +
-        `${header} · figures ${sides[w].figure}/${sides[1 - w].figure} · +${fmtLt(landEach)} LT each · ${sides[1 - w].row.name} force-retired`,
+        `${header} · figures ${sides[w].figure}/${sides[1 - w].figure} · +${fmtLt(landEach)} LT each · ` +
+        // Same round-37 fix as the retire event above: this said "force-retired"
+        // for every bout in the game, including the juvenile stage where losing
+        // costs a bird nothing but the bracket.
+        `${sides[1 - w].row.name} ${hardcore ? "force-retired" : "eliminated"}`,
       data: { tournamentId: t.id, round, figures: sim.figures, landEach },
     });
     return {
@@ -827,7 +883,7 @@ export class Tournaments {
 
   // ── committee, purse & helpers ────────────────────────────────────────────
 
-  /** The committee's book on a set of birds — points, earnings, wins, figure. */
+  /** The committee's book on a set of birds — earnings, wins, figure. */
   static committeeCards(database: DB, birdIds: string[]): Map<string, CommitteeCard> {
     const out = new Map<string, CommitteeCard>();
     for (const id of birdIds) {
@@ -840,7 +896,6 @@ export class Tournaments {
         .all()
         .reduce((s, e) => s + e.gpWonCents, 0);
       out.set(id, {
-        crownPoints: bird.crownPoints,
         earningsCents: logRows.reduce((s, r) => s + Math.max(0, r.gpDeltaCents), 0) + purse,
         wins: bird.wins,
         avgFigure:
@@ -853,13 +908,21 @@ export class Tournaments {
   }
 
   /**
-   * Sort comparator: negative = a ranks ABOVE b. QUALIFICATION POINTS lead
-   * since round 22 — with the crowns free, the bump line should reward the
-   * bird that campaigned hardest, not the barn with the deepest wallet.
-   * Then earnings → wins → figure → id.
+   * Sort comparator: negative = a ranks ABOVE b. CAREER EARNINGS lead since
+   * round 37, when qualification points were deleted and this comparator
+   * stopped being merely the bump order and became THE gate: with Thursday
+   * open to every age-FORK bird, where a bird sits in this list is the whole
+   * of whether it stands.
+   *
+   * Earnings is the right lead because it is the one number that already
+   * aggregates everything the game rewards — pot money from the daily card,
+   * claim tags, and banked purse shares — and because it is VISIBLE. A player
+   * can read a bird's seating position off figures already on its card,
+   * which the points counter never allowed. Then wins → figure → id, so two
+   * birds that have never earned still order deterministically rather than
+   * by insertion.
    */
   static compareRank(a: CommitteeCard, b: CommitteeCard, aId: string, bId: string): number {
-    if (a.crownPoints !== b.crownPoints) return b.crownPoints - a.crownPoints;
     if (a.earningsCents !== b.earningsCents) return b.earningsCents - a.earningsCents;
     if (a.wins !== b.wins) return b.wins - a.wins;
     if (a.avgFigure !== b.avgFigure) return b.avgFigure - a.avgFigure;

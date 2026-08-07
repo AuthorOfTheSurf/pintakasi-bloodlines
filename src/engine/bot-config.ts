@@ -351,6 +351,33 @@ export const BREEDING_PLAN = {
   HENS_PRICED_SLACK: 3,
 } as const;
 
+/**
+ * THE CROWN CHASE'S APPETITE (round 37).
+ *
+ * New because round 37 deleted the engine's qualification-points gate and
+ * opened Thursday to every age-FORK bird. Restraint that used to be a RULE is
+ * now a CHOICE, and a choice needs a knob somewhere a human can find it.
+ */
+export const CROWN_CHASE = {
+  /**
+   * How much a bird must have proven before a bot will stand it in a Major.
+   *
+   * One real win. The Majors are hardcore — every loser force-retires — so a
+   * barn that declares its whole age-3 intake is culling itself, and no bot
+   * personality should want that. But the number must stay LOW or round 37
+   * has changed nothing: the gate it replaces was effectively three real wins,
+   * and the point of opening Thursday was to stop that being an absolute wall.
+   *
+   * `stakesWins` rather than `wins`, because juvenile practice wins are not
+   * evidence a bird can survive a hardcore bracket — that is the same line the
+   * maiden ladder draws (round 19), and it should be drawn the same way here.
+   *
+   * Raise it if the doctor's population block shows adult attrition outrunning
+   * supply on crown days; lower it (to 0) if championship fields go short.
+   */
+  CROWN_MIN_REAL_WINS: 1,
+} as const;
+
 export const BOT_FARMS: BotProfile[] = [
   // ── The claim sharks: live off the tag ladder, barely breed ─────────────
   {
@@ -447,5 +474,82 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "purple", secondaryColor: "gold", style: "claimer",
     flockSeed: 1203, entryRate: 0.75, claimAggression: 0.7, breedDrive: 0.2,
     hardcoreNerve: 0.15, sellRate: 0.5, tagCourage: 0.6, housePair: 0,
+  },
+  // ── Round 37: five more stables — chosen to fill HOLES, not to add bodies ─
+  //
+  // Fifteen barns already covered the middle of every knob well. What they did
+  // NOT cover was the extremes, and an extreme is where a mechanic actually
+  // gets tested: the whole roster sat between 0.2 and 0.7 on tag courage, the
+  // gacha and the land market had exactly ONE customer each, and nobody
+  // campaigned lightly. So each of these five is deliberately lopsided, and
+  // each one is pointed at a specific door somebody should be walking through.
+  {
+    // THE SPRINT HOUSE. housePair 0 (agility & sight) is the scarcest blood in
+    // the game on purpose — see the note on housePair — but scarcity is only a
+    // price signal if there is a supply curve at all, and four barns breeding
+    // it at an average drive of 0.2 is barely one. This barn breeds sprint and
+    // nothing else, hard, and cards at the short end.
+    id: "bot-12", name: "Batangas Sprint Club", country: "🇵🇭", handler: "Tino",
+    primaryColor: "yellow", secondaryColor: "black", style: "breeder",
+    flockSeed: 1301, entryRate: 0.8, claimAggression: 0.1, breedDrive: 0.85,
+    hardcoreNerve: 0.15, sellRate: 0.3, tagCourage: 0.35, housePair: 0,
+  },
+  {
+    // THE SECOND LANDLORD — and deliberately NOT a copy of Lupa. Lupa maxes
+    // the cap every day forever, which measures the ceiling; nothing measures
+    // whether land demand is elastic. This barn buys on about a third of days,
+    // so the two together give the land market two different shapes of buyer
+    // rather than one very loud one.
+    id: "bot-13", name: "Hacienda Verde", country: "🇵🇭", handler: "Doña Pilar",
+    primaryColor: "green", secondaryColor: "white", style: "landlord",
+    flockSeed: 1302, entryRate: 0.55, claimAggression: 0.05, breedDrive: 0.4,
+    hardcoreNerve: 0.05, sellRate: 0.2, tagCourage: 0.3, housePair: 2,
+    landAppetite: 0.35,
+  },
+  {
+    // THE OCCASIONAL WHALE. Same argument as above, for the gacha: Ginto rolls
+    // to the bottom of its wallet every single day, which is one very specific
+    // customer. This one splurges now and then — the shape most real spenders
+    // have — so gacha revenue stops being a single bot's straight line.
+    id: "bot-14", name: "Sugalan Social Club", country: "🇵🇭", handler: "Boyet",
+    primaryColor: "pink", secondaryColor: "gold", style: "whale",
+    flockSeed: 1303, entryRate: 0.6, claimAggression: 0.2, breedDrive: 0.25,
+    hardcoreNerve: 0.2, sellRate: 0.25, tagCourage: 0.55, housePair: 1,
+    gachaAppetite: 0.3,
+  },
+  {
+    // ⚠ THE CROWN CHASER — this round's stress test, and the reason the roster
+    // grew at all this round rather than next. Round 37 opened Thursday: the
+    // qualification-points gate is gone and the Selection Committee seats on
+    // earnings instead. Nothing in the world tests that hard, because every
+    // existing barn campaigns steadily and drifts into a crown.
+    //
+    // This barn does the opposite. It cards LIGHTLY (0.35 — the lowest in the
+    // game), breeds little, and spends its nerve entirely on Thursday: 0.95
+    // means it declares for essentially every crown, every week, with whatever
+    // it has that has won once. If the open Thursday is going to overfill
+    // brackets, cull the adult population, or make the committee's bump line
+    // the busiest code in the engine, this is the barn that will show it.
+    //
+    // Read it in the doctor's championship-field and population blocks. If the
+    // fields blow past MAX_BRACKET or adult attrition outruns supply, the brake
+    // is CROWN_CHASE.CROWN_MIN_REAL_WINS, not this profile — the barn is doing
+    // its job by breaking things.
+    id: "bot-15", name: "Ilonggo Ironworks", country: "🇵🇭", handler: "Nonoy",
+    primaryColor: "orange", secondaryColor: "teal", style: "pit",
+    flockSeed: 1304, entryRate: 0.35, claimAggression: 0.1, breedDrive: 0.15,
+    hardcoreNerve: 0.95, sellRate: 0.1, tagCourage: 0.4, housePair: 2,
+  },
+  {
+    // THE BOTTOM FEEDER. Round 31 cut the claimer ladder to three rungs
+    // [50, 200, 600] and retuned tagCourage for it, but no barn actually lives
+    // at the bottom rung: the lowest courage on the roster is 0.2, which still
+    // shops the middle. This one always tags cheap and claims constantly — it
+    // is the barn that makes the 50 GP rung a real market instead of a rung
+    // the config mentions.
+    id: "bot-16", name: "Pulang Bagwis", country: "🇵🇭", handler: "Aling Bining",
+    primaryColor: "red", secondaryColor: "brown", style: "claimer",
+    flockSeed: 1305, entryRate: 0.8, claimAggression: 0.9, breedDrive: 0.1,
+    hardcoreNerve: 0.05, sellRate: 0.65, tagCourage: 0.05, housePair: 0,
   },
 ];

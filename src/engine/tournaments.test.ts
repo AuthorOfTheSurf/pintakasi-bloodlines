@@ -4,6 +4,7 @@ import { createDb, type DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { chaseCrowns, chaseJuvenileCrowns } from "./bots";
+import { CROWN_CHASE } from "./bot-config";
 import { ECONOMY, JUVENILE_MAJOR, PINTAKASI, SCOUT, type FightFormat } from "./config";
 import { Flock } from "./flock";
 import { mulberry32 } from "./rng";
@@ -12,7 +13,20 @@ import { Lobbies } from "./lobbies";
 import { makeBird, onCard } from "./testkit";
 import { Tournaments } from "./tournaments";
 
-/** Two legacy farms — each carries two age-3+ birds (Sinag 3, Batong Buhay 5). */
+/**
+ * Two legacy farms — each carries two age-3+ birds (Sinag 3, Batong Buhay 5).
+ *
+ * ⚠ ROUND 37 DELETED A LINE THAT USED TO STAND HERE. Every fixture bird was
+ * stamped with PINTAKASI.QUALIFYING_POINTS, because a Major demanded three of
+ * them and otherwise every test would have had to campaign its way in. That
+ * gate is gone: age is the only hard door, and where a bird SITS is the
+ * Selection Committee's call on career earnings.
+ *
+ * Usefully, the legacy veterans arrive with real WIN records and ZERO
+ * earnings — nothing in the seed writes a battle-log row — which is exactly
+ * what makes the earnings tests below buildable: a fixture only has the
+ * earnings a test gives it, on purpose.
+ */
 function world() {
   const db = createDb(":memory:");
   const dev = seedGame(db, { flock: "legacy" });
@@ -23,11 +37,6 @@ function world() {
     secondaryColor: "red",
   });
   seedStarterFlock(db, rivalFarm.id, { seed: 42, idPrefix: "rival", shape: "legacy" });
-  // The crowns are free since round 22 but NOT open — a bird qualifies by
-  // campaigning on the daily card. These legacy veterans are meant to have
-  // done exactly that, so stamp them qualified rather than making every
-  // fixture fight its way in. (The gate itself is tested separately.)
-  db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run();
   return {
     db,
     devId: dev.farmId,
@@ -41,6 +50,38 @@ function world() {
 
 const byName = (db: DB, flock: Flock, name: string) =>
   flock.all().find((b) => b.name === name)!;
+
+/**
+ * Bank CAREER EARNINGS on a bird — the number the Selection Committee has
+ * ranked on since round 37, and therefore the number that decides who stands
+ * in a full field.
+ *
+ * `Tournaments.committeeCards` reads earnings as the sum of positive
+ * `gpDeltaCents` on the battle log plus banked purse shares, so a raw row is
+ * the honest fixture. Deliberately NOT a real fight through Lobbies: who won
+ * is the lobby seed's business, and a ranking test that depends on it is a
+ * ranking test you have to re-roll every time the sim changes.
+ */
+function earned(db: DB, birdId: string, farmId: string, cents: number): void {
+  db.insert(battleLog)
+    .values({
+      dayIndex: 0,
+      lobbyId: 1,
+      farmId,
+      birdId,
+      mode: "real",
+      format: "b1",
+      opponentBirdId: "ghost",
+      opponentFarmId: "house",
+      opponentName: "Sparring Ghost",
+      result: "win",
+      pitFigure: 50,
+      gpDeltaCents: cents,
+      seed: 1,
+      playByPlay: "[]",
+    })
+    .run();
+}
 
 const totalCents = (db: DB) => {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
@@ -98,41 +139,68 @@ describe("registration & the Selection Committee", () => {
     expect(() => w.dev.enter(sinag.id, "b3")).toThrow(/already registered/);
   });
 
-  // ── Round 22: the crowns are FREE, and you qualify by fighting ───────────
-  test("the crowns cost nothing — and an unqualified bird is turned away at the door", () => {
+  // ── Round 37: THURSDAY IS OPEN ────────────────────────────────────────────
+  // These two cases used to be the qualification ladder — zero points refused,
+  // one short refused, at the threshold accepted. There is no threshold any
+  // more, so the ladder becomes the OPEN FIELD: the same door, asked the
+  // opposite question.
+  test("an unraced, un-earning age-3 bird may stand — and it still costs nothing", () => {
     const w = world();
     expect(PINTAKASI.ENTRY_FEE).toBe(0);
-    const sinag = byName(w.db, w.devFlock, "Sinag");
-    // Strip its campaign: a veteran that never won a real fight can't stand.
-    w.db.update(birds).set({ crownPoints: 0 }).where(eq(birds.id, sinag.id)).run();
-    expect(() => w.dev.enter(sinag.id, "b1")).toThrow(/qualification points/);
-    // One point short still isn't enough…
-    w.db
-      .update(birds)
-      .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS - 1 })
-      .where(eq(birds.id, sinag.id))
-      .run();
-    expect(() => w.dev.enter(sinag.id, "b1")).toThrow(/qualification points/);
-    // …and the wallet is untouched either way, because entry is free.
+    // A bird with no record whatsoever: no wins, no earnings, nothing the old
+    // counter would have taken. Under the round-22 rule this was the exact
+    // shape of a bird that could not enter at all.
+    const rookie = makeBird(w.db, { name: "Bagong Salta", age: 3 });
+    expect(rookie.wins).toBe(0);
+    expect(rookie.stakesWins).toBe(0);
     const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
-    w.db
-      .update(birds)
-      .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS })
-      .where(eq(birds.id, sinag.id))
-      .run();
-    w.dev.enter(sinag.id, "b1");
+    expect(() => w.dev.enter(rookie.id, "b1")).not.toThrow();
+    // Free since round 22 — the wallet does not move.
     expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(before);
   });
 
-  test("the committee ranks on POINTS first — campaigning beats a fat wallet", () => {
+  test("…but AGE is still a wall — the fork is what a Major is gated on now", () => {
     const w = world();
-    const sinag = byName(w.db, w.devFlock, "Sinag");
-    w.db.update(birds).set({ crownPoints: 99 }).where(eq(birds.id, sinag.id)).run();
+    // Age 2 is a real fighter on the daily card and nowhere near the crowns:
+    // the Majors are hardcore, and the fork that opens hardcore AND manual
+    // retirement together is age 3. Opening the field did not open that.
+    const yearling = makeBird(w.db, { name: "Bagitong Tandang", age: 2 });
+    expect(() => w.dev.enter(yearling.id, "b1")).toThrow(/age 3/);
+    // An age-3 bird alongside it, identical in every other respect, walks in.
+    const grown = makeBird(w.db, { name: "Sapat na Gulang", age: 3 });
+    expect(() => w.dev.enter(grown.id, "b1")).not.toThrow();
+  });
+
+  test("the committee ranks on EARNINGS first — the purse beats the record", () => {
+    const w = world();
+    const sinag = byName(w.db, w.devFlock, "Sinag"); // 4 career wins
+    earned(w.db, sinag.id, w.devId, 5_000); //          …and 50.00 GP banked
     w.dev.enter(sinag.id, "b1");
-    w.rival.enter("rival-8", "b1"); // more career wins, fewer points
+    w.rival.enter("rival-8", "b1"); // Batong Buhay: 7 career wins, never earned
     const lk = w.dev.board().find((c) => c.format === "b1")!;
-    expect(lk.field[0].bird).toBe("Sinag"); // points lead the ranking now
+    // Earnings lead the key since round 37. The reason it is the right lead:
+    // it is the one number that already aggregates everything the game pays —
+    // pot money, claim tags, purse shares — and a player can read it off a
+    // bird's own card, which the old points counter never allowed.
+    expect(lk.field[0].bird).toBe("Sinag");
     expect(lk.field[0].rank).toBe(1);
+  });
+
+  // The restraint that USED to be an engine rule and is now a bot's appetite.
+  // Keeping this pinned matters because the obvious "fix" if crown fields ever
+  // look reckless is to put a wins floor back into `enter` — which would undo
+  // round 37 without anybody noticing they had.
+  test("the bots' crown appetite is a KNOB, not a rule — the door is looser than they are", () => {
+    const w = world();
+    expect(CROWN_CHASE.CROWN_MIN_REAL_WINS).toBeGreaterThan(0); // …or this proves nothing
+    // Strip every stakes record in the world: no bird now clears the bots' own
+    // floor, so no bot sends anybody.
+    w.db.update(birds).set({ stakesWins: 0 }).run();
+    expect(chaseCrowns(w.db, w.devId, 0, mulberry32(11))).toEqual([]);
+    // …and the ENGINE opens the door to exactly those birds. A human (or an
+    // agent) may take the hardcore gamble a bot declines.
+    const sinag = byName(w.db, w.devFlock, "Sinag");
+    expect(() => w.dev.enter(sinag.id, "b1")).not.toThrow();
   });
 
   test("the purse is pure JUICE now that entries are free", () => {
@@ -182,7 +250,6 @@ describe("registration & the Selection Committee", () => {
     const w = world();
     // A deep barn: a second legacy wave gives four age-3+ birds.
     seedStarterFlock(w.db, w.devId, { seed: 55, idPrefix: "dev2", shape: "legacy" });
-    w.db.update(birds).set({ crownPoints: PINTAKASI.QUALIFYING_POINTS }).run(); // campaigned veterans
     const eligible = w.devFlock.all().filter((b) => b.status === "active" && b.age >= 3);
     expect(eligible.length).toBe(4);
     for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "b1");
@@ -207,39 +274,33 @@ describe("registration & the Selection Committee", () => {
     expect(lk.field.find((f) => f.mine)!.bird).toBe("Sinag");
   });
 
-  test("a full field bumps its weakest for a stronger newcomer — and refuses a weaker one", () => {
+  /**
+   * ⚠ THE BUMP LINE IS NOW THE WHOLE GATE (round 37).
+   *
+   * While a Major had a points threshold, this test was about an edge case:
+   * what happens once 64 qualified birds are already standing. With Thursday
+   * open to every age-3 bird in the world, the committee's seating list is the
+   * ONLY thing deciding who fights — so this is the test that decides whether
+   * the biggest stage in the game is a contest or a queue.
+   */
+  test("a full field bumps its weakest for a HIGHER-EARNING newcomer — and refuses a poorer one", () => {
     const w = world();
     const t = w.db
       .insert(tournaments)
       .values({ weekIndex: 0, format: "b1", seed: 7, entryFee: PINTAKASI.ENTRY_FEE })
       .returning()
       .get();
-    // A full 64-bird field of zero-record dummies under the rival's banner.
+    // A full 64-bird field under the rival's banner, laddered by career
+    // earnings: dummy 0 has banked 1.00 GP, dummy 63 has banked 64.00.
+    const stake = (i: number) => (i + 1) * 100;
     for (let i = 0; i < PINTAKASI.MAX_BRACKET; i++) {
-      w.db
-        .insert(birds)
-        .values({
-          id: `dummy-${String(i).padStart(2, "0")}`,
-          farmId: w.rivalId,
-          name: `Dummy ${i}`,
-          sex: "male",
-          status: "active",
-          agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
-          element: "Fire",
-          halfStars: 2,
-          birthWeek: -3,
-          birthDay: -21,
-          named: 1,
-          // Round 22: QUALIFICATION POINTS lead the committee's ranking, so
-          // the dummies campaigned one point harder than the newcomer below.
-          crownPoints: PINTAKASI.QUALIFYING_POINTS + 1,
-        })
-        .run();
+      const dummy = makeBird(w.db, { farmId: w.rivalId, name: `Dummy ${i}`, age: 3 });
+      earned(w.db, dummy.id, w.rivalId, stake(i));
       w.db
         .insert(tournamentEntries)
         .values({
           tournamentId: t.id,
-          birdId: `dummy-${String(i).padStart(2, "0")}`,
+          birdId: dummy.id,
           farmId: w.rivalId,
           fee: PINTAKASI.ENTRY_FEE,
           dayEntered: 0,
@@ -247,15 +308,11 @@ describe("registration & the Selection Committee", () => {
         .run();
     }
     const rivalGpBefore = w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!.gp;
-    // Sinag campaigned harder than the dummies did — and points lead the
-    // committee's ranking since round 22, so it outranks every one of them
-    // and the weakest goes home.
+    // Sinag has out-EARNED the weakest of them — by fifty centavos, which is
+    // all it takes. Its four career wins are irrelevant while any earnings
+    // separate the two birds; that ordering is the round-37 ruling.
     const sinagId = byName(w.db, w.devFlock, "Sinag").id;
-    w.db
-      .update(birds)
-      .set({ crownPoints: PINTAKASI.QUALIFYING_POINTS + 5 })
-      .where(eq(birds.id, sinagId))
-      .run();
+    earned(w.db, sinagId, w.devId, stake(0) + 50);
     w.dev.enter(sinagId, "b1");
     const entries = w.db
       .select()
@@ -263,23 +320,66 @@ describe("registration & the Selection Committee", () => {
       .where(eq(tournamentEntries.tournamentId, t.id))
       .all();
     expect(entries.filter((e) => e.status === "pending").length).toBe(PINTAKASI.MAX_BRACKET);
-    expect(entries.filter((e) => e.status === "bumped").length).toBe(1);
+    const bumped = entries.filter((e) => e.status === "bumped");
+    expect(bumped.length).toBe(1);
+    // …and it is the POOREST bird that went home, not an arbitrary one.
+    expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe("Dummy 0");
     expect(w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!.gp).toBe(
       rivalGpBefore + PINTAKASI.ENTRY_FEE // the bumped entry refunds
     );
-    // A zero-record newcomer is itself the weakest — refused at the door.
-    w.db
-      .insert(birds)
-      .values({
-        id: "zzz-weak", farmId: w.devId, name: "Palpak", sex: "male", status: "active",
-        agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
-        element: "Fire", halfStars: 2, birthWeek: -3, birthDay: -21, named: 1,
-        // Qualified on points, so the COMMITTEE is what turns it away — not
-        // the round-22 door. Zero earnings is what makes it the weakest.
-        crownPoints: PINTAKASI.QUALIFYING_POINTS,
-      })
-      .run();
-    expect(() => w.dev.enter("zzz-weak", "b1")).toThrow(/weakest/);
+    // A newcomer that has earned LESS than the field's new weakest (Sinag
+    // itself, at 1.50) is refused at the door. Note what does NOT save it: it
+    // is a perfectly legal entrant, age 3, active and named. The committee is
+    // the only thing standing in its way.
+    const pauper = makeBird(w.db, { name: "Palpak", age: 3 });
+    earned(w.db, pauper.id, w.devId, 50);
+    expect(() => w.dev.enter(pauper.id, "b1")).toThrow(/weakest/);
+    expect(
+      w.db.select().from(tournamentEntries).where(eq(tournamentEntries.tournamentId, t.id)).all()
+        .filter((e) => e.status === "pending").length
+    ).toBe(PINTAKASI.MAX_BRACKET); // a refusal costs the field nothing
+  });
+});
+
+/**
+ * The ranking key itself, in isolation. The bump test above proves the
+ * committee USES it; this proves the key is total — that two birds can never
+ * tie their way into an order that depends on which one the query happened to
+ * return first. A bracket that reseeded itself between two reads of the same
+ * public field would make the bump line unreadable, which is the one thing
+ * round 37 needed it to be.
+ */
+describe("the Selection Committee's ranking key", () => {
+  const card = (earningsCents: number, wins: number, avgFigure: number) => ({
+    earningsCents,
+    wins,
+    avgFigure,
+  });
+  const above = (a: ReturnType<typeof card>, b: ReturnType<typeof card>, aId = "a", bId = "b") =>
+    Tournaments.compareRank(a, b, aId, bId) < 0;
+
+  test("earnings → wins → figure → id, in that order", () => {
+    // Earnings outrank everything: a rich newcomer beats a bird with a longer
+    // record and better figures than it will ever have.
+    expect(above(card(500, 0, 0), card(100, 99, 99))).toBe(true);
+    // Equal earnings fall to career wins…
+    expect(above(card(100, 5, 0), card(100, 4, 99))).toBe(true);
+    // …then to the average pit figure…
+    expect(above(card(0, 0, 80), card(0, 0, 79))).toBe(true);
+    // …and finally to the id, so two birds with no career at all still order
+    // the same way every time they are read.
+    expect(above(card(0, 0, 0), card(0, 0, 0), "aaa", "bbb")).toBe(true);
+    expect(above(card(0, 0, 0), card(0, 0, 0), "bbb", "aaa")).toBe(false);
+  });
+
+  test("a full field sorted twice comes out identical", () => {
+    // Sixteen identical unraced birds — the degenerate case the id tiebreak
+    // exists for. Sorting is stable in bun, so this can only fail if the
+    // comparator returns 0 somewhere and the ARRAY order changes underneath.
+    const ids = Array.from({ length: 16 }, (_, i) => `bird-${i}`);
+    const sort = (list: string[]) =>
+      [...list].sort((a, b) => Tournaments.compareRank(card(0, 0, 0), card(0, 0, 0), a, b));
+    expect(sort(ids)).toEqual(sort([...ids].reverse()));
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { birds, farms } from "@/db/schema";
+import { birds, events, farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { gameState } from "@/db/schema";
 import {
@@ -185,6 +185,64 @@ describe("gacha", () => {
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
     const stakerCut = Math.round(ECONOMY.BUNDLE_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE);
     expect(state.stakerPoolCents).toBe(stakerCut);
+  });
+
+  /**
+   * ⚠ THE ROUND-37 REGRESSION GUARD, and the reason this file needed one.
+   *
+   * `bundle()` passed `silent = (i === ECONOMY.BUNDLE_ROLLS - 1)` — which
+   * silenced only the LAST roll. Two things followed, and neither was visible
+   * from anywhere:
+   *
+   *   · the bundle wrote TWELVE ledger lines instead of the one its own doc
+   *     comment promises (ten loud rolls, plus the summary), and
+   *   · that one silent roll still minted its Land Token while writing no
+   *     `lt` delta at all, so every bundle ever bought put the world's land
+   *     books permanently ONE token out.
+   *
+   * BOTH halves are asserted below, because either alone would have passed
+   * against the bug. Counting rows alone: eleven-ish lines is not obviously
+   * wrong to anybody who hasn't read the doc comment. Checking the land alone:
+   * the FARM's balance was always right — it was the LEDGER that was short, so
+   * only a comparison between the two catches it.
+   */
+  test("a bundle writes ONE ledger line, and its lt deltas equal the land it minted", () => {
+    const { db, farmId } = fresh();
+    const before = db.select().from(farms).where(eq(farms.id, farmId)).get()!.landTokensCents;
+    const ledgerBefore = db.select().from(events).all().length;
+
+    // Seed 77 drops no egg across all eleven rolls — the clean case, where the
+    // summary line is the ONLY thing a bundle is allowed to write.
+    const out = new Gacha(db, farmId, mulberry32(77)).bundle();
+    expect(out.eggs).toBe(0);
+    const written = db.select().from(events).all().slice(ledgerBefore);
+    expect(written.filter((e) => e.type === "gacha").length).toBe(1);
+
+    // And the halves reconcile: every hundredth of land the farm gained is
+    // accounted for by an `lt` delta somebody can read.
+    const after = db.select().from(farms).where(eq(farms.id, farmId)).get()!.landTokensCents;
+    expect(after - before).toBe(ECONOMY.BUNDLE_ROLLS * LAND.PER_GACHA_ROLL);
+    expect(written.reduce((s, e) => s + (e.lt ?? 0), 0)).toBe(after - before);
+  });
+
+  test("…and an egg still announces itself, without double-counting its land", () => {
+    // The one exception the silencing makes: an egg is the news of the night
+    // and always gets its own line. That line must carry NO land, because the
+    // roll's token is already inside the bundle's summary — reporting it twice
+    // would show more land in the ledger than exists in the world, which is
+    // exactly what the LT conservation invariant refuses.
+    const { db, farmId } = fresh();
+    db.update(farms).set({ gp: 10_000_000 }).where(eq(farms.id, farmId)).run();
+    const gacha = new Gacha(db, farmId, mulberry32(5));
+    let out = gacha.bundle();
+    for (let i = 0; i < 20 && out.eggs === 0; i++) {
+      db.delete(events).run();
+      out = gacha.bundle();
+    }
+    expect(out.eggs).toBeGreaterThan(0);
+    const rows = db.select().from(events).all().filter((e) => e.type === "gacha");
+    expect(rows.length).toBe(1 + out.eggs); // the summary, plus one per egg
+    expect(rows.filter((e) => (e.lt ?? 0) !== 0).length).toBe(1); // …and only the summary carries land
   });
 
   test("a wallet too thin for the bundle is refused", () => {

@@ -178,9 +178,37 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(instructions).toMatch(/not (be )?wired into the fight engine|data only/i);
   });
 
+  /**
+   * Drift #8 (round 37): QUALIFICATION POINTS ARE DELETED. Thursday's Majors
+   * are open to any active, named age-FORK bird, and the Selection Committee
+   * seats on CAREER EARNINGS.
+   *
+   * This is the exact shape of drift this file exists for — a reversed rule
+   * that costs nothing to compile. The old prose said "you must QUALIFY: a
+   * bird needs 3 qualification points… 3 real wins, no shortcut", which after
+   * this round is not merely stale but actively harmful: an agent reading it
+   * would sit a fit age-3 bird out of every crown it was entitled to, waiting
+   * for a counter that no longer ticks.
+   */
+  test("the Majors read as OPEN — no qualification-points gate survives in the prose", () => {
+    // Written as "no LIVE gate", not "the words never appear": prose is
+    // allowed to explain what a round deleted and why, and a blanket ban on
+    // the phrase would forbid the one sentence a returning player most needs.
+    expect(everything).not.toMatch(/must qualify/i);
+    expect(everything).not.toMatch(/(needs?|holds?|hold|must have) \d+ qualification points?/i);
+    expect(everything).not.toMatch(/\d+ real wins,? no shortcut/i);
+    // What has to be there instead: the age gate that IS the door…
+    expect(everything).toMatch(new RegExp(`age ${AGE.FORK}\\+`, "i"));
+    // …and the seating rule that replaced the threshold. The committee ranking
+    // is the whole contest now, so an agent that doesn't know it ranks on
+    // earnings cannot reason about whether its bird will actually stand.
+    expect(everything).toMatch(/career earnings/i);
+    expect(everything).toMatch(new RegExp(`${PINTAKASI.MAX_BRACKET}`));
+  });
+
   // Every other numeric rule an agent needs to play correctly — pinned so a
   // future balance change trips a test instead of teaching a lie silently.
-  test("age gates, entry fees, and qualification points are all live-read", () => {
+  test("age gates and entry fees are all live-read", () => {
     expect(instructions).toContain(`${AGE.CHICK} = juvenile only`);
     // ⚠ RE-POINTED IN ROUND 31. This used to also demand HARDCORE_ENTRY_FEE,
     // back when hardcore was a mode you could card any night. It isn't one any
@@ -198,7 +226,6 @@ describe("MCP docs carry the CURRENT config values", () => {
     // The other two prices a farm pays, pinned for the same reason.
     expect(everything).toContain(`${ECONOMY.BREED_FEE} GP`);
     expect(everything).toContain(`${ECONOMY.GACHA_ROLL_PRICE} GP`);
-    expect(instructions).toContain(`${PINTAKASI.QUALIFYING_POINTS} qualification points`);
     // ⚠ /LT_CENTS SINCE ROUND 36. The cap is STORED in hundredths (100,000)
     // and RULED in whole tokens (1,000 a day) — the docs must quote the ruling,
     // not the storage, or an agent reads a hundred-fold bigger allowance than
@@ -378,16 +405,32 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     expect(CARD.real.claimer).toBe(2);
   });
 
-  test("pintakasi page teaches ONE qualification route: real wins on the card", () => {
+  /**
+   * ⚠ THE SUBJECT OF THIS TEST WAS DELETED IN ROUND 37, so it is re-pointed
+   * rather than removed — the page still needs a guard, it just needs a
+   * different one.
+   *
+   * It used to police WHICH route banked qualification points: the page had
+   * kept "three real wins OR two hardcore wins" long after POINTS_FOR.hardcore
+   * became unreachable. There is no route now, because there is no counter —
+   * Thursday takes any active, named, age-FORK bird and the Selection
+   * Committee decides who actually stands, on career earnings. A page still
+   * teaching a threshold would send a player campaigning for admission their
+   * bird already has.
+   */
+  test("pintakasi page teaches the OPEN field and the earnings seating, not a gate", () => {
     const src = readWikiPage("pintakasi/page.tsx");
-    // POINTS_FOR.hardcore is unreachable now — crown points come only from a
-    // lobby fight (lobbies.ts stamps PINTAKASI.POINTS_FOR[lobby.mode]) and a
-    // tournament win banks none. "Three real wins OR two hardcore wins" was the
-    // sentence, and it is now simply wrong.
-    expect(FIGHT_MODES).not.toContain("hardcore" as FightMode);
+    // No LIVE gate. (The page may — and should — explain the deleted one in
+    // the past tense, which is why this greps for the claim, not the words.)
+    expect(src).not.toMatch(/must qualify/i);
+    expect(src).not.toMatch(/(needs?|must have) \d+ qualification points?/i);
     expect(src).not.toMatch(/hardcoreWinsNeeded/);
-    expect(src).not.toMatch(/POINTS_FOR\.hardcore/);
-    expect(src).toMatch(/only thing that banks a point|only way/i);
+    expect(src).not.toMatch(/POINTS_FOR/);
+    expect(FIGHT_MODES).not.toContain("hardcore" as FightMode);
+    // …and the two rules that replaced it, both of which a player has to know
+    // to answer "will my bird actually get to fight on Thursday?"
+    expect(src).toMatch(/career earnings/i);
+    expect(src).toContain("PINTAKASI.MAX_BRACKET");
   });
 
   // ── Round 32: the discovery year gets a wider deal ────────────────────────
@@ -438,7 +481,11 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     // player entering either crown — so the page must frame it as a read.
     expect(src).toMatch(/one championship per bird per week/i);
     expect(src).toMatch(/scout report/i);
-    expect(src).toMatch(/nothing stops you entering either/i);
+    // The framing, not one phrasing of it: the declaration must read as a
+    // READ the player makes, never as a rule the engine enforces. (Grepped
+    // loosely on purpose — pinning the exact sentence would make an honest
+    // rewrite of the page fail for no reason.)
+    expect(src).toMatch(/nothing (stops|steers) you/i);
   });
 
   test("an agent can actually enter the Juvenile Championship, and knows how to choose", () => {

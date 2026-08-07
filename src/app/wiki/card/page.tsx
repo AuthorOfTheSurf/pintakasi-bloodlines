@@ -627,15 +627,15 @@ export default function CardPage() {
 
       <h2>After the win</h2>
       <p>
-        A win on the daily card banks qualification points toward{" "}
-        {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s Pintakasi Majors — {PINTAKASI.POINTS_FOR.real} for
-        a real win, {PINTAKASI.POINTS_FOR.juvenile} for juvenile practice. A bird needs{" "}
-        {PINTAKASI.QUALIFYING_POINTS} of them to stand in a Major, and a lobby win is the{" "}
-        <strong>only</strong> way to earn one — winning a championship banks none. Each fight is
-        counted on its own, so a bird that sweeps a full group banks{" "}
-        {PINTAKASI.POINTS_FOR.real * FIGHTS_PER_GROUP_BIRD} points in a single night, and every
-        fight goes on its lifetime record too. See{" "}
-        <Link href="/wiki/pintakasi">The Pintakasi</Link> for the full bracket.
+        A win pays you the pot, and the pot is not the only thing it buys. The GP a bird wins goes
+        on its <strong>career earnings</strong>, and career earnings are how the Selection Committee
+        decides who gets a seat at {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s Pintakasi Majors. There
+        is no separate points counter to bank any more, and no test to pass: any age-{AGE.FORK}+
+        bird may declare for a Major. But the seats are limited, so what a bird has won on the
+        ordinary card is what keeps it in the field. Each fight in the group counts on its own, so a
+        bird that sweeps a full group of {FIGHTS_PER_GROUP_BIRD} climbs that list hard in one night
+        — and every fight goes on its lifetime record too. See{" "}
+        <Link href="/wiki/pintakasi">The Pintakasi</Link> for the seating rules and the full bracket.
       </p>
 
       <div className="next">

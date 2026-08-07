@@ -41,6 +41,7 @@ export type EventType =
   | "tournament_entry" // a bird registered for the Pintakasi (fee escrowed)
   | "tournament_bump" // the Selection Committee displaced the weakest (refund)
   | "purse_payout" // a share of a championship purse banked
+  | "crown_land" // round 37: one side's land from one championship fight
   | "champion"; // a Pintakasi crown (world event)
 
 export interface EmitInput {

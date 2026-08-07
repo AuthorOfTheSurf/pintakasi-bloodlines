@@ -23,7 +23,6 @@ import {
   GROUP,
   NW_CAP,
   SCOUT,
-  PINTAKASI,
   STAKER_FLOWS,
   cardOfDay,
   isOnCard,
@@ -878,9 +877,10 @@ export class Lobbies {
                 wins: side.row.wins + 1,
                 // The ladder's line: practice wins don't graduate a maiden.
                 stakesWins: side.row.stakesWins + (lobby.mode === "juvenile" ? 0 : 1),
-                // …and the road to a crown (round 22): the championships are
-                // free to enter, so a win here is how a bird buys its way in.
-                crownPoints: side.row.crownPoints + (PINTAKASI.POINTS_FOR[lobby.mode] ?? 0),
+                // A crown point was banked here too, from round 22 until 37.
+                // The road to a Major still runs through this line — it is
+                // just the PURSE the fight pays, not a parallel counter, that
+                // now seats the Thursday field. See PINTAKASI in config.ts.
               }
             : { losses: side.row.losses + 1 }
         )

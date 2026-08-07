@@ -99,10 +99,11 @@ export const birds = sqliteTable("birds", {
   // still a maiden the day real stakes open at age 2. The displayed record
   // stays ONE lifetime line (ruled round 15) — this is eligibility only.
   stakesWins: integer("stakes_wins").notNull().default(0),
-  // QUALIFICATION POINTS for the Pintakasi (round 22, PFL Majors model):
-  // the crowns are FREE to enter and you qualify by fighting instead of
-  // paying. Won on the daily card only — see PINTAKASI.POINTS_FOR.
-  crownPoints: integer("crown_points").notNull().default(0),
+  // Round 22 kept QUALIFICATION POINTS here — a second scoreboard, banked on
+  // the daily card, that gated the Pintakasi. Round 37 deleted the concept:
+  // Thursday is open to any age-FORK bird and the Selection Committee seats
+  // the field on CAREER EARNINGS instead, which the battle log already
+  // records. See PINTAKASI in config.ts for why a rank beat a threshold.
   // How the career ended (null while egg/active).
   retiredBy: text("retired_by", { enum: ["manual", "age", "hardcore"] }),
   retiredWeek: integer("retired_week"),

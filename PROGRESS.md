@@ -461,3 +461,51 @@ bottom.*
     hand and rendering the Handbook pages. If another unit ever changes, grep
     every call site of the changed API before trusting the type checker — a
     rename type-checks perfectly while meaning something different.
+19. **Watch: the open Thursday is a hardcore faucet with no gate but a rank.**
+    Round 37 deleted the qualification-points threshold, so the only things
+    standing between a bird and a force-retirement are its age, the bots'
+    `CROWN_CHASE.CROWN_MIN_REAL_WINS` appetite, and `PINTAKASI.MAX_BRACKET`.
+    The first 91-day read is healthy — fields 16.0 → 22.5, 0 cancellations,
+    no attrition warning — but that is ONE seed, and the barn built to stress
+    it (Ilonggo Ironworks, crown nerve 0.95) has only ever played one world.
+    Replicate across seeds before treating the field size as settled, and read
+    POPULATION and CHAMPIONSHIPS together: fields growing while supply falls
+    is the shape that would matter, and neither number alone shows it.
+20. **The invariant found the bug the same day it was written — twice.** Land
+    conservation caught a gacha bundle minting an unrecorded token (fourteen
+    rounds old, money-correct, ledger-short, no test asserted the shape); and
+    reading the sim's own POPULATION line caught juvenile losers emitting
+    `retire` events (round 23 old, four rounds of balance judgement made
+    against invented deaths). **Neither was findable by inspection and neither
+    would ever have failed a test.** The generalisation, which is now three
+    for three with the two silent GP burns: *when money or an asset changes
+    hands, the thing that finds the bug is a two-sided sum, not a reader.* If
+    a future round adds a place land or GP moves, the question to ask is not
+    "is this right" but "what sum would notice if it weren't".
+21. **A doctor line that reads fiction is worse than a missing one.** The
+    POPULATION block warns when attrition outruns supply — it is the signal
+    that caught the round-23 collapse — and it had been counting 67 imaginary
+    deaths per three weeks. Nobody noticed because the warning never fired:
+    the fiction was smaller than the real supply. **A health metric needs its
+    own sanity check against a second source.** `retire` events versus
+    `birds.status = 'retired'` disagreed by 67 to 0 and one SQL query would
+    have said so. Worth doing for the other derived health lines before
+    trusting the next balance argument made from one.
+22. **Still open, approved in round 35 and STILL not done: drop the persisted
+    `play_by_play`.** ~35 MB of a ~59 MB database, and derivable from the
+    stored `battle_log.seed` because `simulatePair` is deterministic. It needs
+    a drift guard: narration regenerated after an engine retune can contradict
+    the stored result, and a fight log that disagrees with its own outcome is
+    worse than a large database. Deferred twice now — name it or drop it.
+23. **`testkit.ts`'s `qualified: true` FLATTENS records rather than topping
+    them up.** It runs `.set({ wins: 1, stakesWins: 1 })` over every bird, so
+    a fixture veteran seeded with 7 wins comes out the far side with 1. That
+    is harmless for what the flag is for — clearing the bots' crown appetite
+    floor — and the current behaviour is now pinned by a test, but it is a
+    trap for any future test about record DEPTH. If it ever bites, the fix is
+    `max(wins, 1)`, not a second flag.
+24. **`DAY_NAMES` now lives in config, but three Handbook pages still keep
+    private copies.** They are identical today. Reorder the config array and
+    they disagree silently — the exact failure mode the "numbers are imported,
+    never typed" rule exists to prevent, applied to a string array nobody
+    thought of as a number. Fold them in next time one of those pages is open.

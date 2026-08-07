@@ -1390,15 +1390,33 @@ export const JUVENILE_MAJOR = {
 // round-22 flows feed the biggest stage in the game. (2) The Selection
 // Committee ranks on POINTS first, so the bump line rewards the bird that
 // campaigned hardest, not the barn with the deepest wallet.
+//
+// ROUND 37 — THURSDAY OPENS UP, AND QUALIFICATION POINTS ARE GONE. Zane:
+// "let's just shift to earnings-based and get rid of qualifier points
+// concept." So the hard gate is deleted outright: ANY age-FORK bird may
+// declare for a crown, and the Selection Committee decides who actually
+// stands, ranking on CAREER EARNINGS.
+//
+// Why this is better than the points gate it replaces, rather than merely
+// simpler. (1) Points were a second, parallel scoreboard that measured
+// almost the same thing as earnings — win real fights — while being invisible
+// everywhere except one gate, so the game taught a number nobody could see
+// the consequences of. (2) A hard threshold is BINARY: at 3 points you are
+// in, at 2 you are nothing, and the 40th-best bird in the world had exactly
+// the same standing as the 4th. A rank is continuous — every GP a bird has
+// ever earned moves it up the seating list. (3) The gate is now COMPETITIVE
+// instead of absolute. MAX_BRACKET was always the real ceiling; with the
+// points gate gone it becomes the actual contest, and the committee's
+// existing bump line does the selecting. A bird with no earnings may stand
+// on a quiet week and will be bumped on a busy one, which is exactly what
+// "Thursday opens up" should mean.
+//
+// ⚠ The thing to watch: the crowns are HARDCORE, so an open Thursday can cull
+// the adult population harder than the gated one did. The bots' appetite
+// (bots.ts) and MAX_BRACKET are the two brakes. Read the doctor's population
+// and championship-field blocks after changing either.
 export const PINTAKASI = {
-  ENTRY_FEE: 0, //    FREE — qualification is earned in the pit, not bought
-  // What a win on the daily card banks toward a crown. The discovery year
-  // is practice and pays nothing; hardcore pays double because the bird
-  // wagered its career to earn it. Losses bank nothing.
-  POINTS_FOR: { juvenile: 0, real: 1, hardcore: 2 } as Record<string, number>,
-  // What it takes to stand in a championship. Three real wins, or two
-  // hardcores — a few weeks of honest campaigning for a bird that turns 3.
-  QUALIFYING_POINTS: 3,
+  ENTRY_FEE: 0, //    FREE — a crown is earned in the pit, not bought
   MAX_BRACKET: 64,
   // Which day the crowns run. dayIndex % 7: 0 = Friday (day 0 of the game
   // week) … 5 = Wednesday, 6 = THURSDAY. Moved Wed → Thu in round 20 so a
@@ -1484,6 +1502,18 @@ export const CADENCE = {
 // ── Farms (stables — every player + agent runs one) ────────────────────────
 // Identity: a name, a country flag (encouraged), and two colors from this
 // fixed palette (no hexes yet — iterate later).
+// The game week's days, indexed by `dayIndex % 7` — day 0 of the week is a
+// Hatch Friday, so 6 is Thursday. Lives here rather than beside the clock
+// because the SCHEDULE knobs are what index it (PINTAKASI.DAY_OF_WEEK,
+// JUVENILE_MAJOR.DAY_OF_WEEK), and a rule that says "runs on day 6" has to be
+// able to say "Thursday" wherever it is quoted.
+//
+// ⚠ Three Handbook pages still keep private copies of this array. They are
+// identical today; if this one is ever reordered they will silently disagree.
+export const DAY_NAMES = [
+  "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+] as const;
+
 export const FARM_COLORS = [
   "red", "orange", "yellow", "green", "teal", "blue",
   "purple", "pink", "brown", "black", "white", "gold",

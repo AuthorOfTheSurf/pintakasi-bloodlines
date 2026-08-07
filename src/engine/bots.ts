@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
-import { BOT_FARMS, BREEDING_PLAN, WEATHER_APPETITE, type BotProfile } from "./bot-config";
+import { BOT_FARMS, BREEDING_PLAN, CROWN_CHASE, WEATHER_APPETITE, type BotProfile } from "./bot-config";
 import {
   BREEDING_SHAPES,
   CLAIMER,
@@ -913,20 +913,29 @@ export function chaseCrowns(
   const entered: string[] = [];
 
   const blades = Tournaments.bladesOfWeek(Tournaments.targetWeek(today));
-  // Age AND qualification points (round 22): the crowns cost nothing now, so
-  // the gate is what the bird did on the daily card, not what the barn can
-  // afford. Filtering here keeps the pointless enter() attempts out.
-  const qualified = new Set(
+  // ROUND 37 — APPETITE, NOT A GATE. Until now this mirrored an engine rule:
+  // the crowns demanded 3 qualification points, so the bot filtered on them
+  // and every rejected bird was a call enter() would have thrown on anyway.
+  // Thursday is open now, and the engine will happily take an unraced age-3
+  // bird into a HARDCORE bracket, so the restraint has to live here instead.
+  //
+  // The bot's rule is one proven real win. It is deliberately far looser than
+  // the 3 points it replaces — that is the point of opening Thursday up — but
+  // it is not nothing: a bird with no record has no earnings, so the Selection
+  // Committee seats it last anyway, and feeding a total unknown into a bracket
+  // that force-retires losers is how a bot culls its own barn. Everything
+  // above this line is the barn deciding; the committee decides the rest.
+  const proven = new Set(
     db
       .select()
       .from(birds)
       .all()
-      .filter((b) => b.farmId === farmId && b.crownPoints >= PINTAKASI.QUALIFYING_POINTS)
+      .filter((b) => b.farmId === farmId && b.stakesWins >= CROWN_CHASE.CROWN_MIN_REAL_WINS)
       .map((b) => b.id)
   );
   const eligible = flock
     .all()
-    .filter((b) => b.status === "active" && b.named && canHardcore(b.age) && qualified.has(b.id));
+    .filter((b) => b.status === "active" && b.named && canHardcore(b.age) && proven.has(b.id));
   if (eligible.length === 0) return entered;
 
   // Each bird declares for the running blade it reads BEST at — that's the

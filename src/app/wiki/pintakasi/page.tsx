@@ -3,7 +3,6 @@ import {
   AGE,
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
-  FIGHT_MODES,
   FORMATS,
   JUVENILE_MAJOR,
   LAND,
@@ -17,11 +16,6 @@ export const dynamic = "force-dynamic";
 
 /** dayIndex % 7 → day name (round 20's calendar), purely for display. */
 const DAY_NAMES = ["Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
-
-const POINT_LABELS: Record<string, string> = {
-  juvenile: "Juvenile win (discovery year)",
-  real: "Real win",
-};
 
 const PURSE_LABELS: Record<string, string> = {
   champion: "Champion",
@@ -51,11 +45,6 @@ function classicSeedPairs(bracketSize: number): string {
 }
 
 export default function PintakasiPage() {
-  const realWinsNeeded = Math.ceil(PINTAKASI.QUALIFYING_POINTS / PINTAKASI.POINTS_FOR.real);
-  // Only the modes the daily card actually runs can bank a point (round 31 took
-  // hardcore off the card, and a tournament win banks none), so the table below
-  // is filtered to FIGHT_MODES rather than showing every rung in POINTS_FOR.
-  const earnablePoints = FIGHT_MODES.map((mode) => [mode, PINTAKASI.POINTS_FOR[mode] ?? 0] as const);
   const dailyRealLand = landForFight(ECONOMY.REAL_ENTRY_FEE);
   const crownFightLand = landForTournamentFight(PINTAKASI.LAND_BASIS);
   const exampleBracket = 16;
@@ -115,53 +104,48 @@ export default function PintakasiPage() {
         </table>
       </div>
 
-      <h2>Free to enter — but you have to earn it</h2>
+      <h2>Thursday is open</h2>
       <p>
-        There is no entry fee. A bird gets in by <strong>campaigning</strong>: every win on the
-        ordinary daily card banks qualification points toward a Major. A juvenile win banks zero of{" "}
-        <em>these</em> points — the discovery year has its own, separate ladder toward its own
-        championship (see below). So real wins, in real lobbies, are the whole route in.
-      </p>
-      <div className="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Win type</th>
-              <th className="num">Points banked</th>
-            </tr>
-          </thead>
-          <tbody>
-            {earnablePoints.map(([mode, points]) => (
-              <tr key={mode}>
-                <td>{POINT_LABELS[mode] ?? mode}</td>
-                <td className="num">{points}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p>
-        A bird needs <strong>{PINTAKASI.QUALIFYING_POINTS} points</strong> to stand in a Major —{" "}
-        {realWinsNeeded} real wins on the daily card. It also has to be old enough to be allowed to
-        risk its career: age {AGE.FORK}+.
-      </p>
-      <p className="dim">
-        One entry is a group of up to {FIGHTS_PER_GROUP_BIRD} fights now (see{" "}
-        <Link href="/wiki/card">The card</Link>), and every win in that group banks its own points.
-        So a bird that sweeps a full group can be most of the way to a Major after a single night —
-        campaigning is a matter of a few good cards, not a month of them.
+        There is no entry fee and there is no test to pass. <strong>Any</strong> bird of yours may
+        declare for a Major, as long as it is alive, fighting, has a real name, and is old enough to
+        be allowed to risk its career: age {AGE.FORK}+. That age gate is the only hard rule left at
+        the door. A bird that has never won anything can walk up and register.
       </p>
       <div className="callout warn">
-        <b>A lobby win is the only thing that banks a point.</b> Winning a championship banks none —
-        not the Majors, not the Juvenile Championship. There is no shortcut and no second route: the
-        only way onto the biggest stage in the game is to go and win real fights on the ordinary
-        card, week in and week out.
+        <b>Registering is not the same as standing.</b> Every crown has only{" "}
+        {PINTAKASI.MAX_BRACKET} seats. Once they are full, the <strong>Selection Committee</strong>{" "}
+        decides who keeps one — and it can refuse you at the door, or bump you out later in the
+        week when a better bird declares. Your entry is only safe on Thursday, when the bracket
+        actually runs.
       </div>
+      <p>
+        So a crown is not a line you cross. It is a <strong>seat you have to be good enough to
+        hold</strong>. Where your bird sits in the seating list is not a secret number: it is what
+        the bird has <strong>earned in its career</strong> — all the GP it has ever taken home from
+        the pit. See <Link href="#the-selection-committee">the Selection Committee</Link>, below.
+      </p>
       <div className="callout tip">
-        <b>Why this way, not a price tag.</b> Buying a seat would just mean the deepest wallet wins
-        the biggest purse in the game. Earning a seat means the field is exactly the birds that have
-        been proving themselves all week — the Majors reward a campaign, not a bank balance.
+        <b>Why an open door instead of a threshold.</b> A Major used to demand a fixed number of
+        &ldquo;qualification points&rdquo;, banked one per win on the daily card. That gate is gone,
+        for two reasons. It was <em>binary</em>: one point short and your bird was nothing, one
+        point over and the 40th-best bird in the world stood on exactly the same footing as the
+        4th. And it counted a number you could not see anywhere else in the game. A ranking is
+        better on both counts. It is continuous — every peso a bird has ever won moves it up the
+        list — and it is <em>visible</em>, because career earnings are printed on the bird&apos;s
+        own card. You always know roughly where you stand.
       </div>
+      <p className="dim">
+        The practical effect: on a quiet week, a young bird with nothing on its record really can
+        get a seat. On a busy week it will be bumped by birds with real money behind them. That is
+        what an open Thursday is supposed to feel like — the door is never locked, but the room
+        only holds so many.
+      </p>
+      <p className="dim">
+        One entry on the daily card is a group of up to {FIGHTS_PER_GROUP_BIRD} fights (see{" "}
+        <Link href="/wiki/card">The card</Link>), and every win in that group pays its own pot. So a
+        bird that sweeps a full group can move a long way up the seating list in a single night.
+        Earnings build fast for a bird that is actually winning.
+      </p>
 
       <h2>Hardcore throughout</h2>
       <div className="callout warn">
@@ -174,32 +158,49 @@ export default function PintakasiPage() {
         exception in the whole game — it does <em>not</em> force-retire.)
       </div>
 
-      <h2>The Selection Committee</h2>
+      <h2 id="the-selection-committee">The Selection Committee</h2>
       <p>
-        With a free entry and a hard cap on the field, someone has to decide who gets a seat when
-        too many birds qualify. That&apos;s the Selection Committee. It ranks every entrant, in
-        order:
+        Entry is free and open, and the field is capped. So someone has to decide who actually
+        stands when more birds declare than there are seats. That is the Selection Committee. It
+        ranks every entrant, in this order:
       </p>
       <ol>
-        <li>Qualification points — the campaign that got it here, first and decisively.</li>
-        <li>Career earnings.</li>
+        <li>
+          <strong>Career earnings</strong> — every peso the bird has ever won, first and decisively.
+          That means pot money from fights it won on the daily card, plus any purse it has taken at
+          a championship. Losing costs a bird nothing here; it just doesn&apos;t add anything.
+        </li>
         <li>Career wins.</li>
         <li>Average pit figure.</li>
+        <li>
+          And if two birds are still dead level, a fixed tiebreak, so the order is always the same
+          for everyone reading the board.
+        </li>
       </ol>
       <p>
         That ranking does two jobs. It <strong>seeds the bracket</strong> (see below), and it draws
         the <strong>bump line</strong>: once a championship&apos;s field fills to{" "}
         {PINTAKASI.MAX_BRACKET}, a new entrant only gets in over the body of the current weakest
-        birds in the field — if the newcomer outranks them, the weakest bird is sent home and the
-        newcomer takes its seat, live, in public. If it doesn&apos;t outrank them, entry is refused.
-        Since points lead the ranking, the bump line rewards whichever bird campaigned hardest that
-        week, not whichever barn showed up first.
+        bird in the field. If the newcomer outranks it, that bird is sent home — refunded, live, in
+        public — and the newcomer takes its seat. If the newcomer does <em>not</em> outrank it, the
+        newcomer is refused instead.
       </p>
+      <p>
+        Because earnings lead the ranking, the seat goes to the bird that has actually made money in
+        the pit, not to the barn that registered first and not to the barn with the fattest wallet.
+        You cannot buy earnings: a bird only has them because it won fights.
+      </p>
+      <div className="callout tip">
+        <b>How to keep a seat.</b> Watch the board (it is public all week — see below) and look at
+        where your bird sits. Near the bottom of a full field on Monday means somebody will very
+        likely bump it by Thursday. The answer is the same as it has always been: go and win real
+        fights on the daily card. Every pot you take pushes the bird up the list.
+      </div>
 
       <h2>The bracket</h2>
       <p>
-        The bracket scales to whoever actually qualified: the next power of two at or above the
-        field size, up to a hard ceiling of {PINTAKASI.MAX_BRACKET}. If the field doesn&apos;t fill
+        The bracket scales to whoever is still seated on the day: the next power of two at or above
+        the field size, up to a hard ceiling of {PINTAKASI.MAX_BRACKET}. If the field doesn&apos;t fill
         every seat, the empty seats become <strong>byes</strong>, and byes go to the top seeds — the
         birds the Committee ranked highest skip round one clean. Below {PINTAKASI.MIN_FIELD} entrants
         and there isn&apos;t a fight worth having, so the whole championship is cancelled instead.
@@ -315,7 +316,7 @@ export default function PintakasiPage() {
         The daily card is fogged — you don&apos;t see who you&apos;re about to fight until the day
         ticks over (see <Link href="/wiki/card">The card</Link>). The Majors&apos; field is the
         opposite: public the moment a bird registers, and public all week. Two reasons. Entering the
-        biggest stage in the game is a public act — you&apos;re choosing to be seen campaigning for
+        biggest stage in the game is a public act — you&apos;re choosing to be seen declaring for
         it. And the bump line only means anything if you can see who you&apos;d be bumping: a
         newcomer, and every farm watching, needs to know exactly who the current weakest seed is
         before the Committee makes that call.
@@ -350,12 +351,19 @@ export default function PintakasiPage() {
         </table>
       </div>
       <p>
-        Qualification is the same idea as the Majors, scaled to the discovery year: a juvenile
-        bird needs <strong>{JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins</strong> (see{" "}
-        <Link href="/wiki/card">The card</Link> for the discovery-year ladder) to stand — no GP
-        entry either way. One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN} birds per blade,
-        in a bracket capped at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s ceiling, sized for
-        a stage about discovery, not the biggest purse in the game.
+        This stage <em>does</em> keep a hard gate, and it is the only one left in the game: a
+        juvenile bird needs <strong>{JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins</strong> (see{" "}
+        <Link href="/wiki/card">The card</Link> for the discovery-year ladder) before it may stand.
+        There is no GP entry either way. One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN}{" "}
+        birds per blade, in a bracket capped at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s
+        ceiling, sized for a stage about discovery, not the biggest purse in the game.
+      </p>
+      <p className="dim">
+        Why does the junior stage gate when the senior one doesn&apos;t? Because a one-year-old has
+        no career earnings to rank it by — it has barely earned anything at all — so the
+        Committee&apos;s seating list would be nearly all ties. A small win requirement does the
+        same job here that earnings do upstairs: it asks the chick to show it can beat somebody
+        first.
       </p>
 
       <h3>Which of the two crowns?</h3>
@@ -365,8 +373,9 @@ export default function PintakasiPage() {
         to declare.
       </p>
       <p>
-        Nothing stops you entering either one — there is no gate, and a chick with no form at all
-        may stand in whichever it likes. But the useful way to choose is to read the bird&apos;s{" "}
+        Nothing steers you toward one blade or the other — a chick that has its{" "}
+        {JUVENILE_MAJOR.QUALIFYING_WINS} wins may declare for whichever it likes, whatever it won
+        them at. But the useful way to choose is to read the bird&apos;s{" "}
         <Link href="/wiki/birds">scout report</Link> and send it to the blade it reads better at.{" "}
         {FORMATS[JUVENILE_MAJOR.BLADES[0]].label} is the short end of the dial and{" "}
         {FORMATS[JUVENILE_MAJOR.BLADES[1]].label} the long one, and working out which end a bird

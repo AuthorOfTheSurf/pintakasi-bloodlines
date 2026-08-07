@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { birds, farms } from "@/db/schema";
-import { PINTAKASI, STARS } from "./config";
+import { STARS } from "./config";
 import { ageOf } from "./lifecycle";
 import { GameClock } from "./game-clock";
 import { expectConserved, makeBird, makeBirds, walletCents, world } from "./testkit";
@@ -36,19 +36,39 @@ describe("world()", () => {
     expectConserved(w.db);
   });
 
-  test("qualified: true stamps the world — and NOTHING inserted afterwards", () => {
+  // ⚠ RE-POINTED IN ROUND 37, with the flag itself. `qualified` used to stamp
+  // PINTAKASI.QUALIFYING_POINTS, because a Major had a points gate. That gate
+  // is deleted — Thursday is open on age — so the flag now stamps a real WIN,
+  // which is what the bots' own crown appetite asks for
+  // (CROWN_CHASE.CROWN_MIN_REAL_WINS) and what lifts a bird off the bottom of
+  // the committee's list. The claim being pinned is unchanged: it stamps the
+  // world it opens, and stops there.
+  test("qualified: true gives every standing bird a real win — and NOTHING inserted afterwards", () => {
     const w = world({ qualified: true });
-    for (const b of w.db.select().from(birds).all())
-      expect(b.crownPoints).toBe(PINTAKASI.QUALIFYING_POINTS);
+    for (const b of w.db.select().from(birds).all()) {
+      expect(b.wins).toBe(1);
+      expect(b.stakesWins).toBe(1);
+    }
+    // ⚠ It FLATTENS the legacy records rather than topping them up — Batong
+    // Buhay's seeded 7 wins come out the far side as 1. That is fine for what
+    // the flag is for (clearing an appetite floor) and would be wrong for a
+    // test about seeding depth, which should set its own records.
     // The asymmetry the Selection Committee's bump test depends on: a bird
     // added later is un-stamped, so a test can build a field weaker than its
     // newcomer on purpose.
     const late = makeBird(w.db, { age: 3 });
-    expect(late.crownPoints).toBe(0);
+    expect(late.wins).toBe(0);
+    expect(late.stakesWins).toBe(0);
   });
 
   test("qualified defaults OFF — or a first-win test would prove nothing", () => {
-    for (const b of world().db.select().from(birds).all()) expect(b.crownPoints).toBe(0);
+    // The legacy flock arrives with real seeded records (Sinag 4W, Batong
+    // Buhay 7W), so "off" cannot mean "everything is zero". What it means is
+    // that nothing has been stamped: the birds with no career — Kidlat, the
+    // discovery-year chick — still have none.
+    const rows = world().db.select().from(birds).all();
+    expect(rows.some((b) => b.stakesWins === 0)).toBe(true);
+    expect(rows.find((b) => b.name === "Kidlat")!.stakesWins).toBe(0);
   });
 
   test("extra barns register and are reachable by name", () => {

@@ -327,25 +327,45 @@ describe("the card goes off (pure PvP)", () => {
     expect(totalGp(w.db)).toBe(before); // still conserved, to the cent
   });
 
-  test("a win banks QUALIFICATION POINTS toward a crown — but not in the discovery year", () => {
+  /**
+   * ⚠ RE-POINTED IN ROUND 37, not deleted. This used to assert that a real win
+   * banked PINTAKASI.POINTS_FOR.real qualification points toward a crown, and
+   * that counter no longer exists — Thursday is open on age alone.
+   *
+   * But the DISTINCTION the test was defending survives the deletion intact:
+   * a win in the discovery year is PRACTICE and a win on a real card is a
+   * STAKES win, and the game has to keep the two apart. It is what the maiden
+   * and nw3 ladders sort on (round 19), and since round 37 it is also the line
+   * the bots' own crown appetite draws (CROWN_CHASE.CROWN_MIN_REAL_WINS). So
+   * the subject moves from `crownPoints` to `stakesWins`; the claim is the
+   * same claim.
+   */
+  test("a REAL win banks a stakes win — a discovery-year win is practice and banks none", () => {
     const w = world();
+    const stakesOf = (db: DB, id: string) =>
+      db.select().from(birds).where(eq(birds.id, id)).get()!.stakesWins;
+    const winsOf = (db: DB, id: string) =>
+      db.select().from(birds).where(eq(birds.id, id)).get()!.wins;
+    // The legacy starters arrive with seeded records, so this is a DELTA test
+    // against what each bird already held.
+    const before = new Map(w.db.select().from(birds).all().map((b) => [b.id, b.stakesWins]));
     const { fight } = duel(w, "Alab", REAL(w.db), 7001);
-    const winner = w.db
-      .select()
-      .from(battleLog)
-      .all()
-      .find((r) => r.result === "win")!;
-    expect(w.db.select().from(birds).where(eq(birds.id, winner.birdId)).get()!.crownPoints).toBe(
-      PINTAKASI.POINTS_FOR.real
-    );
+    const rows = w.db.select().from(battleLog).all();
+    const winner = rows.find((r) => r.result === "win")!;
+    const loser = rows.find((r) => r.result === "loss")!;
+    expect(stakesOf(w.db, winner.birdId)).toBe(before.get(winner.birdId)! + 1);
     expect(fight.farms.length).toBe(2);
-    // The loser banks nothing — points are won, never granted for showing up.
-    const loser = w.db
-      .select()
-      .from(battleLog)
-      .all()
-      .find((r) => r.result === "loss")!;
-    expect(w.db.select().from(birds).where(eq(birds.id, loser.birdId)).get()!.crownPoints).toBe(0);
+    // The loser banks nothing — a stakes win is WON, never granted for showing up.
+    expect(stakesOf(w.db, loser.birdId)).toBe(before.get(loser.birdId)!);
+
+    // The same fight one year younger banks nothing at all. Kidlat is the
+    // legacy flock's age-1 chick, in both barns, with no record either side.
+    const j = world();
+    const juvenile = onCard(j.db, { mode: "juvenile", classType: "open" });
+    duel(j, "Kidlat", juvenile, 7001);
+    const juvWinner = j.db.select().from(battleLog).all().find((r) => r.result === "win")!;
+    expect(winsOf(j.db, juvWinner.birdId)).toBe(1); //       the lifetime record moves…
+    expect(stakesOf(j.db, juvWinner.birdId)).toBe(0); //     …the stakes record does not
   });
 
   test("an ODD lobby strands nobody any more — the odd bird is a group-mate", () => {
