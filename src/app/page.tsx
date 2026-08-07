@@ -9,10 +9,16 @@ export default function Home() {
           tables
         </li>
         <li>
-          MCP endpoint: <code>/api/mcp</code>
+          The Handbook: <a href="/wiki">/wiki</a> — the player-facing rules, every number read live
+          from the engine
         </li>
         <li>
-          REST: <code>/api/state</code>, <code>/api/flock</code>, <code>/api/birds/:id</code>, …
+          MCP endpoint: <code>/api/mcp?key=fk_dev</code>
+        </li>
+        <li>
+          REST: <code>/api/state</code>, <code>/api/flock</code>, <code>/api/birds/:id</code>, … —
+          all of them need <code>?key=fk_dev</code> (or an <code>x-farm-key</code> header), because
+          a seeded world holds twenty farms and the server will not guess which one is yours
         </li>
       </ul>
     </main>

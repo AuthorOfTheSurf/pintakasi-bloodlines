@@ -2,7 +2,7 @@
   "mcpServers": {
     "pintakasi": {
       "type": "http",
-      "url": "http://localhost:3434/api/mcp"
+      "url": "http://localhost:3434/api/mcp?key=fk_dev"
     }
   }
 }

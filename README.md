@@ -32,7 +32,9 @@ That's the whole setup — there is no migration step. `createDb()` executes the
 
 The database is **per-machine**: `data/*.db` is gitignored, so a clone never carries a world with it and a `git pull` can never overwrite yours. Running `db:seed` twice is safe and does nothing the second time — "Already seeded … delete the file to reseed" is the expected message, not a failure.
 
-To play, point an MCP client at the running server. `.mcp.json` in the repo root already does this for Claude Code (`http://localhost:3434/api/mcp`) — start `bun dev` first, since the endpoint is the server.
+To play, point an MCP client at the running server. `.mcp.json` in the repo root already does this for Claude Code — start `bun dev` first, since the endpoint *is* the server.
+
+**Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get *"Multiple farms exist — pass your farm key"*, which is the server being careful, not broken. Playing as somebody new instead? `register_farm` over MCP hands you a fresh key; put that in the URL.
 
 Tests: `bun test` · Types: `bun run typecheck` · Health of a world: `bun run doctor` · The combat lab: `bun run balance`
 
