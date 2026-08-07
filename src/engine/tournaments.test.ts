@@ -16,10 +16,11 @@ import { CROWN_CHASE } from "./bot-config";
 import { ECONOMY, JUVENILE_MAJOR, PINTAKASI, SCOUT, type FightFormat } from "./config";
 import { Flock } from "./flock";
 import { mulberry32 } from "./rng";
+import { computeTopline } from "./snapshots";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
-import { makeBird, onCard } from "./testkit";
-import { Tournaments } from "./tournaments";
+import { expectConserved, makeBird, onCard } from "./testkit";
+import { DIVISION_RULES, Tournaments } from "./tournaments";
 
 /**
  * Two legacy farms — each carries two age-3+ birds (Sinag 3, Batong Buhay 5).
@@ -91,6 +92,40 @@ function earned(db: DB, birdId: string, farmId: string, cents: number): void {
     .run();
 }
 
+/** One barn's wallet, in whole GP — the unit an entry fee is charged in. */
+const gpOf = (db: DB, farmId: string) =>
+  db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp;
+
+/**
+ * Seat a bird in a championship the way `enter` would — WITH THE MONEY.
+ *
+ * Several fixtures below build fields far larger than `enter` will allow: the
+ * committee's bump line needs 64 birds already standing, and the purse tests
+ * need 32 or 64 stat-identical dummies under a pinned seed. Those insert entry
+ * rows directly, which was free bookkeeping while an entry cost 0 GP.
+ *
+ * ⚠ AT 80 GP IT IS PHANTOM ESCROW. `computeTopline` counts every pending
+ * entry's fee as GP the world is holding, so a row nobody paid for invents
+ * money — and then the crown pays it out to a champion, at which point it is
+ * real money in a real wallet that no faucet ever minted. The conservation
+ * proof would fail on the FIXTURE while the engine was innocent, which is the
+ * worst kind of red test: it teaches you to distrust the invariant.
+ *
+ * So the fee comes out of a real wallet here, exactly as `enter` takes it.
+ */
+function escrowEntry(db: DB, tournamentId: number, birdId: string, farmId: string, fee: number) {
+  const farm = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+  if (farm.gp < fee)
+    throw new Error(
+      `fixture overdraft: ${farmId} holds ${farm.gp} GP and the entry costs ${fee} — ` +
+        `give the barn more money rather than skipping the debit`
+    );
+  db.update(farms).set({ gp: farm.gp - fee }).where(eq(farms.id, farmId)).run();
+  db.insert(tournamentEntries)
+    .values({ tournamentId, birdId, farmId, fee, dayEntered: 0 })
+    .run();
+}
+
 const totalCents = (db: DB) => {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
   return (
@@ -152,19 +187,113 @@ describe("registration & the Selection Committee", () => {
   // one short refused, at the threshold accepted. There is no threshold any
   // more, so the ladder becomes the OPEN FIELD: the same door, asked the
   // opposite question.
-  test("an unraced, un-earning age-3 bird may stand — and it still costs nothing", () => {
+  test("an unraced, un-earning age-3 bird may stand — the door has a PRICE, not a record", () => {
     const w = world();
-    expect(PINTAKASI.ENTRY_FEE).toBe(0);
     // A bird with no record whatsoever: no wins, no earnings, nothing the old
     // counter would have taken. Under the round-22 rule this was the exact
     // shape of a bird that could not enter at all.
+    //
+    // ⚠ ROUND 41 PUT 80 GP ON THIS DOOR and this test is what keeps the two
+    // ideas apart. A fee is not a qualification: it asks the BARN for money,
+    // never the bird for a career. If somebody ever re-reads "the crowns cost
+    // something again" as licence to put a wins floor back beside the price,
+    // this line is what says no.
     const rookie = makeBird(w.db, { name: "Bagong Salta", age: 3 });
     expect(rookie.wins).toBe(0);
     expect(rookie.stakesWins).toBe(0);
-    const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
+    const before = gpOf(w.db, w.devId);
     expect(() => w.dev.enter(rookie.id, "b1")).not.toThrow();
-    // Free since round 22 — the wallet does not move.
-    expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(before);
+    // …and the price is exactly the ruled one, taken once.
+    expect(gpOf(w.db, w.devId)).toBe(before - PINTAKASI.ENTRY_FEE);
+  });
+
+  /**
+   * ── THE 80 GP DOOR (round 41) ─────────────────────────────────────────────
+   *
+   * Entry was 200 GP until round 22 made it free, which left the biggest stage
+   * in the game bankrolled entirely by whoever happened to be rolling the
+   * gacha. A fee makes the crowns partly entrant-funded — the round-16 fight
+   * economy the daily card has always followed.
+   *
+   * The thing that has to be true of a fee in THIS codebase is not that it is
+   * charged, but that it is charged and still ACCOUNTED FOR. GP is never
+   * printed and never burned; an escrowed fee is money that has left a wallet
+   * and not yet arrived anywhere, and the only reason that isn't a burn is
+   * that `computeTopline` counts pending entries as part of the world's GP.
+   */
+  test("a Major entry debits exactly 80 GP, escrows it, and the world's total never moves", () => {
+    const w = world();
+    const before = gpOf(w.db, w.devId);
+    const beforeCents = totalCents(w.db);
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
+
+    expect(gpOf(w.db, w.devId)).toBe(before - PINTAKASI.ENTRY_FEE);
+    // The fee is stamped on the ENTRY, not read back off the knob — a
+    // mid-season reprice refunds what a barn actually paid (see the config
+    // note). This is the row that makes that possible.
+    const entry = w.db.select().from(tournamentEntries).all()[0];
+    expect(entry.status).toBe("pending");
+    expect(entry.fee).toBe(PINTAKASI.ENTRY_FEE);
+    // Left the wallet, arrived nowhere, still in the world. Both halves of the
+    // proof — what IS, and what the faucets ALLOWED — agree.
+    expect(totalCents(w.db)).toBe(beforeCents);
+    expectConserved(w.db);
+  });
+
+  test("…and a barn that cannot cover the fee is turned away, wallet untouched", () => {
+    // The one genuinely new way to be refused since round 41. Worth pinning
+    // separately from the gates above because it is the only refusal that has
+    // nothing to do with the bird: the same rooster walks in tomorrow if the
+    // barn has 80 GP tomorrow.
+    const w = world();
+    w.db.update(farms).set({ gp: PINTAKASI.ENTRY_FEE - 1 }).where(eq(farms.id, w.devId)).run();
+    const sinag = byName(w.db, w.devFlock, "Sinag");
+    expect(() => w.dev.enter(sinag.id, "b1")).toThrow(/escrowed/);
+    expect(gpOf(w.db, w.devId)).toBe(PINTAKASI.ENTRY_FEE - 1); // refused ≠ charged
+    expect(w.db.select().from(tournamentEntries).all().length).toBe(0);
+    // (No `expectConserved` here on purpose: emptying a wallet by hand is
+    // itself a conservation violation, and the faucet-side proof would fail on
+    // the fixture. The claim under test is the refusal, and the door is the
+    // only thing that touched money after it.)
+  });
+
+  /**
+   * ⚠ THE PRICE IS PER DIVISION, AND THAT IS THE WHOLE POINT OF ROUND 41.
+   *
+   * Until this round one knob — `PINTAKASI.ENTRY_FEE` — was stamped on every
+   * tournament row `findOrOpen` created, juveniles included. Nobody noticed
+   * while it was 0. The moment the Majors started charging, an 80 GP toll
+   * would have landed on age-1 chicks: nine nights of card entries to stand in
+   * the one crown that exists BECAUSE the discovery year is supposed to be
+   * open, and the bots' bare `catch` would have swallowed every refusal.
+   *
+   * So this asserts the split in ONE world, both rows side by side, rather
+   * than trusting two constants to be read by the right code path.
+   */
+  test("the Majors charge and the Juvenile Championship does not — same world, two prices", () => {
+    const w = world();
+    const before = gpOf(w.db, w.devId);
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1"); //           age 3, a Major
+    const chick = makeBird(w.db, {
+      name: "Munting Kidlat",
+      age: 1,
+      wins: JUVENILE_MAJOR.QUALIFYING_WINS,
+    });
+    w.dev.enter(chick.id, "b2", "juvenile"); //                           age 1, the crown
+
+    const rows = w.db.select().from(tournaments).all();
+    const major = rows.find((t) => t.division === "major")!;
+    const juvenile = rows.find((t) => t.division === "juvenile")!;
+    expect(major.entryFee).toBe(PINTAKASI.ENTRY_FEE);
+    expect(major.entryFee).toBeGreaterThan(0); // …or the split proves nothing
+    expect(juvenile.entryFee).toBe(0);
+    expect(JUVENILE_MAJOR.ENTRY_FEE).toBe(0);
+    // Two entries, one bill: the chick's crown took nothing at all.
+    expect(gpOf(w.db, w.devId)).toBe(before - PINTAKASI.ENTRY_FEE);
+    expect(
+      w.db.select().from(tournamentEntries).all().map((e) => e.fee).sort()
+    ).toEqual([0, PINTAKASI.ENTRY_FEE]);
+    expectConserved(w.db);
   });
 
   test("…but AGE is still a wall — the fork is what a Major is gated on now", () => {
@@ -211,7 +340,15 @@ describe("registration & the Selection Committee", () => {
     expect(() => w.dev.enter(sinag.id, "b1")).not.toThrow();
   });
 
-  test("the purse is pure JUICE now that entries are free", () => {
+  test("the purse is ENTRIES PLUS JUICE — the fighters put money in the pot again", () => {
+    // Round 22 made this pot pure juice, and traced over a 91-day world that
+    // meant 99% of every crown purse came from gacha spend and breed fees: a
+    // barn that never entered a Major still paid for its purse, and the
+    // entrants paid nothing. Round 41 puts the entrants back in the pot.
+    //
+    // Both terms are pinned because either one going missing is a silent
+    // failure. Drop the fees and the crowns are back to being funded by
+    // bystanders; drop the juice and 80 GP a head is the entire prize.
     const w = world();
     w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
     w.rival.enter("rival-8", "b1");
@@ -219,16 +356,20 @@ describe("registration & the Selection Committee", () => {
     const tick = tickThroughCrownDay(w.game);
     const lk = tick.pintakasi.find((t) => t.format === "b1")!;
     expect(lk.cancelled).toBe(false);
-    // No entry money in the pot at all — the champion is paid by the juice
-    // pool, which gacha spend and breed fees fill.
+
     const entriesIn = w.db
       .select()
       .from(tournamentEntries)
       .all()
       .reduce((s, e) => s + e.fee, 0);
-    expect(entriesIn).toBe(0);
-    expect(lk.purseCents).toBeGreaterThan(0);
+    expect(entriesIn).toBe(2 * PINTAKASI.ENTRY_FEE);
+    // The world seeds a genesis juice pool (round 20) and this lone running
+    // crown takes it in full, so the purse is exactly the two terms and
+    // nothing else — no rake, no house cut. Fees take NO staker rake on
+    // purpose: the pot the fighters built is the pot they fight over.
+    expect(lk.purseCents).toBe(entriesIn * 100 + ECONOMY.SEED_JUICE * 100);
     expect(totalCents(w.db)).toBe(before); // still redistribution, never printing
+    expectConserved(w.db);
   });
 
   // Round 19: one bird per CROWN, not one per stable. The old callers
@@ -252,6 +393,79 @@ describe("registration & the Selection Committee", () => {
     expect(chaseCrowns(w.db, w.devId, 0, mulberry32(12)).length).toBe(0);
   });
 
+  /**
+   * ── A BARN CHASES CROWNS IT CAN PAY FOR (round 41) ────────────────────────
+   *
+   * `chaseCrowns` carried a wallet check from round 22 onward that HAD NEVER
+   * RUN: it was written `PINTAKASI.ENTRY_FEE > 0 && …`, and the fee was 0, so
+   * the wallet was never read. Round 41 is the first time it executes, and it
+   * now decides how three crowns a week × MAX_PER_BARN birds are rationed off
+   * the top of a barn's money.
+   *
+   * ⚠ These fixtures set a wallet by hand, which is itself a conservation
+   * violation — so no `expectConserved` here. What is being proved is the
+   * BOT's restraint, and the engine's own money handling is proved above.
+   */
+  describe("the crown chase pays its way", () => {
+    /** A deep barn — a second legacy wave gives four age-3+ birds. */
+    const deepBarn = (w: ReturnType<typeof world>, gp: number) => {
+      seedStarterFlock(w.db, w.devId, { seed: 55, idPrefix: "dev2", shape: "legacy" });
+      w.db.update(farms).set({ gp }).where(eq(farms.id, w.devId)).run();
+      return w.devFlock.all().filter((b) => b.status === "active" && b.age >= 3).length;
+    };
+
+    test("a barn that can afford two seats buys two — and stops, rather than overdrawing", () => {
+      const w = world();
+      expect(deepBarn(w, 2 * PINTAKASI.ENTRY_FEE)).toBe(4); // four birds, two seats' worth of money
+      const entered = chaseCrowns(w.db, w.devId, 0, mulberry32(11));
+      expect(entered.length).toBe(2);
+      // Paid for, to the GP, and nothing on credit: the barn is empty and the
+      // world holds its money as escrow rather than as a negative balance.
+      expect(gpOf(w.db, w.devId)).toBe(0);
+      const pending = w.db
+        .select()
+        .from(tournamentEntries)
+        .all()
+        .filter((e) => e.status === "pending");
+      expect(pending.length).toBe(2);
+      expect(pending.every((e) => e.fee === PINTAKASI.ENTRY_FEE)).toBe(true);
+    });
+
+    test("…and a barn with no money enters nothing at all, without throwing", () => {
+      // The failure mode this guards is not a wrong number, it is a THROWN
+      // one: `chaseCrowns` runs inside `Bots.playDay` and inside auto-play's
+      // `quietly`, so an unguarded overdraft would either crash a tick or be
+      // swallowed whole and read as twenty barns choosing not to enter.
+      const w = world();
+      deepBarn(w, 0);
+      let entered: string[] = ["not run"];
+      expect(() => {
+        entered = chaseCrowns(w.db, w.devId, 0, mulberry32(11));
+      }).not.toThrow();
+      expect(entered).toEqual([]);
+      expect(w.db.select().from(tournamentEntries).all()).toEqual([]);
+      expect(gpOf(w.db, w.devId)).toBe(0); // …and it did not go negative
+    });
+
+    test("the RESERVE is money the chase may not touch — auto-play's round-41 fix", () => {
+      // `auto-play.ts` passed no options at all, so `reserve` defaulted to 0
+      // and an honest stable would have spent down to its last 80 GP on crowns
+      // — which run BEFORE the daily card, so it would then have had nothing
+      // to card its ordinary birds with. The reserve is the floor under that.
+      const w = world();
+      const reserve = 100;
+      deepBarn(w, PINTAKASI.ENTRY_FEE + reserve);
+      // Exactly one seat is affordable without breaking the floor: after it,
+      // the wallet holds the reserve and not a GP more.
+      expect(chaseCrowns(w.db, w.devId, 0, mulberry32(11), { reserve }).length).toBe(1);
+      expect(gpOf(w.db, w.devId)).toBe(reserve);
+      // …and with the same money and no reserve, it would have bought two.
+      const w2 = world();
+      deepBarn(w2, PINTAKASI.ENTRY_FEE + reserve);
+      expect(chaseCrowns(w2.db, w2.devId, 0, mulberry32(11)).length).toBe(2);
+    });
+  });
+
   // Round 20: three per barn per crown — load the blade with specialists,
   // but no barn owns a bracket.
   test("a barn may load one championship with three birds — and no more", () => {
@@ -268,14 +482,15 @@ describe("registration & the Selection Committee", () => {
 
   test("the fee escrows at entry; the board ranks the public field", () => {
     const w = world();
-    const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp;
+    const before = gpOf(w.db, w.devId);
     w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
-    expect(w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!.gp).toBe(
-      before - PINTAKASI.ENTRY_FEE
-    );
+    expect(gpOf(w.db, w.devId)).toBe(before - PINTAKASI.ENTRY_FEE);
     w.rival.enter("rival-8", "b1"); // rival Batong Buhay, 7 career wins
     const board = w.dev.board();
     const lk = board.find((c) => c.format === "b1")!;
+    // The board quotes the door price off the ROW, so a player reads what this
+    // championship charges rather than what the knob says today.
+    expect(lk.fee).toBe(PINTAKASI.ENTRY_FEE);
     expect(lk.field.length).toBe(2);
     expect(lk.field[0].rank).toBe(1); // BB outranks Sinag on wins
     expect(lk.field[0].farm).toBe("Rival Gamefarm");
@@ -295,27 +510,24 @@ describe("registration & the Selection Committee", () => {
     const w = world();
     const t = w.db
       .insert(tournaments)
-      .values({ weekIndex: 0, format: "b1", seed: 7, entryFee: PINTAKASI.ENTRY_FEE })
+      .values({ weekIndex: 0, format: "b1", seed: 7, entryFee: DIVISION_RULES.major.entryFee })
       .returning()
       .get();
     // A full 64-bird field under the rival's banner, laddered by career
     // earnings: dummy 0 has banked 1.00 GP, dummy 63 has banked 64.00.
+    //
+    // ⚠ AND THE RIVAL PAYS FOR ITS OWN FIXTURE (round 41). Sixty-four seats at
+    // 80 GP is 5,120 GP against a starting purse of 8,000 — it fits, which is
+    // the only reason this fixture can stay honest without inventing money.
+    // The debit is not optional: see `escrowEntry` for what skipping it costs.
     const stake = (i: number) => (i + 1) * 100;
     for (let i = 0; i < PINTAKASI.MAX_BRACKET; i++) {
       const dummy = makeBird(w.db, { farmId: w.rivalId, name: `Dummy ${i}`, age: 3 });
       earned(w.db, dummy.id, w.rivalId, stake(i));
-      w.db
-        .insert(tournamentEntries)
-        .values({
-          tournamentId: t.id,
-          birdId: dummy.id,
-          farmId: w.rivalId,
-          fee: PINTAKASI.ENTRY_FEE,
-          dayEntered: 0,
-        })
-        .run();
+      escrowEntry(w.db, t.id, dummy.id, w.rivalId, t.entryFee);
     }
-    const rivalGpBefore = w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!.gp;
+    const worldBefore = totalCents(w.db);
+    const rivalGpBefore = gpOf(w.db, w.rivalId);
     // Sinag has out-EARNED the weakest of them — by fifty centavos, which is
     // all it takes. Its four career wins are irrelevant while any earnings
     // separate the two birds; that ordering is the round-37 ruling.
@@ -332,20 +544,37 @@ describe("registration & the Selection Committee", () => {
     expect(bumped.length).toBe(1);
     // …and it is the POOREST bird that went home, not an arbitrary one.
     expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe("Dummy 0");
-    expect(w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!.gp).toBe(
-      rivalGpBefore + PINTAKASI.ENTRY_FEE // the bumped entry refunds
-    );
+    // ⚠ REFUND PATH 1 OF 3: THE COMMITTEE BUMP. Vacuous while entry was free —
+    // it compared 0 against 0 — and now the real thing: a barn shoved out of a
+    // full field gets back exactly what it put in, to the GP, at the moment it
+    // is bumped rather than at crown day. (The other two refunds — a bird that
+    // stops standing, and a field too small to run — are pinned in "the
+    // crown-day resolution" below.)
+    expect(gpOf(w.db, w.rivalId)).toBe(rivalGpBefore + PINTAKASI.ENTRY_FEE);
+    expect(bumped[0].fee).toBe(PINTAKASI.ENTRY_FEE); // refunded what was PAID
     // A newcomer that has earned LESS than the field's new weakest (Sinag
     // itself, at 1.50) is refused at the door. Note what does NOT save it: it
     // is a perfectly legal entrant, age 3, active and named. The committee is
     // the only thing standing in its way.
     const pauper = makeBird(w.db, { name: "Palpak", age: 3 });
     earned(w.db, pauper.id, w.devId, 50);
+    const devGpBefore = gpOf(w.db, w.devId);
     expect(() => w.dev.enter(pauper.id, "b1")).toThrow(/weakest/);
+    // ⚠ A REFUSAL IS NOT A CHARGE. `enter` takes the fee AFTER the committee
+    // has ruled, and this is the assertion that keeps it in that order — a
+    // door that debited first would take 80 GP off a bird it then sends home,
+    // and the refund path for that case does not exist because there is no
+    // entry row to refund against.
+    expect(gpOf(w.db, w.devId)).toBe(devGpBefore);
     expect(
       w.db.select().from(tournamentEntries).where(eq(tournamentEntries.tournamentId, t.id)).all()
         .filter((e) => e.status === "pending").length
     ).toBe(PINTAKASI.MAX_BRACKET); // a refusal costs the field nothing
+    // Sixty-four seats bought, one refunded, one sold, one refused — and the
+    // world holds precisely the GP it held before any of it, because every
+    // centavo is either in a wallet or in escrow.
+    expect(totalCents(w.db)).toBe(worldBefore);
+    expectConserved(w.db);
   });
 });
 
@@ -417,12 +646,13 @@ describe("the crown-day resolution", () => {
     const champ = all.find((b) => b.name === result.champion!.bird)!;
     expect(champ.status).toBe("active");
 
-    // GP to the top: purse = 800 GP of entries + the juice pool, which the
-    // world seeds at genesis (round 20) and this lone running crown takes in
-    // full. In a 4-bracket the SF losers lost their only fight, so under the
-    // round-40 purse they have no win weight and no bonus — two payouts, and
-    // the champion (weight 3 of 4, plus the trophy) takes most of it. The
-    // exact split is pinned in "the worked bracket, to the cent" below.
+    // GP to the top: purse = four 80 GP entries (round 41 — the fighters fund
+    // the pot again) + the juice pool, which the world seeds at genesis
+    // (round 20) and this lone running crown takes in full. In a 4-bracket the
+    // SF losers lost their only fight, so under the round-40 purse they have
+    // no win weight and no bonus — two payouts, and the champion (weight 2.5
+    // of 3.5, plus the trophy) takes most of it. The exact split is pinned in
+    // "the worked bracket, to the cent" below.
     expect(result.purseCents).toBe(4 * PINTAKASI.ENTRY_FEE * 100 + ECONOMY.SEED_JUICE * 100);
     const paid = result.payouts.reduce((s, p) => s + p.gpCents, 0);
     expect(paid).toBe(result.purseCents); // dust included, nothing stranded
@@ -465,14 +695,24 @@ describe("the crown-day resolution", () => {
   });
 
   test("a field of one cancels: refund, bird unharmed, championship marked", () => {
+    // ⚠ REFUND PATH 3 OF 3: THE FIELD THAT NEVER RAN. A crown below MIN_FIELD
+    // has no fights, so there is no purse to pay the fee into — and a fee paid
+    // into a championship that never happened is a burn unless it goes home.
+    // The wallet check is the load-bearing line here; it was worth exactly
+    // nothing while entry was free.
     const w = world();
     const sinag = byName(w.db, w.devFlock, "Sinag");
     const before = totalCents(w.db);
+    const walletBefore = gpOf(w.db, w.devId);
     w.dev.enter(sinag.id, "b1");
+    expect(gpOf(w.db, w.devId)).toBe(walletBefore - PINTAKASI.ENTRY_FEE); // …paid
     const tick = tickThroughCrownDay(w.game);
     const result = tick.pintakasi[0];
     expect(result.cancelled).toBe(true);
+    expect(gpOf(w.db, w.devId)).toBe(walletBefore); //                       …and back
+    expect(w.db.select().from(tournamentEntries).all()[0].status).toBe("refunded");
     expect(totalCents(w.db)).toBe(before);
+    expectConserved(w.db);
     expect(w.db.select().from(birds).where(eq(birds.id, sinag.id)).get()!.status).toBe("active");
     expect(
       w.db.select().from(tournaments).all().find((t) => t.format === "b1")!.status
@@ -498,8 +738,14 @@ describe("the crown-day resolution", () => {
   });
 
   test("a registrant that died before crown day is refunded at close", () => {
+    // ⚠ REFUND PATH 2 OF 3: THE BIRD THAT STOPPED STANDING. Registration is
+    // binding, and a week is long enough for a registrant to fall in an
+    // ordinary hardcore or be retired by its owner. It never fights the crown,
+    // so it never contributes to the purse — the fee has to come home, and now
+    // it is 80 GP rather than a formality.
     const w = world();
     const sinag = byName(w.db, w.devFlock, "Sinag");
+    const walletBefore = gpOf(w.db, w.devId);
     w.dev.enter(sinag.id, "b1");
     w.rival.enter("rival-7", "b1");
     w.rival.enter("rival-8", "b1");
@@ -517,6 +763,58 @@ describe("the crown-day resolution", () => {
       .all()
       .find((e) => e.birdId === sinag.id)!;
     expect(entry.status).toBe("refunded");
+    expect(entry.fee).toBe(PINTAKASI.ENTRY_FEE);
+    // Exactly what was paid, and the dev barn won nothing else all week — so
+    // this equality is the refund and nothing but the refund.
+    expect(gpOf(w.db, w.devId)).toBe(walletBefore);
+    // …and a scratched entry's money does NOT swell the purse it left: only
+    // the two birds that actually stood paid in.
+    expect(result.purseCents).toBe(2 * PINTAKASI.ENTRY_FEE * 100 + ECONOMY.SEED_JUICE * 100);
+    expectConserved(w.db);
+  });
+
+  /**
+   * ⚠ NO ENTRY MAY OUTLIVE ITS CHAMPIONSHIP.
+   *
+   * A `pending` entry is ESCROW: `computeTopline` counts its fee as GP the
+   * world is holding, and the conservation proof balances only because that
+   * money is expected to come back out — into a purse, into a refund, or into
+   * a bump. An entry still sitting `pending` after its crown has resolved is
+   * therefore money that has left a wallet and can never arrive anywhere: a
+   * permanent phantom in the invariant, growing by 80 GP a week forever.
+   *
+   * Nothing in the project asserted this could not happen, because at a fee of
+   * 0 a stranded entry cost nothing and looked like tidy-up. It is a real leak
+   * now, so it gets a real test: every terminal status is accounted for, and
+   * `pending` is not among them.
+   */
+  test("every entry reaches a terminal status — a resolved crown strands no escrow", () => {
+    const w = world();
+    // A field with all four ways out of a bracket in it: a champion, a
+    // runner-up, first-round losers, and a scratch that never stood.
+    w.dev.enter(byName(w.db, w.devFlock, "Sinag").id, "b1");
+    w.dev.enter(byName(w.db, w.devFlock, "Batong Buhay").id, "b1");
+    w.rival.enter("rival-7", "b1");
+    w.rival.enter("rival-8", "b1");
+    const scratch = makeBird(w.db, { name: "Sablay", age: 3 });
+    w.dev.enter(scratch.id, "b3");
+    w.db.update(birds).set({ status: "retired", retiredBy: "manual", retiredWeek: 0 })
+      .where(eq(birds.id, scratch.id)).run();
+    const before = totalCents(w.db);
+
+    tickThroughCrownDay(w.game);
+    const entries = w.db.select().from(tournamentEntries).all();
+    expect(entries.length).toBe(5);
+    expect(entries.filter((e) => e.status === "pending")).toEqual([]);
+    // Named individually rather than "not pending" so a NEW status can't be
+    // invented that silently holds money either.
+    expect(new Set(entries.map((e) => e.status))).toEqual(
+      new Set(["champion", "eliminated", "refunded"])
+    );
+    // The escrow line itself, read the way the office reads it: zero.
+    expect(computeTopline(w.db).tournamentEscrowCents).toBe(0);
+    expect(totalCents(w.db)).toBe(before);
+    expectConserved(w.db);
   });
 
   test("a week jump (Fri → Fri) crosses crown day and resolves exactly once", () => {
@@ -589,11 +887,23 @@ describe("the purse is paid on fights won", () => {
       format?: FightFormat;
       division?: "major" | "juvenile";
       seed?: number;
+      /**
+       * What each seat costs. DEFAULTS TO 0, and that is a fixture choice
+       * rather than a claim about the game: with no fees the purse is exactly
+       * the juice number this helper set, so every share below can be worked
+       * out on paper. (It read "free since round 22" until round 41 put 80 GP
+       * on a Major's door — the zero survives because the arithmetic wants a
+       * known pot, not because entry is free.)
+       *
+       * ⚠ ANY NON-ZERO VALUE IS DEBITED FROM A REAL WALLET. See `escrowEntry`.
+       */
+      feeEach?: number;
       /** Per-bird overrides — used only to build the two bye cases below. */
       each?: (i: number) => Partial<NewBird>;
     }
   ) {
     const division = opts.division ?? "major";
+    const feeEach = opts.feeEach ?? 0;
     w.db
       .update(gameState)
       .set({ juicePoolCents: opts.juiceCents })
@@ -607,10 +917,14 @@ describe("the purse is paid on fights won", () => {
         format: opts.format ?? (division === "juvenile" ? "b2" : "b1"),
         division,
         seed: opts.seed ?? 4242,
-        entryFee: 0, // free since round 22 — so the purse is pure juice, and known
+        entryFee: feeEach,
       })
       .returning()
       .get();
+    // The seats alternate between two barns, so the biggest paid fixture here
+    // (64 × 80 GP) asks 2,560 GP of each — well inside a starting purse of
+    // 8,000. Nothing is minted to make a fixture affordable; that would be
+    // printing GP to prove GP isn't printed.
     for (let i = 0; i < opts.size; i++) {
       // Alternating barns: matchmaking inside a bracket is seeding, not
       // pairing, so this changes nothing — it just keeps the fixture honest
@@ -620,16 +934,7 @@ describe("the purse is paid on fights won", () => {
         age: division === "juvenile" ? 1 : 3,
         ...(opts.each?.(i) ?? {}),
       });
-      w.db
-        .insert(tournamentEntries)
-        .values({
-          tournamentId: t.id,
-          birdId: bird.id,
-          farmId: bird.farmId,
-          fee: 0,
-          dayEntered: 0,
-        })
-        .run();
+      escrowEntry(w.db, t.id, bird.id, bird.farmId, feeEach);
       field.push(bird);
     }
     return { t, field };
@@ -702,7 +1007,15 @@ describe("the purse is paid on fights won", () => {
     // 3.00 GP over a 64-bracket is far below anything a real world produces
     // (a Major purse runs a thousand times this) and that is the point — the
     // rule has to hold where it is inconvenient, not only where it is easy.
+    //
+    // ⚠ AND THE WEIGHTS ARE FRACTIONAL SINCE ROUND 41 (×1.5, so a fourth-round
+    // win scores 3.375). The floor is the one place the purse does integer
+    // arithmetic on a fractional share, which makes this the test most likely
+    // to be broken by a multiplier change and least likely to say so — a
+    // rounding slip here still settles exactly, because the champion absorbs
+    // the remainder.
     const w = world();
+    expect(Number.isInteger(PINTAKASI.PURSE.ROUND_MULTIPLIER)).toBe(false);
     pinnedBracket(w, { size: 64, juiceCents: 300 });
     const before = totalCents(w.db);
     const result = tickThroughCrownDay(w.game).pintakasi[0];
@@ -737,11 +1050,13 @@ describe("the purse is paid on fights won", () => {
   });
 
   test("a deeper win is worth more — the ladder is strictly increasing, every rung", () => {
-    // The doubling (a win in round r scores 2^(r-1)) exists so that each round
-    // hands out the SAME total across half as many birds. The visible
-    // consequence, and the one a player would notice if it broke, is that the
-    // stage ladder never flattens or inverts: two more wins is always worth
-    // more than one more win, whatever the knobs are set to.
+    // A win in round r scores ROUND_MULTIPLIER^(r-1) — ×2 until round 41, ×1.5
+    // now that entry costs 80 GP (the doubling left a first-round win net
+    // NEGATIVE against the door). The visible consequence, and the one a player
+    // would notice if it broke, is that the stage ladder never flattens or
+    // inverts: two more wins is always worth more than one more win, whatever
+    // the knobs are set to. Written as a property precisely so that softening
+    // the curve is a balance decision and not a test rewrite.
     const w = world();
     pinnedBracket(w, { size: 32, juiceCents: 500_000 });
     const result = tickThroughCrownDay(w.game).pintakasi[0];
@@ -778,17 +1093,23 @@ describe("the purse is paid on fights won", () => {
 
   test("A BYE IS NOT A WIN — the top seed is paid for the final, never for the round it skipped", () => {
     // Weight accrues only where a blade was actually thrown, so this bracket's
-    // total weight is 3 (one first-round win, one final win) and NOT 4.
+    // total weight is 1 + 1.5 = 2.5 (one first-round win, one final win) and
+    // NOT 1 + 1 + 1.5.
+    //
+    // ⚠ THE MULTIPLIER IS 1.5 SINCE ROUND 41, so the weights are FRACTIONS. A
+    // final win is worth 1.5^1 = 1.5, not the 2 it was worth at the old
+    // doubling, and this test moved 68,334/31,666 → 65,000/35,000 because of
+    // it. Nothing downstream may assume whole numbers.
     //
     // The arithmetic is worked out here because it is the number that would
     // change — quietly, and in the champion's favour — if the bye branches in
     // `runChampionship` ever started crediting weight:
     //
-    //   champion:  0.5 × 2/3 + 0.35 = 0.6833…  → 68,334 of 100,000 cents
-    //   finalist:  0.5 × 1/3 + 0.15 = 0.3166…  → 31,666
+    //   champion:  0.5 × 1.5/2.5 + 0.35 = 0.65  → 65,000 of 100,000 cents
+    //   finalist:  0.5 × 1.0/2.5 + 0.15 = 0.35  → 35,000
     //
-    // If the bye counted as a win it would be 72,500 / 27,500 — over 40 GP
-    // moved between two barns for a fight nobody had.
+    // If the bye counted as a win it would be 0.5 × 2.5/3.5 + 0.35 = 0.7071 —
+    // over 57 GP moved between two barns for a fight nobody had.
     const w = world();
     // ⚠ THE GAP HAS TO BE BIG, and the first draft learned it the hard way. A
     // 300-vs-5 mismatch is not a certainty at B1 — the weak bird takes it
@@ -805,8 +1126,8 @@ describe("the purse is paid on fights won", () => {
     expect(result.champion!.bird).toBe(topSeed.name);
 
     expect(result.purseCents).toBe(100_000);
-    expect(paidTo(result, topSeed.name)).toBe(68_334);
-    expect(result.payouts.find((p) => p.stage === "runner-up")!.gpCents).toBe(31_666);
+    expect(paidTo(result, topSeed.name)).toBe(65_000);
+    expect(result.payouts.find((p) => p.stage === "runner-up")!.gpCents).toBe(35_000);
     expect(result.payouts.reduce((s, p) => s + p.gpCents, 0)).toBe(result.purseCents);
   });
 
@@ -833,29 +1154,122 @@ describe("the purse is paid on fights won", () => {
     expect(result.payouts[0].gpCents).toBe(100_000);
   });
 
-  test("the worked bracket, to the cent: four birds, a 1,000 GP purse, 725/275", () => {
+  test("the worked bracket, to the cent: four birds, a 1,000 GP purse, 707.15/292.85", () => {
     // THE ONE PINNED ARITHMETIC IN THE FILE. Four birds is the smallest
     // bracket with a round to be deeper than, so both terms of the formula are
     // live and neither cancels:
     //
-    //   champion:  0.5 × 3/4 + 0.35 = 0.7250  → 72,500 of 100,000 cents
-    //   runner-up: 0.5 × 1/4 + 0.15 = 0.2750  → 27,500
+    //   champion:  0.5 × 2.5/3.5 + 0.35 = 0.70714…  → 70,715 of 100,000 cents
+    //   runner-up: 0.5 × 1.0/3.5 + 0.15 = 0.29285…  → 29,285
     //
-    // (Weights: the champion won a semifinal worth 1 and a final worth 2; the
-    // runner-up won a semifinal worth 1; the two first-round losers won
-    // nothing. Total 4.) The knobs sum to 1 and every seat is filled, so the
-    // normalization is the identity here — which is exactly why this is the
-    // case worth pinning: any difference is the formula being wrong, not the
-    // renormalizer covering for it.
+    // (Weights: the champion won a semifinal worth 1.5^0 = 1 and a final worth
+    // 1.5^1 = 1.5; the runner-up won a semifinal worth 1; the two first-round
+    // losers won nothing. Total 3.5.) The knobs sum to 1 and every seat is
+    // filled, so the normalization is the identity here — which is exactly why
+    // this is the case worth pinning: any difference is the formula being
+    // wrong, not the renormalizer covering for it.
+    //
+    // ⚠ IT WAS 72,500/27,500 UNTIL ROUND 41, on a total weight of 4 and a
+    // final worth double a semifinal. Softening ROUND_MULTIPLIER 2 → 1.5 is
+    // what moved 1,785 cents from the champion to the runner-up — and the
+    // champion takes the DUST (100,000 − 29,285), which is why its figure is
+    // the one that isn't a clean floor of the share.
     const w = world();
     pinnedBracket(w, { size: 4, juiceCents: 100_000 });
     const before = totalCents(w.db);
     const result = tickThroughCrownDay(w.game).pintakasi[0];
     expect(result.purseCents).toBe(100_000);
     expect(result.payouts.length).toBe(2); // the SF losers lost their only fight
-    expect(result.payouts.find((p) => p.stage === "champion")!.gpCents).toBe(72_500);
-    expect(result.payouts.find((p) => p.stage === "runner-up")!.gpCents).toBe(27_500);
+    expect(result.payouts.find((p) => p.stage === "champion")!.gpCents).toBe(70_715);
+    expect(result.payouts.find((p) => p.stage === "runner-up")!.gpCents).toBe(29_285);
     expect(totalCents(w.db)).toBe(before);
+  });
+
+  /**
+   * ⚠ THE ROUND'S PROMISE, AND THE ONE NUMBER ZANE RULED ON.
+   *
+   * Round 40 said every fight-winner is paid SOMETHING. An 80 GP door turns
+   * that into a different and much sharper claim: paid ENOUGH TO BE WORTH
+   * TURNING UP. At the old ×2 multiplier a first-round win in a 32-bird Major
+   * was worth 53 GP against an 80 GP entry — winning the hardest fight in the
+   * game and going home 27 GP lighter, which is round 40's complaint wearing a
+   * hat. Softening ROUND_MULTIPLIER to 1.5 is what closed it (the three shares
+   * cannot: see the measured table in PINTAKASI.PURSE).
+   *
+   * So: a full 32-bird bracket, everybody paying the real fee, on the juice a
+   * measured 91-day world actually produces for one crown. Every bird that won
+   * a blade fight must end the night up on the deal.
+   */
+  test("at ×1.5 in a 32-bird bracket, EVERY fight-winner clears the 80 GP door", () => {
+    const w = world();
+    const fee = PINTAKASI.ENTRY_FEE;
+    // 5,931 GP is the per-crown juice share traced over a 91-day sim — the
+    // figure the ruling was made on. Deliberately not a round number: this
+    // test is meant to say "the game as it actually runs", not "the game on a
+    // pot chosen to make the sums work".
+    pinnedBracket(w, { size: 32, juiceCents: 593_100, feeEach: fee });
+    const before = totalCents(w.db);
+    const result = tickThroughCrownDay(w.game).pintakasi[0];
+
+    expect(result.bracketSize).toBe(32);
+    // Entries genuinely grow the pot — that is what makes the door survivable.
+    expect(result.purseCents).toBe(32 * fee * 100 + 593_100);
+
+    const winners = fightWinners(result);
+    expect(winners.size).toBe(16); // half the field wins at least once
+    for (const name of winners) {
+      // NET of the fee, not gross. The shallowest winner is the binding case:
+      // one win, the smallest weight in the bracket.
+      expect(paidTo(result, name)).toBeGreaterThan(fee * 100);
+    }
+    // The exact edge, pinned so a knob change that re-opens the trapdoor by a
+    // few GP fails loudly instead of drifting: one win pays 8,697 cents
+    // (86.97 GP) — a net +6.97 GP on an 80 GP entry, the thinnest margin in
+    // the ladder. At ×2 the same seat paid 5,301 cents and the bird went home
+    // 26.99 GP DOWN, which is the whole reason the multiplier moved.
+    const oneWin = result.payouts.filter((p) => p.stage === "round of 16");
+    expect(oneWin.length).toBe(8);
+    expect(new Set(oneWin.map((p) => p.gpCents)).size).toBe(1); // one win is one win
+    expect(oneWin[0].gpCents).toBe(8_697);
+    // …and the champion is not the one paying for it. It takes 25% MORE than
+    // it did on a free entry, because the fees grew the pot.
+    // 0.485086 of the purse is 411,887 cents; the champion settles LAST and
+    // takes the rounding dust off the other fifteen seats, so it banks 7 more.
+    const champion = result.payouts.find((p) => p.stage === "champion")!.gpCents;
+    expect(champion).toBe(411_894);
+    expect(champion).toBeGreaterThan(result.purseCents / 3);
+
+    // Still strictly increasing, every rung, at fractional weights — the
+    // ladder is the reason a deeper win is worth chasing at all.
+    const ladder = ["round of 16", "quarterfinal", "semifinal", "runner-up", "champion"];
+    const paid = ladder.map((s) => result.payouts.find((p) => p.stage === s)!.gpCents);
+    for (let i = 1; i < paid.length; i++) expect(paid[i]).toBeGreaterThan(paid[i - 1]);
+    // …and the champion still takes the biggest single share by a wide margin.
+    expect(champion).toBe(Math.max(...result.payouts.map((p) => p.gpCents)));
+
+    expect(result.payouts.reduce((s, p) => s + p.gpCents, 0)).toBe(result.purseCents);
+    // `pinnedBracket` sets the juice pool by hand, so the faucet-side proof
+    // doesn't apply here — this delta is the whole conservation claim: the
+    // purse only ever REDISTRIBUTES what entries and juice put in it.
+    expect(totalCents(w.db)).toBe(before);
+  });
+
+  test("⚠ …and a 64-bird field does NOT — accepted, not solved", () => {
+    // Twice the birds share one pot, so a single win in a 64-bracket is still
+    // net negative against the fee. Zane accepted that explicitly: fields
+    // average around 22, so 32 is the ordinary bracket and 64 is the busy-week
+    // exception. It is pinned HERE rather than left unsaid because a known
+    // exception nobody wrote down reads as a bug to the next person, who
+    // "fixes" it by moving the multiplier and quietly guts the trophy.
+    const w = world();
+    const fee = PINTAKASI.ENTRY_FEE;
+    pinnedBracket(w, { size: 64, juiceCents: 593_100, feeEach: fee });
+    const result = tickThroughCrownDay(w.game).pintakasi[0];
+    expect(result.bracketSize).toBe(64);
+    const shallowest = Math.min(...result.payouts.map((p) => p.gpCents));
+    expect(shallowest).toBeGreaterThan(0); //          round 40's promise still holds…
+    expect(shallowest).toBeLessThan(fee * 100); //     …round 41's does not, at this size
+    expect(result.payouts.reduce((s, p) => s + p.gpCents, 0)).toBe(result.purseCents);
   });
 
   test("the juvenile split is FLATTER — the same bracket pays the early rounds better", () => {

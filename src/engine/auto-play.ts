@@ -102,7 +102,12 @@ export function playHonestDay(
   // The Pintakasi (rounds 18–19): a specialist for every crown the week is
   // running — one bird per championship, not one per stable. Hardcore: the
   // strongest stables put their strongest birds in; that's the design.
-  quietly(() => void chaseCrowns(db, farmId, day, mulberry32(1300 + day)));
+  // ⚠ THE RESERVE IS NOT OPTIONAL SINCE ROUND 41. This passed no `opts`, so
+  // `reserve` defaulted to 0 — fine while entry was free, and a way to spend
+  // an honest stable down to its last 80 GP now that it isn't. The crowns run
+  // BEFORE the daily card below, so an unreserved barn would buy championship
+  // seats with the money it needed to card its ordinary birds.
+  quietly(() => void chaseCrowns(db, farmId, day, mulberry32(1300 + day), { reserve: AUTO_RESERVE }));
   // …and the discovery-year stage on Wednesday (round 23).
   quietly(() => void chaseJuvenileCrowns(db, farmId, day));
 

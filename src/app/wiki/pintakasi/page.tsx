@@ -31,8 +31,8 @@ const LAND_LABELS: Record<string, string> = {
 /**
  * What each finish actually takes home, worked out the SAME WAY the bracket
  * pays it (see PINTAKASI.PURSE and Tournaments.resolve): ADVANCEMENT is split
- * across every fight WON, a win in round r scoring 2^(r-1), and CHAMPION /
- * RUNNER_UP are bonuses on top of that.
+ * across every fight WON, a win in round r scoring ROUND_MULTIPLIER^(r-1), and
+ * CHAMPION / RUNNER_UP are bonuses on top of that.
  *
  * ⚠ Nothing in the table below is typed. Move a knob in config, or change the
  * bracket size, and every percentage on the page moves with it — which is the
@@ -43,7 +43,12 @@ const LAND_LABELS: Record<string, string> = {
  */
 function purseStages(
   bracketSize: number,
-  purse: { readonly ADVANCEMENT: number; readonly CHAMPION: number; readonly RUNNER_UP: number }
+  purse: {
+    readonly ADVANCEMENT: number;
+    readonly CHAMPION: number;
+    readonly RUNNER_UP: number;
+    readonly ROUND_MULTIPLIER: number;
+  }
 ) {
   const rounds = Math.log2(bracketSize);
   // The arithmetic itself lives in config beside the knobs it reads, so this
@@ -105,6 +110,20 @@ export default function PintakasiPage() {
   const majorStages = purseStages(majorPurseBracket, PINTAKASI.PURSE);
   const juvenileStages = purseStages(juvenilePurseBracket, JUVENILE_MAJOR.PURSE);
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+  // ── What the door costs, and when a finish pays for it ────────────────────
+  // A share of a purse is not a number a player can spend. What they actually
+  // ask, once entry has a price, is "does this finish get my money back?" —
+  // and the honest answer is a THRESHOLD, because the purse changes every
+  // week with the juice pool. So each row also carries the smallest purse at
+  // which that finish repays the entry: fee ÷ share, rounded up. Nothing here
+  // is typed — move ENTRY_FEE or ROUND_MULTIPLIER and the whole column moves.
+  const fee = PINTAKASI.ENTRY_FEE;
+  const juvenileFee = JUVENILE_MAJOR.ENTRY_FEE;
+  const breakEven = (share: number) => Math.ceil(fee / share).toLocaleString();
+  // "A win in each round is worth 1.5× a win in the round before" — the word
+  // "double" was true only while the multiplier was 2 (it moved in round 41).
+  const mult = PINTAKASI.PURSE.ROUND_MULTIPLIER;
+  const juvenileMult = JUVENILE_MAJOR.PURSE.ROUND_MULTIPLIER;
 
   return (
     <>
@@ -112,10 +131,10 @@ export default function PintakasiPage() {
       <p className="lede">
         Every {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} — the week&apos;s last day — three blade
         championships, called the <strong>Pintakasi Majors</strong> (or just &ldquo;the
-        Majors&rdquo;), crown the best specialist at each distance. Entry costs{" "}
-        {PINTAKASI.ENTRY_FEE === 0 ? "nothing" : `${PINTAKASI.ENTRY_FEE} GP`}. Getting a seat is the
-        hard part, and every loser goes home for good. This is the biggest stage in the game — a
-        separate, gentler stage for one-year-olds runs the day before; see{" "}
+        Majors&rdquo;), crown the best specialist at each distance. Entry costs {fee} GP, and that
+        money goes straight into the purse. Getting a seat is the hard part, and every loser goes
+        home for good. This is the biggest stage in the game — a separate, gentler stage for
+        one-year-olds runs the day before, and it is still free; see{" "}
         <Link href="#juvenile-championship">the Juvenile Championship</Link> below.
       </p>
 
@@ -162,10 +181,35 @@ export default function PintakasiPage() {
 
       <h2>Thursday is open</h2>
       <p>
-        There is no entry fee and there is no test to pass. <strong>Any</strong> bird of yours may
-        declare for a Major, as long as it is alive, fighting, has a real name, and is old enough to
-        be allowed to risk its career: age {AGE.FORK}+. That age gate is the only hard rule left at
-        the door. A bird that has never won anything can walk up and register.
+        There is no test to pass. <strong>Any</strong> bird of yours may declare for a Major, as
+        long as it is alive, fighting, has a real name, and is old enough to be allowed to risk its
+        career: age {AGE.FORK}+. That age gate is the only hard rule left at the door. A bird that
+        has never won anything can walk up, pay the {fee} GP, and register.
+      </p>
+
+      <h3 id="the-entry-fee">What the {fee} GP buys</h3>
+      <p>
+        Entry costs <strong>{fee} GP</strong>. That is {(fee / ECONOMY.REAL_ENTRY_FEE).toFixed(1)}×
+        a night on the daily card, where a grown bird&apos;s entry is {ECONOMY.REAL_ENTRY_FEE} GP.
+        The fee is <em>not</em> a gate — it does not decide who stands, and it buys no advantage in
+        the bracket. It buys one thing: <strong>the purse gets bigger</strong>. Every peso paid at
+        the door is added to the money the same bracket pays out that day. Nothing is skimmed off
+        it.
+      </p>
+      <div className="callout tip">
+        <b>Why a price at all, when it was free for a long time?</b> The purse used to come only
+        from the <Link href="/wiki/money">juice pool</Link> — the shared pot that gacha rolls and
+        breeding fees fill up. So the biggest stage in the game was paid for by whoever happened to
+        be buying eggs and covers that week, and a barn could enter a crown every week having put
+        nothing into the pot it was drawing from. That is backwards. Everywhere else in this game,
+        the money in a pot is money the fighters put there — that is exactly how the daily card
+        works. Now the crowns work that way too: part entrants, part juice.
+      </div>
+      <p>
+        Your fee is <strong>held in escrow</strong>, not spent, from the moment you register. If the
+        Committee bumps your bird out later in the week, you get it back. If the championship is
+        cancelled for a short field, you get it back. See{" "}
+        <Link href="/wiki/money">Golden Pesos</Link> for how escrow works.
       </p>
       <div className="callout warn">
         <b>Registering is not the same as standing.</b> Every crown has only{" "}
@@ -216,9 +260,10 @@ export default function PintakasiPage() {
 
       <h2 id="the-selection-committee">The Selection Committee</h2>
       <p>
-        Entry is free and open, and the field is capped. So someone has to decide who actually
-        stands when more birds declare than there are seats. That is the Selection Committee. It
-        ranks every entrant, in this order:
+        The door is open to any bird old enough, and the field is capped. So someone has to decide
+        who actually stands when more birds declare than there are seats. Paying the {fee} GP does
+        not decide it — money buys a place in the queue, never a seat. That is the Selection
+        Committee&apos;s job. It ranks every entrant, in this order:
       </p>
       <ol>
         <li>
@@ -279,12 +324,25 @@ export default function PintakasiPage() {
 
       <h2>The money</h2>
       <p>
-        The purse isn&apos;t funded by entries — entry is free. It&apos;s the <strong>juice
-        pool</strong>, the shared pot that gacha spend and breeding fees feed all week (see{" "}
-        <Link href="/wiki/money">Golden Pesos</Link> for where juice comes from). Wednesday&apos;s
-        Juvenile Championship draws its own fixed slice first (see below); the Majors take
-        <strong> everything left in the pool</strong>, split evenly across however many Majors run
-        that week — and each blade&apos;s share becomes its purse.
+        A Major&apos;s purse is built from <strong>two things added together</strong>.
+      </p>
+      <ol>
+        <li>
+          <strong>Every entry fee paid at that crown.</strong> {fee} GP a bird, all of it, no rake.
+          A field of twenty birds is {(fee * 20).toLocaleString()} GP in the pot before the juice is
+          counted.
+        </li>
+        <li>
+          <strong>The crown&apos;s share of the juice pool</strong> — the shared pot that gacha
+          spend and breeding fees feed all week (see <Link href="/wiki/money">Golden Pesos</Link>{" "}
+          for where juice comes from). Wednesday&apos;s Juvenile Championship draws its own fixed
+          slice first (see below); the Majors take <strong>everything left in the pool</strong>,
+          split evenly across however many Majors run that week.
+        </li>
+      </ol>
+      <p>
+        So a busy crown pays better than a quiet one, and it pays better <em>because</em> it was
+        busy. Every bird that showed up made the pot deeper for the bird that wins it.
       </p>
 
       <h3>Every win pays</h3>
@@ -322,10 +380,23 @@ export default function PintakasiPage() {
       </div>
       <p>
         <strong>Win a fight here and you are paid for it.</strong> Not the same amount as everyone
-        else, though. A win in each round is worth <strong>double</strong> a win in the round
-        before. So round one pays a little, the semifinal pays a lot, and the final pays most. The
-        reason is simple arithmetic: each round hands out the <em>same total money</em> spread over
-        <em> half as many birds</em>, so the deeper your bird goes, the more one win is worth.
+        else, though. A win in each round is worth <strong>{mult}×</strong> a win in the round
+        before. So round one pays least, the semifinal pays a lot, and the final pays most.
+      </p>
+      <div className="callout tip">
+        <b>Why {mult}× and not double.</b> Doubling is the prettier number, and it was the rule
+        until entry had a price. But at double, a bird that won its first fight in a full{" "}
+        {majorPurseBracket}-bird Major took home <em>less than the {fee} GP it paid to be there</em>
+        . Winning the hardest fight in the game and going home poorer is not &ldquo;every win
+        pays&rdquo;. Softening the step to {mult}× moves money from the deep rounds to the shallow
+        ones until every winner clears the door — and it costs the champion far less than you would
+        think, because the entry fees grew the pot in the first place.
+      </div>
+      <p className="dim">
+        Fair warning about the arithmetic: this is a <em>share</em> of one pot. Double the field and
+        the same pot is split among twice as many winners, so a single win in a{" "}
+        {PINTAKASI.MAX_BRACKET}-bird bracket can still come out a little behind the entry fee. Big
+        fields are the exception, not the ordinary week.
       </p>
       <div className="callout tip">
         <b>Why it works this way.</b> The purse used to be a table of finishing places: champion,
@@ -346,6 +417,7 @@ export default function PintakasiPage() {
               <th className="num">Fights won</th>
               <th className="num">How many birds</th>
               <th className="num">Each takes</th>
+              <th className="num">Pays for the {fee} GP once the purse is</th>
             </tr>
           </thead>
           <tbody>
@@ -355,6 +427,7 @@ export default function PintakasiPage() {
                 <td className="num">{row.wins}</td>
                 <td className="num">{row.birds}</td>
                 <td className="num">{pct(row.share)}</td>
+                <td className="num">{breakEven(row.share)} GP</td>
               </tr>
             ))}
             <tr>
@@ -362,10 +435,21 @@ export default function PintakasiPage() {
               <td className="num">0</td>
               <td className="num">{majorPurseBracket / 2}</td>
               <td className="num">0%</td>
+              <td className="num">never</td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p>
+        Read the last column like this. A share is a slice of a pot whose size changes every week,
+        so &ldquo;how much GP do I win?&rdquo; has no fixed answer — but &ldquo;how big does the pot
+        have to be before this finish pays back my {fee} GP?&rdquo; does. Win one fight and go out,
+        and you are ahead as soon as the purse is over {breakEven(majorStages[majorStages.length - 1].share)}{" "}
+        GP. Lift the trophy and you needed only {breakEven(majorStages[0].share)} GP in the pot to
+        break even, which every real crown clears many times over. Check{" "}
+        <strong>tonight&apos;s projected purse</strong> on the championship board before you decide
+        a fee is worth it.
+      </p>
       <p className="dim">
         A bird that never won a fight is paid nothing — not because there is a rule against it, but
         because there is nothing to pay it <em>for</em>. Its share is zero wins&apos; worth of the
@@ -482,7 +566,7 @@ export default function PintakasiPage() {
         This stage <em>does</em> keep a hard gate, and it is the only one left in the game: a
         juvenile bird needs <strong>{JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins</strong> (see{" "}
         <Link href="/wiki/card">The card</Link> for the discovery-year ladder) before it may stand.
-        There is no GP entry either way. One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN}{" "}
+        One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN}{" "}
         birds per blade, in a bracket capped at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s
         ceiling, sized for a stage about discovery, not the biggest purse in the game.
       </p>
@@ -493,6 +577,28 @@ export default function PintakasiPage() {
         same job here that earnings do upstairs: it asks the chick to show it can beat somebody
         first.
       </p>
+      <div className="callout tip">
+        <b>
+          {juvenileFee === 0
+            ? `The juvenile crown is free. A Major costs ${fee} GP; this one costs ${juvenileFee}.`
+            : `The juvenile crown costs ${juvenileFee} GP, against a Major's ${fee}.`}
+        </b>{" "}
+        {juvenileFee === 0 ? (
+          <>
+            That is on purpose, and it is the one place in the game where two stages that look
+            alike are priced apart. The discovery year exists to find out{" "}
+            <em>what a bird is</em>, and this is the only crown that doesn&apos;t end a career. A
+            price at that door would tax the exact thing the year is for: trying your chick and
+            seeing what comes back. Upstairs the fee is fine, because an age-{AGE.FORK} bird
+            entering a Major already knows what it is and is choosing to risk it.
+          </>
+        ) : (
+          <>
+            The two stages are priced apart on purpose — the discovery year is meant to be the
+            cheaper door.
+          </>
+        )}
+      </div>
 
       <h3>Which of the two crowns?</h3>
       <p>
@@ -525,11 +631,14 @@ export default function PintakasiPage() {
       <p>
         Its purse comes out of the same juice pool the Majors draw from — a fixed{" "}
         {(JUVENILE_MAJOR.JUICE_SHARE * 100).toFixed(0)}% slice, taken before Thursday&apos;s Majors
-        get whatever&apos;s left, split across the two crowns — both run every week.
+        get whatever&apos;s left, split across the two crowns — both run every week.{" "}
+        {juvenileFee === 0
+          ? "That slice is the whole purse: with no entry fee, there is nothing else to add to it."
+          : `Entry fees of ${juvenileFee} GP are added on top, the same way a Major's are.`}
       </p>
       <p>
         It is paid the same way a Major&apos;s purse is — every fight won pays, and a win in each
-        round is worth double a win in the round before — but the three parts are set{" "}
+        round is worth {juvenileMult}× a win in the round before — but the three parts are set{" "}
         <strong>flatter</strong> on purpose. More of the money rides on winning fights and less on
         lifting the trophy:
       </p>
@@ -573,8 +682,11 @@ export default function PintakasiPage() {
       <p className="dim">
         Everything else works exactly as it does upstairs: a bye pays nothing, a chick that never
         won a fight is paid nothing, and the remaining shares stretch to fill the purse. Every fight
-        in the bracket still mints Land Tokens to both birds, off the juvenile entry fee&apos;s much
-        smaller base — see <Link href="/wiki/land">Land Tokens</Link>.
+        in the bracket still mints Land Tokens to both birds, on a much smaller base than a
+        Major&apos;s: the {ECONOMY.JUVENILE_ENTRY_FEE} GP a juvenile card entry costs, not the{" "}
+        {PINTAKASI.LAND_BASIS} GP a crown fight is measured against upstairs. (That base has
+        nothing to do with what this crown charges at the door, which is {juvenileFee}.) See{" "}
+        <Link href="/wiki/land">Land Tokens</Link>.
       </p>
 
       <div className="next">

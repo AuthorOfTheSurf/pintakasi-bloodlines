@@ -1344,7 +1344,15 @@ export const JUVENILE_MAJOR = {
   // money rides on ADVANCEMENT and less on the trophy: showing up with a live
   // one and winning a fight should pay a juvenile barn, because that is the
   // whole behaviour the discovery year is trying to buy.
-  PURSE: { ADVANCEMENT: 0.65, CHAMPION: 0.2, RUNNER_UP: 0.15 },
+  PURSE: { ADVANCEMENT: 0.65, CHAMPION: 0.2, RUNNER_UP: 0.15, ROUND_MULTIPLIER: 1.5 },
+  // ⚠ FREE, AND DELIBERATELY SO (round 41). The Majors now cost 80 GP to
+  // enter; this crown does not, and it needs its own knob to stay that way —
+  // until round 41 a single `PINTAKASI.ENTRY_FEE` was stamped on every
+  // tournament row in the game, juveniles included. The discovery year exists
+  // to find out what a bird IS, this is the one crown that doesn't end a
+  // career, and putting a nine-nights-of-card-entries toll on a chick learning
+  // its trade would gate the exact stage that is supposed to be open.
+  ENTRY_FEE: 0,
   // Land to the fallen, on the discovery year's much smaller scale. The
   // Majors' grants (40/25/15/10/5) are priced against a 200 GP stake and a
   // career-ending loss; a juvenile risks neither, so paying it Major money
@@ -1419,7 +1427,30 @@ export const JUVENILE_MAJOR = {
 // (bots.ts) and MAX_BRACKET are the two brakes. Read the doctor's population
 // and championship-field blocks after changing either.
 export const PINTAKASI = {
-  ENTRY_FEE: 0, //    FREE — a crown is earned in the pit, not bought
+  // ── 80 GP TO STAND (re-ruled round 41, reversing round 22) ────────────────
+  //
+  // Entry was 200 GP until round 22 made it free, on the reasoning that a
+  // crown should be earned in the pit rather than bought. That reasoning still
+  // holds for the GATE — age is the only door and the Committee seats the
+  // field on earnings — but it left the purse funded by people who weren't
+  // there. Traced over a 91-day world, the juice pool that pays every crown
+  // came from:
+  //
+  //   gacha spend   187,056 GP   57%     ← and only 2 of 20 barns buy bundles
+  //   breed fees    136,040 GP   42%
+  //   the genesis     2,400 GP    1%
+  //   THE ENTRANTS        0 GP    0%
+  //
+  // So the biggest stage in the game was bankrolled by whoever happened to be
+  // rolling the gacha, and a barn that never entered a Major still paid for
+  // its purse through every cover it bought. A fee makes the crowns partly
+  // ENTRANT-funded, which is the round-16 fight economy the daily card has
+  // always followed: the money in the pot is the money the fighters put there.
+  //
+  // Fees are additive on top of the juice (see runChampionship), take no
+  // staker rake, and are escrowed per entry — so a mid-season reprice refunds
+  // everyone what they actually paid, not what the knob says today.
+  ENTRY_FEE: 80, // 2× a night's card (REAL_ENTRY_FEE 42) — the big stage costs more
   MAX_BRACKET: 64,
   // Which day the crowns run. dayIndex % 7: 0 = Friday (day 0 of the game
   // week) … 5 = Wednesday, 6 = THURSDAY. Moved Wed → Thu in round 20 so a
@@ -1434,8 +1465,18 @@ export const PINTAKASI = {
   // What the crown land curve is measured against. It used to be the entry
   // fee, but round 22 made entry free — and landForTournamentFight(0) mints
   // 1 LT, which would have quietly gutted "land to the fallen" from 40 LT a
-  // fight to 1. So the basis is now its own number: the old 200 GP entry,
-  // held as the STAKE the crowns represent rather than a price anyone pays.
+  // fight to 1. So the basis is its own number.
+  //
+  // ⚠ IT IS NO LONGER THE ENTRY FEE, AND IT IS NOT MEANT TO BE (round 41).
+  // This read "the old 200 GP entry, held as the STAKE the crowns represent
+  // rather than a price anyone pays" — true while entry was free, and false
+  // the moment round 41 put a real 80 GP price on the door. The two numbers
+  // are now deliberately different things: 80 is what a barn PAYS, 200 is what
+  // a crown fight is WORTH in land. Nothing derives one from the other, and
+  // pointing this at 80 would cut crown land 55.90 → 17.78 LT per fighter per
+  // fight — a two-thirds cut to the thing that makes losing a Major survivable,
+  // arrived at by accident. Move it only on purpose, and re-read the doctor's
+  // LAND SUPPLY block after.
   LAND_BASIS: 200,
   // ── THE PURSE: EVERY WIN PAYS (re-ruled round 40) ────────────────────────
   //
@@ -1454,19 +1495,44 @@ export const PINTAKASI = {
   // Now the purse is split three ways and the FIGHTS decide most of it:
   //
   //   ADVANCEMENT — split across every fight WON in the bracket, with a win
-  //                 in each round worth DOUBLE a win in the round before.
-  //                 That doubling is the whole design: each round distributes
-  //                 the same total money over half as many birds, so the
-  //                 deeper you go the more a single win is worth, and the
-  //                 curve stays steep without anybody being paid nothing.
+  //                 in each round worth ROUND_MULTIPLIER times a win in the
+  //                 round before. Deeper wins pay more; how much more is the
+  //                 knob.
   //   CHAMPION    — the trophy bonus, on top of the five wins it took.
   //   RUNNER_UP   — the same, smaller, for losing the last one.
   //
-  // The three must sum to 1 (docs.test.ts pins it). What each stage actually
-  // takes home falls out of the bracket rather than being typed here — in a
-  // 32-bird Major: champion ~54%, runner-up ~24%, each semifinalist ~4.4%,
-  // each quarterfinalist ~1.9%, and each first-round winner ~0.6%. Small, but
-  // it is no longer nothing, and it rides on top of a 40 LT land grant.
+  // The three shares must sum to 1 (docs.test.ts pins it). ROUND_MULTIPLIER is
+  // separate — it redistributes WITHIN the advancement slice and cannot change
+  // the total.
+  //
+  // ── WHY 1.5 AND NOT 2 (round 41, when entry stopped being free) ───────────
+  //
+  // It was 2, chosen because the arithmetic is pretty: each round hands out
+  // the same total across half as many birds. But an 80 GP door turns "paid
+  // something" into "paid enough to be worth turning up", and at ×2 a
+  // first-round win in a 32-bird Major is worth 53 GP against an 80 GP entry —
+  // NET NEGATIVE. Winning the hardest fight in the game and going home 27 GP
+  // lighter is the round-40 complaint wearing a different hat.
+  //
+  // ⚠ THE THREE SHARES CANNOT FIX THAT — the multiplier is the only lever.
+  // Measured: ADVANCEMENT 0.60 / CHAMPION 0.28 at ×2 still leaves one win at
+  // −19 GP, and closing it that way needs ADVANCEMENT near 0.95, which would
+  // gut the trophy. Softening the curve costs the champion far less. Net GP
+  // after the fee, 32-bird bracket, 5,931 GP of juice:
+  //
+  //          champion   runner-up   3 wins   2 wins   1 win
+  //   ×2       +4,537      +1,990     +291      +79      −27
+  //   ×1.5     +4,039      +1,900     +333     +137       +7   ← ruled
+  //   ×1.25    +3,795      +1,828     +339     +167      +30
+  //
+  // At ×1.5 every winner clears the door AND the champion takes 25% MORE than
+  // it did on a free entry (+3,225), because the fees grow the pot. Zane:
+  // "Champion should still receive a lot, but I suspect there's a happier
+  // median."
+  //
+  // ⚠ A 64-BIRD FIELD STILL LEAVES ONE WIN AT −27, because twice the birds
+  // share one pot. Accepted, not solved: fields average ~22, so 32 is the
+  // ordinary bracket and 64 is the busy-week exception.
   //
   // ⚠ A BYE IS NOT A WIN. Byes exist because the field was short, and paying
   // for one would pay a bird that never threw a blade — so the weight counts
@@ -1481,6 +1547,7 @@ export const PINTAKASI = {
     ADVANCEMENT: 0.5,
     CHAMPION: 0.35,
     RUNNER_UP: 0.15,
+    ROUND_MULTIPLIER: 1.5,
   },
   // LT grants by ELIMINATION STAGE — the fallen-weighted inversion.
   // Keyed by "rounds from the final" at elimination (champion included).
@@ -1527,23 +1594,31 @@ export const PINTAKASI = {
  * pins this against what the engine actually pays in a full bracket.
  *
  * Weights: round `r` runs `bracketSize / 2^r` fights, each paying its winner
- * `2^(r-1)`, so every round distributes the same total across half as many
- * birds. A bird that won `w` of them banked 1 + 2 + … + 2^(w-1) = 2^w − 1.
+ * `m^(r-1)` where `m` is the purse's ROUND_MULTIPLIER. A bird that won `w` of
+ * them banked the geometric sum 1 + m + … + m^(w-1).
  */
 export function purseShareOf(
   bracketSize: number,
-  purse: { readonly ADVANCEMENT: number; readonly CHAMPION: number; readonly RUNNER_UP: number },
+  purse: {
+    readonly ADVANCEMENT: number;
+    readonly CHAMPION: number;
+    readonly RUNNER_UP: number;
+    readonly ROUND_MULTIPLIER: number;
+  },
   wins: number,
   bonus: "champion" | "runnerUp" | "none" = "none"
 ): number {
   // No win, no money — including the bonus. See PINTAKASI.PURSE for why the
   // two are coupled (a straight final's runner-up is also a first-round loser).
   if (wins <= 0) return 0;
+  const m = purse.ROUND_MULTIPLIER;
   const rounds = Math.log2(bracketSize);
   let totalWeight = 0;
-  for (let r = 1; r <= rounds; r++) totalWeight += (bracketSize / 2 ** r) * 2 ** (r - 1);
+  for (let r = 1; r <= rounds; r++) totalWeight += (bracketSize / 2 ** r) * m ** (r - 1);
   return (
-    (purse.ADVANCEMENT * (2 ** wins - 1)) / totalWeight +
+    // 1 + m + … + m^(wins-1) — the geometric sum, which is `wins` itself when
+    // the multiplier is 1 and 2^wins − 1 at the old doubling.
+    (purse.ADVANCEMENT * (m === 1 ? wins : (m ** wins - 1) / (m - 1))) / totalWeight +
     (bonus === "champion" ? purse.CHAMPION : bonus === "runnerUp" ? purse.RUNNER_UP : 0)
   );
 }

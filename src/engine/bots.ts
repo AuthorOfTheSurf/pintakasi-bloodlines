@@ -34,7 +34,7 @@ import { Gacha } from "./gacha";
 import { canHardcore } from "./lifecycle";
 import { Lobbies, entryRefusal, type FightMode, type LobbySpec } from "./lobbies";
 import { mulberry32, randInt, type Rng } from "./rng";
-import { Tournaments } from "./tournaments";
+import { DIVISION_RULES, Tournaments } from "./tournaments";
 
 /**
  * "end-first" is simulation-only until it beats the current grid exploration
@@ -889,15 +889,27 @@ export function weatherCardsToday(
  */
 /**
  * The DISCOVERY-YEAR chase (round 23): send qualified juveniles to Wednesday's
- * championship. No nerve check and no reserve — the juvenile stage isn't
- * hardcore and costs nothing, so there is no reason on earth not to enter a
- * bird that has earned its way in.
+ * championship. No nerve check — the juvenile stage isn't hardcore, so there is
+ * no reason on earth not to enter a bird that has earned its way in.
+ *
+ * ⚠ AND IT IS FREE, WHICH IS NOW A FACT RATHER THAN AN ASSUMPTION (round 41).
+ * This said "costs nothing" and checked no wallet, which was true — but the
+ * fee came off `PINTAKASI.ENTRY_FEE`, shared with the Majors, so the day the
+ * Majors started charging this loop would have thrown on every entry and the
+ * bare `catch` below would have eaten it. Twenty barns would have stopped
+ * entering the division with nothing reported anywhere. The fee is per
+ * division now (DIVISION_RULES) and the check below reads the juvenile one, so
+ * it stays honest whichever way either knob moves.
  */
 export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): string[] {
   const tournaments = new Tournaments(db, farmId);
   const flock = new Flock(db, farmId);
   const entered: string[] = [];
   const blades = Tournaments.juvenileBladesOfWeek(Tournaments.targetWeek(today));
+  // Zero today, so this is a no-op and costs one query a day — kept anyway,
+  // because the alternative is the silent outage described above.
+  const fee = DIVISION_RULES.juvenile.entryFee;
+  if (fee > 0 && db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp < fee) return entered;
   const qualified = flock
     .all()
     .filter((b) => b.status === "active" && b.named && b.age === 1)
@@ -1030,18 +1042,29 @@ export function chaseCrowns(
     declared.get(tied[i % tied.length])!.push(bird);
   }
 
-  const send = (blade: FightFormat, candidates: BirdView[]): boolean => {
+  // ⚠ THIS CHECK HAD NEVER RUN UNTIL ROUND 41. Entry was free from round 22,
+  // so `PINTAKASI.ENTRY_FEE > 0` short-circuited before the wallet was ever
+  // read — the guard was written for a paid season that hadn't arrived. It has
+  // arrived, and it takes 80 GP a bird now, up to MAX_PER_BARN × three crowns
+  // a week off the top of a barn's money.
+  //
+  // ⚠ READ THE FEE FROM THE DIVISION, NOT FROM `PINTAKASI` — the same coupling
+  // round 41 just took out of `findOrOpen`. Correct today only by coincidence
+  // (majors only, and the knob matches every open row); wrong in exactly the
+  // case the per-entry escrow exists for, since a mid-season reprice leaves
+  // last week's rows stamped at the old price while the bot budgets against
+  // the new one.
+  const fee = DIVISION_RULES.major.entryFee;
+  const canAfford = () =>
+    db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp >= fee + reserve;
+
+  const send = (blade: FightFormat, candidates: BirdView[]): void => {
     let sent = tournaments.myEntriesThisWeek(blade);
     for (const bird of candidates.sort(
       (a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade]
     )) {
       if (sent >= PINTAKASI.MAX_PER_BARN) break;
-      // Free entry still respects the reserve if a future season re-prices it.
-      if (
-        PINTAKASI.ENTRY_FEE > 0 &&
-        db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp < PINTAKASI.ENTRY_FEE + reserve
-      )
-        return false; // out of money, out of crowns
+      if (!canAfford()) return; // this crown is out of reach — try the next one
       try {
         tournaments.enter(bird.id, blade);
         entered.push(bird.name);
@@ -1050,15 +1073,19 @@ export function chaseCrowns(
         /* already committed elsewhere, barn full, or the committee said no */
       }
     }
-    return true;
   };
 
   const chosen = blades.filter((b) => opts.nerve === undefined || rng() < opts.nerve);
+  // ⚠ A BARN THAT RUNS SHORT SKIPS A CROWN, IT DOES NOT GO HOME. `send` used
+  // to return false on an empty wallet and both loops below `return entered`
+  // on it — which was harmless at a free entry and would be a real bug at 80
+  // GP: a barn that couldn't afford its THIRD blade would abandon the two it
+  // could. The passes run to the end now, and each entry is priced on its own.
   // Pass 1: specialists into their own blade.
-  for (const blade of chosen) if (!send(blade, [...declared.get(blade)!])) return entered;
+  for (const blade of chosen) send(blade, [...declared.get(blade)!]);
   // Pass 2: anyone still idle fills a crown that's short — up to MAX_PER_BARN
   // per blade. A body in a bracket beats a body in the barn.
-  for (const blade of chosen) if (!send(blade, [...eligible])) return entered;
+  for (const blade of chosen) send(blade, [...eligible]);
   return entered;
 }
 

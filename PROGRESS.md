@@ -543,3 +543,21 @@ bottom.*
     noticing. Every other aggregate in the report deserves the same question
     asked of it once: what would a badly-shaped version of this look like, and
     would this line look any different?
+29. **The juvenile crown's land curve is inverted, and round 41 only fixed the
+    Majors' half.** Crown land is two things added together: a per-fight mint
+    to both fighters, and an elimination grant that deliberately pays the
+    earliest exit most. In the Majors the mint (55.90 a fight) is 2.4× the
+    grants, so a deeper run banks more land and the inversion is only a
+    softening. In the JUVENILE division the mint is 1.15 a fight against grants
+    of 9.00 down to 1.00, so the grant dominates and it stays inverted: a
+    juvenile champion banks **6.75 LT against a first-round loser's 10.15**.
+    That may be right — "land to the fallen" was designed for a hardcore stage
+    where losing ends a career, and nothing dies in the discovery year — but it
+    is currently an accident of two numbers rather than a ruling. Decide it,
+    then either move `JUVENILE_MAJOR.LAND_GRANTS` or write down why not.
+30. **A bye can out-earn the champion in land.** Land mints per fight fought, so
+    a short field's champion that won four fights banks less than a runner-up
+    that fought five. This is the same "a bye is not a win" rule the purse
+    follows and it is ledger-honest — noted only because it looks like a bug
+    the first time you meet it, and the fix (crediting byes) would contradict a
+    ruling we made on purpose.

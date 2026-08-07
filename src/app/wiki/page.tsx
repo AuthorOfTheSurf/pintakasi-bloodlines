@@ -49,9 +49,10 @@ export default function WikiHome() {
           they pay you GP every day, forever.
         </li>
         <li>
-          <strong>Chase a Major.</strong> Thursday&apos;s Pintakasi Majors are free and open to any
-          age-{AGE.FORK} bird — but seats are limited, and the birds that have won the most money
-          keep them. The biggest purse in the game.
+          <strong>Chase a Major.</strong> Thursday&apos;s Pintakasi Majors are open to any age-
+          {AGE.FORK} bird for {PINTAKASI.ENTRY_FEE} GP — but seats are limited, and the birds that
+          have won the most money keep them. The fees go into the purse, which is the biggest in the
+          game.
         </li>
       </ol>
 
@@ -151,8 +152,8 @@ export default function WikiHome() {
         </div>
         <div className="minicard">
           <b>Chasing a Major?</b>
-          <Link href="/wiki/pintakasi">The Pintakasi Majors</Link> — free, open to any age-{AGE.FORK}{" "}
-          bird, and seated on what the bird has earned.
+          <Link href="/wiki/pintakasi">The Pintakasi Majors</Link> — {PINTAKASI.ENTRY_FEE} GP, open
+          to any age-{AGE.FORK} bird, and seated on what the bird has earned.
         </div>
       </div>
 

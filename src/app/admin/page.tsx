@@ -7,9 +7,10 @@ import {
   FIGHTS_PER_GROUP_BIRD,
   FORMATS,
   LT_CENTS,
-  PINTAKASI,
+  // (PINTAKASI and landForTournamentFight left this file in round 41 — crown
+  // land is read off the `crown_land` ledger now, so the page no longer needs
+  // to know the curve or which basis a division mints on.)
   landForFight,
-  landForTournamentFight,
   cardOfDay,
   stakePerFight,
   weatherOfDay,
@@ -118,7 +119,20 @@ interface BracketFighter {
   stars: number;
   figure: number | null; // null on a bye — nobody threw a blade
   gpWonCents: number;
-  landGranted: number; // hundredths of a token (round 36) — render via ltFmt
+  // ⚠ ROUND 41 — THE LAND ON A BRACKET CARD USED TO READ BACKWARDS. It showed
+  // `tournamentEntries.landGranted` alone: the ELIMINATION grant, which is
+  // deliberately inverted ("land to the fallen", 55 LT for going out first
+  // down to 5 LT for the champion). But the grant is the small half. Every
+  // crown FIGHT also mints landForTournamentFight(landBasis) to BOTH sides —
+  // 55.90 LT a bout in a Major — and across a 91-day sim those fight mints
+  // came to 2.4× the grants. So the column told a champion it had banked 5 LT
+  // and a first-round loser 55, when the real totals were 284.50 and 110.90.
+  // This is now the bird's WHOLE land take in this tournament as of this
+  // round: the ledger's own `crown_land` rows through round r, plus the grant
+  // once it has settled. One honest number rather than two — a round-1 card
+  // has no spare height for a second line (see BRACKET_ROW_UNIT), and the
+  // split is already in the ledger for anyone who wants it.
+  landCents: number; // hundredths of a token (round 36) — render via ltFmt
   won: boolean;
   // CAREER TO DATE (round 40), read live off the bird row and the ledgers —
   // so it is the number AFTER this fight, not a pre-fight snapshot: by the
@@ -159,6 +173,12 @@ function buildBracket(
   tournamentId: number,
   birdCard: (id: string) => { name: string; grade: Grade; element: string; stars: number },
   career: (id: string) => { wins: number; losses: number; netCents: number },
+  // Land this bird has been minted in THIS tournament through round r, read
+  // off the `crown_land` ledger rather than recomputed as
+  // landForTournamentFight(basis) × fights: the basis differs by division
+  // (the juvenile stage mints off a much smaller one) and the curve is the
+  // engine's to change. The ledger is what actually reached the barn.
+  crownLand: (birdId: string, throughRound: number) => number,
   fname: (id: string | null) => string,
   championBirdId: string | null
 ): BracketRound[] {
@@ -180,6 +200,7 @@ function buildBracket(
     e: EntryRow,
     won: boolean,
     figure: number | null,
+    round: number,
     showAwards = false
   ): BracketFighter => {
     const card = birdCard(e.birdId);
@@ -192,7 +213,12 @@ function buildBracket(
       stars: card.stars,
       figure,
       gpWonCents: showAwards ? e.gpWonCents : 0,
-      landGranted: showAwards ? e.landGranted : 0,
+      // RUNNING total, so the tree pays visibly MORE the deeper you go: a
+      // card in round r carries every crown_land row up to and including r,
+      // and the elimination grant lands on top at the fighter's last card
+      // (their exit, or the final for the champion). A bye mints nothing, so
+      // it simply carries whatever the bird had already earned.
+      landCents: crownLand(e.birdId, round) + (showAwards ? e.landGranted : 0),
       won,
       wins: c.wins,
       losses: c.losses,
@@ -208,10 +234,10 @@ function buildBracket(
       const a = alive[i];
       const b = alive[i + 1];
       if (a && !b) {
-        matches.push({ isBye: true, a: fighter(a, true, null), b: null, onPath: a.birdId === championBirdId });
+        matches.push({ isBye: true, a: fighter(a, true, null, round), b: null, onPath: a.birdId === championBirdId });
         next.push(a);
       } else if (b && !a) {
-        matches.push({ isBye: true, a: fighter(b, true, null), b: null, onPath: b.birdId === championBirdId });
+        matches.push({ isBye: true, a: fighter(b, true, null, round), b: null, onPath: b.birdId === championBirdId });
         next.push(b);
       } else if (a && b) {
         // Whichever side exits on THIS round is the loser — the champion
@@ -222,8 +248,8 @@ function buildBracket(
           isBye: false,
           // Awards settle at the participant's final matchup: the loser
           // exits here, while the champion receives theirs after the final.
-          a: fighter(a, winner === a, figureOf(a.birdId, b.birdId), winner !== a || round === totalRounds),
-          b: fighter(b, winner === b, figureOf(b.birdId, a.birdId), winner !== b || round === totalRounds),
+          a: fighter(a, winner === a, figureOf(a.birdId, b.birdId), round, winner !== a || round === totalRounds),
+          b: fighter(b, winner === b, figureOf(b.birdId, a.birdId), round, winner !== b || round === totalRounds),
           onPath: winner.birdId === championBirdId,
         });
         next.push(winner);
@@ -270,11 +296,15 @@ function Bracket({
   rounds: BracketRound[];
   bracketSize: number;
 }) {
-  const awards = (f: Pick<BracketFighter, "gpWonCents" | "landGranted">) =>
-    f.gpWonCents > 0 || f.landGranted > 0 ? (
+  // What this side has taken home so far: purse GP once it settles, and the
+  // running land total (fights + grant — see BracketFighter.landCents). The
+  // land shows on EVERY card, not just the last one, because every crown
+  // fight mints to both sides — that is the whole point of the round-41 fix.
+  const awards = (f: Pick<BracketFighter, "gpWonCents" | "landCents">) =>
+    f.gpWonCents > 0 || f.landCents > 0 ? (
       <span className="bawards">
         {f.gpWonCents > 0 && <><GpIcon size={11} /> +{gpFmt(f.gpWonCents)}</>}
-        {f.landGranted > 0 && <><LtIcon size={11} /> +{ltFmt(f.landGranted)}</>}
+        {f.landCents > 0 && <><LtIcon size={11} /> +{ltFmt(f.landCents)}</>}
       </span>
     ) : null;
   /**
@@ -603,14 +633,53 @@ export default function Admin() {
   const careerNetByBird = new Map<string, number>();
   for (const r of log)
     careerNetByBird.set(r.birdId, (careerNetByBird.get(r.birdId) ?? 0) + r.gpDeltaCents);
-  for (const e of allTEntries)
-    careerNetByBird.set(e.birdId, (careerNetByBird.get(e.birdId) ?? 0) + e.gpWonCents);
+  // ⚠ THE FEE IS PART OF THE NET, and round 41 is the round that starts to
+  // matter: the Majors were free from round 22 until now, so `- e.fee * 100`
+  // was a no-op and its absence here was invisible. With an entry fee it is
+  // not — a bird that enters four crowns and cashes none has spent real GP,
+  // and a career line that counted only winnings would flatter every crown
+  // entrant by the fee, every time. Refunded and bumped entries got their
+  // money back and pay nothing, the same carve-out the per-bird LT/GP column
+  // below makes.
+  for (const e of allTEntries) {
+    const refunded = e.status === "refunded" || e.status === "bumped";
+    careerNetByBird.set(
+      e.birdId,
+      (careerNetByBird.get(e.birdId) ?? 0) + e.gpWonCents - (refunded ? 0 : e.fee * 100)
+    );
+  }
   // wins/losses come off the bird row rather than being counted out of the
   // log: the engine maintains them, and a championship has already written
   // tonight's result by the time this page reads it.
   const birdCareer = (id: string) => {
     const b = birdById.get(id);
     return { wins: b?.wins ?? 0, losses: b?.losses ?? 0, netCents: careerNetByBird.get(id) ?? 0 };
+  };
+  // ── CROWN LAND, off the ledger (round 41) ─────────────────────────────────
+  // ONE pass over the events already in memory, folded into a map keyed
+  // (birdId, tournamentId) — never a query per bird, which a 32-bracket would
+  // turn into 32 round trips per championship with several championships on
+  // the page. `crown_land` is emitted once per SIDE per crown fight and
+  // carries its own signed `lt`, so this is the engine's own arithmetic
+  // rather than a copy of its curve: juvenile brackets mint off a smaller
+  // basis and land here at their real (smaller) figure with no special case.
+  const crownLandRows = new Map<string, { round: number; lt: number }[]>();
+  const crownLandByBird = new Map<string, number>();
+  for (const e of allEvents) {
+    if (e.type !== "crown_land" || !e.birdId || !e.lt) continue;
+    crownLandByBird.set(e.birdId, (crownLandByBird.get(e.birdId) ?? 0) + e.lt);
+    const data = e.data ? (JSON.parse(e.data) as { tournamentId?: number; round?: number }) : {};
+    if (data.tournamentId === undefined) continue;
+    const key = `${e.birdId}|${data.tournamentId}`;
+    const list = crownLandRows.get(key);
+    if (list) list.push({ round: data.round ?? 0, lt: e.lt });
+    else crownLandRows.set(key, [{ round: data.round ?? 0, lt: e.lt }]);
+  }
+  const crownLandThrough = (birdId: string, tournamentId: number, throughRound: number) => {
+    let sum = 0;
+    for (const r of crownLandRows.get(`${birdId}|${tournamentId}`) ?? [])
+      if (r.round <= throughRound) sum += r.lt;
+    return sum;
   };
   // Show the two most recent weeks: last week's crowns stay visible
   // while the new week's registrations gather.
@@ -633,6 +702,7 @@ export default function Admin() {
               t.id,
               birdCard,
               birdCareer,
+              (birdId, throughRound) => crownLandThrough(birdId, t.id, throughRound),
               fname,
               champion?.birdId ?? null
             )
@@ -815,7 +885,8 @@ export default function Admin() {
   // card is now summed off the ENTRY rows — which carry their own fee and
   // their own fight count, so this reproduces the engine's settle-up exactly
   // (see Lobbies.complete) rather than re-deriving a fee from the mode.
-  // Tournament land stays per fight: the Majors never joined the group stage.
+  // Tournament land is still per fight (the crowns never joined the group
+  // stage), but round 41 stopped deriving it here — see below.
   // Both maps accumulate the engine's own integers — cents of GP, hundredths
   // of a token (round 36). Summing before scaling is the point: scale first
   // and a column of thousands of awards accretes float error a cent at a time.
@@ -825,9 +896,16 @@ export default function Admin() {
     map.set(key, (map.get(key) ?? 0) + by);
   for (const r of log) {
     bump(netGpCents, r.birdId, r.gpDeltaCents); // 0 on Pintakasi rows — the purse settles below
-    if (r.tournamentId)
-      bump(netLt, r.birdId, landForTournamentFight(PINTAKASI.LAND_BASIS)); // free entry, fixed basis (round 22)
   }
+  // ⚠ ROUND 41 FIXED THE CROWN HALF OF THIS COLUMN TOO. It used to add
+  // landForTournamentFight(PINTAKASI.LAND_BASIS) per tournament battle_log
+  // row — one hard-coded basis for every bracket in the world. The juvenile
+  // division has minted off its OWN, much smaller basis since round 23
+  // (DIVISION_RULES.juvenile.landBasis, and on the gentler landForFight curve
+  // at that), so every juvenile crown fight was printed at roughly 3× what it
+  // actually paid. Reading the `crown_land` ledger instead means the division,
+  // the curve and the basis are all the engine's business, not this page's.
+  for (const [birdId, lt] of crownLandByBird) bump(netLt, birdId, lt);
   for (const e of allEntries) {
     if (e.fights === 0) continue; // unmatched, or not posted yet — land is for FIGHTING
     bump(netLt, e.birdId, landForFight(stakePerFight(e.fee) * e.fights));

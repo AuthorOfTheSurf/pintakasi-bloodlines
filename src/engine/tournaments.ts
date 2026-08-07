@@ -37,6 +37,11 @@ export const DIVISION_RULES = {
     maxPerBarn: PINTAKASI.MAX_PER_BARN,
     maxBracket: PINTAKASI.MAX_BRACKET,
     minField: PINTAKASI.MIN_FIELD,
+    // ⚠ THE FEE IS PER DIVISION SINCE ROUND 41. `findOrOpen` used to stamp
+    // `PINTAKASI.ENTRY_FEE` on EVERY tournament row in the game, juveniles
+    // included — which nobody noticed while it was 0, and which would have put
+    // an 80 GP toll on age-1 chicks the moment the Majors started charging.
+    entryFee: PINTAKASI.ENTRY_FEE,
     purse: PINTAKASI.PURSE,
     landGrants: PINTAKASI.LAND_GRANTS as Record<string, number>,
     landBasis: PINTAKASI.LAND_BASIS,
@@ -48,6 +53,7 @@ export const DIVISION_RULES = {
     maxPerBarn: JUVENILE_MAJOR.MAX_PER_BARN,
     maxBracket: JUVENILE_MAJOR.MAX_BRACKET,
     minField: JUVENILE_MAJOR.MIN_FIELD,
+    entryFee: JUVENILE_MAJOR.ENTRY_FEE, // free, and see the config comment for why
     purse: JUVENILE_MAJOR.PURSE,
     landGrants: JUVENILE_MAJOR.LAND_GRANTS as Record<string, number>,
     landBasis: ECONOMY.JUVENILE_ENTRY_FEE,
@@ -293,8 +299,10 @@ export class Tournaments {
       throw new Error(
         `Your barn already has ${mine.length} in the ${label(tournament.format)} — ${rules.maxPerBarn} is the limit per championship`
       );
-    // Free since round 22 — the knob survives so a future season can charge
-    // again without a rebuild, but at 0 nothing is escrowed or refunded.
+    // ⚠ THE FEE COMES OFF THE ROW, NOT OFF CONFIG, and that is what makes a
+    // reprice safe: an entry refunds what it actually PAID, not what the knob
+    // says today. Free from round 22 to 40; 80 GP on a Major since round 41,
+    // still 0 on the juvenile crown (DIVISION_RULES carries them separately).
     const fee = tournament.entryFee;
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
     if (fee > 0 && farm.gp < fee)
@@ -540,10 +548,16 @@ export class Tournaments {
     // bracket runs under the same weather.
     const weather = weatherOfDay(dayIndex);
     const field = Tournaments.pending(database, t.id);
-    // Since round 22 the entries are free, so the purse IS this blade's cut
-    // of the juice pool — which means gacha spend and breed fees are what
-    // the champion actually takes home. (The fee term survives so a paid
-    // season would still add to the pot without a rebuild.)
+    // THE PURSE IS TWO THINGS ADDED: what the field paid at the door, and this
+    // blade's cut of the juice pool. From round 22 to 40 the first term was
+    // always zero and this comment said so; round 41 put 80 GP back on a Major
+    // and the term is live again, funding ~20% of a Major purse. The rest is
+    // still juice — which is to say gacha spend and breed fees, paid by people
+    // who may not be standing in the bracket at all. That imbalance is the
+    // whole argument for the fee; see PINTAKASI.ENTRY_FEE for the measurement.
+    //
+    // A busy crown therefore pays better BECAUSE it was busy, which is the one
+    // piece of this the juice alone could never do.
     const entriesCents = field.reduce((s, e) => s + e.fee, 0) * 100;
     const purseCents = entriesCents + juiceShare;
 
@@ -574,14 +588,22 @@ export class Tournaments {
     const farmNameOf = (farmId: string) =>
       database.select().from(farms).where(eq(farms.id, farmId)).get()!.name;
 
+    const purseRules = DIVISION_RULES[(t.division ?? "major") as Division].purse;
     const rounds: TournamentResolution["rounds"] = [];
     const eliminatedIn = new Map<number, number>(); // entry.id → round
     // ROUND 40 — what the purse is actually paid on. A win in round r is worth
-    // 2^(r-1), so every round hands out the same total across half as many
-    // birds and a deeper win is worth more. Accumulated HERE, as the fights
-    // happen, because that is the only place a bye can be told from a win:
-    // the bye branches below push a bird through without adding weight, which
-    // is the ruling — a bird that never threw a blade is not paid for it.
+    // ROUND_MULTIPLIER^(r-1), so a deeper win is worth more; round 41 softened
+    // that multiplier from 2 to 1.5 when entry stopped being free, so a
+    // first-round win clears the 80 GP door instead of falling short of it
+    // (the arithmetic is in the PINTAKASI.PURSE comment). Accumulated HERE, as
+    // the fights happen, because that is the only place a bye can be told from
+    // a win: the bye branches below push a bird through without adding weight,
+    // which is the ruling — a bird that never threw a blade is not paid for it.
+    //
+    // ⚠ THE WEIGHTS ARE NOT INTEGERS ANY MORE. At ×1.5 a fourth-round win
+    // scores 3.375, so nothing downstream may assume whole numbers — the
+    // payout divides by the total and the champion takes the dust, which is
+    // exactly why that shape was worth keeping.
     const winWeight = new Map<number, number>(); // entry.id → weight
     for (let round = 1; round <= totalRounds; round++) {
       const roundName = Tournaments.roundName(round, totalRounds, bracketSize);
@@ -609,7 +631,10 @@ export class Tournaments {
         fights.push(report);
         const winner = report.winner === nameOf.get(a.id) ? a : b;
         const loser = winner === a ? b : a;
-        winWeight.set(winner.id, (winWeight.get(winner.id) ?? 0) + 2 ** (round - 1));
+        winWeight.set(
+        winner.id,
+        (winWeight.get(winner.id) ?? 0) + purseRules.ROUND_MULTIPLIER ** (round - 1)
+      );
         eliminatedIn.set(loser.id, round);
         next.push(winner);
       }
@@ -1077,7 +1102,9 @@ export class Tournaments {
       farmId: entry.farmId,
       birdId: entry.birdId,
       gpCents: entry.fee * 100,
-      // Free entry (round 22) means a scratch costs nobody anything — say so
+      // A scratch returns the escrow — 80 GP on a Major since round 41, and
+    // nothing at all on the free juvenile crown, which is why this is guarded
+    // rather than unconditional — say so
       // rather than announcing "0 GP home".
       message:
         `${birdName}'s Pintakasi entry withdrawn — ${why}` +
@@ -1124,7 +1151,7 @@ export class Tournaments {
         format,
         division,
         seed: freshSeed(),
-        entryFee: PINTAKASI.ENTRY_FEE,
+        entryFee: DIVISION_RULES[division].entryFee,
       })
       .returning()
       .get();

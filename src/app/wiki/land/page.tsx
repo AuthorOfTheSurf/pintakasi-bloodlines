@@ -209,6 +209,16 @@ export default function LandPage() {
         stake the Majors represent. A bird that survives several rounds banks that amount again and
         again before it ever gets to the elimination grants below.
       </p>
+      <div className="callout tip">
+        <b>
+          That {PINTAKASI.LAND_BASIS} GP is not the entry fee, and the two are meant to differ.
+        </b>{" "}
+        A Major costs {PINTAKASI.ENTRY_FEE} GP to enter (see{" "}
+        <Link href="/wiki/pintakasi">The Pintakasi</Link>). The {PINTAKASI.LAND_BASIS} GP here is a
+        separate figure: what a crown fight is <em>worth in land</em>, set by how much a career is
+        being risked, not by what the barn paid at the door. Land to the fallen only works if it is
+        big, so it is priced against the risk.
+      </div>
       <p className="dim">
         Every one of those per-fight awards is written into your ledger as its own line, round by
         round. So you can add up a Major night yourself and check it against your barn&apos;s land

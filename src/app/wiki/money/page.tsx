@@ -3,6 +3,7 @@ import {
   CLAIMER,
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
+  JUVENILE_MAJOR,
   LAND,
   LT_CENTS,
   PINTAKASI,
@@ -18,9 +19,11 @@ export const dynamic = "force-dynamic";
 const usd = (gp: number) => (gp / ECONOMY.GP_PER_DOLLAR).toFixed(2);
 
 /**
- * The fees a farm actually pays to card a bird. Hardcore's fee left this list
- * in round 31 with the hardcore lobby itself — the Majors, where hardcore now
- * lives, are free to enter.
+ * The fees a farm actually pays to card a bird on the DAILY card. Hardcore's
+ * fee left this list in round 31 with the hardcore lobby itself; the Majors,
+ * where hardcore now lives, are priced separately (PINTAKASI.ENTRY_FEE — a
+ * real spend again since round 41) and get their own row below, because a
+ * championship entry is not a night on the card.
  */
 const ENTRY_FEES: { label: string; fee: number }[] = [
   { label: "Juvenile entry", fee: ECONOMY.JUVENILE_ENTRY_FEE },
@@ -155,6 +158,16 @@ export default function MoneyPage() {
                 <td className="num">${usd(e.fee)}</td>
               </tr>
             ))}
+            <tr>
+              <td>A Pintakasi Major entry</td>
+              <td className="num">{PINTAKASI.ENTRY_FEE}</td>
+              <td className="num">${usd(PINTAKASI.ENTRY_FEE)}</td>
+            </tr>
+            <tr>
+              <td>A Juvenile Championship entry</td>
+              <td className="num">{JUVENILE_MAJOR.ENTRY_FEE}</td>
+              <td className="num">${usd(JUVENILE_MAJOR.ENTRY_FEE)}</td>
+            </tr>
             {CLAIMER.PRICES.map((price, i) => (
               <tr key={price}>
                 <td>Claiming tag, rung {i + 1} of {CLAIMER.PRICES.length}</td>
@@ -186,10 +199,10 @@ export default function MoneyPage() {
         </table>
       </div>
       <p className="dim">
-        The Pintakasi Majors cost{" "}
-        {PINTAKASI.ENTRY_FEE === 0 ? "nothing to enter — you earn a seat by winning, not by paying"
-          : `${PINTAKASI.ENTRY_FEE} GP to enter`}. See <Link href="/wiki/pintakasi">The Pintakasi</Link>.
-        Land is capped at {(LAND.DAILY_BUY_CAP / LT_CENTS).toLocaleString()} LT bought per farm per
+        A Major&apos;s {PINTAKASI.ENTRY_FEE} GP is not really a spend — every peso of it goes into
+        that same crown&apos;s purse, so the entrants are paying each other. It still doesn&apos;t
+        buy a seat: the Selection Committee decides who stands, on what the bird has earned. See{" "}
+        <Link href="/wiki/pintakasi">The Pintakasi</Link>. Land is capped at {(LAND.DAILY_BUY_CAP / LT_CENTS).toLocaleString()} LT bought per farm per
         game-day, and it is never sellable back — see <Link href="/wiki/land">Land Tokens</Link>.
         You buy and stake land in whole tokens; you <em>earn</em> it in hundredths, so a fought
         night pays an amount with decimals on it. Standing a rooster at stud
@@ -205,7 +218,10 @@ export default function MoneyPage() {
         <div className="minicard">
           <b>The juice pool</b>
           <p>
-            Funds the week&apos;s championships — see <Link href="/wiki/pintakasi">The Pintakasi</Link>.
+            Part-funds the week&apos;s championships — see{" "}
+            <Link href="/wiki/pintakasi">The Pintakasi</Link>. The other part is the entry fees the
+            Majors&apos; own entrants pay ({PINTAKASI.ENTRY_FEE} GP each, added to that crown&apos;s
+            purse whole).
             It fills from two places: {breedJuicePct}% of every breeding cover (the other half of
             what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
             {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. Wednesday&apos;s
@@ -213,7 +229,7 @@ export default function MoneyPage() {
             across its two crowns — and Thursday&apos;s Pintakasi Majors take the entire remainder,
             split evenly across however many Majors run. Each crown then pays its purse out on{" "}
             <em>fights won</em>: every win in the bracket takes a share, and a win in each round is
-            worth double a win in the round before.
+            worth {PINTAKASI.PURSE.ROUND_MULTIPLIER}× a win in the round before.
           </p>
         </div>
         <div className="minicard">
@@ -312,11 +328,12 @@ export default function MoneyPage() {
           <Link href="/wiki/claiming">Claiming</Link>.
         </li>
         <li>
-          <strong>A cancelled championship.</strong> If too few birds are standing in a Pintakasi
-          bracket on the day, the whole thing cancels and any entry escrowed for it refunds — moot today,
-          since entry currently costs{" "}
-          {PINTAKASI.ENTRY_FEE === 0 ? "nothing" : `${PINTAKASI.ENTRY_FEE} GP`}, but the machinery
-          is there the day that changes.
+          <strong>A cancelled championship, or a bumped entry.</strong> A Major entry escrows{" "}
+          {PINTAKASI.ENTRY_FEE} GP the moment you register. If too few birds are standing on the
+          day, the whole bracket cancels and the fee comes back. If the Selection Committee bumps
+          your bird out of a full field later in the week, it comes back then too. You only ever
+          pay for a crown your bird actually stands in. See{" "}
+          <Link href="/wiki/pintakasi">The Pintakasi</Link>.
         </li>
       </ul>
 

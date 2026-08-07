@@ -379,6 +379,51 @@ function checkPursesSettle(db: DB): Invariant {
 }
 
 /**
+ * NO ENTRY OUTLIVES ITS CHAMPIONSHIP — the eighth invariant (round 41).
+ *
+ * A `pending` tournament entry is GP the world is HOLDING: `computeTopline`
+ * counts its fee as escrow, which is what makes the conservation proof balance
+ * while a fee sits between a wallet and a purse. So an entry still pending on
+ * a crown that has already resolved is money nobody can ever reach again —
+ * permanent phantom escrow, and the conservation check will keep passing,
+ * because the phantom is on BOTH sides of it.
+ *
+ * It could not have been seen before now. Entry was free from round 22 to 40,
+ * so a stranded row held 0 GP and cost nothing to leave lying around; round 41
+ * put 80 GP behind each one. Every entry is supposed to leave `pending` exactly
+ * once — as `champion`, `eliminated`, `bumped` or `refunded` — and single
+ * elimination guarantees it: everyone but the winner loses exactly one fight.
+ * That is an argument, not a check, and this is the check.
+ */
+function checkNoStrandedEscrow(db: DB): Invariant {
+  const resolved = new Map(
+    db
+      .select()
+      .from(tournaments)
+      .all()
+      .filter((t) => t.status === "completed" || t.status === "cancelled")
+      .map((t) => [t.id, t])
+  );
+  const stranded = db
+    .select()
+    .from(tournamentEntries)
+    .all()
+    .filter((e) => e.status === "pending" && resolved.has(e.tournamentId));
+  const held = stranded.reduce((s, e) => s + e.fee * 100, 0);
+  return {
+    name: "no stranded entries",
+    passed: stranded.length === 0,
+    detail:
+      stranded.length === 0
+        ? `${resolved.size} resolved championship(s), every entry settled`
+        : `${stranded.length} entr(ies) still pending on a resolved crown — ${gp(held)} GP unreachable`,
+    offenders: stranded
+      .slice(0, DOCTOR.OFFENDER_SAMPLE)
+      .map((e) => `entry #${e.id} on crown #${e.tournamentId} (${e.status}) holds ${gp(e.fee * 100)} GP`),
+  };
+}
+
+/**
  * One card a day per bird. Tournament rows are excluded deliberately — a
  * bracket legitimately runs one bird six times in an afternoon, which is the
  * ruled back-to-back marathon, not a cap violation.
@@ -1133,6 +1178,29 @@ function championships(db: DB): HealthSection {
           `biggest take ${share(takes[0] ?? 0)} of all purse GP · ` +
           `smallest ${gp(takes[takes.length - 1] ?? 0)} GP`
       );
+      // ── WHO FUNDS THE PURSE (round 41) ──────────────────────────────────
+      // The crowns cost 80 GP to enter now, reversing round 22, because the
+      // purse was funded 57% by gacha spend and 42% by breed fees and 0% by
+      // the people standing in the bracket — a barn that never entered a Major
+      // still paid for it with every cover it bought. This line is how we find
+      // out whether that actually moved, and it is the ONLY place the split is
+      // visible: the purse total above says nothing about where it came from,
+      // which is exactly how the old arrangement survived twenty rounds.
+      //
+      // Fees are also the one place a bird can go home with LESS than it
+      // arrived with, so `net to the field` is worth printing beside it: a
+      // negative number is not a bug (most entrants lose, that is a contest),
+      // but a LARGE one means the crowns are draining the barns rather than
+      // circulating between them.
+      const feesCents = paidField.reduce((s, e) => s + e.fee * 100, 0);
+      const purseCents = run.reduce((s, t) => s + (t.purseCents ?? 0), 0);
+      if (feesCents > 0)
+        lines.push(
+          `${" ".repeat(10)}entry fees ${gp(feesCents)} GP fund ` +
+            `${((feesCents / purseCents) * 100).toFixed(0)}% of the purse · ` +
+            `the rest is juice (gacha + breed fees) · ` +
+            `net to the field ${gp(purseCents - feesCents)} GP`
+        );
     }
     const decided = run.length + cancelled.length;
     if (decided > 0 && cancelled.length / decided > DOCTOR.CANCELLED_CROWNS_WARN)
@@ -1625,6 +1693,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkNoNegatives(db),
     checkNoInversions(db),
     checkPursesSettle(db),
+    checkNoStrandedEscrow(db), // round 41 — escrow only means something now a fee exists
     checkCardCap(db),
     checkFightCounts(db),
   ];

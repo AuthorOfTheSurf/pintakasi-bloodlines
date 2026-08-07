@@ -517,10 +517,23 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
    * 1 the derivation is silently wrong everywhere at once, and nothing else in
    * the suite would notice.
    */
-  test("both purses are three knobs summing to 1", () => {
+  test("both purses are three shares summing to 1, plus the round multiplier", () => {
     for (const purse of [PINTAKASI.PURSE, JUVENILE_MAJOR.PURSE]) {
-      expect(Object.keys(purse).sort()).toEqual(["ADVANCEMENT", "CHAMPION", "RUNNER_UP"]);
+      // ⚠ ROUND_MULTIPLIER joined the block in round 41 and is NOT a share: it
+      // redistributes WITHIN the advancement slice and cannot change the total.
+      // Pinned in the same test as the sum precisely so nobody "fixes" a future
+      // sum-to-1 failure by folding a fourth share in beside the three.
+      expect(Object.keys(purse).sort()).toEqual([
+        "ADVANCEMENT",
+        "CHAMPION",
+        "ROUND_MULTIPLIER",
+        "RUNNER_UP",
+      ]);
       expect(purse.ADVANCEMENT + purse.CHAMPION + purse.RUNNER_UP).toBeCloseTo(1, 10);
+      // A win must always be worth at least as much as the one before it — the
+      // page and the MCP prose both say "worth Nx a win in the round before",
+      // and below 1 that sentence reverses without a single number changing.
+      expect(purse.ROUND_MULTIPLIER).toBeGreaterThanOrEqual(1);
     }
     // The ruling that makes the juvenile stage a DIFFERENT stage rather than a
     // small one: more of its money rides on winning fights. Both pages say
@@ -538,7 +551,12 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     expect(src).not.toMatch(/\d\d(\.\d)?% of the purse/i);
     // The mechanic, in the words a player has to learn it in.
     expect(src).toMatch(/every fight won|every win/i);
-    expect(src).toMatch(/double a win in the round before/i);
+    // ⚠ NOT "double" any more (round 41 took the multiplier to 1.5). The page
+    // must READ the knob, which is what makes the sentence survive the next
+    // move — a typed "double" or "1.5×" is the exact drift this file exists
+    // to catch, and it sat in three places until this round.
+    expect(src).toContain("PINTAKASI.PURSE.ROUND_MULTIPLIER");
+    expect(src).not.toMatch(/worth <strong>double<\/strong> a win in the round before/i);
     // The bye carve-out. It is the one part of the rule that is genuinely
     // surprising, so the page has to state it rather than leave it implied.
     expect(src).toMatch(/a bye is not a win/i);
@@ -558,7 +576,10 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
 
   test("MCP prose teaches the fights-won purse, including that a bye pays nothing", () => {
     expect(everything).toMatch(/every fight won|fights won/i);
-    expect(everything).toMatch(/double a win in the round before/i);
+    // The multiplier reaches the agent as the live number, never the word
+    // "double" (true only while it was 2 — see PINTAKASI.PURSE, round 41).
+    expect(everything).toContain(`${PINTAKASI.PURSE.ROUND_MULTIPLIER}× a win in the round before`);
+    expect(everything).not.toMatch(/DOUBLE a win in the round before/);
     expect(everything).toMatch(/a bye is not a win/i);
     // The three knobs reach the agent as numbers it can quote, read live.
     for (const k of ["ADVANCEMENT", "CHAMPION", "RUNNER_UP"] as const)
@@ -566,6 +587,107 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     // The reversed claim, in the two phrasings route.ts actually used to carry.
     expect(everything).not.toMatch(/paid to the top \(champion/i);
     expect(everything).not.toMatch(/weighted to the TOP \(first-round losers/i);
+  });
+
+  /**
+   * ── Round 41: THE DOOR HAS A PRICE AGAIN ──────────────────────────────────
+   *
+   * PINTAKASI.ENTRY_FEE went 0 → 80, reversing round 22. Nothing about that
+   * change can fail to compile: the old prose ("entry is free", "there is no
+   * entry fee", "the purse isn't funded by entries") is all plain English, and
+   * one of those sentences was not merely stale but exactly BACKWARDS — the
+   * purse is now part entrant-funded, which is the whole point of the round.
+   *
+   * Until this round the suite asserted NOTHING about the entry fee at all,
+   * which is how a free-entry Handbook could have survived a paid-entry engine
+   * indefinitely. These are the guards that were missing.
+   *
+   * They are written to BRANCH on the live knob rather than to hard-code 80:
+   * if a future round makes the crowns free again, the tests flip to demanding
+   * the free framing instead of failing for having found it.
+   */
+  const routeSrc = readFileSync(
+    join(import.meta.dir, "..", "app", "api", "mcp", "route.ts"),
+    "utf8"
+  );
+
+  test("the Majors' entry fee is stated, and read from config, in both the Handbook and the MCP", () => {
+    const src = readWikiPage("pintakasi/page.tsx");
+    // Imported, never typed — the import rule at its most load-bearing spot.
+    expect(src).toContain("PINTAKASI.ENTRY_FEE");
+    expect(routeSrc).toContain("PINTAKASI.ENTRY_FEE");
+    // And the number actually reaches a reader, on the page that sells the
+    // stage, on the money page that lists what a farm pays, and in the prose
+    // an agent-player learns the rules from.
+    expect(everything).toContain(`${PINTAKASI.ENTRY_FEE} GP`);
+    expect(readWikiPage("money/page.tsx")).toContain("PINTAKASI.ENTRY_FEE");
+  });
+
+  test("no page or tool description still calls a Major free to enter", () => {
+    const pages = ["pintakasi/page.tsx", "money/page.tsx", "page.tsx", "card/page.tsx"];
+    if (PINTAKASI.ENTRY_FEE > 0) {
+      for (const page of pages) {
+        const src = readWikiPage(page);
+        // The exact claims the free era left behind. Grepped as CLAIMS, not as
+        // the word "free": the page is allowed — and now expected — to explain
+        // that entry used to be free and why that changed, and the juvenile
+        // crown genuinely still is free two screens further down.
+        expect(src).not.toMatch(/entry is free/i);
+        expect(src).not.toMatch(/there is no entry fee/i);
+        expect(src).not.toMatch(/majors are free/i);
+        expect(src).not.toMatch(/free (to enter|and open)/i);
+        expect(src).not.toMatch(/no GP entry/i);
+        // The sentence that was exactly backwards, in every phrasing it had.
+        expect(src).not.toMatch(/purse isn(?:'|&apos;)t funded by entries/i);
+      }
+      expect(everything).not.toMatch(/FREE TO ENTER/i);
+      // The purse is entrant-funded now, and both docs have to say so — a
+      // player who thinks the fee vanishes into the house is being told the
+      // opposite of what happens to it.
+      expect(readWikiPage("pintakasi/page.tsx")).toMatch(/entry fee/i);
+      expect(everything).toMatch(/entry fee.{0,80}purse|purse.{0,80}entry fee/is);
+    } else {
+      // Free again: then the pages must SAY free, or they are quoting a price
+      // nobody pays.
+      expect(readWikiPage("pintakasi/page.tsx")).toMatch(/free/i);
+    }
+  });
+
+  test("the juvenile division's entry fee is stated from its OWN knob, not the Majors'", () => {
+    // THE BUG THIS ROUND EXISTED TO PREVENT: until round 41 a single
+    // PINTAKASI.ENTRY_FEE was stamped on every tournament row in the game, so
+    // pricing the Majors would have silently charged age-1 chicks 80 GP. The
+    // knob is split now, and the docs must read the split — a page that
+    // describes the juvenile door in terms of the Majors' number is one
+    // reprice away from lying about the one crown that is meant to stay open.
+    expect(JUVENILE_MAJOR).toHaveProperty("ENTRY_FEE");
+    const src = readWikiPage("pintakasi/page.tsx");
+    expect(src).toContain("JUVENILE_MAJOR.ENTRY_FEE");
+    expect(routeSrc).toContain("JUVENILE_MAJOR.ENTRY_FEE");
+    if (JUVENILE_MAJOR.ENTRY_FEE === 0) {
+      // Stated positively, and stated as a CONTRAST — "free" only means
+      // something to a reader who has just been quoted the Majors' price.
+      expect(src).toMatch(/juvenile crown is free/i);
+      expect(everything).toContain(`entry costs ${JUVENILE_MAJOR.ENTRY_FEE} GP`);
+    } else {
+      expect(everything).toContain(`${JUVENILE_MAJOR.ENTRY_FEE} GP`);
+    }
+  });
+
+  test("no page confuses the crown LAND BASIS with the price of a Major entry", () => {
+    // PINTAKASI.LAND_BASIS (200) and PINTAKASI.ENTRY_FEE (80) were the same
+    // number once, and the land page still explains the basis "the Majors
+    // represent". Round 41 made them deliberately different things — what a
+    // crown fight is WORTH in land vs. what a barn PAYS — so any page quoting
+    // the basis has to say which one it means.
+    const src = readWikiPage("land/page.tsx");
+    expect(src).toContain("PINTAKASI.LAND_BASIS");
+    // Widened to `number`: the two are literal types today, so comparing them
+    // directly is a compile error rather than the runtime guard it needs to be.
+    const basis: number = PINTAKASI.LAND_BASIS;
+    const entry: number = PINTAKASI.ENTRY_FEE;
+    if (basis !== entry) expect(src).toMatch(/not the entry fee/i);
+    expect(src).not.toMatch(/the \{PINTAKASI\.LAND_BASIS\} GP entry fee/);
   });
 
   test("pintakasi page documents the Juvenile Championship as non-hardcore", () => {
@@ -606,12 +728,17 @@ describe("The two WHY comments this round's audit flagged stay fixed", () => {
  * start lying, so both now read this one function and this pins it.
  */
 describe("the purse's closed form matches the rule it describes", () => {
-  /** The rule, re-derived independently: a round-r win is worth 2^(r-1). */
-  const byHand = (bracketSize: number, wins: number) => {
+  /**
+   * The rule, re-derived independently: a round-r win is worth m^(r-1), where
+   * m is the purse's own ROUND_MULTIPLIER. Written as a loop rather than the
+   * geometric closed form on purpose — config computes the closed form, so a
+   * second closed form would only be checking the algebra against itself.
+   */
+  const byHand = (bracketSize: number, wins: number, m: number) => {
     let total = 0;
-    for (let r = 1; r <= Math.log2(bracketSize); r++) total += (bracketSize / 2 ** r) * 2 ** (r - 1);
+    for (let r = 1; r <= Math.log2(bracketSize); r++) total += (bracketSize / 2 ** r) * m ** (r - 1);
     let mine = 0;
-    for (let r = 1; r <= wins; r++) mine += 2 ** (r - 1);
+    for (let r = 1; r <= wins; r++) mine += m ** (r - 1);
     return mine / total;
   };
 
@@ -633,13 +760,14 @@ describe("the purse's closed form matches the rule it describes", () => {
     });
   }
 
-  test("the advancement slice tracks the doubling rule exactly", () => {
-    for (const size of [4, 16, 64])
-      for (let wins = 1; wins <= Math.log2(size); wins++)
-        expect(purseShareOf(size, PINTAKASI.PURSE, wins)).toBeCloseTo(
-          PINTAKASI.PURSE.ADVANCEMENT * byHand(size, wins),
-          10
-        );
+  test("the advancement slice tracks the round multiplier exactly", () => {
+    for (const purse of [PINTAKASI.PURSE, JUVENILE_MAJOR.PURSE])
+      for (const size of [4, 16, 64])
+        for (let wins = 1; wins <= Math.log2(size); wins++)
+          expect(purseShareOf(size, purse, wins)).toBeCloseTo(
+            purse.ADVANCEMENT * byHand(size, wins, purse.ROUND_MULTIPLIER),
+            10
+          );
   });
 
   test("a STRAIGHT FINAL is the one bracket that does not sum to 1 — and that is the ruling", () => {
