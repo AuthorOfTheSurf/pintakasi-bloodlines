@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState, type BirdRow } from "@/db/schema";
@@ -14,6 +14,7 @@ import {
   STATS,
   STAT_NAMES,
   TRIM_BY_ELEMENT,
+  CALENDAR,
   type Carriage,
   type Element,
   type StatName,
@@ -333,13 +334,83 @@ export class Breeding {
       .all()
       .filter((r) => r.listedStud === 1 || r.farmId === this.farmId);
 
+    // ── BATCHED READS (round 43) — this loop is the bots' shopping aisle ────
+    // It used to run 2 queries + a ~28-query pedigree walk PER ROOSTER, per
+    // hen, per bot, per day, over a stud book that only ever grows (retired
+    // roosters never leave). The profile put the whole breeding step at 107s
+    // of a 218s sim — half the world's wall clock. Three reads replace all of
+    // it; the per-rooster loop below touches no database at all.
+    const farmById = new Map(
+      this.database.select().from(farms).all().map((f) => [f.id, f])
+    );
+    // Every egg sired THIS WEEK, in one query — the birthDay range is exactly
+    // `GameClock.weekOf(birthDay) === week` (floor division by 7), which is
+    // the filter coversThisWeek applies one father at a time.
+    const weekStart = week * CALENDAR.DAYS_PER_WEEK;
+    const eggsByFather = new Map<string, { farmId: string }[]>();
+    for (const egg of this.database
+      .select({ fatherId: birds.fatherId, farmId: birds.farmId })
+      .from(birds)
+      .where(
+        and(
+          isNotNull(birds.fatherId),
+          gte(birds.birthDay, weekStart),
+          lt(birds.birthDay, weekStart + CALENDAR.DAYS_PER_WEEK)
+        )
+      )
+      .all()) {
+      const list = eggsByFather.get(egg.fatherId!) ?? [];
+      list.push({ farmId: egg.farmId });
+      eggsByFather.set(egg.fatherId!, list);
+    }
+    // The pedigree, prefetched to ANCESTOR_DEPTH generations for the hen and
+    // every candidate at once — one chunked query per generation instead of
+    // one per ancestor. `ancestorsVia` then walks this map with the exact
+    // traversal `ancestorIds` uses against the database.
+    const pedigree = new Map<string, { motherId: string | null; fatherId: string | null }>();
+    let frontier = [
+      ...new Set(
+        [hen, ...candidates]
+          .flatMap((b) => [b.motherId, b.fatherId])
+          .filter((x): x is string => !!x)
+      ),
+    ];
+    for (let gen = 0; gen < BREEDING.ANCESTOR_DEPTH && frontier.length > 0; gen++) {
+      const CHUNK = 500; // stay under SQLite's bound-parameter ceiling
+      const fetched: { id: string; motherId: string | null; fatherId: string | null }[] = [];
+      for (let i = 0; i < frontier.length; i += CHUNK)
+        fetched.push(
+          ...this.database
+            .select({ id: birds.id, motherId: birds.motherId, fatherId: birds.fatherId })
+            .from(birds)
+            .where(inArray(birds.id, frontier.slice(i, i + CHUNK)))
+            .all()
+        );
+      const next = new Set<string>();
+      for (const row of fetched) {
+        pedigree.set(row.id, { motherId: row.motherId, fatherId: row.fatherId });
+        if (row.motherId && !pedigree.has(row.motherId)) next.add(row.motherId);
+        if (row.fatherId && !pedigree.has(row.fatherId)) next.add(row.fatherId);
+      }
+      frontier = [...next];
+    }
+    const fromPedigree = (id: string) => pedigree.get(id);
+    const henAncestors = ancestorsVia(hen, BREEDING.ANCESTOR_DEPTH, fromPedigree);
+
     const studs: StudView[] = [];
     const excluded: { name: string; farm: string; reason: string }[] = [];
     for (const rooster of candidates) {
-      const farm = this.database.select().from(farms).where(eq(farms.id, rooster.farmId)).get()!;
+      const farm = farmById.get(rooster.farmId)!;
       const mine = rooster.farmId === this.farmId;
-      const covers = this.coversThisWeek(rooster.id, rooster.farmId, week);
-      const kin = this.forbiddenReason(hen, rooster);
+      const weekEggs = eggsByFather.get(rooster.id) ?? [];
+      const owner = weekEggs.filter((e) => e.farmId === rooster.farmId).length;
+      const covers = { owner, public: weekEggs.length - owner };
+      const kin = kinVerdict(
+        hen,
+        rooster,
+        henAncestors,
+        ancestorsVia(rooster, BREEDING.ANCESTOR_DEPTH, fromPedigree)
+      );
       const coversLeft = mine
         ? COVERS.OWNER_RESERVED - covers.owner
         : COVERS.PER_WEEK - covers.public;
@@ -507,30 +578,18 @@ export class Breeding {
   ): string | null {
     const aAncestors = this.ancestorIds(a, BREEDING.ANCESTOR_DEPTH);
     const bAncestors = this.ancestorIds(b, BREEDING.ANCESTOR_DEPTH);
-    if (aAncestors.has(b.id)) return `${b.name} is an ancestor of ${a.name}`;
-    if (bAncestors.has(a.id)) return `${a.name} is an ancestor of ${b.name}`;
-    const sharedParent =
-      (a.motherId && a.motherId === b.motherId) || (a.fatherId && a.fatherId === b.fatherId);
-    if (sharedParent) return `${a.name} and ${b.name} are siblings`;
-    return null;
+    return kinVerdict(a, b, aAncestors, bAncestors);
   }
 
   /** Ancestor ids up to `depth` generations (3 = through great-grandparents). */
   ancestorIds(bird: Pick<BirdRow, "motherId" | "fatherId">, depth: number): Set<string> {
-    const out = new Set<string>();
-    let frontier = [bird.motherId, bird.fatherId].filter((x): x is string => !!x);
-    for (let gen = 0; gen < depth && frontier.length > 0; gen++) {
-      const next: string[] = [];
-      for (const id of frontier) {
-        if (out.has(id)) continue;
-        out.add(id);
-        const row = this.database.select().from(birds).where(eq(birds.id, id)).get();
-        if (row?.motherId) next.push(row.motherId);
-        if (row?.fatherId) next.push(row.fatherId);
-      }
-      frontier = next;
-    }
-    return out;
+    return ancestorsVia(bird, depth, (id) =>
+      this.database
+        .select({ motherId: birds.motherId, fatherId: birds.fatherId })
+        .from(birds)
+        .where(eq(birds.id, id))
+        .get()
+    );
   }
 
   /** The parent tree, derived on demand (unoptimized — views later). */
@@ -546,4 +605,58 @@ export class Breeding {
       father: row.fatherId ? this.lineage(row.fatherId, depth - 1) : null,
     };
   }
+}
+
+/**
+ * ── THE KINSHIP VERDICT AND THE PEDIGREE WALK, SHARED (round 43) ─────────────
+ *
+ * These two used to live inline in `forbiddenReason`, which was fine while it
+ * had one caller a day and fatal once `browseStuds` became the bots' shopping
+ * loop: pricing a barn's hens re-ran the walk PER (HEN, STUD) PAIR with one
+ * query per ancestor — up to ~28 queries a pair, hens × studs × bots × days.
+ * The round-43 profile put the whole breeding step at 107s of a 218s sim, half
+ * the world's wall clock, spent almost entirely here.
+ *
+ * The fix is to let `browseStuds` prefetch the pedigree in bulk and walk it in
+ * memory — but a SECOND copy of the traversal or the verdict would drift, and
+ * kinship drift is invisible (both entry paths swallow refusals). So the logic
+ * lives here once, parametrised over WHERE a parent row comes from: the
+ * db-backed lookup for one-off checks, a Map for the batched browse. Same
+ * traversal, same verdicts, byte-identical messages.
+ */
+type ParentRef = { motherId: string | null; fatherId: string | null } | undefined;
+
+export function ancestorsVia(
+  bird: Pick<BirdRow, "motherId" | "fatherId">,
+  depth: number,
+  lookup: (id: string) => ParentRef
+): Set<string> {
+  const out = new Set<string>();
+  let frontier = [bird.motherId, bird.fatherId].filter((x): x is string => !!x);
+  for (let gen = 0; gen < depth && frontier.length > 0; gen++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      if (out.has(id)) continue;
+      out.add(id);
+      const row = lookup(id);
+      if (row?.motherId) next.push(row.motherId);
+      if (row?.fatherId) next.push(row.fatherId);
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+export function kinVerdict(
+  a: Pick<BirdRow, "id" | "name" | "motherId" | "fatherId">,
+  b: Pick<BirdRow, "id" | "name" | "motherId" | "fatherId">,
+  aAncestors: Set<string>,
+  bAncestors: Set<string>
+): string | null {
+  if (aAncestors.has(b.id)) return `${b.name} is an ancestor of ${a.name}`;
+  if (bAncestors.has(a.id)) return `${a.name} is an ancestor of ${b.name}`;
+  const sharedParent =
+    (a.motherId && a.motherId === b.motherId) || (a.fatherId && a.fatherId === b.fatherId);
+  if (sharedParent) return `${a.name} and ${b.name} are siblings`;
+  return null;
 }
