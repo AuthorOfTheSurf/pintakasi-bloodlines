@@ -52,7 +52,13 @@ function short(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 
-const full = (v: number) => Math.round(v).toLocaleString("en-US");
+// Small fractional values keep one decimal — the sim-cost chart's early days
+// run 0.1–2s, and a tooltip that says "0 seconds" reads as a broken chart.
+// Counts and GP totals are integers or large, so every older chart is unmoved.
+const full = (v: number) =>
+  Number.isInteger(v) || Math.abs(v) >= 100
+    ? Math.round(v).toLocaleString("en-US")
+    : v.toFixed(1);
 
 export interface DayChartProps {
   title: string;
@@ -220,7 +226,7 @@ export function DayChart({
   );
 }
 
-/** The strip itself — three charts, laid out by the page's .charts grid. */
+/** The strip itself — the page's trend charts, laid out by the .charts grid. */
 export function ChartStrip({ charts }: { charts: DayChartProps[] }) {
   return (
     <section className="charts">
@@ -232,7 +238,10 @@ export function ChartStrip({ charts }: { charts: DayChartProps[] }) {
 }
 
 export const CHART_CSS = `
-  .charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem;
+  /* Two per row since round 43 (Zane's ask) — the strip lives in its own tab
+     now, so each chart can afford half the page instead of a third, and four
+     charts pack a clean 2×2 instead of 3+1. Thin screens stack to one. */
+  .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem;
     margin-top: 1.25rem; }
   .chart { background: #1c1914; border: 1px solid #3a342a; border-radius: 6px;
     padding: .6rem .7rem .4rem; margin: 0; min-width: 0; }

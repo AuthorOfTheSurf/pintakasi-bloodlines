@@ -946,14 +946,19 @@ function FightReplayPanel({
 }
 
 // "The Card" and "The Pintakasi" ride in the tab bar too (rounds 19–20) —
-// worth a look each, not two thirds of the page above every table.
+// worth a look each, not two thirds of the page above every table. "Charts"
+// joined in round 43 for the same reason in reverse: the trend strip had grown
+// to four figures and sat above every table on every visit, whether or not
+// today's question was a trend.
 const TABS = [
-  "Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "Staking", "The Ledger",
+  "Charts", "Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "Staking", "The Ledger",
   "The Card", "🏆 The Pintakasi",
 ] as const;
 type Tab = (typeof TABS)[number];
 
 export function AdminTabs({
+  charts,
+  chartsCount,
   farms,
   fights,
   birds,
@@ -983,8 +988,10 @@ export function AdminTabs({
   cardCount: number;
   pintakasi: React.ReactNode; // …and the week's three championship columns
   pintakasiCount: number;
+  charts: React.ReactNode; // the trend strip, server-rendered SVG (charts.tsx)
+  chartsCount: number;
 }) {
-  const [tab, setTab] = useState<Tab>("Farms");
+  const [tab, setTab] = useState<Tab>("Charts");
   // Which bird's fight history is open under the Birds grid, by id. Clicking the
   // same row again closes it, so the click that opened the pane is also the way
   // out of it.
@@ -1027,6 +1034,7 @@ export function AdminTabs({
     return () => ac.abort();
   }, [openFight]);
   const counts: Record<Tab, number> = {
+    Charts: chartsCount,
     Farms: farms.length,
     Fights: fights.length,
     Birds: birds.length,
@@ -1153,6 +1161,7 @@ export function AdminTabs({
         </div>
       </div>
       {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      <div style={{ display: tab === "Charts" ? "block" : "none" }}>{charts}</div>
       <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
       <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>
     </section>

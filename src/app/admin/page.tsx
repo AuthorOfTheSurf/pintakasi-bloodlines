@@ -844,11 +844,18 @@ export default function Admin() {
   // hours gets caught before anyone waits for it. Absent on a live world,
   // where a day has no meaningful wall clock.
   if (timingRows.length > 0) {
+    const simSeconds = perDay(timingRows.map((r) => ({ day: r.dayIndex, amount: r.ms / 1000 })));
     charts.push({
       title: "Sim cost per day",
       days: chartDays,
-      bars: perDay(timingRows.map((r) => ({ day: r.dayIndex, amount: r.ms / 1000 }))),
+      bars: simSeconds,
       barUnit: "seconds",
+      // The cumulative line answers Zane's actual question at a glance — "how
+      // long is this whole run going to take" — while the bars carry the
+      // growth-curve warning.
+      line: running(simSeconds),
+      lineUnit: "s",
+      lineLabel: "of total sim time to date",
       note: "wall-clock cost of simulating each day — read the growth curve, not the total",
     });
   }
@@ -1314,12 +1321,13 @@ export default function Admin() {
         </div>
       </section>
 
-      {/* The trend strip sits between the standing totals and the grids: the
-          cards say where the world IS, these say how it got there, and both
-          are readable before anyone has to pick a tab. */}
-      <ChartStrip charts={charts} />
-
+      {/* The trend strip lives in its own tab since round 43 — four charts
+          above every table had become two screens of scrolling before the
+          grids. The cards above keep saying where the world IS; the Charts
+          tab says how it got there. */}
       <AdminTabs
+        charts={<ChartStrip charts={charts} />}
+        chartsCount={charts.length}
         farms={farmRows}
         fights={fightRows}
         birds={birdRows}
