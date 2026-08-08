@@ -82,6 +82,11 @@ export function playHonestDay(
     if (flockApi2.barnCount() >= barnCapacity(row.barnExpansions) - 10) {
       const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
       if (short > 0) quietly(() => void farmsApi.unstake(farmId, Math.ceil(short / LT_CENTS)));
+      // …and buys the rest with GP if the land bank can't cover it — same
+      // rich-but-landless fallback as the bots (see bots.ts step 1b2).
+      const stillShort = nextExpansionCost(row.barnExpansions) - farmsApi.rowById(farmId).landTokensCents;
+      if (stillShort > 0)
+        quietly(() => void farmsApi.buyLand(farmId, Math.ceil(stillShort / LT_CENTS)));
       farmsApi.expandBarn(farmId);
     }
   });

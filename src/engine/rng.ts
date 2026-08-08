@@ -63,9 +63,21 @@ export function weightedPick<T extends string>(rng: Rng, weights: Record<T, numb
  *      inside this band. There was nothing to find.
  *
  * So a run can now pin the stream. `seedWorld(n)` makes every subsequent
- * `freshSeed()` deterministic, which makes a whole 91-day world reproducible
+ * `freshSeed()` deterministic, which makes a whole simulated world reproducible
  * — the same fix serves both problems, because both are the same problem.
  * Unseeded (the default, and all of live play) behaves exactly as before.
+ *
+ * ⚠ SEEDING THE RNG IS NECESSARY, NOT SUFFICIENT — round 43's lesson. This
+ * round pinned worlds for eight rounds while the Selection Committee's
+ * tie-break sorted on bird ids, which are randomUUIDs that never touch this
+ * stream — so every bracket with tied birds reseeded itself per run and
+ * `--seed` never actually replayed a world past the first championship. It
+ * was caught only because a pure-performance change refused to A/B as
+ * world-identical. The test for the property is cheap and direct: run the
+ * same seed twice and diff the event logs to zero. Do that FIRST whenever an
+ * A/B looks noisy, before trusting any conclusion built on "matched" worlds
+ * — and treat any new randomUUID(), Date.now(), or Map-iteration-order
+ * dependence on the hot path as a determinism bug waiting to be measured.
  *
  * This is the sim's `--converge` moment: `bun run balance` has measured its
  * own noise since round 26, and the world simulation never could.

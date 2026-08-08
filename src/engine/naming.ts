@@ -42,8 +42,9 @@ export const NAME_POOL = [
  * TIER 2 — combinatorial name banks. When the curated pool runs dry, a
  * prefix is joined to a root ("Iron Beak", "Crimson Talon"). ~54 × ~54 ≈
  * 2,900 two-word names sit between the curated pool and the first roman
- * successor, which is well past any 91-day sim's population — so "Hotshot
- * IX" stops happening long before the world is big enough to matter.
+ * successor — a 20-farm, 182-day world runs to ~2,600 birds, still inside
+ * the bank, so "Hotshot IX" stops happening long before the world is big
+ * enough to matter. If the roster ever triples, revisit this arithmetic.
  *
  * The two banks are disjoint by construction (no word is both a prefix
  * and a root), so no "Storm Storm" ever forms. A curated single word like

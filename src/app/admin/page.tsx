@@ -1,7 +1,7 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { TickControls } from "./tick-controls";
-import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, simTimings, tournamentEntries, tournaments } from "@/db/schema";
 import {
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
@@ -485,6 +485,9 @@ export default function Admin() {
   const allClaims = d.select().from(claims).all();
   const pendingClaims = allClaims.filter((c) => c.status === "pending");
   const allEvents = d.select().from(events).all();
+  // Wall-clock ms per simulated day — written by scripts/simulate.ts only, so
+  // this is empty (and its chart absent) on a live world.
+  const timingRows = d.select().from(simTimings).all();
   const birdCard = (id: string) => {
     const bird = birdById.get(id);
     const total = bird
@@ -833,6 +836,22 @@ export default function Admin() {
       note: "tags sealed, and the GP that changed hands",
     },
   ];
+
+  // SIM COST (round 43, Zane's ask) — how long each simulated day took to run,
+  // read straight off sim_timings. The shape is the story: per-day cost grows
+  // superlinearly with the world (careers lengthen, so per-fight work rises),
+  // and this chart is how a run that is quietly heading from minutes into
+  // hours gets caught before anyone waits for it. Absent on a live world,
+  // where a day has no meaningful wall clock.
+  if (timingRows.length > 0) {
+    charts.push({
+      title: "Sim cost per day",
+      days: chartDays,
+      bars: perDay(timingRows.map((r) => ({ day: r.dayIndex, amount: r.ms / 1000 }))),
+      barUnit: "seconds",
+      note: "wall-clock cost of simulating each day — read the growth curve, not the total",
+    });
+  }
 
   // ── Grid rows ─────────────────────────────────────────────────────────────
   const farmRows: FarmRowUI[] = allFarms.map((f) => {

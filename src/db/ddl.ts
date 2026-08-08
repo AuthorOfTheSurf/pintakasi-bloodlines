@@ -176,6 +176,14 @@ CREATE TABLE IF NOT EXISTS snapshots (
   data TEXT NOT NULL
 );
 
+-- Wall-clock ms per simulated day, written by scripts/simulate.ts only (round
+-- 43) -- so a run's cost curve can be graphed from the database after the fact
+-- instead of scraped from a terminal that has scrolled away. Empty in live play.
+CREATE TABLE IF NOT EXISTS sim_timings (
+  day_index INTEGER PRIMARY KEY,
+  ms INTEGER NOT NULL
+);
+
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────
 -- There were NONE until now, on any table, and it had quietly become the
 -- single biggest cost in the project. Every lookup on a non-key column was a

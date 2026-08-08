@@ -14,11 +14,19 @@ export const CALENDAR = {
 } as const;
 
 // ── Simulation ─────────────────────────────────────────────────────────────
-// A thirteen-week run lets the population pass the cold-start burst, cycle
-// multiple generations through the nest, and show whether hardcore attrition
-// is sustainable. Short smoke runs can still pass an explicit day count.
+// 112 days — 16 weeks (round 43, up from 91). The DESTINATION is 182+ (Zane:
+// "This game is going to be designed to go on for years, so even our 91-day
+// sim (~3 months) is almost nothing"), but the day-cost curve is strongly
+// superlinear — the round-43 182-day run cost 51 minutes, with day 172 alone
+// at 143s, because per-fight cost grows with career length (11 → 34 ms/fight
+// across the run). Zane's ruling: cap the default while we're in dev-and-
+// iterate mode and grow it as the perf rounds land. 112 clears the founder-
+// cull trough with six weeks of steady-state behind it and finishes in a few
+// minutes; the 182-day judgement run is an explicit `bun run simulate 182`.
+// Every run writes per-day wall-clock into sim_timings — read the curve, not
+// just the total, before raising this.
 export const SIMULATION = {
-  DEFAULT_DAYS: 91,
+  DEFAULT_DAYS: 112,
 } as const;
 
 // ── Age gates (in bird-years, derived: currentWeek - birthWeek) ─────────────

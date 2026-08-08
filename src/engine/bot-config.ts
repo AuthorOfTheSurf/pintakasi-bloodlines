@@ -2,8 +2,8 @@ import type { FarmColor } from "./config";
 
 /**
  * The BOT STABLES — house-run farms that play every game-day so lobbies
- * fill (pure PvP needs live opponents; with a dozen farms the card stays
- * liquid). They are RIVALS, not the house: their GP, land, and birds are
+ * fill (pure PvP needs live opponents; with the 19-barn roster the card
+ * stays liquid). They are RIVALS, not the house: their GP, land, and birds are
  * their own, won and lost by the same rules as everyone else's.
  *
  * This file is the whole personality system — tweak the knobs, restart,

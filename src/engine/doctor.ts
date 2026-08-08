@@ -132,12 +132,15 @@ const DOCTOR = {
   OFFENDER_SAMPLE: 5,
   // How many archived fights the replay check rebuilds (round 38).
   //
-  // Sampled because replaying all ~29,000 would cost more than the entire
+  // Sampled because replaying every fight would cost more than the entire
   // rest of the report, and cheap because the failure it watches for is not
   // subtle: a change to simulatePair, FORMATS, BATTLE, FIGURE or the rng
   // orphans EVERY fight fought before it, so 200 either comes back clean or
   // comes back obviously broken. A reading strictly between the two means
-  // something weirder than a retune and deserves the dig.
+  // something weirder than a retune and deserves the dig. (200 is a smaller
+  // share of a 182-day world's ~60k fights than of the 91-day world it was
+  // sized on — still fit for purpose, for exactly the all-or-nothing reason
+  // above.)
   REPLAY_SAMPLE: 200,
   // How far above pure chance the weather-timing rate has to sit before we
   // believe anyone is actually timing entries. 1.15 is loose on purpose: the

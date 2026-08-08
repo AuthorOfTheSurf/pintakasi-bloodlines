@@ -19,7 +19,7 @@
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
-import { farms } from "@/db/schema";
+import { farms, simTimings } from "@/db/schema";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { playAllHonestDays } from "@/engine/auto-play";
 import { SIMULATION } from "@/engine/config";
@@ -142,6 +142,13 @@ for (let day = 1; day <= days; day++) {
   tickMs += performance.now() - afterHonest;
   const elapsed = performance.now() - dayStart;
   dayMs.push({ day: tick.clock.dayIndex, ms: elapsed });
+  // …and into the database, so the run's cost curve outlives the terminal
+  // (round 43, Zane's ask). One query graphs any run after the fact:
+  //   SELECT day_index, ms FROM sim_timings ORDER BY day_index
+  db.insert(simTimings)
+    .values({ dayIndex: tick.clock.dayIndex, ms: Math.round(elapsed) })
+    .onConflictDoUpdate({ target: simTimings.dayIndex, set: { ms: Math.round(elapsed) } })
+    .run();
 
   const fights = tick.card.reduce((s, l) => s + l.fights.length, 0);
   const unmatched = tick.card.reduce((s, l) => s + l.unmatched.length, 0);

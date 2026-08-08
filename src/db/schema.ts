@@ -347,6 +347,17 @@ export const snapshots = sqliteTable("snapshots", {
   data: text("data").notNull(), // JSON Topline (engine/snapshots.ts)
 });
 
+// How long each simulated day took to run, in wall-clock milliseconds — written
+// by scripts/simulate.ts ONLY, never by live play (a live day has no meaningful
+// wall clock). Zane's ask (round 43): per-day timing should live IN the sim
+// database, not scroll past in the terminal, so a slow run can be graphed after
+// the fact with one query:
+//   sqlite3 data/sim-….db "SELECT day_index, ms FROM sim_timings ORDER BY 1"
+export const simTimings = sqliteTable("sim_timings", {
+  dayIndex: integer("day_index").primaryKey(),
+  ms: integer("ms").notNull(),
+});
+
 export type BirdRow = typeof birds.$inferSelect;
 export type NewBird = typeof birds.$inferInsert;
 export type GameStateRow = typeof gameState.$inferSelect;

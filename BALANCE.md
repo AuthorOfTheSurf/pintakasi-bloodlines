@@ -395,7 +395,8 @@ by the same buckets.
 Every bird now carries a GENERATION — starters and gacha pulls 0, a chick its
 dam's + 1 — and the doctor prints a ladder per generation. Before this
 existed, a world could have bred sideways for thirteen weeks and every other
-number in the report would have looked fine. Latest 91-day sim:
+number in the report would have looked fine. From a 91-day sim (the round-30
+era default — runs are 182 days since round 43):
 
 | generation | mean stat | mean stars | median home margin |
 |---|---|---|---|
@@ -480,7 +481,7 @@ slack. A juvenile's entire discovery year is 7 days against an 8-day worst
 gap, so a class-first chooser could have retired a winless chick that never saw
 a blade in a maiden.
 
-### The result, on a fresh 91-day world
+### The result, on a fresh 91-day world (the era's default length — 182 since round 43)
 
 | | before | after |
 |---|---|---|

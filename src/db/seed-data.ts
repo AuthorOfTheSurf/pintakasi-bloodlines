@@ -104,7 +104,7 @@ export function seedGame(
       name: "Bukidnon Farms",
       country: "🇵🇭",
       // Zane's own barn — fixed green and yellow (round 23) so his colours
-      // are the ones he can find instantly in a table of a dozen stables.
+      // are the ones he can find instantly in a table of twenty stables.
       primaryColor: "green",
       secondaryColor: "yellow",
       handler: "Zane",

@@ -103,7 +103,7 @@ export class Bots {
    * it, so the real world always gets every configured stable; it exists so
    * tests that only need the GENERIC behavior a bot day proves (determinism,
    * GP conservation, no dangling entries across several days) don't have to
-   * pay for all fifteen stables' worth of DB traffic to prove it.
+   * pay for the full roster's worth of DB traffic to prove it (19 stables as of round 43).
    */
   static seed(db: DB, opts: { flock?: "eggs" | "legacy"; only?: string[] } = {}): void {
     const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
@@ -243,6 +243,46 @@ export class Bots {
     while (db.select().from(farms).where(eq(farms.id, bot.id)).get()!.freePulls > 0) {
       if (!quietly(() => gacha.roll())) break;
     }
+    // 1a. GROW THE BARN before it chokes (round 43) — and BEFORE any gacha
+    // spending, which is an ordering that had to be measured to be believed:
+    // this block originally ran after the whale appetite, and Ginto — who
+    // drinks its wallet down to WHALE_RESERVE on bundles every single day —
+    // reached the buy-the-shortfall fallback with ~160 GP left, every day,
+    // for seventy days, while its barn sat jammed at 100. Capacity is
+    // infrastructure: the barn pays its rent before it gambles. The block
+    // draws NO rng, so moving it does not shift the day's stream.
+    // Deliberately COMPETENCE,
+    // not personality — no profile knob, every barn does it — because a stable
+    // that cannot breed has stopped playing, and the flat 100-cap was an
+    // absorbing state: retired brood stock never leaves, `breed` throws when
+    // full, `quietly` eats the throw, and the barn goes silent FOREVER with
+    // every adoption bar still green (7 of 20 barns were there by day 91).
+    // Same shape as the stud-seat rule above: expanding is the second thing
+    // worth pulling staked land back out for. Draws NO rng, so a world where
+    // nobody hits the headroom plays out identically to one before this existed.
+    {
+      const row = db.select().from(farms).where(eq(farms.id, bot.id)).get()!;
+      // Headroom of one week's worth of covers: expanding the morning the barn
+      // is already full would still lose every cover `quietly` swallowed while
+      // the wallet was short — start paying while there is still room to breed.
+      if (flock.barnCount() >= barnCapacity(row.barnExpansions) - BARN_EXPAND_HEADROOM) {
+        const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
+        if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
+        // A barn with no land BANK buys the shortfall with GP (round 43,
+        // measured on the first 182-day run): Ginto the whale never fights
+        // enough to earn land — 17 LT lifetime against a 1,000 LT expansion —
+        // so it sat at capacity for weeks, rich, while the doctor warned. Land
+        // is the fighters' currency, but buyLand converts at 80 GP/100 LT and
+        // the daily cap covers the first expansion in a single morning. The
+        // re-read is deliberate: the unstake above may have already fixed it.
+        const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokensCents;
+        const stillShort = nextExpansionCost(row.barnExpansions) - liquid;
+        if (stillShort > 0)
+          quietly(() => void farmsApi.buyLand(bot.id, Math.ceil(stillShort / LT_CENTS)));
+        quietly(() => void farmsApi.expandBarn(bot.id));
+      }
+    }
+
     // …then THE HABIT (round 43): one paid roll on a habit day, for every barn.
     // Before this, 18 of 20 stables took their free pull and paid for nothing,
     // so two whales funded 71% of all championship juice — see gachaHabit in
@@ -318,27 +358,6 @@ export class Bots {
     }
     for (const rooster of unlisted) {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
-    }
-
-    // 1b2. GROW THE BARN before it chokes (round 43). Deliberately COMPETENCE,
-    // not personality — no profile knob, every barn does it — because a stable
-    // that cannot breed has stopped playing, and the flat 100-cap was an
-    // absorbing state: retired brood stock never leaves, `breed` throws when
-    // full, `quietly` eats the throw, and the barn goes silent FOREVER with
-    // every adoption bar still green (7 of 20 barns were there by day 91).
-    // Same shape as the stud-seat rule above: expanding is the second thing
-    // worth pulling staked land back out for. Draws NO rng, so a world where
-    // nobody hits the headroom plays out identically to one before this existed.
-    {
-      const row = db.select().from(farms).where(eq(farms.id, bot.id)).get()!;
-      // Headroom of one week's worth of covers: expanding the morning the barn
-      // is already full would still lose every cover `quietly` swallowed while
-      // the wallet was short — start paying while there is still room to breed.
-      if (flock.barnCount() >= barnCapacity(row.barnExpansions) - BARN_EXPAND_HEADROOM) {
-        const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
-        if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
-        quietly(() => void farmsApi.expandBarn(bot.id));
-      }
     }
 
     // 1c. …and only THEN stake what's left over.
