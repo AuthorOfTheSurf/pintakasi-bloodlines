@@ -13,14 +13,18 @@ rounds from now.
 | 112 days, after round 43 | 241s | 8.3 |
 | 182 days, after round 43 | 3,087s (51 min) | 21.3 |
 | **112 days, after round 44** | **164s** | **5.5** |
+| **182 days, after round 44** | **812s (13.5 min)** | **5.25** |
 
 The round-43 182-day row is the story round 44 attacked: **per-fight cost
 tripled across a long run** (11 → 34 ms/fight comparing week 3 to week 25)
 because the scout re-read whole careers per decision. Round 44 replaced the
-career scans with an incremental book (below), which removes that specific
-superlinearity — but nobody has re-run 182 days since, so the new curve's
-tail is UNMEASURED. Totals mislead; compare ms/fight, and compare runs only
-under the same `--seed`.
+career scans with an incremental book (below), and the 182-day re-run
+confirms the superlinearity is gone: **ms/fight is flat at ~5 from week 1
+through week 26** (seed 1, 149,779 fights, doctor clean). Per-day wall clock
+still grows — 0.9s/day around week 3 to ~13s/day at week 24 — but that is
+fight VOLUME (963 → ~33,000 fights per fortnight as the population compounds
+to ~6,300 birds), not per-fight cost. Totals mislead; compare ms/fight, and
+compare runs only under the same `--seed`.
 
 ## How to measure (do this before optimizing anything)
 
@@ -113,10 +117,11 @@ under the same `--seed`.
    the largest single block, but Zane read the round-43 numbers and ruled
    "doesn't seem to be the multi-fight lobbies"; direction (1) should come
    first since it attacks the same seconds without touching game design.
-5. **Re-run 182 days** (when a long window is next wanted — the dev default
-   stays 112, Zane's ruling: <3 min is right for iteration). The book should
-   have flattened the 11→34 ms/fight growth; confirm on the sim_timings
-   curve before trusting any claim about long-run cost.
+5. ~~Re-run 182 days~~ — DONE (see headline table): 812s, ms/fight flat at
+   ~5 across all 26 weeks. The dev default stays 112 (Zane's ruling: <3 min
+   is right for iteration); 182 is now a ~14-minute judgement run. Late days
+   cost ~13–17s each purely from fight volume, so directions (1) and (2)
+   above are what would shrink the long run further.
 
 ## Traps for the next round
 
