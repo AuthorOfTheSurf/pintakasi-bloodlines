@@ -321,9 +321,18 @@ export class Tournaments {
         birdId,
       ]);
       const weakest = [...field].sort((a, b) =>
-        Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.birdId, b.birdId)
+        Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.id, b.id)
       )[field.length - 1];
-      if (Tournaments.compareRank(cards.get(birdId)!, cards.get(weakest.birdId)!, birdId, weakest.birdId) >= 0)
+      // The newcomer has no entry row yet, so it takes the latest possible
+      // registration order — on a dead tie the incumbent keeps the seat.
+      if (
+        Tournaments.compareRank(
+          cards.get(birdId)!,
+          cards.get(weakest.birdId)!,
+          Number.MAX_SAFE_INTEGER,
+          weakest.id
+        ) >= 0
+      )
         throw new Error(
           `The Selection Committee finds ${bird.name} the weakest in a full field — entry refused`
         );
@@ -426,7 +435,7 @@ export class Tournaments {
       const field = this.pendingEntries(tournament.id);
       const cards = Tournaments.committeeCards(this.database, field.map((e) => e.birdId));
       const ranked = [...field].sort((a, b) =>
-        Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.birdId, b.birdId)
+        Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.id, b.id)
       );
       return {
         tournamentId: tournament.id,
@@ -570,7 +579,7 @@ export class Tournaments {
     // top seeds in round one and simply aren't there.
     const cards = Tournaments.committeeCards(database, field.map((e) => e.birdId));
     const seeded = [...field].sort((a, b) =>
-      Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.birdId, b.birdId)
+      Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.id, b.id)
     );
     seeded.forEach((e, i) =>
       database
@@ -1077,11 +1086,32 @@ export class Tournaments {
    * birds that have never earned still order deterministically rather than
    * by insertion.
    */
-  static compareRank(a: CommitteeCard, b: CommitteeCard, aId: string, bId: string): number {
+  /**
+   * ⚠ THE FINAL TIE-BREAK IS REGISTRATION ORDER, AND IT USED TO BE THE BIRD'S
+   * ID — WHICH MADE EVERY SEEDED WORLD SILENTLY NONDETERMINISTIC (round 43).
+   * Bird ids come from randomUUID(), which does not draw from the seeded world
+   * stream, so two runs of `simulate --seed=1` seeded their brackets in
+   * different orders wherever birds tied on all three real keys — which is the
+   * COMMON case for juveniles (identical earnings, identical wins, coarse tied
+   * figures). Same seed, different champion. It was discovered when a
+   * pure-performance change refused to A/B as world-identical, and the "A/B on
+   * matched worlds" discipline rng.ts documents had been quietly impossible
+   * since the day this comparator was written: the old test pinned that ids
+   * order stably WITHIN a run and nobody noticed they are re-rolled ACROSS
+   * runs.
+   *
+   * Registration order (the entry row's autoincrement id) is deterministic,
+   * total, and defensible as a rule: among birds the committee truly cannot
+   * tell apart, the one that declared first keeps the higher seat. A newcomer
+   * challenging a full field passes MAX_SAFE_INTEGER — on a dead tie the
+   * incumbent stays, which is also the committee refusing to bump on a coin
+   * flip.
+   */
+  static compareRank(a: CommitteeCard, b: CommitteeCard, aOrder: number, bOrder: number): number {
     if (a.earningsCents !== b.earningsCents) return b.earningsCents - a.earningsCents;
     if (a.wins !== b.wins) return b.wins - a.wins;
     if (a.avgFigure !== b.avgFigure) return b.avgFigure - a.avgFigure;
-    return aId < bId ? -1 : 1;
+    return aOrder - bOrder;
   }
 
   /**

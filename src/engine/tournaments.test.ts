@@ -628,8 +628,8 @@ describe("the Selection Committee's ranking key", () => {
     wins,
     avgFigure,
   });
-  const above = (a: ReturnType<typeof card>, b: ReturnType<typeof card>, aId = "a", bId = "b") =>
-    Tournaments.compareRank(a, b, aId, bId) < 0;
+  const above = (a: ReturnType<typeof card>, b: ReturnType<typeof card>, aOrder = 1, bOrder = 2) =>
+    Tournaments.compareRank(a, b, aOrder, bOrder) < 0;
 
   test("earnings → wins → figure → id, in that order", () => {
     // Earnings outrank everything: a rich newcomer beats a bird with a longer
@@ -639,18 +639,21 @@ describe("the Selection Committee's ranking key", () => {
     expect(above(card(100, 5, 0), card(100, 4, 99))).toBe(true);
     // …then to the average pit figure…
     expect(above(card(0, 0, 80), card(0, 0, 79))).toBe(true);
-    // …and finally to the id, so two birds with no career at all still order
-    // the same way every time they are read.
-    expect(above(card(0, 0, 0), card(0, 0, 0), "aaa", "bbb")).toBe(true);
-    expect(above(card(0, 0, 0), card(0, 0, 0), "bbb", "aaa")).toBe(false);
+    // …and finally to REGISTRATION ORDER, so two birds with no career at all
+    // still order the same way every time they are read — and, since round 43,
+    // every time the WORLD is re-run. The tie-break used to be the bird id,
+    // which is a randomUUID: stable within a run, re-rolled across runs, so
+    // `--seed` never actually pinned a bracket. Earlier registrant wins.
+    expect(above(card(0, 0, 0), card(0, 0, 0), 1, 2)).toBe(true);
+    expect(above(card(0, 0, 0), card(0, 0, 0), 2, 1)).toBe(false);
   });
 
   test("a full field sorted twice comes out identical", () => {
     // Sixteen identical unraced birds — the degenerate case the id tiebreak
     // exists for. Sorting is stable in bun, so this can only fail if the
     // comparator returns 0 somewhere and the ARRAY order changes underneath.
-    const ids = Array.from({ length: 16 }, (_, i) => `bird-${i}`);
-    const sort = (list: string[]) =>
+    const ids = Array.from({ length: 16 }, (_, i) => i + 1);
+    const sort = (list: number[]) =>
       [...list].sort((a, b) => Tournaments.compareRank(card(0, 0, 0), card(0, 0, 0), a, b));
     expect(sort(ids)).toEqual(sort([...ids].reverse()));
   });
