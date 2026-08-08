@@ -243,6 +243,17 @@ export class Bots {
     while (db.select().from(farms).where(eq(farms.id, bot.id)).get()!.freePulls > 0) {
       if (!quietly(() => gacha.roll())) break;
     }
+    // …then THE HABIT (round 43): one paid roll on a habit day, for every barn.
+    // Before this, 18 of 20 stables took their free pull and paid for nothing,
+    // so two whales funded 71% of all championship juice — see gachaHabit in
+    // bot-config for the ruling and the egg-supply guard. The rng draw is
+    // UNCONDITIONAL (the same pattern as wantsToClimb in pickOffering): a barn
+    // too broke to roll must still consume the draw, or solvency would bend
+    // every later decision the barn makes that day.
+    const habitDay = rng() < bot.gachaHabit;
+    if (habitDay && gp() >= ECONOMY.GACHA_ROLL_PRICE + RESERVE) {
+      if (quietly(() => gacha.roll())) report.paidPulls++;
+    }
     // …and then the SPECULATORS (round 23). Ordinary stables take the free
     // pull and put their GP into covers — Zane's ruling that breeding, not
     // the gacha, should make the birds. Two barns exist to be the other kind

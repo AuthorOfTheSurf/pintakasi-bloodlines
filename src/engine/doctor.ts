@@ -1550,6 +1550,21 @@ function championships(db: DB): HealthSection {
             `the rest is juice (gacha + breed fees) · ` +
             `net to the field ${gp(purseCents - feesCents)} GP`
         );
+      // ── UNDER THE DOOR (round 43) ───────────────────────────────────────
+      // Round 41's ruling is "every win clears the door", and until now the
+      // number that tests it lived nowhere — round 42 computed it ad hoc with
+      // sqlite (22% of paid Major winners under 160 GP) and the figure
+      // evaporated with the terminal session. A WINNER below its own entry
+      // fee is not a bug (a thin purse divides honestly), but the SHARE of
+      // winners below it is the metric the juice-funding stages are trying to
+      // move, and an undefined success criterion cannot be met.
+      if (feesCents > 0 && paid.length > 0) {
+        const under = paid.filter((e) => e.gpWonCents < e.fee * 100).length;
+        lines.push(
+          `${" ".repeat(10)}under the door ${under}/${paid.length} winners ` +
+            `(${((under / paid.length) * 100).toFixed(0)}%) took less purse than their entry fee`
+        );
+      }
     }
     const decided = run.length + cancelled.length;
     if (decided > 0 && cancelled.length / decided > DOCTOR.CANCELLED_CROWNS_WARN)
@@ -1576,12 +1591,22 @@ function adoption(db: DB, ev: EventRow[]): HealthSection {
   const landFarms = new Set<string>();
   const bundleFarms = new Set<string>();
   const expandFarms = new Set<string>();
+  // Paid rolls, not bundles: stage 4 of round 43 gave every barn a routine
+  // gacha habit precisely because juice funding was two whales deep — this bar
+  // is how anyone notices if the habit quietly stops firing. A paid roll is
+  // any gacha row that moved GP; free pulls carry no gpCents.
+  const paidRollFarms = new Set<string>();
   for (const e of ev) {
     if (!e.farmId) continue;
     if (e.type === "stud_listed") studFarms.add(e.farmId);
     else if (e.type === "buy_land") landFarms.add(e.farmId);
     else if (e.type === "barn_expanded") expandFarms.add(e.farmId);
-    else if (e.type === "gacha" && e.data) {
+    else if (e.type === "gacha" && (e.gpCents ?? 0) < 0) {
+      paidRollFarms.add(e.farmId);
+      if (e.data && (JSON.parse(e.data) as { bundle?: boolean }).bundle === true)
+        bundleFarms.add(e.farmId);
+      continue;
+    } else if (e.type === "gacha" && e.data) {
       // A bundle's payload is shaped differently from a single roll's — parse it
       // rather than matching on the message text. Only gacha rows pay the parse.
       if ((JSON.parse(e.data) as { bundle?: boolean }).bundle === true) bundleFarms.add(e.farmId);
@@ -1598,6 +1623,7 @@ function adoption(db: DB, ev: EventRow[]): HealthSection {
     ["claims placed", new Set(db.select().from(claims).all().map((c) => c.farmId))],
     ["studs listed", studFarms],
     ["land purchased", landFarms],
+    ["paid gacha rolls", paidRollFarms],
     ["gacha bundles bought", bundleFarms],
     ["barn expanded", expandFarms],
     ["Major entries", crownFarms("major")],

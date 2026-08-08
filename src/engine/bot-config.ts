@@ -87,6 +87,30 @@ export interface BotProfile {
   /** The person behind the barn — shown beside the farm name (round 23). */
   handler?: string;
   /**
+   * THE HABIT (round 43). Chance per day this barn buys ONE paid gacha roll on
+   * top of its free pull. REQUIRED, unlike the whale knob below, because the
+   * measured world without it was two barns funding 71% of all championship
+   * juice (174,168 of 246,868 GP over 91 days) while the other 18 took their
+   * free pulls and paid for nothing — Zane: "currently they just do free spins
+   * and thats it… and then one single farm is programmed to blow all it's cash
+   * on gatcha. That's not really realistic."
+   *
+   * Deliberately a SEPARATE knob from gachaAppetite: dumping bundles to the
+   * bottom of the wallet is a whale's move, and a modest barn buying one roll
+   * with its coffee is a different behaviour that should read differently in
+   * the code. The median barn spends 141 GP of its 800 GP daily drip, so an
+   * 80 GP roll changes nobody's solvency.
+   *
+   * ⚠ THE BINDING CONSTRAINT IS EGG SUPPLY, NOT GP. Round 23 raised the roll
+   * price 16 → 80 precisely because the gacha out-supplied the breeding barn
+   * 8-to-1 ("I want stables primarily breeding to create birds"). Purple and
+   * Gold drop eggs at ~6 per 100 rolls, so the roster's habits are tuned to
+   * ~0.5 rolls/barn/day — about +50 eggs a season against ~1,400 hatches.
+   * Read POPULATION's `supply hatches · gacha eggs · covers` line after any
+   * retune here; that line is the guard on a standing ruling.
+   */
+  gachaHabit: number;
+  /**
    * THE HIGH ROLLER (round 23). Chance per day this barn dumps its spare GP
    * into gacha bundles. Zane's model: stables breed, and "human speculation
    * and human high rollers and humans/bots that desire the prizes will drive
@@ -406,12 +430,14 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "black", secondaryColor: "gold", style: "claimer",
     flockSeed: 101, entryRate: 0.8, claimAggression: 0.75, breedDrive: 0.05,
     hardcoreNerve: 0.05, sellRate: 0.45, tagCourage: 0.3, ladderCourage: 0.15, housePair: 0,
+    gachaHabit: 0.5,
   },
   {
     id: "bot-2", name: "Tari ng Bayan", country: "🇵🇭",
     primaryColor: "teal", secondaryColor: "white", style: "claimer",
     flockSeed: 202, entryRate: 0.75, claimAggression: 0.6, breedDrive: 0.1,
     hardcoreNerve: 0.05, sellRate: 0.35, tagCourage: 0.55, ladderCourage: 0.1, housePair: 1,
+    gachaHabit: 0.4,
   },
   // ── The broodfarms: breed for the top, sell the surplus ─────────────────
   {
@@ -419,12 +445,14 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "gold", secondaryColor: "green", style: "breeder",
     flockSeed: 303, entryRate: 0.5, claimAggression: 0.05, breedDrive: 0.9,
     hardcoreNerve: 0.02, sellRate: 0.5, tagCourage: 0.4, ladderCourage: 0.08, housePair: 2, // deep-water blood
+    gachaHabit: 0.3, // covers first — the gacha is a sideline
   },
   {
     id: "bot-4", name: "Dugo't Dangal Farms", country: "🇵🇭",
     primaryColor: "red", secondaryColor: "white", style: "breeder",
     flockSeed: 404, entryRate: 0.55, claimAggression: 0.1, breedDrive: 0.7,
     hardcoreNerve: 0.02, sellRate: 0.4, tagCourage: 0.25, ladderCourage: 0.12, housePair: 1,
+    gachaHabit: 0.35,
   },
   // ── The pit crews: fight everything, nerve for hardcore ─────────────────
   {
@@ -432,12 +460,14 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "orange", secondaryColor: "black", style: "pit",
     flockSeed: 505, entryRate: 0.9, claimAggression: 0.15, breedDrive: 0.3,
     hardcoreNerve: 0.25, sellRate: 0.1, tagCourage: 0.5, ladderCourage: 0.35, housePair: 2,
+    gachaHabit: 0.7, // pit crews are gamblers at heart
   },
   {
     id: "bot-6", name: "Kidlat sa Silangan", country: "🇵🇭",
     primaryColor: "blue", secondaryColor: "yellow", style: "pit",
     flockSeed: 606, entryRate: 0.85, claimAggression: 0.2, breedDrive: 0.35,
     hardcoreNerve: 0.35, sellRate: 0.15, tagCourage: 0.6, ladderCourage: 0.45, housePair: 0, // "lightning" — breeds the break
+    gachaHabit: 0.75,
   },
   // ── Round 19: three more stables — the card was running thin and the
   //    Pintakasi's fields were thinner (seven farms, three crowns a week).
@@ -447,18 +477,21 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "purple", secondaryColor: "white", style: "pit",
     flockSeed: 707, entryRate: 0.9, claimAggression: 0.1, breedDrive: 0.25,
     hardcoreNerve: 0.45, sellRate: 0.1, tagCourage: 0.45, ladderCourage: 0.55, housePair: 2, // the nerviest barn in the game
+    gachaHabit: 0.8,
   },
   {
     id: "bot-8", name: "Cuchillos de Sonora", country: "🇲🇽",
     primaryColor: "green", secondaryColor: "red", style: "claimer",
     flockSeed: 808, entryRate: 0.7, claimAggression: 0.8, breedDrive: 0.15,
     hardcoreNerve: 0.1, sellRate: 0.5, tagCourage: 0.7, ladderCourage: 0.2, housePair: 0, // knife barn — shops the dear end of the tag ladder
+    gachaHabit: 0.6,
   },
   {
     id: "bot-9", name: "Cavite Bloodlines", country: "🇵🇭",
     primaryColor: "brown", secondaryColor: "gold", style: "breeder",
     flockSeed: 909, entryRate: 0.45, claimAggression: 0.05, breedDrive: 0.95,
     hardcoreNerve: 0.08, sellRate: 0.55, tagCourage: 0.2, ladderCourage: 0.1, housePair: 1, // breeds first, fights second
+    gachaHabit: 0.25,
   },
   // ── Round 23: the two speculators ───────────────────────────────────────
   {
@@ -466,6 +499,7 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "gold", secondaryColor: "black", style: "whale",
     flockSeed: 1010, entryRate: 0.5, claimAggression: 0.1, breedDrive: 0.2,
     hardcoreNerve: 0.1, sellRate: 0.2, tagCourage: 0.5, ladderCourage: 0.25, housePair: 1,
+    gachaHabit: 1, // a whale's habit is daily by definition
     gachaAppetite: 1, // rolls every single day, to the bottom of the wallet
   },
   {
@@ -473,6 +507,7 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "green", secondaryColor: "brown", style: "landlord",
     flockSeed: 1111, entryRate: 0.6, claimAggression: 0.05, breedDrive: 0.3,
     hardcoreNerve: 0.05, sellRate: 0.15, tagCourage: 0.3, ladderCourage: 0.15, housePair: 2,
+    gachaHabit: 0.4,
     landAppetite: 1, // maxes the daily land cap, every day, forever
   },
   // ── Round 23: the cousins' stables ──────────────────────────────────────
@@ -483,18 +518,21 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "red", secondaryColor: "black", style: "pit",
     flockSeed: 1201, entryRate: 0.85, claimAggression: 0.25, breedDrive: 0.35,
     hardcoreNerve: 0.3, sellRate: 0.2, tagCourage: 0.5, ladderCourage: 0.4, housePair: 2,
+    gachaHabit: 0.7,
   },
   {
     id: "bot-reno", name: "Reno Gamefarm", country: "🇵🇭", handler: "Reno",
     primaryColor: "blue", secondaryColor: "white", style: "breeder",
     flockSeed: 1202, entryRate: 0.6, claimAggression: 0.1, breedDrive: 0.85,
     hardcoreNerve: 0.1, sellRate: 0.45, tagCourage: 0.35, ladderCourage: 0.2, housePair: 1,
+    gachaHabit: 0.35,
   },
   {
     id: "bot-kevin", name: "Kevin Gamefarm", country: "🇵🇭", handler: "Kevin",
     primaryColor: "purple", secondaryColor: "gold", style: "claimer",
     flockSeed: 1203, entryRate: 0.75, claimAggression: 0.7, breedDrive: 0.2,
     hardcoreNerve: 0.15, sellRate: 0.5, tagCourage: 0.6, ladderCourage: 0.3, housePair: 0,
+    gachaHabit: 0.5,
   },
   // ── Round 37: five more stables — chosen to fill HOLES, not to add bodies ─
   //
@@ -514,6 +552,7 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "yellow", secondaryColor: "black", style: "breeder",
     flockSeed: 1301, entryRate: 0.8, claimAggression: 0.1, breedDrive: 0.85,
     hardcoreNerve: 0.15, sellRate: 0.3, tagCourage: 0.35, ladderCourage: 0.25, housePair: 0,
+    gachaHabit: 0.4,
   },
   {
     // THE SECOND LANDLORD — and deliberately NOT a copy of Lupa. Lupa maxes
@@ -525,6 +564,7 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "green", secondaryColor: "white", style: "landlord",
     flockSeed: 1302, entryRate: 0.55, claimAggression: 0.05, breedDrive: 0.4,
     hardcoreNerve: 0.05, sellRate: 0.2, tagCourage: 0.3, ladderCourage: 0.12, housePair: 2,
+    gachaHabit: 0.35,
     landAppetite: 0.35,
   },
   {
@@ -536,6 +576,7 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "pink", secondaryColor: "gold", style: "whale",
     flockSeed: 1303, entryRate: 0.6, claimAggression: 0.2, breedDrive: 0.25,
     hardcoreNerve: 0.2, sellRate: 0.25, tagCourage: 0.55, ladderCourage: 0.3, housePair: 1,
+    gachaHabit: 0.8,
     gachaAppetite: 0.3,
   },
   {
@@ -560,6 +601,7 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "orange", secondaryColor: "teal", style: "pit",
     flockSeed: 1304, entryRate: 0.35, claimAggression: 0.1, breedDrive: 0.15,
     hardcoreNerve: 0.95, sellRate: 0.1, tagCourage: 0.4, ladderCourage: 0.6, housePair: 2,
+    gachaHabit: 0.5,
   },
   {
     // THE BOTTOM FEEDER. Round 31 cut the claimer ladder to three rungs
@@ -572,5 +614,6 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "red", secondaryColor: "brown", style: "claimer",
     flockSeed: 1305, entryRate: 0.8, claimAggression: 0.9, breedDrive: 0.1,
     hardcoreNerve: 0.05, sellRate: 0.65, tagCourage: 0.05, ladderCourage: 0.05, housePair: 0,
+    gachaHabit: 0.25, // the poorest barn on the roster spends least
   },
 ];
