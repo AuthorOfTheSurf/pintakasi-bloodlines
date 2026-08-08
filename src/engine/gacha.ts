@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { birds, farms, gachaTokens, gameState } from "@/db/schema";
 import {
-  BARN,
   BASE_COATS,
   CARRIAGES,
   BREEDING,
@@ -209,7 +208,7 @@ export class Gacha {
     let barnFull = false;
     const tier = GACHA_BIRDS[token];
     if (tier) {
-      if (this.flock.barnCount() >= BARN.CAPACITY) {
+      if (this.flock.barnCount() >= this.flock.capacity()) {
         barnFull = true; // the token still counts; the egg is forfeit
       } else {
         const stat = () => randInt(this.rng, tier.statMin, tier.statMax);

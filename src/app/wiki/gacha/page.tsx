@@ -219,10 +219,11 @@ export default function GachaPage() {
 
       <h2>Barn-full behaviour</h2>
       <p>
-        A mystery egg needs a slot to hatch into, same as any egg. If your barn is already at its{" "}
-        {BARN.CAPACITY}-bird cap when a qualifying token drops, the token itself still counts
-        toward your collection — but the egg is forfeit. Keep room in the barn if you&apos;re
-        planning to roll.
+        A mystery egg needs a slot to hatch into, same as any egg. If your barn is already at
+        capacity when a qualifying token drops, the token itself still counts toward your
+        collection — but the egg is forfeit. Keep room in the barn if you&apos;re planning to roll:
+        a barn starts with {BARN.CAPACITY} slots and can be{" "}
+        <Link href="/wiki/land">expanded for Land Tokens</Link>.
       </p>
       <p>
         Whatever egg does land hatches exactly like a bred one: it comes out with an auto-name, and{" "}

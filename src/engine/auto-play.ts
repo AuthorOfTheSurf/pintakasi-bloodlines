@@ -14,7 +14,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies } from "./lobbies";
-import { CLAIMER, ECONOMY, LT_CENTS } from "./config";
+import { CLAIMER, ECONOMY, LT_CENTS, barnCapacity, nextExpansionCost } from "./config";
 import { canHardcore } from "./lifecycle";
 import { drawStarterNames } from "./naming";
 import { mulberry32, randInt } from "./rng";
@@ -72,6 +72,19 @@ export function playHonestDay(
   const breeding = new Breeding(db, farmId, mulberry32(500 + day));
   for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
     quietly(() => breeding.listStud(rooster.id));
+
+  // Expand the barn before it chokes (round 43) — same competence rule as the
+  // bots (see bots.ts step 1b2): near the ceiling, unstake the shortfall and
+  // buy the next expansion. A stable that cannot breed has stopped playing.
+  quietly(() => {
+    const row = farmsApi.rowById(farmId);
+    const flockApi2 = new Flock(db, farmId);
+    if (flockApi2.barnCount() >= barnCapacity(row.barnExpansions) - 10) {
+      const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
+      if (short > 0) quietly(() => void farmsApi.unstake(farmId, Math.ceil(short / LT_CENTS)));
+      farmsApi.expandBarn(farmId);
+    }
+  });
 
   // Whole tokens in, hundredths stored (round 36) — see the note in bots.ts.
   // Floor, or `stake` throws on a 100× request and `quietly` hides it.

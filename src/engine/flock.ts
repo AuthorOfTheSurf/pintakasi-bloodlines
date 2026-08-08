@@ -1,7 +1,7 @@
 import { count, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birds, type BirdRow } from "@/db/schema";
-import { weatherOfDay, type Element, type FightFormat, type StatName } from "./config";
+import { battleLog, birds, farms, type BirdRow } from "@/db/schema";
+import { barnCapacity, weatherOfDay, type Element, type FightFormat, type StatName } from "./config";
 import { overallGradeOf, type Grade } from "./grades";
 import { emit } from "./events";
 import { GameClock } from "./game-clock";
@@ -213,6 +213,21 @@ export class Flock {
         .where(eq(birds.farmId, this.farmId))
         .get()?.n ?? 0
     );
+  }
+
+  /**
+   * This farm's barn ceiling — the starting BARN.CAPACITY plus every
+   * expansion bought (round 43). Every gate that used to compare against the
+   * flat constant reads this instead, so a bought expansion opens all three
+   * doors at once: breeding, gacha eggs, and claims.
+   */
+  capacity(): number {
+    const row = this.database
+      .select({ n: farms.barnExpansions })
+      .from(farms)
+      .where(eq(farms.id, this.farmId))
+      .get();
+    return barnCapacity(row?.n ?? 0);
   }
 
   /**

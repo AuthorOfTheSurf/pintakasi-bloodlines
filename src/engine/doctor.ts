@@ -17,6 +17,7 @@ import {
   BREEDING_SHAPES,
   CADENCE,
   CALENDAR,
+  barnCapacity,
   ECONOMY,
   ELEMENTS,
   FIGHTS_PER_GROUP_BIRD,
@@ -959,6 +960,32 @@ function population(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
   }
   const supply = count("hatch") + gachaEggs;
   const loss = [...retiredBy.values()].reduce((s, n) => s + n, 0);
+
+  // Barn ceilings (round 43). Before expansions existed, a full barn was an
+  // ABSORBING STATE — `breed` threw, the bots' `quietly` swallowed it, and the
+  // stable silently stopped breeding forever while every other number here
+  // still read healthy (7 of 20 barns by day 91). Bots now buy expansions at
+  // ~10 slots of headroom, so a barn sitting AT its ceiling means the sink
+  // failed it — it could not afford the next expansion — and that is worth a
+  // warn, not just a line.
+  const flockSizes = new Map<string, number>();
+  for (const b of db.select({ farmId: birds.farmId }).from(birds).all())
+    flockSizes.set(b.farmId, (flockSizes.get(b.farmId) ?? 0) + 1);
+  const farmRows = db.select().from(farms).all();
+  const atCapacity = farmRows.filter(
+    (f) => (flockSizes.get(f.id) ?? 0) >= barnCapacity(f.barnExpansions)
+  ).length;
+  const expansions = farmRows.reduce((s, f) => s + f.barnExpansions, 0);
+
+  const warns = [
+    // The round-23 collapse in one line: births stopped outrunning deaths and
+    // the card went quiet three weeks later.
+    loss > supply ? `attrition (${loss}) is outrunning supply (${supply})` : undefined,
+    atCapacity > 0
+      ? `${atCapacity} barn(s) at capacity, refusing covers — the expansion sink is not reaching them`
+      : undefined,
+  ].filter((w): w is string => !!w);
+
   return {
     title: "POPULATION",
     lines: [
@@ -968,10 +995,9 @@ function population(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
       `supply  hatches ${count("hatch")} · gacha eggs ${gachaEggs} · covers ${count("breed")}`,
       "loss    " +
         ([...retiredBy.entries()].map(([by, n]) => `${by} ${n}`).join(" · ") || "none yet"),
+      `barns   ${atCapacity} of ${farmRows.length} at capacity · ${expansions} expansion(s) bought`,
     ],
-    // The round-23 collapse in one line: births stopped outrunning deaths and
-    // the card went quiet three weeks later.
-    warn: loss > supply ? `attrition (${loss}) is outrunning supply (${supply})` : undefined,
+    warn: warns.length ? warns.join(" · ") : undefined,
   };
 }
 
@@ -1297,26 +1323,38 @@ function landSupply(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
   const circulating = topline.landStaked + topline.landLiquid;
   let burned = 0;
   const minting = new Map<string, number>();
+  // Burns by door, because "the only way land leaves the world" stopped being
+  // one sentence in round 43: stud seats were the only sink for twenty rounds,
+  // then barn expansions joined them, and a lumped total would hide whichever
+  // one quietly stopped firing.
+  const burning = new Map<string, number>();
   for (const e of ev) {
     if (e.lt === null || e.lt === 0) continue;
-    if (e.lt < 0) burned -= e.lt;
-    else minting.set(e.type, (minting.get(e.type) ?? 0) + e.lt);
+    if (e.lt < 0) {
+      burned -= e.lt;
+      burning.set(e.type, (burning.get(e.type) ?? 0) - e.lt);
+    } else minting.set(e.type, (minting.get(e.type) ?? 0) + e.lt);
   }
   const minted = circulating + burned;
   const days = topline.day + 1; // day 0 was a day of fighting too
   // Biggest faucet first — the question this answers is always "what is
   // actually making the land", and the tail is rarely the answer.
   const sources = [...minting.entries()].sort((a, b) => b[1] - a[1]);
+  const sinks = [...burning.entries()].sort((a, b) => b[1] - a[1]);
   return {
     title: "LAND SUPPLY",
     lines: [
       `circulating ${lt(circulating)} LT · ${lt(topline.landStaked)} staked ` +
         `(${pct(topline.landStaked, circulating)}) · ${lt(topline.landLiquid)} idle`,
       `minted      ${lt(minted)} LT over ${days} day(s) · ${lt(Math.round(minted / days))} LT per day`,
-      `burned      ${lt(burned)} LT into stud seats — the only way land leaves the world`,
       ...sources.map(
         ([type, amount]) =>
           `  ${type.padEnd(14)}${lt(amount).padStart(12)} LT  ${pct(amount, minted).padStart(6)}`
+      ),
+      `burned      ${lt(burned)} LT (${pct(burned, minted)} of issuance) — the sinks`,
+      ...sinks.map(
+        ([type, amount]) =>
+          `  ${type.padEnd(14)}${lt(amount).padStart(12)} LT  ${pct(amount, burned).padStart(6)}`
       ),
       ...faucetRatio(ev, minted, days),
     ],

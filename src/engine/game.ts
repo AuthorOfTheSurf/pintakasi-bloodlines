@@ -5,7 +5,7 @@ import { shopAllClaimers } from "./auto-play";
 import { Bots, type BotDayReport, type DiscoveryPolicy } from "./bots";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
-import { BARN, cardOfDay, weatherOfDay, type CardKey, type Element } from "./config";
+import { cardOfDay, weatherOfDay, type CardKey, type Element } from "./config";
 import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
@@ -68,7 +68,7 @@ export class Game {
     return {
       clock: GameClock.stateOf(row.dayIndex),
       farm: this.farms.view(this.farms.rowById(this.farmId)),
-      barn: { count: this.flock.barnCount(), capacity: BARN.CAPACITY },
+      barn: { count: this.flock.barnCount(), capacity: this.flock.capacity() },
       weather: { today: weatherOfDay(row.dayIndex), tomorrow: weatherOfDay(row.dayIndex + 1) },
       // TONIGHT'S CARD and tomorrow's (round 31), exactly parallel to weather
       // above: both are pure functions of the day index, so one day of

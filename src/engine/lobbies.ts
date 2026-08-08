@@ -13,7 +13,6 @@ import {
   type BirdRow,
 } from "@/db/schema";
 import {
-  BARN,
   CADENCE,
   CLAIMER,
   ECONOMY,
@@ -460,7 +459,9 @@ export class Lobbies {
       .where(and(eq(claims.entryId, entryId), eq(claims.farmId, this.farmId)))
       .all();
     if (existing.length > 0) throw new Error("You already have a claim in on that bird");
-    if (this.flock.barnCount() >= BARN.CAPACITY) throw new Error(`The barn is full (${BARN.CAPACITY})`);
+    const cap = this.flock.capacity();
+    if (this.flock.barnCount() >= cap)
+      throw new Error(`The barn is full (${cap}) — expand it for Land Tokens`);
 
     const price = lobby.price!;
     const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;

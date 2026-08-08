@@ -1930,13 +1930,47 @@ export type FarmColor = (typeof FARM_COLORS)[number];
 
 // ── Barn ────────────────────────────────────────────────────────────────────
 export const BARN = {
-  CAPACITY: 100, // max birds + eggs; breeding is blocked when full
+  // STARTING capacity, not a ceiling (round 43) — a barn grows by buying
+  // expansions for Land Tokens, see below. Until this round 100 was absolute,
+  // and it was an ABSORBING STATE: retired brood stock never leaves, the only
+  // outflow is being claimed away, and `breed` throws when full — swallowed by
+  // the bots' `quietly`, so a full barn silently stopped breeding FOREVER. At
+  // day 91, 7 of 20 barns sat at or within 2 of the cap with 43–70% of their
+  // slots holding retired birds; by day 182 nearly every barn would have been
+  // frozen while every adoption bar still read green. PFL ran barns unlimited;
+  // Zane's ruling keeps a soft start and makes growth a purchase: "More birds
+  // = the customer is spending money on the game."
+  CAPACITY: 100, // max birds + eggs; breeding/gacha eggs/claims blocked when full
+  // Each expansion adds this many slots…
+  EXPANSION_SLOTS: 100,
+  // …and the nth expansion costs n × this, in LT hundredths (1,000 LT, then
+  // 2,000, then 3,000…). ESCALATING rather than flat, and the arithmetic is
+  // the ruling: a top barn holds 60k–117k LT and earns 692–1,284 LT a day, so
+  // a flat 1,000 LT price would unblock every barn forever while collecting
+  // almost nothing. Escalation keeps the first expansion affordable for a new
+  // stable (under one day's land income for a leader) and makes the tenth
+  // cost 10,000 LT — a real bite. What gives the price teeth today is the
+  // opportunity cost: ~99.5% of all LT is staked, so paying means unstaking
+  // and giving up yield. This is the game's second LT sink after the stud
+  // seat (which burns only ~2.9% of issuance — 97% of every token minted
+  // never leaves), and the first one bought for capacity rather than access.
+  EXPANSION_BASE_LT: 1_000 * LT_CENTS,
   // Every new farm receives these age-0 eggs, hatching together on its first
   // Hatch Friday. Eight gives a new stable enough discovery-year bodies to
   // card a real week and absorb early attrition without making the gacha the
   // population faucet.
   STARTER_EGGS: 8,
 } as const;
+
+/** A farm's current barn ceiling: the starting capacity plus every expansion bought. */
+export function barnCapacity(expansions: number): number {
+  return BARN.CAPACITY + expansions * BARN.EXPANSION_SLOTS;
+}
+
+/** What the NEXT expansion costs, in LT hundredths — the (n+1)th costs (n+1) × base. */
+export function nextExpansionCost(expansionsOwned: number): number {
+  return (expansionsOwned + 1) * BARN.EXPANSION_BASE_LT;
+}
 
 // ── Gacha (pure rarity tokens — correspond to nothing yet) ──────────────────
 export const GACHA_TOKENS = ["White", "Green", "Blue", "Purple", "Gold"] as const;

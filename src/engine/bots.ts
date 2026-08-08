@@ -16,8 +16,10 @@ import {
   NW_CAP,
   PINTAKASI,
   SCOUT,
+  barnCapacity,
   cardOfDay,
   feeFor,
+  nextExpansionCost,
   weatherOfDay,
   type CardKey,
   type DistanceStat,
@@ -70,6 +72,12 @@ const RESERVE = 400;
 /** A whale keeps far less back — that's what makes it a whale. */
 const WHALE_RESERVE = 100;
 const MAX_CLAIMS_PER_DAY = 2;
+/**
+ * Expand the barn once the flock is within this many slots of the ceiling —
+ * roughly one week of covers, so the expansion lands BEFORE `quietly` starts
+ * eating refused breeds rather than after (round 43).
+ */
+const BARN_EXPAND_HEADROOM = 10;
 
 /**
  * The bot stables' daily play. Called at the top of every tick — the bots
@@ -299,6 +307,27 @@ export class Bots {
     }
     for (const rooster of unlisted) {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
+    }
+
+    // 1b2. GROW THE BARN before it chokes (round 43). Deliberately COMPETENCE,
+    // not personality — no profile knob, every barn does it — because a stable
+    // that cannot breed has stopped playing, and the flat 100-cap was an
+    // absorbing state: retired brood stock never leaves, `breed` throws when
+    // full, `quietly` eats the throw, and the barn goes silent FOREVER with
+    // every adoption bar still green (7 of 20 barns were there by day 91).
+    // Same shape as the stud-seat rule above: expanding is the second thing
+    // worth pulling staked land back out for. Draws NO rng, so a world where
+    // nobody hits the headroom plays out identically to one before this existed.
+    {
+      const row = db.select().from(farms).where(eq(farms.id, bot.id)).get()!;
+      // Headroom of one week's worth of covers: expanding the morning the barn
+      // is already full would still lose every cover `quietly` swallowed while
+      // the wallet was short — start paying while there is still room to breed.
+      if (flock.barnCount() >= barnCapacity(row.barnExpansions) - BARN_EXPAND_HEADROOM) {
+        const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
+        if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
+        quietly(() => void farmsApi.expandBarn(bot.id));
+      }
     }
 
     // 1c. …and only THEN stake what's left over.

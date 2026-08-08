@@ -106,9 +106,9 @@ export default function BreedingPage() {
         best asset in the game — it earns on every outside cover, and its own owner still breeds
         through it on the reserved slots at nothing above the ordinary fee. A gate that desirable
         is worth paying land for, and it&apos;s the first thing in the game that takes Land Tokens{" "}
-        <em>out</em> of the world rather than just paying them out — see{" "}
-        <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into a
-        price.
+        <em>out</em> of the world rather than just paying them out (barn expansion is the second)
+        — see <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into
+        a price.
       </div>
 
       <h2>The fee split</h2>

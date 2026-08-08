@@ -6,6 +6,8 @@ import {
   BREEDING,
   CARRIAGES,
   CARRIAGE_LABEL,
+  LT_CENTS,
+  nextExpansionCost,
   ELEMENTS,
   ELEMENT_BEATS,
   PHASES,
@@ -476,10 +478,15 @@ export default function BirdsPage() {
 
       <h2>The barn</h2>
       <p>
-        A farm&apos;s barn holds up to <strong>{BARN.CAPACITY}</strong> birds and eggs combined.
-        Eggs count against the cap the moment they&apos;re laid — a full barn simply can&apos;t
-        breed again until something retires, hatches out, or is otherwise moved on. It&apos;s worth
-        watching if you&apos;re breeding aggressively; see{" "}
+        A farm&apos;s barn starts with <strong>{BARN.CAPACITY}</strong> slots, birds and eggs
+        combined. Eggs count against the ceiling the moment they&apos;re laid, and a full barn
+        refuses new covers, forfeits gacha mystery eggs, and blocks claims — retired brood stock
+        keeps its slot forever, so an active breeding operation will get there. The way through is
+        to <strong>expand</strong>: each expansion adds {BARN.EXPANSION_SLOTS} slots and is bought
+        with Land Tokens at a price that climbs — the first costs{" "}
+        {nextExpansionCost(0) / LT_CENTS} LT, the second {nextExpansionCost(1) / LT_CENTS}, the
+        third {nextExpansionCost(2) / LT_CENTS}, and so on. The land is spent outright, like a stud
+        seat. See <Link href="/wiki/land">Land</Link> for why that price is real money, and{" "}
         <Link href="/wiki/breeding">Breeding</Link> and{" "}
         <Link href="/wiki/gacha">the gacha</Link> for the two ways a barn fills up.
       </p>

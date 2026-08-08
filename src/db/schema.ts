@@ -41,6 +41,11 @@ export const farms = sqliteTable("farms", {
   // (claims, future sales) and take their own records with them.
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
+  // Barn expansions bought (round 43) — the COUNT, not the capacity, so the
+  // two can never disagree: capacity is always derived as
+  // BARN.CAPACITY + barnExpansions × BARN.EXPANSION_SLOTS (see barnCapacity).
+  // Each one is an escalating LT burn; see BARN.EXPANSION_BASE_LT.
+  barnExpansions: integer("barn_expansions").notNull().default(0),
 });
 
 export const birds = sqliteTable("birds", {

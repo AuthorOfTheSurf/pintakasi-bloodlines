@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ALL_ENTRY_FEES,
+  BARN,
   BREED_SPLIT,
   CLAIMER,
   COVERS,
@@ -13,6 +14,7 @@ import {
   STAKER_FLOWS,
   feeFor,
   fmtLt,
+  nextExpansionCost,
   landForFight,
   landPotShare,
   stakePerFight,
@@ -407,6 +409,23 @@ export default function LandPage() {
         reserved slots at nothing above the ordinary fee. A gate that desirable is worth paying
         land for — and it puts every barn in the same choice: stake land for yield, or spend it to
         open an income stream. That choice is exactly what a sink is for.
+      </p>
+
+      <h2>The second sink — expanding the barn</h2>
+      <p>
+        A barn starts with {BARN.CAPACITY} slots and a full one refuses new covers, so any stable
+        that breeds seriously will eventually need more room. Each expansion adds{" "}
+        {BARN.EXPANSION_SLOTS} slots, and the price <strong>climbs</strong>: the first costs{" "}
+        {wholeLt(nextExpansionCost(0))} LT, the second {wholeLt(nextExpansionCost(1))}, the third{" "}
+        {wholeLt(nextExpansionCost(2))}, and so on. Like the stud seat, the land is spent outright
+        — not staked, not refundable, gone.
+      </p>
+      <p>
+        Why it climbs instead of sitting at one price: a leading stable earns four figures of land
+        a day, so a flat price would stop being a decision after the first month. And why it
+        matters that it&apos;s land: nearly all of a stable&apos;s tokens are normally staked, so
+        expanding means unstaking — giving up that land&apos;s share of every future payout. The
+        slots aren&apos;t the real price. The yield is.
       </p>
 
       <h2>Staking — the heart of the page</h2>

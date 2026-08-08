@@ -39,8 +39,10 @@ import {
   STARS,
   STAT_NAMES,
   WEATHER,
+  barnCapacity,
   feeFor,
   fmtLt,
+  nextExpansionCost,
   landForFight,
   landPotShare,
   purseShareOf,
@@ -385,6 +387,9 @@ export const TOOL_DESCRIPTIONS = {
 
   unstake_land: "Pull Land Tokens out of the staking pool — back to liquid (still never sellable).",
 
+  expand_barn:
+    `Buy the next barn expansion: +${BARN.EXPANSION_SLOTS} slots for an ESCALATING Land Token burn — the first costs ${nextExpansionCost(0) / LT_CENTS} LT, the second ${nextExpansionCost(1) / LT_CENTS}, the third ${nextExpansionCost(2) / LT_CENTS}, and so on. Every barn starts at ${BARN.CAPACITY} slots (birds + eggs combined), and capacity is a rule with teeth: a FULL barn refuses new covers, forfeits gacha mystery eggs (the token still pays), and blocks claims. Retired brood stock keeps its slot forever, so an active breeding operation WILL hit the ceiling — this is the way through it. The land is SPENT outright (like a stud seat): not staked, not refundable, gone. Since nearly all of a stable's land is normally staked, expanding usually means unstake_land first — the real price is giving up that land's daily yield forever.`,
+
   enter_lobby:
     `Put a bird on tonight's card — PURE PvP, and ONE ENTRY IS A GROUP OF FIGHTS (round 34): at the day tick the lobby deals its field into groups of at most ${GROUP.SIZE} and everybody fights everybody inside their group, so this entry buys up to ${FIGHTS_PER_GROUP_BIRD} fights in one night (never two of your own — enter several birds freely, the deal spreads barn-mates across different groups and any pair of yours that still shares one simply doesn't fight). ⚠ THE FIGHT MUST BE ON TONIGHT'S CARD: only ~${cardKeysPerDay} (mode, class, blade) combinations are posted each day, and this tool's dials list every LEGAL value, not today's available ones — so read get_state's \`card\` or lobby_board FIRST and enter one of the keys you find there. Anything else is refused with "that fight isn't on tonight's card", and nothing is charged. BINDING once accepted: the fee escrows whole and the bird's ONE ENTRY for the day is spent. Lobbies have no size limit — join a busy one freely; the fuller the room, the fuller everybody's group. THE FEE IS THE PRICE OF THE NIGHT AND IT SPLITS ACROSS THE FIGHTS: each fight risks one share and every unrisked share is refunded at post, so a bird that only got ${FIGHTS_PER_GROUP_BIRD - 1} fights pays for ${FIGHTS_PER_GROUP_BIRD - 1}, and a bird that drew nobody (it was alone in the room — the only way that happens now) pays nothing at all. Pick the WEAPON FORMAT (distance dial) and CLASS (ladder dial) deliberately from what is posted — lobby_board shows fill counts, not fields (fogged), so judge where your bird belongs. ⚠ THE CLASS IS ALSO THE PRICE (round 42 — there is no flat entry fee any more, and the old one-price-per-division rule is deleted). What a night costs, per rung. JUVENILE (age ${AGE.CHICK} only): ${juvLadder}. REAL (age ${AGE.REAL_STAKES}+): ${realLadder}. Each fight risks a third of it (a ${realOpenFee} GP open night = ${openStake} GP a fight; a ${juvMaidenFee} GP juvenile maiden = ${juvMaidenStake} GP a fight), so the open costs ${openVsMaiden}× a maiden and you must tell the player the price of the rung you are actually entering — never a division's "usual" fee. Both modes feed the ONE lifetime record, and every fight in the group goes on it separately. There is NO hardcore mode any more (round 31): nothing entered here can end a career; hardcore lives only in the Majors, via enter_pintakasi. Land pays win or lose, once per entry at settle-up, on the total the bird actually risked, on a superlinear curve — so a dearer rung pays more land AND more land per GP (a full card of ${FIGHTS_PER_GROUP_BIRD}: ${realOpenLand} LT for a real open night, ${realMaidenLand} LT for a real maiden, ${juvOpenLand} LT for a juvenile open, ${juvMaidenLand} LT for a juvenile maiden — land mints in hundredths of a token, so those decimals are exact, not rounded off). That is the reward for climbing; the risk is that a lost open night costs nearly two ${ECONOMY.BREED_FEE} GP covers. Claimers run through enter_claimer.`,
 
@@ -612,6 +617,16 @@ function createServer(farmId: string | null): McpServer {
       inputSchema: z.object({ amount: z.number().int().positive() }),
     },
     async ({ amount }) => ruled(() => { const g = game(); return g.farms.unstake(g.farmId, amount); })
+  );
+
+  server.registerTool(
+    "expand_barn",
+    {
+      title: "Expand the Barn",
+      description: TOOL_DESCRIPTIONS.expand_barn,
+      inputSchema: z.object({}),
+    },
+    async () => ruled(() => { const g = game(); return g.farms.expandBarn(g.farmId); })
   );
 
   server.registerTool(

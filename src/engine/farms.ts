@@ -2,7 +2,17 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { farms, gameState, type FarmRow } from "@/db/schema";
-import { ECONOMY, FARM_COLORS, LAND, LT_CENTS, STAKER_FLOWS, fmtLt, type FarmColor } from "./config";
+import {
+  ECONOMY,
+  FARM_COLORS,
+  LAND,
+  LT_CENTS,
+  STAKER_FLOWS,
+  barnCapacity,
+  fmtLt,
+  nextExpansionCost,
+  type FarmColor,
+} from "./config";
 import { emit, fmtGp } from "./events";
 
 export interface FarmView {
@@ -249,6 +259,46 @@ export class Farms {
       message: `staked ${amount} LT (now ${fmtLt(farm.stakedLandCents + cents)} staked / ${fmtLt(farm.landTokensCents - cents)} liquid)`,
     });
     return { farm: this.view(this.rowById(farmId)), staked: amount };
+  }
+
+  /**
+   * Buy the next barn expansion: +BARN.EXPANSION_SLOTS slots for an ESCALATING
+   * Land Token burn — the (n+1)th expansion costs (n+1) × EXPANSION_BASE_LT.
+   * See the BARN config comment for the ruling and why the price climbs.
+   *
+   * The land is SPENT, not staked — it leaves the world exactly like a stud
+   * seat does, and the emit carries a signed negative `lt` so the land
+   * conservation proof can see the burn. An unlogged burn here would fail
+   * `checkLandConservation` on the first expansion anyone bought.
+   */
+  expandBarn(farmId: string): { farm: FarmView; expansions: number; capacity: number; landSpent: number } {
+    const farm = this.rowById(farmId);
+    const cost = nextExpansionCost(farm.barnExpansions);
+    if (farm.landTokensCents < cost)
+      throw new Error(
+        `Expansion #${farm.barnExpansions + 1} costs ${cost / LT_CENTS} LT — ${farm.name} holds ` +
+          `${fmtLt(farm.landTokensCents)} liquid (unstake some, or earn more in the pit)`
+      );
+    const expansions = farm.barnExpansions + 1;
+    this.database
+      .update(farms)
+      .set({ landTokensCents: farm.landTokensCents - cost, barnExpansions: expansions })
+      .where(eq(farms.id, farmId))
+      .run();
+    emit(this.database, {
+      type: "barn_expanded",
+      farmId,
+      lt: -cost,
+      message:
+        `barn expanded to ${barnCapacity(expansions)} slots — ` +
+        `${cost / LT_CENTS} LT paid for expansion #${expansions}`,
+    });
+    return {
+      farm: this.view(this.rowById(farmId)),
+      expansions,
+      capacity: barnCapacity(expansions),
+      landSpent: cost,
+    };
   }
 
   /** Unstake freely — the land comes home liquid (still never sellable). */

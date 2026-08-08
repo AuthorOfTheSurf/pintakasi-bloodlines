@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { gameState } from "@/db/schema";
+import { events, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { ECONOMY, LAND, LT_CENTS } from "./config";
+import { BARN, ECONOMY, LAND, LT_CENTS, barnCapacity } from "./config";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 
@@ -101,5 +101,50 @@ describe("land purchases (one-way, capped)", () => {
     const { dev, farmsApi } = fresh();
     expect(() => farmsApi.buyLand(dev.farmId, 6.73)).toThrow(/whole/);
     expect(() => farmsApi.buyLand(dev.farmId, 0)).toThrow(/whole/);
+  });
+});
+
+/**
+ * BARN EXPANSION (round 43) — the game's second land sink, and the way out of
+ * the absorbing state the flat 100-cap used to be. The price ESCALATES (the
+ * nth expansion costs n × base) and the land is burned outright, so the two
+ * things worth pinning are the arithmetic and the ledger row — an unlogged
+ * burn breaks land conservation the first time anyone expands.
+ */
+describe("barn expansion (the second land sink)", () => {
+  test("the nth expansion costs n × base, burns the land, and raises the ceiling", () => {
+    const { db, dev, farmsApi } = fresh();
+    db.update(farms)
+      .set({ landTokensCents: 3_500 * LT_CENTS })
+      .where(eq(farms.id, dev.farmId))
+      .run();
+
+    const first = farmsApi.expandBarn(dev.farmId);
+    expect(first.landSpent).toBe(BARN.EXPANSION_BASE_LT);
+    expect(first.capacity).toBe(BARN.CAPACITY + BARN.EXPANSION_SLOTS);
+    // Every gate reads the same derived ceiling — Flock.capacity() is what
+    // breeding, the gacha and claims all consult.
+    expect(new Flock(db, dev.farmId).capacity()).toBe(barnCapacity(1));
+
+    const second = farmsApi.expandBarn(dev.farmId);
+    expect(second.landSpent).toBe(2 * BARN.EXPANSION_BASE_LT);
+    expect(farmsApi.rowById(dev.farmId).landTokensCents).toBe(500 * LT_CENTS);
+
+    // The third costs 3 × base — unaffordable at 500 LT, and the refusal
+    // names the price so a player knows what to unstake.
+    expect(() => farmsApi.expandBarn(dev.farmId)).toThrow(/3000 LT/);
+  });
+
+  test("the burn lands on the ledger with a signed negative lt", () => {
+    const { db, dev, farmsApi } = fresh();
+    db.update(farms)
+      .set({ landTokensCents: 1_000 * LT_CENTS })
+      .where(eq(farms.id, dev.farmId))
+      .run();
+    farmsApi.expandBarn(dev.farmId);
+    const rows = db.select().from(events).where(eq(events.type, "barn_expanded")).all();
+    expect(rows.length).toBe(1);
+    expect(rows[0].lt).toBe(-BARN.EXPANSION_BASE_LT);
+    expect(rows[0].farmId).toBe(dev.farmId);
   });
 });

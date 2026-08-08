@@ -96,7 +96,8 @@ export default function WikiHome() {
         Six stats on a 0–{STATS.MAX} scale, one element with a half-star rating, and an age. Stats
         never change after hatching — and they stay <strong>hidden</strong> for the whole fighting
         career, revealed only at retirement. Until then you read the bird&apos;s figures and its
-        scout report, not its sheet. A barn holds {BARN.CAPACITY} birds.{" "}
+        scout report, not its sheet. A barn starts with {BARN.CAPACITY} slots and grows for Land
+        Tokens.{" "}
         <Link href="/wiki/birds">The full anatomy →</Link>
       </p>
 

@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState, type BirdRow } from "@/db/schema";
 import {
-  BARN,
   BASE_COATS,
   BREEDING,
   BREED_SPLIT,
@@ -138,8 +137,11 @@ export class Breeding {
         `${mother.name} is already pregnant with ${pregnancies[0].name} — one pregnancy per hen until it lays`
       );
 
-    if (this.flock.barnCount() >= BARN.CAPACITY)
-      throw new Error(`The barn is full (${BARN.CAPACITY})`);
+    // Against the farm's OWN ceiling since round 43 — capacity grows with
+    // bought expansions, so "full" is a state a stable can spend its way out of.
+    const cap = this.flock.capacity();
+    if (this.flock.barnCount() >= cap)
+      throw new Error(`The barn is full (${cap}) — expand it for Land Tokens`);
 
     // The weekly cover caps: public slots for outside hens, a reserved
     // handful for the owner's own. Top studs capping out is the POINT —
