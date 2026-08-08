@@ -72,10 +72,11 @@ export interface FeeSplit {
 
 export function splitBreedFee(feeGp: number): FeeSplit {
   const total = feeGp * 100;
-  const stakerPoolCents = Math.round(total * BREED_SPLIT.STAKER_SHARE);
-  const rest = total - stakerPoolCents;
-  const juicePoolCents = Math.round(rest * BREED_SPLIT.JUICE_SHARE_OF_REST);
-  return { feeGp, stakerPoolCents, juicePoolCents, studOwnerCents: rest - juicePoolCents };
+  const stakerPoolCents = Math.round(total * BREED_SPLIT.STAKER);
+  const juicePoolCents = Math.round(total * BREED_SPLIT.JUICE);
+  // The stud owner takes the remainder, so the three parts sum to the fee
+  // exactly — rounding drift lands on the owner, never printed or burned.
+  return { feeGp, stakerPoolCents, juicePoolCents, studOwnerCents: total - stakerPoolCents - juicePoolCents };
 }
 
 export class Breeding {

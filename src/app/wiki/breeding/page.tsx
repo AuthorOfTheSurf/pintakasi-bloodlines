@@ -23,10 +23,9 @@ export const metadata = {
 
 export default function BreedingPage() {
   const split = splitBreedFee(ECONOMY.BREED_FEE);
-  const stakerPct = Math.round(BREED_SPLIT.STAKER_SHARE * 100);
-  const restPct = 100 - stakerPct;
-  const juicePct = Math.round(restPct * BREED_SPLIT.JUICE_SHARE_OF_REST);
-  const studOwnerPct = restPct - juicePct;
+  const stakerPct = Math.round(BREED_SPLIT.STAKER * 100);
+  const juicePct = Math.round(BREED_SPLIT.JUICE * 100);
+  const studOwnerPct = 100 - stakerPct - juicePct;
   const coversPerWeek = COVERS.PER_WEEK + COVERS.OWNER_RESERVED;
   const mutationPct = Math.round(BREEDING.MUTATION_CHANCE * 100);
   const femalePct = Math.round(BREEDING.FEMALE_CHANCE * 100);

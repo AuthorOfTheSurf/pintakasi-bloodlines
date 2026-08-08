@@ -1005,20 +1005,38 @@ export const BREEDING = {
 // old win/loss studValue mechanic is deleted). For now the price is locked
 // to BREED_FEE; player-set pricing comes later.
 //
-// Every cover fee SPLITS (ruled 2026-08-03): per 160 GP — 8 GP (5%) to the
-// Land Token staking pool, and the other 152 split 50/50 between the fight-
-// juice pool (future tournament subsidy) and the stud's owner. On the 160
-// fee: 8.00 staker / 76.00 juice / 76.00 stud owner (see BREED_SPLIT just
-// below — the 2.5% figure this comment used to quote was round 21's rate;
-// round 22 doubled it). Splits are computed in CENTI-GP (integer hundredths)
-// so the accounting stays exact — the staker pool's pro-rata payouts are
-// where GP goes decimal.
+// Every cover fee SPLITS three ways: on the 160 fee, 16.00 to the Land Token
+// staking pool / 80.00 to the fight-juice pool (tournament subsidy) / 64.00
+// to the stud's owner (see BREED_SPLIT just below). Splits are computed in
+// CENTI-GP (integer hundredths) so the accounting stays exact — the staker
+// pool's pro-rata payouts are where GP goes decimal.
+//
+// THE PFL LESSON THIS KNOB CARRIES (Zane, ruled 2026-08-08). In the game this
+// one is descended from, breeding fees originally went 100% TO THE STUD OWNER,
+// and cover buyers paid a 20% fee ON TOP that juiced the majors — so on the
+// $50 minimum breed, an outside buyer paid $60 while the stud's own owner bred
+// for $10. That 6× asymmetry was later fixed by building the tax into the
+// price and raising it to 25%, then 50% ($37/$25 internal vs $50/$50 external
+// — the same ~half-price owner discount this game shipped with). A top player
+// argued the only truly FAIR split was 100% to the majors' juice; Zane's
+// ruling is that 100% is fairest but leaves no reward for breeding and
+// standing a great stud, and the three-way split is the deliberate middle.
+//
+// Why these three numbers (round 45, judged on the round-44 182-day sim):
+// breeding had quietly become HALF of all championship juice (422k GP of
+// ~835k, co-equal with gacha), so juice keeps the largest share — a breed fee
+// is first a patron of the fight schedule. The staker slice doubles from 5%
+// because it is the small barn's passive income: stud income concentrates
+// hard (the top 4 barns took 62% of it) while staked LT spreads much wider
+// (the same 4 held 41%), so every point moved from the stud column to the
+// staker column is redistributive. The stud owner absorbs the cut — still
+// wildly +EV against a 100 LT seat — and is compensated in KIND, not GP:
+// COVERS.OWNER_RESERVED rises 2 → 5 in the same ruling.
 export const BREED_SPLIT = {
-  // Doubled round 22 (2.5% → 5%) as part of widening every LT inflow: on the
-  // 160 fee that's 8.00 staker / 76.00 juice / 76.00 stud owner.
-  STAKER_SHARE: 0.05, // → the single LT staking pool
-  // The remainder splits evenly: fight juice / stud owner.
-  JUICE_SHARE_OF_REST: 0.5,
+  STAKER: 0.1, //     → the single LT staking pool
+  JUICE: 0.5, //      → the fight-juice pool (the Majors' purse subsidy)
+  STUD_OWNER: 0.4, // → the stud owner's wallet (paid via remainder in
+  //                    splitBreedFee, so the three parts sum to the cent)
 } as const;
 
 export const COVERS = {
@@ -1038,10 +1056,18 @@ export const COVERS = {
   // land SINK — stays readable. Stored raw it would be 10000, and a later edit
   // "correcting" that to 100 would silently make the seat cost one token.
   STUD_LISTING_LT: 100 * LT_CENTS,
-  PER_WEEK: 14, //     public cover slots per rooster per game-week…
-  OWNER_RESERVED: 2, // …plus these, reserved for the rooster's own farm.
+  PER_WEEK: 15, //     public cover slots per rooster per game-week…
+  OWNER_RESERVED: 5, // …plus these, reserved for the rooster's own farm.
   // The point of the cap: top studs sell out → their price can rise (later,
   // when pricing unlocks) → demand overflows into other studs.
+  //
+  // 14+2 → 15+5 (ruled 2026-08-08, round 45): the owner-reserved raise is the
+  // stud owner's COMPENSATION for BREED_SPLIT trimming their cash share
+  // 47.5% → 40% — it rewards the barn that bred and fought a great rooster
+  // (breed with him more) rather than the one merely renting him out. Not a
+  // dead letter: in the round-44 182-day sim the 2-slot owner cap actually
+  // BOUND in 117 of 477 own-stud weeks (25%) — bots already wanted more own
+  // covers than the cap allowed, so no new appetite needed teaching.
 } as const;
 
 // ── Lobbies (re-ruled 2026-08-03: PURE PvP — the house supplies NOBODY) ─────

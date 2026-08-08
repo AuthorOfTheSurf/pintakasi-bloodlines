@@ -29,18 +29,19 @@ describe("breed", () => {
     expect(egg.motherId).toBe("starter-2");
     expect(egg.fatherId).toBe("starter-1");
     expect(feePaid).toBe(ECONOMY.BREED_FEE);
-    // The ruled split, exact: 160 GP → 8.00 staker / 76.00 juice / 76.00 stud
-    // owner — and the pieces sum back to the fee, to the cent. (The staker
-    // cut doubled from 2.5% to 5% in round 22; it used to be 4/78/78.)
-    expect(split).toEqual({ feeGp: 160, stakerPoolCents: 800, juicePoolCents: 7600, studOwnerCents: 7600 });
+    // The ruled split, exact: 160 GP → 16.00 staker / 80.00 juice / 64.00
+    // stud owner — and the pieces sum back to the fee, to the cent. (History:
+    // 4/78/78 at round 21's 2.5% staker, 8/76/76 from round 22, this shape
+    // since round 45 — the PFL ruling in config's BREED_SPLIT comment.)
+    expect(split).toEqual({ feeGp: 160, stakerPoolCents: 1600, juicePoolCents: 8000, studOwnerCents: 6400 });
     expect(split.stakerPoolCents + split.juicePoolCents + split.studOwnerCents).toBe(16000);
-    // Own stud: the 76.00 stud share flows straight back — net cost 84 GP.
+    // Own stud: the 64.00 stud share flows straight back — net cost 96 GP.
     const farm = db.select().from(farms).where(eq(farms.id, "farm-1")).get()!;
-    expect(farm.gp).toBe(ECONOMY.STARTING_GP - 84);
+    expect(farm.gp).toBe(ECONOMY.STARTING_GP - 96);
     expect(farm.gpCents).toBe(0);
     const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
-    expect(state.stakerPoolCents).toBe(800);
-    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 7600); // genesis seed + the cover's cut
+    expect(state.stakerPoolCents).toBe(1600);
+    expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 8000); // genesis seed + the cover's cut
   });
 
   test("child stats stay in bounds and near the parent average", () => {
@@ -183,7 +184,7 @@ describe("the breeding barn (breeding PvP)", () => {
     expect(() => w.breeding.breed("starter-2", "rival-stud")).toThrow(/not listed/);
     w.rivalBreeding.listStud("rival-stud");
     const { egg, split } = w.breeding.breed("starter-2", "rival-stud");
-    // Hens keep the egg; the stud's owner banks 78.00 GP.
+    // Hens keep the egg; the stud's owner banks the stud share.
     expect(egg.farmId).toBe("farm-1");
     const rival = w.db.select().from(farms).where(eq(farms.id, w.rivalId)).get()!;
     expect(rival.gp).toBe(ECONOMY.STARTING_GP + split.studOwnerCents / 100);
@@ -199,7 +200,7 @@ describe("the breeding barn (breeding PvP)", () => {
     // Both own retired roosters (unlisted — owner slots) + the listed rival.
     expect(names).toEqual(["Bagwis", "Tandang Pula", "rival-stud"]);
     expect(studs.find((s) => s.name === "rival-stud")!.mine).toBe(false);
-    expect(studs.find((s) => s.name === "rival-stud")!.coversLeft).toBe(14);
+    expect(studs.find((s) => s.name === "rival-stud")!.coversLeft).toBe(COVERS.PER_WEEK);
     // Kin exclusion is NAMED, not hidden: breed a daughter, browse with her.
     w.breeding.breed("starter-2", "starter-1");
     const egg = w.db.select().from(birds).all().find((b) => b.name === "Egg of Dalisay")!;
@@ -210,24 +211,31 @@ describe("the breeding barn (breeding PvP)", () => {
     expect(excluded.length).toBe(0);
   });
 
-  test("covers cap: 14 public a week, 2 owner-reserved — and they overflow", () => {
+  test("covers cap: the public and owner-reserved slots fill, then overflow", () => {
     const w = withRival();
     w.rivalBreeding.listStud("rival-stud");
-    // Owner slots: two of the rival's own hens cover, the third refuses.
-    w.rivalBreeding.breed("rival-hen", "rival-stud");
-    w.rivalBreeding.breed("rival-hen-2", "rival-stud");
-    expect(() => w.rivalBreeding.breed("rival-hen-3", "rival-stud")).toThrow(/owner covers/);
-    // Public slots: 14 outside hens, the 15th refuses.
-    for (let i = 0; i < 14; i++) {
+    // Config-driven since round 45 (14+2 → 15+5): mint however many hens the
+    // caps demand, so the next re-ruling can't silently hollow this test out.
+    const mkHen = (id: string, farmId: string) =>
       w.db
         .insert(birds)
         .values({
-          id: `hen-${i}`, farmId: "farm-1", name: `hen-${i}`, sex: "female", status: "retired",
+          id, farmId, name: id, sex: "female", status: "retired",
           agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
           element: "Fire", halfStars: 4, birthWeek: -5, birthDay: -35,
           retiredBy: "manual", retiredWeek: 0, motherId: null, fatherId: null,
         })
         .run();
+    // Owner slots: the rival's own hens cover up to the reserve, the next refuses.
+    for (let i = 0; i < COVERS.OWNER_RESERVED; i++) {
+      mkHen(`rival-own-hen-${i}`, w.rivalId);
+      w.rivalBreeding.breed(`rival-own-hen-${i}`, "rival-stud");
+    }
+    mkHen("rival-own-hen-over", w.rivalId);
+    expect(() => w.rivalBreeding.breed("rival-own-hen-over", "rival-stud")).toThrow(/owner covers/);
+    // Public slots: outside hens fill every public slot, the next refuses.
+    for (let i = 0; i < COVERS.PER_WEEK; i++) {
+      mkHen(`hen-${i}`, "farm-1");
       w.breeding.breed(`hen-${i}`, "rival-stud");
     }
     expect(() => w.breeding.breed("starter-2", "rival-stud")).toThrow(/covered out/);

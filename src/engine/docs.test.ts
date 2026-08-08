@@ -135,8 +135,9 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(TOOL_DESCRIPTIONS.enter_claimer).not.toMatch(/even if it went unmatched/i);
   });
 
-  // Drift #6: BREED_SPLIT.STAKER_SHARE is 0.05, so a stud owner banks 76.00
-  // GP of a 160 GP cover, not 78.00 (that was round 21's 2.5%-staker rate).
+  // Drift #6: BREED_SPLIT routes 10% staker / 50% juice / 40% stud owner
+  // (round 45), so a stud owner banks 64.00 GP of a 160 GP cover — not 78.00
+  // (round 21's 2.5%-staker rate) and not 76.00 (rounds 22–44's even split).
   // Computed through splitBreedFee — the same function breeding.ts pays
   // out with — so this can't drift from the engine's own centi-GP math.
   test("the stud owner's share is computed from splitBreedFee, not a stale 78.00", () => {
@@ -783,6 +784,12 @@ describe("The two WHY comments this round's audit flagged stay fixed", () => {
   test("config.ts's breed-split comment doesn't contradict BREED_SPLIT", () => {
     const src = readFileSync(join(import.meta.dir, "config.ts"), "utf8");
     expect(src).not.toMatch(/4\.00 staker \/ 78\.00 juice \/ 78\.00 stud owner/);
+    // Round 45 upgrade: the comment's worked example must quote the LIVE
+    // split — computed here through splitBreedFee, so changing the shares
+    // without updating the prose beside them fails this test.
+    const live = splitBreedFee(ECONOMY.BREED_FEE);
+    const [staker, juice, owner] = [live.stakerPoolCents, live.juicePoolCents, live.studOwnerCents].map(fmtGp);
+    expect(src).toMatch(new RegExp(`${staker}[\\s\\S]{0,200}${juice}[\\s\\S]{0,200}${owner}`));
   });
 
   // lobbies.ts:163's class doc comment used to describe the pre-round-23

@@ -134,7 +134,7 @@ export default function LandPage() {
   const exampleClaimTag = CLAIMER.PRICES[2];
   const exampleClaimRakeCents = Math.round(exampleClaimTag * 100 * STAKER_FLOWS.CLAIM_RAKE);
   const exampleGachaCents = Math.round(ECONOMY.GACHA_ROLL_PRICE * 100 * STAKER_FLOWS.GACHA_SHARE);
-  const exampleBreedCents = Math.round(ECONOMY.BREED_FEE * 100 * BREED_SPLIT.STAKER_SHARE);
+  const exampleBreedCents = Math.round(ECONOMY.BREED_FEE * 100 * BREED_SPLIT.STAKER);
   // DAILY_BUY_CAP is in hundredths; the price is quoted per 100 WHOLE tokens,
   // so the cap has to come back to tokens before it meets the price.
   const dailyBuyCapTokens = LAND.DAILY_BUY_CAP / LT_CENTS;
@@ -463,7 +463,7 @@ export default function LandPage() {
             </tr>
             <tr>
               <td>Every breed cover</td>
-              <td className="num">{(BREED_SPLIT.STAKER_SHARE * 100).toFixed(0)}%</td>
+              <td className="num">{(BREED_SPLIT.STAKER * 100).toFixed(0)}%</td>
               <td>
                 The {ECONOMY.BREED_FEE} GP cover fee sends {fmtGp(exampleBreedCents)} GP to the pool
                 before the stud owner and the fight-juice pool split the rest.
