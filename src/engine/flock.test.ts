@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { battleLog, birds, events } from "@/db/schema";
+import { birds, events } from "@/db/schema";
+import { recordFight } from "./scout";
 import { seedGame } from "@/db/seed-data";
 import { weatherOfDay, type Element } from "./config";
 import { Flock } from "./flock";
@@ -242,8 +243,7 @@ describe("the form book (weather on past fights)", () => {
     pitFigure: number,
     result: "win" | "loss" = "win"
   ) {
-    db.insert(battleLog)
-      .values({
+    recordFight(db, {
         dayIndex,
         lobbyId: 1,
         farmId,
@@ -259,8 +259,7 @@ describe("the form book (weather on past fights)", () => {
         pitFigure,
         gpDeltaCents: 0,
         seed: 1,
-      })
-      .run();
+    });
   }
 
   /** The first `n` days on which `element` is the ascendant one, from day 0. */

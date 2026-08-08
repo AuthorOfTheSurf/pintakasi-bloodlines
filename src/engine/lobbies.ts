@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
+  birdForm,
   birds,
   claims,
   farms,
@@ -39,7 +40,7 @@ import {
 import { emit, fmtGp } from "./events";
 import { creditCents, payStakers } from "./farms";
 import { overallGradeOf } from "./grades";
-import { normalizedScoutFigure } from "./scout";
+import { recordFight } from "./scout";
 import { simulatePair, toCombatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canJuvenile, canRealFight } from "./lifecycle";
@@ -388,7 +389,29 @@ export class Lobbies {
       gpCents: -fee * 100,
       message: `entered ${bird.name} — ${labelOf(lobby)} (lobby #${lobby.id}, ${fee} GP escrowed)`,
     });
-    return { entryId: inserted.id, lobby: this.viewLobby(lobby.id) };
+    // ⚠ THE CONFIRMATION VIEW IS LAZY (round 44), and it was 21% OF THE WHOLE
+    // SIMULATION. Every bot entry built a full LobbyView — lobby row, entries,
+    // the farm/bird lookup, a past-performance card per own entry — and then
+    // `void`ed it: the bots and auto-play wrap enter() in quietly() and read
+    // nothing back, while the two API routes serialize the result immediately.
+    // A getter gives both callers what they actually use: the API still gets
+    // its receipt (built at serialization time, microseconds later, identical
+    // content), the bots never trigger the build at all. Measured: 45.7s of a
+    // 217s 112-day run was this one discarded view.
+    //
+    // The one semantic to know: `.lobby` re-derives on ACCESS, so a caller who
+    // holds the result across later mutations sees the lobby's current state,
+    // not a snapshot of the moment of entry. Nothing does that today — access
+    // it before mutating further if you need the snapshot reading.
+    const lobbyId = lobby.id;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    return {
+      entryId: inserted.id,
+      get lobby() {
+        return self.viewLobby(lobbyId);
+      },
+    };
   }
 
   /**
@@ -487,21 +510,25 @@ export class Lobbies {
   }
 
   /**
-   * The past-performance lines: record + figures per format, from the battle
-   * log. Comparing avgFigure ACROSS formats is how a bird gets typed.
+   * The past-performance lines: record + figures per format. Comparing
+   * avgFigure ACROSS formats is how a bird gets typed.
+   *
+   * Read off the scout's running book (bird_form) since round 44, not the raw
+   * battle log — this is called for every carding decision every day, and the
+   * per-career scan it used to do was the sim's superlinear cost. Same
+   * numbers: the book sums the same rows, and the average is still divided
+   * and rounded here at read time.
    */
   formatRecords(birdId: string): Partial<Record<FightFormat, FormatRecord>> {
-    const rows = this.database.select().from(battleLog).where(eq(battleLog.birdId, birdId)).all();
     const out: Partial<Record<FightFormat, FormatRecord>> = {};
-    for (const row of rows) {
-      const rec = (out[row.format] ??= { fights: 0, wins: 0, losses: 0, avgFigure: 0, bestFigure: 0 });
-      rec.fights += 1;
-      if (row.result === "win") rec.wins += 1;
-      else rec.losses += 1;
-      rec.avgFigure += row.pitFigure; // sum for now, divided below
-      rec.bestFigure = Math.max(rec.bestFigure, row.pitFigure);
-    }
-    for (const rec of Object.values(out)) rec.avgFigure = Math.round(rec.avgFigure / rec.fights);
+    for (const row of this.database.select().from(birdForm).where(eq(birdForm.birdId, birdId)).all())
+      out[row.format] = {
+        fights: row.fights,
+        wins: row.wins,
+        losses: row.losses,
+        avgFigure: Math.round(row.figureSum / row.fights),
+        bestFigure: row.bestFigure,
+      };
     return out;
   }
 
@@ -519,21 +546,57 @@ export class Lobbies {
    * a claimer target is exactly the bird you most need to scout.
    */
   scoutReport(birdId: string): ScoutReport {
-    const records = this.formatRecords(birdId);
-    const normalizedTotals = Object.fromEntries(FORMAT_NAMES.map((f) => [f, 0])) as Record<FightFormat, number>;
-    for (const row of this.database.select().from(battleLog).where(eq(battleLog.birdId, birdId)).all())
-      normalizedTotals[row.format] += normalizedScoutFigure(
-        row.pitFigure,
-        row.selfGrade as import("./grades").Grade,
-        row.opponentGrade as import("./grades").Grade
-      );
+    // One keyed read of the running book (≤5 rows) — round 44. This used to
+    // scan the bird's whole battle_log TWICE (records, then normalization),
+    // per bird, per decision, per day. bird_form's norm_sum accumulated the
+    // same normalizedScoutFigure values in the same row order, so the scores
+    // below are bit-identical to what the scans produced.
+    return Lobbies.buildScoutReport(
+      this.database.select().from(birdForm).where(eq(birdForm.birdId, birdId)).all()
+    );
+  }
+
+  /**
+   * The scout's read on a whole ROSTER at once — same report, one chunked
+   * query instead of one per bird (round 44). The crown chase and the daily
+   * carding loop score every eligible bird every day; per-bird reads made
+   * that tens of thousands of tiny queries a day at the end of a long run.
+   * Every requested bird gets a report — an unraced one reads all-prior,
+   * exactly as scoutReport would say.
+   */
+  scoutReports(birdIds: string[]): Map<string, ScoutReport> {
+    const rowsByBird = new Map<string, (typeof birdForm.$inferSelect)[]>(birdIds.map((id) => [id, []]));
+    // Chunked under SQLite's bound-parameter ceiling, like the pedigree
+    // prefetch in breeding.ts.
+    for (let i = 0; i < birdIds.length; i += 500)
+      for (const row of this.database
+        .select()
+        .from(birdForm)
+        .where(inArray(birdForm.birdId, birdIds.slice(i, i + 500)))
+        .all())
+        rowsByBird.get(row.birdId)!.push(row);
+    return new Map(birdIds.map((id) => [id, Lobbies.buildScoutReport(rowsByBird.get(id)!)]));
+  }
+
+  /** The arithmetic shared by scoutReport and scoutReports — see scoutReport. */
+  private static buildScoutReport(rows: (typeof birdForm.$inferSelect)[]): ScoutReport {
+    const book = new Map(rows.map((r) => [r.format, r]));
     const blades = {} as Record<FightFormat, ScoutBlade>;
     let totalFights = 0;
     for (const f of FORMAT_NAMES) {
-      const rec = records[f] ?? { fights: 0, wins: 0, losses: 0, avgFigure: 0, bestFigure: 0 };
+      const row = book.get(f);
+      const rec = row
+        ? {
+            fights: row.fights,
+            wins: row.wins,
+            losses: row.losses,
+            avgFigure: Math.round(row.figureSum / row.fights),
+            bestFigure: row.bestFigure,
+          }
+        : { fights: 0, wins: 0, losses: 0, avgFigure: 0, bestFigure: 0 };
       totalFights += rec.fights;
       const score =
-        (normalizedTotals[f] + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
+        ((row?.normSum ?? 0) + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
         (rec.fights + SCOUT.PRIOR_WEIGHT);
       blades[f] = { ...rec, score: Math.round(score * 10) / 10 };
     }
@@ -932,9 +995,9 @@ export class Lobbies {
       // `forcedRetirements` field on a FightReport stays, always empty from
       // here, because the resolution shape is public API and the Majors still
       // fill it.
-      const inserted = database
-        .insert(battleLog)
-        .values({
+      // Through recordFight, not a bare insert — the log row and the scout's
+      // running book (bird_form) move together or not at all.
+      const insertedId = recordFight(database, {
           dayIndex: lobby.dayOpened, // the fight belongs to the day it was carded
           lobbyId: lobby.id,
           farmId: side.entry.farmId,
@@ -959,10 +1022,8 @@ export class Lobbies {
           // stake, not the entry fee — one fight is a third of the night.
           gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
           seed: simSeed,
-        })
-        .returning({ id: battleLog.id })
-        .get();
-      logIds.push(inserted.id);
+      });
+      logIds.push(insertedId);
       // The entry's status and fight count are set once, at settle-up in
       // `complete` — a bird may be in the middle of its group here.
     }
@@ -1273,11 +1334,12 @@ export class Lobbies {
         stars: bird.stars,
         // ONE lifetime record (ruled round 15) — juvenile fights included.
         career: { wins: bird.wins, losses: bird.losses },
-        // ⚠ THE ONE EXPENSIVE FIELD ON A CARD (round 43). `formatRecords` scans a
-        // bird's WHOLE career to build its per-blade past-performance line, so it
-        // grows for every bird all run — and the bots' claim shopper, which reads
-        // only `career` and `age`, was paying it for every bird on every claimer
-        // field twice a day. Omitted at detail "field"; see BoardDetail.
+        // ⚠ THE ONE EXPENSIVE FIELD ON A CARD (round 43). `formatRecords` used to
+        // scan a bird's WHOLE career for its per-blade past-performance line —
+        // and the bots' claim shopper, which reads only `career` and `age`, was
+        // paying it for every bird on every claimer field twice a day. Round 44's
+        // running book made it one keyed read, but it is still the only field
+        // here that costs a query, so the detail levels stay. See BoardDetail.
         formatRecords: records ? this.formatRecords(bird.id) : {},
       },
       mine: entry.farmId === this.farmId,

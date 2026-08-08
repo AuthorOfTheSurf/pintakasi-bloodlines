@@ -24,6 +24,7 @@ import {
 } from "./config";
 import { Flock } from "./flock";
 import { mulberry32 } from "./rng";
+import { recordFight } from "./scout";
 import { computeTopline } from "./snapshots";
 import { Game } from "./game";
 import { Lobbies } from "./lobbies";
@@ -80,8 +81,7 @@ const byName = (db: DB, flock: Flock, name: string) =>
  * ranking test you have to re-roll every time the sim changes.
  */
 function earned(db: DB, birdId: string, farmId: string, cents: number): void {
-  db.insert(battleLog)
-    .values({
+  recordFight(db, {
       dayIndex: 0,
       lobbyId: 1,
       farmId,
@@ -96,8 +96,7 @@ function earned(db: DB, birdId: string, farmId: string, cents: number): void {
       pitFigure: 50,
       gpDeltaCents: cents,
       seed: 1,
-    })
-    .run();
+  });
 }
 
 /** One barn's wallet, in whole GP — the unit an entry fee is charged in. */
@@ -1618,15 +1617,13 @@ describe("the juvenile crown chase declares before it sends", () => {
    */
   function readsWellAt(db: DB, farmId: string, birdId: string, format: FightFormat, figure = 90) {
     for (let i = 0; i < SCOUT.MIN_READS; i++) {
-      db.insert(battleLog)
-        .values({
+      recordFight(db, {
           dayIndex: i, lobbyId: 1, farmId, birdId,
           mode: "juvenile", format,
           opponentBirdId: "ghost", opponentFarmId: "house", opponentName: "Sparring Ghost",
           selfGrade: SCOUT.REFERENCE_GRADE, opponentGrade: SCOUT.REFERENCE_GRADE,
           side: 0, result: "win", pitFigure: figure, gpDeltaCents: 0, seed: i,
-        })
-        .run();
+      });
     }
   }
 
@@ -1810,8 +1807,7 @@ describe("the committee's book", () => {
 
 /** As `earned`, but the figure is what matters and the money is zero. */
 function figured(db: DB, birdId: string, farmId: string, pitFigure: number): void {
-  db.insert(battleLog)
-    .values({
+  recordFight(db, {
       dayIndex: 0,
       lobbyId: 1,
       farmId,
@@ -1826,6 +1822,5 @@ function figured(db: DB, birdId: string, farmId: string, pitFigure: number): voi
       pitFigure,
       gpDeltaCents: 0,
       seed: 1,
-    })
-    .run();
+  });
 }

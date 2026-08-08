@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 // A farm = one player's (or agent's) whole operation: identity, wallet,
 // land, and barn. Auth is a bearer key — low security by design for the
@@ -206,6 +206,43 @@ export const battleLog = sqliteTable("battle_log", {
   // without asking what actually reads it.
   seed: integer("seed").notNull(),
 });
+
+// THE SCOUT'S RUNNING BOOK (round 44) — per-(bird, blade) sums of battle_log,
+// updated in the same transaction as every log insert (engine/scout.ts
+// recordFight, the ONLY door battle_log rows may enter through). This exists
+// for speed, not truth: the scout used to re-read a bird's whole career for
+// every carding decision, every day, and careers only get longer — the
+// superlinear half of the sim's cost curve. Everything here is derivable from
+// battle_log, and the doctor proves the two agree every run (checkScoutBook),
+// so a second insert site that forgets the book fails loudly instead of
+// quietly serving stale form.
+//
+// FOG-SAFE BY CONSTRUCTION: every column is a sum over battle_log rows, which
+// are already public-card facts (figures, results, grade snapshots). Nothing
+// hidden is cached here. norm_sum accumulates normalizedScoutFigure in row
+// order — the same order the old per-career scan summed in, so the scout's
+// scores are bit-identical to what re-deriving would produce.
+export const birdForm = sqliteTable(
+  "bird_form",
+  {
+    birdId: text("bird_id").notNull(),
+    format: text("format", { enum: ["b1", "b2", "b3", "b4", "b5"] }).notNull(),
+    fights: integer("fights").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    // Integer sum of pit figures — avgFigure is derived as
+    // Math.round(figureSum / fights) AT READ TIME, exactly as the old scan did.
+    figureSum: integer("figure_sum").notNull().default(0),
+    bestFigure: integer("best_figure").notNull().default(0),
+    // Float sum of normalized scout figures (grade steps make it fractional).
+    normSum: real("norm_sum").notNull().default(0),
+    // Sum of the POSITIVE gp deltas (cents) — daily-card winnings, the fight
+    // half of the Selection Committee's career-earnings book. Purse money
+    // stays on tournament_entries; the committee adds the two at read time.
+    earnCents: integer("earn_cents").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.birdId, t.format] })]
+);
 
 // A LOBBY — one slot on tonight's card, keyed by (mode, class, format[, tag]).
 // Since round 31 there is EXACTLY ONE per key per day and it grows without

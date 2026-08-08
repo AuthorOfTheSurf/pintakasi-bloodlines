@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
+import { birdForm, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import {
   DAY_NAMES,
   FORMATS,
@@ -20,6 +20,7 @@ import { Flock } from "./flock";
 import { canHardcore, canJuvenile } from "./lifecycle";
 import { overallGradeOf } from "./grades";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
+import { recordFight } from "./scout";
 
 /**
  * Which championship: the Thursday MAJORS (age 3+, hardcore, the crowns) or
@@ -422,6 +423,37 @@ export class Tournaments {
       .where(and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending")))
       .all()
       .filter((e) => ids.includes(e.tournamentId)).length;
+  }
+
+  /**
+   * WHICH of my birds already hold a pending seat in this week's crowns —
+   * any division, any blade (round 44). The rule it mirrors is enter()'s
+   * "one bird, one championship per week" refusal: the crown chasers used to
+   * re-attempt every eligible bird every day, and by late run thousands of
+   * attempts a day were thrown straight back for a bird seated on Monday.
+   * Skipping a bird this set names is exactly the attempt enter() refuses —
+   * bumped birds are NOT in it (status filter), so a bump still frees the
+   * bird to re-declare, which round 43 ruled it should.
+   */
+  myPendingBirdsThisWeek(): Set<string> {
+    const week = Tournaments.targetWeek(this.today());
+    const ids = new Set(
+      this.database
+        .select()
+        .from(tournaments)
+        .where(eq(tournaments.weekIndex, week))
+        .all()
+        .map((t) => t.id)
+    );
+    return new Set(
+      this.database
+        .select()
+        .from(tournamentEntries)
+        .where(and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending")))
+        .all()
+        .filter((e) => ids.has(e.tournamentId))
+        .map((e) => e.birdId)
+    );
   }
 
   /** The week's championships — fields PUBLIC, ranked as the committee sees them today. */
@@ -938,9 +970,9 @@ export class Tournaments {
             data: { by: "hardcore", tournamentId: t.id },
           });
       }
-      database
-        .insert(battleLog)
-        .values({
+      // Through recordFight, not a bare insert — the log row and the scout's
+      // running book (bird_form) move together or not at all.
+      recordFight(database, {
           // ⚠ ROUND 38 — THIS WAS HARDCODED TO PINTAKASI.DAY_OF_WEEK, so every
           // JUVENILE Championship fight was archived under THURSDAY's date
           // while it was actually fought on Wednesday. Two harms. The archive
@@ -975,8 +1007,7 @@ export class Tournaments {
           pitFigure: side.figure,
           gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle
           seed: simSeed,
-        })
-        .run();
+      });
     }
     const w = sim.winner;
     emit(database, {
@@ -1019,10 +1050,12 @@ export class Tournaments {
    * 65-bird book cost 195 queries per attempt, thousands of times a season.
    *
    * ⚠ THE ARITHMETIC IS DELIBERATELY UNCHANGED, to the cent and the rounding.
-   * `avgFigure` sums and counts in SQL but DIVIDES AND ROUNDS IN JS, because the
-   * old code did `Math.round(sum / count)` and moving that into SQLite would
-   * change results in the last digit — and this value is a bump tie-breaker, so a
-   * one-off would silently reorder who stands in a hardcore bracket.
+   * `avgFigure` reads integer sums (from bird_form since round 44 — the same
+   * sums the grouped battle_log query used to produce) but DIVIDES AND ROUNDS
+   * IN JS, because the old code did `Math.round(sum / count)` and moving that
+   * into SQLite would change results in the last digit — and this value is a
+   * bump tie-breaker, so a one-off would silently reorder who stands in a
+   * hardcore bracket.
    *
    * ⚠ AND EVERY REQUESTED BIRD MUST APPEAR IN THE MAP. A grouped query omits
    * birds with no `battle_log` rows, and an unraced bird is precisely the one
@@ -1034,20 +1067,24 @@ export class Tournaments {
     if (birdIds.length === 0) return out;
     for (const id of birdIds) out.set(id, { earningsCents: 0, wins: 0, avgFigure: 0 });
 
-    for (const row of database
-      .select({
-        birdId: battleLog.birdId,
-        earned: sql<number>`sum(max(0, ${battleLog.gpDeltaCents}))`,
-        figureSum: sql<number>`sum(${battleLog.pitFigure})`,
-        fights: sql<number>`count(*)`,
-      })
-      .from(battleLog)
-      .where(inArray(battleLog.birdId, birdIds))
-      .groupBy(battleLog.birdId)
-      .all()) {
-      const card = out.get(row.birdId)!;
-      card.earningsCents += row.earned ?? 0;
-      card.avgFigure = row.fights > 0 ? Math.round((row.figureSum ?? 0) / row.fights) : 0;
+    // The fight half of the book comes off bird_form (round 44) — the same
+    // sums the old grouped battle_log query produced, already maintained per
+    // (bird, blade) by recordFight, so this stopped re-aggregating whole
+    // careers on every full-field entry attempt. The committee's numbers span
+    // all five blades, so the per-blade rows are summed here in JS — integer
+    // sums, then the same Math.round division as always.
+    const fightSums = new Map<string, { earned: number; figureSum: number; fights: number }>();
+    for (const row of database.select().from(birdForm).where(inArray(birdForm.birdId, birdIds)).all()) {
+      const s = fightSums.get(row.birdId) ?? { earned: 0, figureSum: 0, fights: 0 };
+      s.earned += row.earnCents;
+      s.figureSum += row.figureSum;
+      s.fights += row.fights;
+      fightSums.set(row.birdId, s);
+    }
+    for (const [id, s] of fightSums) {
+      const card = out.get(id)!;
+      card.earningsCents += s.earned;
+      card.avgFigure = s.fights > 0 ? Math.round(s.figureSum / s.fights) : 0;
     }
 
     for (const row of database

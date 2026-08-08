@@ -36,7 +36,7 @@ import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
 import { Gacha } from "./gacha";
 import { canHardcore } from "./lifecycle";
-import { Lobbies, entryRefusal, type FightMode, type LobbySpec } from "./lobbies";
+import { Lobbies, entryRefusal, type FightMode, type LobbySpec, type ScoutReport } from "./lobbies";
 import { mulberry32, randInt, type Rng } from "./rng";
 import { DIVISION_RULES, Tournaments } from "./tournaments";
 
@@ -565,11 +565,16 @@ export class Bots {
     const cheapest = Math.min(
       ...cardOfDay(today).map((k) => feeFor(k.mode, k.classType, k.price))
     );
+    // The roster's scout reports, one query (round 44). Nothing writes
+    // battle_log during a barn's day — fights resolve at the tick — so the
+    // reports are stable for the whole loop and each bird's is just handed
+    // down instead of re-fetched inside pickOffering.
+    const reports = lobbies.scoutReports(rosterRows.map((b) => b.id));
     for (const bird of roster()) {
       if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
       const budget = gp() - RESERVE;
       if (budget < cheapest) break;
-      const spec = pickOffering(db, bot, bird, rng, today, discoveryPolicy, budget);
+      const spec = pickOffering(db, bot, bird, rng, today, discoveryPolicy, budget, reports.get(bird.id));
       // null = today's card had nothing this bird is eligible for. Counted
       // rather than swallowed: `quietly` hides every other entry failure, so
       // without this number a card that starved a class would look like bots
@@ -647,7 +652,9 @@ export function pickOffering(
   rng: Rng,
   today: number,
   discoveryPolicy: DiscoveryPolicy = "current",
-  budget = Infinity
+  budget = Infinity,
+  // Prefetched scout report — threaded through to bestFormat. See there.
+  report?: ScoutReport
 ): LobbySpec | null {
   // ELIGIBILITY FIRST, THEN AFFORDABILITY — the order matters for the caller's
   // bookkeeping. A null return means "today's card had nothing this bird may
@@ -660,7 +667,7 @@ export function pickOffering(
   const options = eligible.filter((k) => feeOf(k) <= budget);
   if (options.length === 0) return null;
 
-  const format = bestFormat(db, bird, rng, discoveryPolicy, new Set(options.map((k) => k.format)));
+  const format = bestFormat(db, bird, rng, discoveryPolicy, new Set(options.map((k) => k.format)), report);
   const atBlade = options.filter((k) => k.format === format);
 
   // Spend the sell draw UNCONDITIONALLY, before knowing whether a claimer is
@@ -878,6 +885,26 @@ export function scoutScores(db: DB, birdId: string): Record<FightFormat, number>
 }
 
 /**
+ * scoutScores for a whole roster in one query (round 44) — the crown chase
+ * scores every eligible bird every day, and a juvenile field can be thirty
+ * birds wide per barn. Same numbers, batched read.
+ */
+export function scoutScoresMany(
+  db: DB,
+  birdIds: string[]
+): Map<string, Record<FightFormat, number>> {
+  const reports = new Lobbies(db, "scout").scoutReports(birdIds);
+  return new Map(
+    birdIds.map((id) => [
+      id,
+      Object.fromEntries(
+        FORMAT_NAMES.map((f) => [f, reports.get(id)!.blades[f].score])
+      ) as Record<FightFormat, number>,
+    ])
+  );
+}
+
+/**
  * Pick tonight's blade for a bird — discovery-first (round 28).
  *
  * Two moves, in order:
@@ -899,9 +926,13 @@ export function bestFormat(
   bird: BirdView,
   rng: Rng,
   discoveryPolicy: DiscoveryPolicy = "current",
-  allowed?: ReadonlySet<FightFormat>
+  allowed?: ReadonlySet<FightFormat>,
+  // A prefetched report from Lobbies.scoutReports — pure query-saving (round
+  // 44): the carding loops score a whole roster, so the caller batches the
+  // read and hands each bird's report down. Identical numbers either way.
+  report?: ScoutReport
 ): FightFormat {
-  const report = new Lobbies(db, "scout").scoutReport(bird.id);
+  report ??= new Lobbies(db, "scout").scoutReport(bird.id);
   // ⚠ THE DRAW COUNT MUST NOT DEPEND ON `allowed` (round 31). Today's card
   // offers only some blades, so this now picks from a subset — but the jitter
   // below draws twice per blade inside a reduce, and shrinking the CANDIDATE
@@ -1045,9 +1076,9 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
     .all()
     .filter((b) => b.status === "active" && b.named && b.age === 1)
     .filter((b) => b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS);
-  // One scout read per bird — the report is a battleLog aggregation, and a
-  // juvenile field can be thirty birds wide.
-  const scores = new Map(qualified.map((b) => [b.id, scoutScores(db, b.id)]));
+  // One scout read for the whole field (round 44) — a juvenile field can be
+  // thirty birds wide per barn, and this runs every day.
+  const scores = scoutScoresMany(db, qualified.map((b) => b.id));
 
   // ⚠ EACH BIRD DECLARES FOR ONE CROWN FIRST — round 32 fixed a real bug here.
   //
@@ -1064,7 +1095,15 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
   // FOR — Zane, 2026-08-06: "The whole point of juvi season would be to at
   // least determine which extreme they are good at (B1/B2 vs. B4/B5)." The
   // crown a chick declares for IS that verdict.
+  // `seated` keeps its original meaning — the birds THIS CALL got a seat for —
+  // because the second pass deliberately skips them even if one is bumped
+  // later in the same call. `pending` is the round-44 saving: a chick seated
+  // on Monday used to be re-attempted every day after, and enter() threw
+  // "already registered" at every one of them. Skipping a pending bird is the
+  // same outcome without the throw; refreshed on success because our own
+  // entry can bump our own weakest (see chaseCrowns below).
   const seated = new Set<string>();
+  let pending = tournaments.myPendingBirdsThisWeek();
   const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
   for (const [i, bird] of qualified.entries()) {
     const s = scores.get(bird.id)!;
@@ -1082,12 +1121,14 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
     let sent = 0;
     for (const bird of declared
       .get(blade)!
+      .filter((b) => !seated.has(b.id) && !pending.has(b.id)) // both only ever threw — see above
       .sort((a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade])) {
       if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
       try {
         tournaments.enter(bird.id, blade, "juvenile");
         entered.push(bird.name);
         seated.add(bird.id);
+        pending = tournaments.myPendingBirdsThisWeek();
         sent++;
       } catch {
         /* already in this week, barn cap, or not qualified */
@@ -1101,12 +1142,13 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
   // nothing and isn't hardcore, so a second-choice blade beats no blade.
   for (const blade of blades) {
     let sent = tournaments.myEntriesThisWeek(blade);
-    for (const bird of qualified.filter((b) => !seated.has(b.id))) {
+    for (const bird of qualified.filter((b) => !seated.has(b.id) && !pending.has(b.id))) {
       if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
       try {
         tournaments.enter(bird.id, blade, "juvenile");
         entered.push(bird.name);
         seated.add(bird.id);
+        pending = tournaments.myPendingBirdsThisWeek();
         sent++;
       } catch {
         /* already in this week, barn cap, or not qualified */
@@ -1174,7 +1216,7 @@ export function chaseCrowns(
   // the SCOUT scores (round 28): a Major is hardcore, so the read is the
   // demonstrated form, deterministic — nobody experiments in the ring that
   // retires losers.
-  const scores = new Map(eligible.map((b) => [b.id, scoutScores(db, b.id)]));
+  const scores = scoutScoresMany(db, eligible.map((b) => b.id));
   const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
   for (const [i, bird] of eligible.entries()) {
     // Exact ties spread ROUND-ROBIN across the tied crowns. With the fog
@@ -1203,16 +1245,28 @@ export function chaseCrowns(
   const canAfford = () =>
     db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp >= fee + reserve;
 
+  // Birds already holding a seat this week — attempting one only ever throws
+  // "already registered", and both passes below used to pay that throw for
+  // every seated bird, every blade, every day (round 44). Skipping one is the
+  // identical outcome — but the set must be REFRESHED after every success,
+  // not merely appended to: our own entry can bump our own weakest bird
+  // (enter() re-reads the wallet for exactly this case), and a bumped bird is
+  // pending no more — the old code would re-enter it in pass 2, so a stale
+  // snapshot here would silently un-declare it. Successes are capped at
+  // MAX_PER_BARN × blades a day, so the refresh costs nothing that matters.
+  let seated = tournaments.myPendingBirdsThisWeek();
   const send = (blade: FightFormat, candidates: BirdView[]): void => {
     let sent = tournaments.myEntriesThisWeek(blade);
     for (const bird of candidates.sort(
       (a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade]
     )) {
       if (sent >= PINTAKASI.MAX_PER_BARN) break;
+      if (seated.has(bird.id)) continue;
       if (!canAfford()) return; // this crown is out of reach — try the next one
       try {
         tournaments.enter(bird.id, blade);
         entered.push(bird.name);
+        seated = tournaments.myPendingBirdsThisWeek();
         sent++;
       } catch {
         /* already committed elsewhere, barn full, or the committee said no */

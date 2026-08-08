@@ -99,6 +99,24 @@ CREATE TABLE IF NOT EXISTS battle_log (
   seed INTEGER NOT NULL
 );
 
+-- The scout's running book (round 44): per-(bird, blade) sums of battle_log,
+-- written by engine/scout.ts recordFight in the same transaction as the log
+-- row. Pure cache -- everything is re-derivable from battle_log, and the
+-- doctor's checkScoutBook invariant proves they agree every run. WITHOUT
+-- ROWID: tiny rows, always fetched by their composite key.
+CREATE TABLE IF NOT EXISTS bird_form (
+  bird_id TEXT NOT NULL,
+  format TEXT NOT NULL CHECK (format IN ('b1','b2','b3','b4','b5')),
+  fights INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0,
+  figure_sum INTEGER NOT NULL DEFAULT 0,
+  best_figure INTEGER NOT NULL DEFAULT 0,
+  norm_sum REAL NOT NULL DEFAULT 0,
+  earn_cents INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bird_id, format)
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS lobbies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mode TEXT NOT NULL CHECK (mode IN ('juvenile','real')),

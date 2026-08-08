@@ -151,6 +151,9 @@ export function playHonestDay(
     flockApi.all().filter((b) => b.status === "active"),
     day
   );
+  // One query for the whole flock's scout reports, mirroring the bots'
+  // carding loop (round 44) — see the note there for why they are stable.
+  const reports = lobbies.scoutReports(carding.map((b) => b.id));
   for (const bird of carding) {
     if (!weatherCardsToday(bird, day, cardRng, HONEST_ENTRY_RATE)) continue;
     // ⚠ ROUND 31 deleted the copy of this decision that used to live here.
@@ -163,7 +166,7 @@ export function playHonestDay(
     // it, `lobbies.enter` throws and `quietly` swallows the failure, so a stable
     // that ran short would silently stop carding with nothing reporting why.
     const budget = farmsApi.rowById(farmId).gp - AUTO_RESERVE;
-    const spec = pickOffering(db, AUTO_PLAY_STYLE, bird, cardRng, day, discoveryPolicy, budget);
+    const spec = pickOffering(db, AUTO_PLAY_STYLE, bird, cardRng, day, discoveryPolicy, budget, reports.get(bird.id));
     if (spec === null) continue; // nothing on tonight's card this bird can enter
     quietly(() => lobbies.enter(bird.id, spec));
   }

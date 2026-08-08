@@ -26,6 +26,7 @@ import {
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
+import { recordFight } from "./scout";
 import { expectConserved, makeBird, onCard } from "./testkit";
 
 /**
@@ -701,9 +702,7 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
 describe("the scout report (round 28 — reading a bird through the fog)", () => {
   /** One finished fight, reduced to the columns the scout reads. */
   function logFigure(w: ReturnType<typeof world>, birdId: string, format: "b1" | "b2", pitFigure: number) {
-    w.db
-      .insert(battleLog)
-      .values({
+    recordFight(w.db, {
         dayIndex: 0,
         lobbyId: 1,
         farmId: w.devId,
@@ -719,8 +718,7 @@ describe("the scout report (round 28 — reading a bird through the fog)", () =>
         pitFigure,
         gpDeltaCents: 0,
         seed: 1,
-      })
-      .run();
+    });
   }
 
   test("zero career fights: every blade reads exactly the prior — unknown, never bad", () => {
@@ -1270,5 +1268,32 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
     // And the singletons see all three of theirs, barn-mates being irrelevant.
     const theirs = view.entries.find((e) => e.farm.name === b.name)!;
     expect(theirs.drew!.length).toBe(FIGHTS_PER_GROUP_BIRD);
+  });
+});
+
+describe("the batched scout read (round 44 — one query per roster)", () => {
+  test("scoutReports agrees with scoutReport bird for bird, unraced birds included", () => {
+    // WHY: the carding loop and crown chase read the whole roster through
+    // scoutReports now. If the batched read ever drifts from the single one
+    // — a missing bird, a dropped blade, different rounding — every bot
+    // decision quietly forks from what a player's get_bird shows. The
+    // contract is strict equality, not similarity.
+    const w = world();
+    const kidlat = byName(w.devFlock, "Kidlat");
+    const alab = byName(w.devFlock, "Alab");
+    for (let i = 0; i < 4; i++)
+      recordFight(w.db, {
+        dayIndex: i, lobbyId: 1, farmId: w.devId, birdId: kidlat.id,
+        mode: "real", format: i % 2 === 0 ? "b1" : "b4", lobby: "open",
+        opponentBirdId: "rival-bird", opponentFarmId: w.rivalId, opponentName: "Rival",
+        side: 0, result: i === 0 ? "loss" : "win", pitFigure: 40 + i * 7,
+        gpDeltaCents: i === 0 ? -2000 : 3800, seed: i,
+      });
+    // Alab stays unraced on purpose — the map must still carry its all-prior
+    // report, exactly as scoutReport would say.
+    const batched = w.dev.scoutReports([kidlat.id, alab.id]);
+    expect(batched.get(kidlat.id)).toEqual(w.dev.scoutReport(kidlat.id));
+    expect(batched.get(alab.id)).toEqual(w.dev.scoutReport(alab.id));
+    expect(w.dev.scoutReports([]).size).toBe(0);
   });
 });

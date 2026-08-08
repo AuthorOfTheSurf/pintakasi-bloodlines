@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { battleLog, birds, farms, gameState, lobbies, lobbyEntries } from "@/db/schema";
+import { birds, farms, gameState, lobbies, lobbyEntries } from "@/db/schema";
+import { recordFight } from "./scout";
 import { seedGame } from "@/db/seed-data";
 import { BOT_FARMS, BREEDING_PLAN, WEATHER_APPETITE } from "./bot-config";
 import {
@@ -182,12 +183,13 @@ describe("the scout's blade pick", () => {
     // extreme, B5. The figure values are irrelevant: both choices are still
     // in the exploration branch.
     for (let i = 0; i < SCOUT.MIN_READS; i++) {
-      w.db.insert(battleLog).values({
+      // recordFight, not a bare insert — the scout reads the running book now.
+      recordFight(w.db, {
         dayIndex: i, lobbyId: 1, farmId: bird.farmId, birdId: bird.id,
         mode: "real", format: "b1", opponentBirdId: "ghost", opponentFarmId: "house",
         opponentName: "Sparring Ghost", side: 0, result: "loss", pitFigure: 50,
         gpDeltaCents: 0, seed: i,
-      }).run();
+      });
     }
     const explore = () => 0;
     expect(bestFormat(w.db, bird, explore, "current")).toBe("b2");

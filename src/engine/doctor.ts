@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
+  birdForm,
   birds,
   claims,
   events,
@@ -34,7 +35,7 @@ import {
 import { BOT_FARMS } from "./bot-config";
 import { GameClock } from "./game-clock";
 import { replayFidelity } from "./replay";
-import { gradeOf } from "./grades";
+import { gradeOf, type Grade } from "./grades";
 import { ageOf } from "./lifecycle";
 import { normalizedScoutFigure } from "./scout";
 import {
@@ -551,6 +552,72 @@ function checkFightCounts(db: DB): Invariant {
     name: "fight counts match the log",
     passed: offenders.length === 0,
     detail: `${settled.length} settled entries · ${totalFights} fights claimed · ${offenders.length} mismatched`,
+    offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE),
+  };
+}
+
+/**
+ * THE SCOUT'S BOOK MATCHES THE LOG (round 44's ninth invariant).
+ *
+ * bird_form is a pure cache: per-(bird, blade) sums of battle_log, advanced by
+ * recordFight in the same transaction as every log insert, because the scout
+ * reading raw careers per decision was the sim's superlinear cost. A cache
+ * that drifts is worse than the scan it replaced — every carding decision in
+ * the game reads it, and a stale book would misprice birds silently, forever.
+ * The failure this exists to catch is a NEW battle_log insert site that
+ * bypasses recordFight: nothing else would notice, exactly like the silent GP
+ * burns of rounds 14 and 22.
+ *
+ * Recomputed from scratch in one pass and compared field by field. norm_sum
+ * gets a 1e-6 tolerance — recomputing sums the same float64 values in the
+ * same rowid order, so it should be bit-exact, but the invariant's job is
+ * catching missed rows (whole figures), not litigating the last ulp.
+ */
+function checkScoutBook(db: DB): Invariant {
+  type Sums = { fights: number; wins: number; losses: number; figureSum: number; bestFigure: number; normSum: number; earnCents: number };
+  const derived = new Map<string, Sums>();
+  for (const row of db.select().from(battleLog).all()) {
+    const k = `${row.birdId}|${row.format}`;
+    const s = derived.get(k) ?? { fights: 0, wins: 0, losses: 0, figureSum: 0, bestFigure: 0, normSum: 0, earnCents: 0 };
+    s.fights += 1;
+    if (row.result === "win") s.wins += 1;
+    else s.losses += 1;
+    s.figureSum += row.pitFigure;
+    s.bestFigure = Math.max(s.bestFigure, row.pitFigure);
+    s.normSum += normalizedScoutFigure(row.pitFigure, row.selfGrade as Grade, row.opponentGrade as Grade);
+    s.earnCents += Math.max(0, row.gpDeltaCents);
+    derived.set(k, s);
+  }
+  const offenders: string[] = [];
+  const bookRows = db.select().from(birdForm).all();
+  for (const b of bookRows) {
+    const k = `${b.birdId}|${b.format}`;
+    const s = derived.get(k);
+    if (!s) {
+      offenders.push(`${k} is in the book with no log rows`);
+      continue;
+    }
+    derived.delete(k);
+    if (
+      b.fights !== s.fights ||
+      b.wins !== s.wins ||
+      b.losses !== s.losses ||
+      b.figureSum !== s.figureSum ||
+      b.bestFigure !== s.bestFigure ||
+      b.earnCents !== s.earnCents ||
+      Math.abs(b.normSum - s.normSum) > 1e-6
+    )
+      offenders.push(
+        `${k}: book says ${b.fights}f ${b.wins}-${b.losses} Σ${b.figureSum}, log says ${s.fights}f ${s.wins}-${s.losses} Σ${s.figureSum}`
+      );
+  }
+  // Whatever is left in `derived` is a log row the book never saw — the
+  // bypassed-insert case this invariant exists for.
+  for (const k of derived.keys()) offenders.push(`${k} fought but is missing from the book`);
+  return {
+    name: "scout book matches the log",
+    passed: offenders.length === 0,
+    detail: `${bookRows.length} book lines audited · ${offenders.length} out of step`,
     offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE),
   };
 }
@@ -2084,6 +2151,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkNoStrandedEscrow(db), // round 41 — escrow only means something now a fee exists
     checkCardCap(db),
     checkFightCounts(db),
+    checkScoutBook(db), // round 44 — the scout's cache may never drift from the log
   ];
 
   // Per-day fight volume, diffed from the cumulative `fights` each daily

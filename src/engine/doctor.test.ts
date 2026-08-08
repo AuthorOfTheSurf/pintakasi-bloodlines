@@ -12,6 +12,7 @@ import {
 } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
+import { recordFight } from "./scout";
 import { Farms } from "./farms";
 import { seedWorld } from "./rng";
 import { ELEMENTS, FORMAT_NAMES, LT_CENTS, weatherOfDay, type FightFormat } from "./config";
@@ -161,7 +162,12 @@ describe("…and on a broken one", () => {
     const invariant = check(w.db, "pit figures");
     expect(invariant.passed).toBe(false);
     expect(invariant.offenders!.join(" ")).toContain("winner");
-    for (const i of others(w.db, "pit figures")) expect(i.passed).toBe(true);
+    // A tampered log row is, by construction, also out of step with the
+    // scout's book — that is checkScoutBook catching the same corruption,
+    // so it is the one related failure allowed here (same containment shape
+    // as the negative-pool test above).
+    for (const i of others(w.db, "pit figures"))
+      if (i.name !== "scout book matches the log") expect(i.passed).toBe(true);
   });
 
   test("an unmirrored fight row is caught by the same check", () => {
@@ -567,7 +573,8 @@ describe("the discovery section", () => {
    * One side of one fight, written raw — going through Lobbies would put the
    * scout report inside the thing being measured. `loss` rows on purpose: a
    * raw `win` with no mirror would trip the pit-figure invariant, and this
-   * is a health measurement, not an invariant test.
+   * is a health measurement, not an invariant test. Through recordFight so
+   * the scout book stays in step (its invariant runs in every diagnose).
    */
   function fought(
     db: DB,
@@ -575,8 +582,7 @@ describe("the discovery section", () => {
     format: FightFormat,
     opts: { figure?: number; tournament?: boolean } = {}
   ) {
-    db.insert(battleLog)
-      .values({
+    recordFight(db, {
         dayIndex: 0,
         // Exactly one of these is set, per the schema. A tournament row is
         // evidence but NOT a blade decision — the bracket picked the format.
@@ -596,8 +602,7 @@ describe("the discovery section", () => {
         pitFigure: opts.figure ?? 50,
         gpDeltaCents: 0,
         seed: 1,
-      })
-      .run();
+    });
   }
 
   const section = (db: DB) =>
