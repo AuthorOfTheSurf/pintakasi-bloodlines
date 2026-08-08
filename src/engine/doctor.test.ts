@@ -15,7 +15,14 @@ import { Bots } from "./bots";
 import { Farms } from "./farms";
 import { seedWorld } from "./rng";
 import { ELEMENTS, FORMAT_NAMES, LT_CENTS, weatherOfDay, type FightFormat } from "./config";
-import { bladeDiscovery, diagnose, formatReport, generationLadder, weatherTiming } from "./doctor";
+import {
+  bladeDiscovery,
+  diagnose,
+  fightVolume,
+  formatReport,
+  generationLadder,
+  weatherTiming,
+} from "./doctor";
 import { makeBird, world as testWorld } from "./testkit";
 import { Game } from "./game";
 
@@ -326,6 +333,46 @@ describe("the health report", () => {
     const report = diagnose(w.db, ":memory:");
     expect(report.health.some((h) => h.warn)).toBe(true);
     expect(report.ok).toBe(true); // warnings are loud, not fatal
+  });
+});
+
+/**
+ * THE FOUNDER-CULL TROUGH (round 43). Every fresh world's fight volume crashes
+ * ~4× in weeks 4–6 (founders culled by the hardcore Majors before bred stock
+ * reaches fighting age) and recovers on its own — a shape scary enough that a
+ * round-42 verification subagent burned a whole investigation rediscovering
+ * it. These tests pin the two verdicts apart: the expected dip must NOT warn,
+ * and the dip that never comes back — the actual collapse — MUST.
+ */
+describe("the fight-volume trough", () => {
+  // Weekly totals → a per-day series with every week complete (the section
+  // refuses to judge partial weeks, since a partial week always looks like
+  // a crash).
+  const weeksToSeries = (weekly: number[]) =>
+    weekly.flatMap((total, w) =>
+      Array.from({ length: 7 }, (_, d) => ({ day: w * 7 + d, fights: d === 0 ? total : 0 }))
+    );
+
+  test("a trough that recovers is EXPECTED, and does not warn", () => {
+    // The historical shape, roughly: ramp, peak, 10× crash, recovery.
+    const section = fightVolume(weeksToSeries([300, 800, 2000, 500, 200, 1100, 1900]));
+    const text = section.lines.join("\n");
+    expect(text).toContain("EXPECTED");
+    expect(text).toContain("20 farms, 91 days"); // the reference stays labelled with its era
+    expect(section.warn).toBeUndefined();
+  });
+
+  test("a trough that never recovers is the collapse, and warns", () => {
+    const section = fightVolume(weeksToSeries([300, 800, 2000, 500, 200, 250, 300]));
+    expect(section.warn).toBeDefined();
+    expect(section.warn).toContain("never came back");
+    expect(section.lines.join("\n")).not.toContain("EXPECTED");
+  });
+
+  test("no trough, no verdict — a healthy ramp just prints its chart", () => {
+    const section = fightVolume(weeksToSeries([100, 400, 900, 1400, 1800, 2100]));
+    expect(section.warn).toBeUndefined();
+    expect(section.lines.join("\n")).not.toContain("EXPECTED");
   });
 });
 

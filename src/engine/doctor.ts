@@ -16,6 +16,7 @@ import {
 import {
   BREEDING_SHAPES,
   CADENCE,
+  CALENDAR,
   ECONOMY,
   ELEMENTS,
   FIGHTS_PER_GROUP_BIRD,
@@ -172,6 +173,27 @@ const DOCTOR = {
   // one lucky chick, and a single bird's stat roll would swing the whole
   // ladder's story either way.
   GENERATION_MIN_SAMPLE: 10,
+  // ── FIGHT VOLUME trough detection (round 43) ──────────────────────────────
+  // Every fresh world has a fight-volume crash in weeks 4–6 and it is NOT a
+  // collapse: the seeded age-3 founder flock is culled by the hardcore Majors
+  // before the first bred generation reaches fighting age, so volume falls ~4×
+  // and comes back. It cost a round-42 subagent a full investigation to
+  // rediscover that, which is exactly the kind of tuition this report exists
+  // to stop paying twice. These three knobs let the doctor tell the expected
+  // dip from the real thing — all RATIOS and COUNTS, never absolutes, because
+  // absolute volume scales with farm count and this must survive a bigger world.
+  //
+  // Fewer complete weeks than this and the section renders no verdict at all:
+  // the trough bottoms in week 5, so a shorter world simply hasn't seen it.
+  TROUGH_WINDOW: 4,
+  // A week under this fraction of the best earlier week counts as a trough.
+  // The historical dip is 145/1092 ≈ 0.13 (fights/week, round-42 baseline), so
+  // 0.5 has ~4× headroom while still ignoring ordinary week-to-week wobble.
+  TROUGH_DEPTH: 0.5,
+  // A later week at or above this fraction of the pre-trough peak counts as
+  // recovered. Historical recovery is 871/1092 ≈ 0.80 within two weeks of the
+  // bottom, and the following week clears the old peak entirely.
+  TROUGH_RECOVERY: 0.75,
 } as const;
 
 export interface Invariant {
@@ -193,6 +215,13 @@ export interface DoctorReport {
   topline: Topline;
   /** Per-snapshot GP drift (held minus owed) — only populated on a failure. */
   driftSeries?: { day: number; drift: number }[];
+  /**
+   * Fights fought per day, diffed from the daily snapshots. ALWAYS populated,
+   * unlike driftSeries — volume is health, not forensics, and the FIGHT VOLUME
+   * section is built from exactly this array so a JSON consumer sees the same
+   * data the terminal reader does.
+   */
+  fightSeries: { day: number; fights: number }[];
   clock: { day: number; date: string; week: number };
   invariants: Invariant[];
   health: HealthSection[];
@@ -943,6 +972,110 @@ function population(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
     // The round-23 collapse in one line: births stopped outrunning deaths and
     // the card went quiet three weeks later.
     warn: loss > supply ? `attrition (${loss}) is outrunning supply (${supply})` : undefined,
+  };
+}
+
+/**
+ * ── FIGHT VOLUME AND THE FOUNDER-CULL TROUGH (round 43) ─────────────────────
+ *
+ * POPULATION counts birds; this counts FIGHTING — and the interaction between
+ * the two is where a fresh world's scariest-looking chart lives. Every seeded
+ * world crashes ~4× in weeks 4–6: the founder flock arrives at age 3, the
+ * hardcore Majors cull it, and the first bred generation hasn't reached
+ * fighting age yet. Volume then recovers on its own. The reference shape,
+ * measured near-identical in the round-41 and round-42 baselines:
+ *
+ *   wk3/4/5/6/7 = 1092/397/145/498/871 fights   (20 farms, 91 days)
+ *
+ * ⚠ UNITS. The round-42 investigation quoted this trough as 2170/570/236/
+ * 1044/1962 — those are battle_log ROWS, which count each SIDE of a fight.
+ * This section counts FIGHTS (the snapshot series), so the reference above is
+ * the same five weeks re-measured in the section's own unit. Both series are
+ * real; quoting one against the other makes the world look 2× sicker or
+ * healthier than it is.
+ *
+ * A subagent verifying round 42 rediscovered this from scratch and reported a
+ * "population collapse after week 4". This section exists so that never costs
+ * an investigation again — and so the day the dip *doesn't* recover, which is
+ * the collapse everyone feared, the report says so out loud instead of relying
+ * on somebody remembering what week 7 is supposed to look like.
+ *
+ * Detection is RATIO-based (DOCTOR.TROUGH_*), never absolute, because absolute
+ * volume scales with farm count. Three outcomes:
+ *   - trough present, later week recovers past TROUGH_RECOVERY × peak →
+ *     labelled EXPECTED, no warn;
+ *   - trough present, never recovers → warn;
+ *   - no trough → the chart prints and the section says nothing else.
+ *
+ * Exported with the series as a parameter so the tests can feed it synthetic
+ * shapes without simulating five weeks of world.
+ */
+export function fightVolume(series: { day: number; fights: number }[]): HealthSection {
+  // Weekly totals. Only COMPLETE weeks are judged — a partial week always
+  // looks like a crash — but a trailing partial still prints, labelled.
+  const byWeek = new Map<number, { fights: number; days: number }>();
+  for (const s of series) {
+    const w = GameClock.weekOf(s.day);
+    const acc = byWeek.get(w) ?? { fights: 0, days: 0 };
+    acc.fights += s.fights;
+    acc.days += 1;
+    byWeek.set(w, acc);
+  }
+  const weeks = [...byWeek.entries()].sort((a, b) => a[0] - b[0]);
+  const complete = weeks.filter(([, v]) => v.days === CALENDAR.DAYS_PER_WEEK);
+
+  const max = Math.max(1, ...weeks.map(([, v]) => v.fights));
+  const lines = weeks.map(([w, v]) => {
+    const bar = "█".repeat(Math.max(v.fights > 0 ? 1 : 0, Math.round((v.fights / max) * 24)));
+    const partial = v.days < CALENDAR.DAYS_PER_WEEK ? `  (${v.days} day${v.days === 1 ? "" : "s"})` : "";
+    return `wk ${String(w).padStart(2)}  ${String(v.fights).padStart(6)}  ${bar}${partial}`;
+  });
+
+  if (complete.length < DOCTOR.TROUGH_WINDOW)
+    return {
+      title: "FIGHT VOLUME",
+      lines: [...lines, `too young to judge shape (needs ${DOCTOR.TROUGH_WINDOW} complete weeks)`],
+    };
+
+  // A trough is judged by DEPTH AGAINST ITS OWN PAST: for each candidate week,
+  // compare it to the best week BEFORE it, and take the candidate with the
+  // worst ratio. Doing it this way (rather than a global argmin) matters twice
+  // over — week 0 is all zeroes on a fresh world, and a min with nothing before
+  // it is a start, not a dip; and the global max is usually AFTER the recovery,
+  // which would hide the very shape this section exists to name.
+  const vols = complete.map(([, v]) => v.fights);
+  let minIdx = -1;
+  let worstRatio = 1;
+  let peak = 0;
+  for (let t = 1, best = vols[0]; t < vols.length; best = Math.max(best, vols[t]), t++) {
+    if (best <= 0) continue; // nothing to fall FROM yet
+    const r = vols[t] / best;
+    if (r < worstRatio) [minIdx, worstRatio, peak] = [t, r, best];
+  }
+  const isTrough = minIdx >= 1 && worstRatio < DOCTOR.TROUGH_DEPTH;
+  if (!isTrough) return { title: "FIGHT VOLUME", lines };
+
+  const troughWeek = complete[minIdx][0];
+  const peakWeek = complete[vols.indexOf(peak)][0];
+  const recovered = Math.max(0, ...vols.slice(minIdx + 1)) >= DOCTOR.TROUGH_RECOVERY * peak;
+  const shape =
+    `trough wk${troughWeek} (${vols[minIdx]}) = ${pct(vols[minIdx], peak)} of the wk${peakWeek} peak (${peak})`;
+  if (recovered)
+    return {
+      title: "FIGHT VOLUME",
+      lines: [
+        ...lines,
+        `${shape} — EXPECTED: the age-3 founder flock is culled by the hardcore`,
+        `Majors before the first bred generation reaches fighting age, then volume`,
+        `recovers. Reference: wk3/4/5/6/7 = 1092/397/145/498/871 fights (20 farms, 91 days).`,
+      ],
+    };
+  return {
+    title: "FIGHT VOLUME",
+    lines: [...lines, shape],
+    warn:
+      `fight volume fell below ${Math.round(DOCTOR.TROUGH_DEPTH * 100)}% of peak and never came back ` +
+      `past ${Math.round(DOCTOR.TROUGH_RECOVERY * 100)}% — this is NOT the founder cull, which recovers within ~2 weeks`,
   };
 }
 
@@ -1886,6 +2019,21 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkFightCounts(db),
   ];
 
+  // Per-day fight volume, diffed from the cumulative `fights` each daily
+  // snapshot already stores — no new bookkeeping, just reading what's there.
+  const snapRows = db
+    .select()
+    .from(snapshots)
+    .all()
+    .sort((a, b) => a.dayIndex - b.dayIndex);
+  let prevFights = 0;
+  const fightSeries = snapRows.map((s) => {
+    const total = (JSON.parse(s.data) as Topline).fights;
+    const row = { day: s.dayIndex, fights: total - prevFights };
+    prevFights = total;
+    return row;
+  });
+
   const weather = weatherLine(db);
   const discoveryAudit = bladeDiscovery(db);
   // Two things can be wrong with the card at once — too few opponents and
@@ -1915,8 +2063,12 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     lobbyFill(db),
     fragmentation(db),
     population(db, topline, allEvents),
-    // Right after POPULATION: that section counts the flock, this one asks
-    // whether the birds coming out of it are any better than the ones going in.
+    // Right after POPULATION on purpose: that section counts birds, this one
+    // counts fighting, and the founder-cull trough is a statement about the
+    // interaction between the two.
+    fightVolume(fightSeries),
+    // That section counts the flock, this one asks whether the birds coming
+    // out of it are any better than the ones going in.
     generations(db),
     // The priced ladder before the land it mints: LAND SUPPLY reports the total,
     // this one reports which rungs made it and whether climbing paid.
@@ -1935,6 +2087,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     dbPath,
     topline,
     driftSeries: conservation.series,
+    fightSeries,
     clock: { day: topline.day, date: clockState.date, week: clockState.weekIndex },
     invariants,
     health,
