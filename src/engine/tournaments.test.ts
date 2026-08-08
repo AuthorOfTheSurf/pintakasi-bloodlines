@@ -489,18 +489,22 @@ describe("registration & the Selection Committee", () => {
     });
   });
 
-  // Round 20: three per barn per crown — load the blade with specialists,
-  // but no barn owns a bracket.
-  test("a barn may load one championship with three birds — and no more", () => {
+  // Round 20 ruled a per-barn cap (then 3); round 43 raised it to 5 — "if they
+  // qualified 5 birds fair and square they earned the right to enter them."
+  // Written against the KNOB, not a number, after the round-43 bump quietly
+  // broke the hardcoded version.
+  test("a barn may load one championship to MAX_PER_BARN birds — and no more", () => {
     const w = world();
-    // A deep barn: a second legacy wave gives four age-3+ birds.
+    // A deep barn: extra legacy waves until the barn out-numbers the cap.
     seedStarterFlock(w.db, w.devId, { seed: 55, idPrefix: "dev2", shape: "legacy" });
+    seedStarterFlock(w.db, w.devId, { seed: 56, idPrefix: "dev3", shape: "legacy" });
     const eligible = w.devFlock.all().filter((b) => b.status === "active" && b.age >= 3);
-    expect(eligible.length).toBe(4);
+    expect(eligible.length).toBeGreaterThan(PINTAKASI.MAX_PER_BARN);
     for (const bird of eligible.slice(0, PINTAKASI.MAX_PER_BARN)) w.dev.enter(bird.id, "b1");
-    expect(() => w.dev.enter(eligible[3].id, "b1")).toThrow(/limit per championship/);
-    // The fourth bird is welcome in a DIFFERENT crown.
-    expect(() => w.dev.enter(eligible[3].id, "b5")).not.toThrow();
+    const extra = eligible[PINTAKASI.MAX_PER_BARN];
+    expect(() => w.dev.enter(extra.id, "b1")).toThrow(/limit per championship/);
+    // The overflow bird is welcome in a DIFFERENT crown.
+    expect(() => w.dev.enter(extra.id, "b5")).not.toThrow();
   });
 
   test("the fee escrows at entry; the board ranks the public field", () => {

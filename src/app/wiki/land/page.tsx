@@ -115,21 +115,19 @@ export default function LandPage() {
   const dearestNight = Math.max(...ALL_ENTRY_FEES);
 
   // ── The crowns' fixed land pots (round 42) ────────────────────────────────
-  // One pot per crown, split across every fight fought. A full 32-bird bracket
-  // is the ordinary shape of a Major, so it is what the worked table shows; the
-  // tiny bracket below it is there to show the thin-field effect, which is the
-  // surprising half of the rule.
-  const majorBracket = Math.min(32, PINTAKASI.MAX_BRACKET);
+  // One pot per crown, split across every fight fought. The worked table shows
+  // a FULL bracket — since round 43 the cap itself is 32, so the full bracket
+  // and the ordinary shape are the same thing (the old Math.min(32, cap) guard
+  // died with the 64 cap it guarded against). The tiny bracket below it shows
+  // the thin-field effect, which is the surprising half of the rule.
+  const majorBracket = PINTAKASI.MAX_BRACKET;
   const majorLand = landByFights(PINTAKASI.LAND_POT, majorBracket);
   const majorTopFights = majorLand[majorLand.length - 1];
   const majorOneFight = majorLand[0];
   const thinBracket = 4;
   const thinLand = landByFights(PINTAKASI.LAND_POT, thinBracket);
   const thinOneFight = thinLand[0];
-  const juvenileLand = landByFights(
-    JUVENILE_MAJOR.LAND_POT,
-    Math.min(32, JUVENILE_MAJOR.MAX_BRACKET)
-  );
+  const juvenileLand = landByFights(JUVENILE_MAJOR.LAND_POT, JUVENILE_MAJOR.MAX_BRACKET);
 
   // Every worked number below is computed from the live config, not typed —
   // so this page can never quietly go stale.

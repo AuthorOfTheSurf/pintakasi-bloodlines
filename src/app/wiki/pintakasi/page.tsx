@@ -119,8 +119,10 @@ export default function PintakasiPage() {
   // is something a reader can SEE by comparing two columns rather than take on
   // trust. Both divisions cap at the same size today; if they ever diverge,
   // each table still describes its own division's real ceiling.
-  const majorPurseBracket = Math.min(32, PINTAKASI.MAX_BRACKET);
-  const juvenilePurseBracket = Math.min(32, JUVENILE_MAJOR.MAX_BRACKET);
+  // Full brackets — since round 43 the caps themselves are 32, so the old
+  // Math.min(32, cap) guard against a 64-seat table simplifies away.
+  const majorPurseBracket = PINTAKASI.MAX_BRACKET;
+  const juvenilePurseBracket = JUVENILE_MAJOR.MAX_BRACKET;
   const majorStages = purseStages(majorPurseBracket, PINTAKASI.PURSE);
   const juvenileStages = purseStages(juvenilePurseBracket, JUVENILE_MAJOR.PURSE);
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -431,10 +433,12 @@ export default function PintakasiPage() {
         all {majorPurseBracket / 2} birds who won a first-round fight go home ahead.
       </div>
       <p className="dim">
-        Fair warning about the arithmetic: this is a <em>share</em> of one pot. Double the field and
-        the same pot is split among twice as many winners, so a single win in a{" "}
-        {PINTAKASI.MAX_BRACKET}-bird bracket can still come out a little behind the entry fee. Big
-        fields are the exception, not the ordinary week.
+        Fair warning about the arithmetic: this is a <em>share</em> of one pot, so a bigger field
+        means thinner slices. That is exactly why the bracket is capped at{" "}
+        {PINTAKASI.MAX_BRACKET} seats — at the old 64-seat cap, a full field split the advancement
+        pool among twice as many winners and no achievable purse could keep a single win ahead of
+        the {fee} GP door. The cap is what keeps &ldquo;every win clears the door&rdquo; true on
+        the busiest week.
       </p>
       <div className="callout tip">
         <b>Why it works this way.</b> The purse used to be a table of finishing places: champion,

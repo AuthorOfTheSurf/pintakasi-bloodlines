@@ -1631,7 +1631,13 @@ export const PINTAKASI = {
   // there. Traced over a 91-day world, the juice pool that pays every crown
   // came from:
   //
-  //   gacha spend   187,056 GP   57%     ← and only 2 of 20 barns buy bundles
+  //   gacha spend   187,056 GP   57%     ← and, WHEN THIS WAS TRACED, only 2 of
+  //                                        20 barns paid for any gacha at all —
+  //                                        round 43 gave every barn a routine
+  //                                        habit (bot-config.gachaHabit) exactly
+  //                                        because two whales funding 71% of all
+  //                                        juice made every purse a hostage to
+  //                                        one bot's wallet
   //   breed fees    136,040 GP   42%
   //   the genesis     2,400 GP    1%
   //   THE ENTRANTS        0 GP    0%
@@ -1653,15 +1659,39 @@ export const PINTAKASI = {
   // claimer (144) and the open, which is about right for a stage you qualify
   // into on earnings.
   ENTRY_FEE: 160,
-  MAX_BRACKET: 64,
+  // ── 32 SEATS, DOWN FROM 64 (round 43) — and it must move WITH MAX_PER_BARN ──
+  //
+  // MAX_PER_BARN went 3 → 5 below, which puts 20 × 5 = 100 potential seats
+  // behind three crowns a week. Left at 64, fields would settle in the 40–64
+  // range and make the 64-bracket the NORM — and a 64-bracket breaks round
+  // 41's "every win clears the door" BY CONSTRUCTION, not by tuning:
+  //
+  //           one win's share   purse to clear 160 GP   best achievable purse
+  //   32-seat      1.43%              11,157 GP              12,164 GP ✓
+  //   64-seat      0.67%              24,048 GP              17,284 GP ✗
+  //
+  // A 64-bracket has 32 first-round winners splitting the advancement pool
+  // where a 32-bracket has 16, so one win is worth 46% of its 32-bracket
+  // value — and no purse the fees + juice can actually assemble covers the
+  // door. Filling to 64 and "every win pays" are mathematically incompatible;
+  // 32 keeps both. What 32 costs, stated honestly: on a busy week the
+  // Selection Committee's bump line finally fires — the weakest declared
+  // birds are refunded rather than fighting — which is the committee doing
+  // for the first time the job it was written for in round 37.
+  MAX_BRACKET: 32,
   // Which day the crowns run. dayIndex % 7: 0 = Friday (day 0 of the game
   // week) … 5 = Wednesday, 6 = THURSDAY. Moved Wed → Thu in round 20 so a
   // bird can take one more ordinary card before its championship.
   DAY_OF_WEEK: 6,
-  // How many birds one barn may enter in ONE championship (ruled round 20).
-  // Not one per stable — a deep barn should be able to load a blade with
-  // three specialists, and the fields should start OVERFLOWING.
-  MAX_PER_BARN: 3,
+  // How many birds one barn may enter in ONE championship (ruled round 20,
+  // raised 3 → 5 in round 43). Zane: "If they qualified 5 birds fair and
+  // square they earned the right to enter them." Still a cap, so no single
+  // stable sends dozens — but 3 × 20 farms = 60 seats structurally capped a
+  // 64-bracket below full, which round 42's verification mistook for bots
+  // under-valuing the land pot. 5 puts 100 potential seats behind each week
+  // and hands the actual selecting to the Committee's bump line, where it
+  // belongs. Moves TOGETHER with MAX_BRACKET above — see that comment.
+  MAX_PER_BARN: 5,
   MIN_FIELD: 2, //    a straight final still crowns; below this, cancelled
   // ── ONE FIXED LAND POT, replacing a curve and a grant ladder (round 42) ───
   //
@@ -1781,9 +1811,11 @@ export const PINTAKASI = {
   // "Champion should still receive a lot, but I suspect there's a happier
   // median."
   //
-  // ⚠ A 64-BIRD FIELD STILL LEAVES ONE WIN AT −27, because twice the birds
-  // share one pot. Accepted, not solved: fields average ~22, so 32 is the
-  // ordinary bracket and 64 is the busy-week exception.
+  // ⚠ A 64-BIRD FIELD WOULD LEAVE ONE WIN AT −27, because twice the birds
+  // share one pot. Round 41 accepted that as the busy-week exception (fields
+  // then averaged ~22); round 43 made it UNREACHABLE instead — MAX_BRACKET is
+  // 32 now, so the 64-bracket arithmetic above is history, kept because it is
+  // the reason the cap moved.
   //
   // ⚠ A BYE IS NOT A WIN. Byes exist because the field was short, and paying
   // for one would pay a bird that never threw a blade — so the weight counts
