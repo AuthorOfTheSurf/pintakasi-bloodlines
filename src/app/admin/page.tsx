@@ -31,7 +31,7 @@ import { baselineBefore, computeTopline, stakingBook, type Topline } from "@/eng
 import { cardHealth } from "@/engine/doctor";
 import { DIVISION_RULES, roundName, seedPlacement, type Division } from "@/engine/tournaments";
 import { ElementSprite, GpIcon, LtIcon } from "./sprites";
-import { CHART_CSS, ChartStrip, type DayChartProps } from "./charts";
+import { CHART_CSS, ChartStrip, SERIES_COLORS, type DayChartProps, type StackedDayChartProps } from "./charts";
 import {
   AdminTabs,
   type BirdFightRowUI,
@@ -807,7 +807,50 @@ export default function Admin() {
     )
   );
 
-  const charts: DayChartProps[] = [
+  // POOL INFLOWS (round 46, Zane's ask) — the two subsidy pools' funding mix,
+  // stacked by source so the question "who is actually paying for this?" is
+  // answerable at a glance. Both read the same pool_accrual rows the doctor's
+  // STAKER POOL section audits, so the chart and the report can't disagree.
+  // Note the sources genuinely differ per pool: land purchases and the claim
+  // rake feed ONLY the stakers, the genesis seed fed ONLY the juice — a
+  // shared source list would draw four permanent zero-layers.
+  const accrualRows = allEvents
+    .filter((e) => e.type === "pool_accrual" && e.data)
+    .map((e) => {
+      const d = JSON.parse(e.data!) as {
+        stakerPoolCents?: number;
+        juicePoolCents?: number;
+        source?: string;
+      };
+      return {
+        day: e.dayIndex,
+        source: (d.source ?? "breed").replace("_", " "),
+        staker: (d.stakerPoolCents ?? 0) / 100,
+        juice: (d.juicePoolCents ?? 0) / 100,
+      };
+    });
+  const poolSeries = (field: "staker" | "juice") => {
+    const totals = new Map<string, number>();
+    for (const r of accrualRows) totals.set(r.source, (totals.get(r.source) ?? 0) + r[field]);
+    // Largest source first, so it sits on the axis and the slivers stay legible.
+    return [...totals.entries()]
+      .filter(([, total]) => total > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([source], i) => ({
+        label: source,
+        color: SERIES_COLORS[i % SERIES_COLORS.length],
+        values: perDay(
+          accrualRows.filter((r) => r.source === source).map((r) => ({ day: r.day, amount: r[field] }))
+        ),
+      }));
+  };
+  const stackSum = (series: { values: number[] }[]) =>
+    chartDays.map((_, i) => series.reduce((s, ser) => s + (ser.values[i] ?? 0), 0));
+
+  const juiceSeries = poolSeries("juice");
+  const stakerSeries = poolSeries("staker");
+
+  const charts: (DayChartProps | StackedDayChartProps)[] = [
     {
       title: "Fights per day",
       days: chartDays,
@@ -834,6 +877,26 @@ export default function Admin() {
       lineUnit: "GP",
       lineLabel: "paid for won tags to date",
       note: "tags sealed, and the GP that changed hands",
+    },
+    {
+      title: "Juice pool inflows per day",
+      days: chartDays,
+      series: juiceSeries,
+      barUnit: "GP",
+      line: running(stackSum(juiceSeries)),
+      lineUnit: "GP",
+      lineLabel: "into the juice pool to date",
+      note: "what funds the championship purses, by source",
+    },
+    {
+      title: "Staker pool inflows per day",
+      days: chartDays,
+      series: stakerSeries,
+      barUnit: "GP",
+      line: running(stackSum(stakerSeries)),
+      lineUnit: "GP",
+      lineLabel: "to land stakers to date",
+      note: "GP owed to staked land, by source",
     },
   ];
 
