@@ -17,6 +17,7 @@ rounds from now.
 | **112 days, after round 47** | **2:11 (131s)** | **4.48** |
 | **182 days, after round 47** | **9:58 (598s)** | **4.10** |
 | **91 days, after round 48** | **1:08 (68s)** | **4.31** |
+| **182 days, after round 48** | **9:02 (542s)** | **3.70** |
 
 (Wall clocks print as m:ss since round 47 — Zane's ask — so the table follows.
 The 182-day ms/fight now sits BELOW the 112-day figure: the bump-line memo
@@ -40,6 +41,14 @@ fight, over the same 15,823 fights and 11,074 entries. That is a 9.3% reduction
 in per-fight cost. The normalized event stream (63,990 rows) and final farms,
 birds, battle log, scout book, lobby entries, tournament entries and snapshots
 all diffed to zero.
+
+The 182-day seed-1 verification ran independently after the commit: same
+139,661 fights, the full normalized event log (407,185 rows) and the final
+farms, birds and scout book diffed to zero against the round-47 seed-1 world,
+doctor clean. Tick-only cost (`SUM(sim_timings.ms) / fights`, the comparable
+number when a TIMING block isn't to hand) fell 4.02 → 3.70 ms/fight, −8% —
+consistent with the 91-day −9.3%, so unlike round 47's memo this round's wins
+are volume-proportional rather than late-run-weighted.
 
 ## How to measure (do this before optimizing anything)
 
