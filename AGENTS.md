@@ -32,7 +32,7 @@ If a value you want isn't exported from config, either export it or **describe i
 3. **Grep `src/app/wiki/` for anything the change makes untrue.** Schedules, gates, "X is the only way to…", worked examples, EV comparisons, and any prose describing a rule you just reversed are the usual suspects — a computed number fixes itself, a *sentence* does not. `src/engine/docs.test.ts` catches the load-bearing cases; it does not catch every sentence.
 4. `src/app/api/mcp/route.ts` builds its prose from config, so most rules propagate on their own — but a genuinely NEW mechanic still needs a sentence written. Its tool descriptions are how a Claude playing the game learns the rules.
 5. `bunx tsc --noEmit` and `bun test` clean.
-6. **`bun run simulate` and read the doctor's report at the end** (below). Its 112-day default (16 weeks) puts the founder-cull trough well behind the read and finishes in minutes; balance changes are judged on the health block, not on whether the tests pass. The long-term judgement run is `bun run simulate 182` — about 14 minutes since round 44; per-fight cost is flat, so the extra time is the bigger world doing more fighting.
+6. **`bun run simulate` and read the doctor's report at the end** (below). Its 112-day default (16 weeks) puts the founder-cull trough well behind the read and finishes in minutes; balance changes are judged on the health block, not on whether the tests pass. The long-term judgement run is `bun run simulate 182` — about 10 minutes since round 47; per-fight cost is flat, so the extra time is the bigger world doing more fighting.
 
 ### Handbook page conventions
 

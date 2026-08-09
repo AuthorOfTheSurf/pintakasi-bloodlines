@@ -615,6 +615,57 @@ describe("registration & the Selection Committee", () => {
     expect(totalCents(w.db)).toBe(worldBefore);
     expectConserved(w.db);
   });
+
+  /**
+   * THE BUMP-LINE MEMO CANNOT GO STALE (round 47). A refusal memoizes the
+   * field's weakest so the next refusal skips re-pricing the whole committee
+   * book — which is only sound if the memo dies the moment anything that
+   * feeds a CommitteeCard moves. This is the test that a recorded fight
+   * between two same-day attempts invalidates it: the second attempt must be
+   * judged on the bird's NEW earnings, not on the answer the first attempt
+   * cached. If the memo ever survives a bookVersion bump, the refusal on
+   * line one keeps winning and the entry below never happens.
+   */
+  test("a refused bird that then out-earns the weakest bumps in — same day, memo notwithstanding", () => {
+    const w = world();
+    const t = w.db
+      .insert(tournaments)
+      .values({ weekIndex: 0, format: "b1", seed: 7, entryFee: DIVISION_RULES.major.entryFee })
+      .returning()
+      .get();
+    const { farm: overflow } = w.game.farms.register({
+      name: "Overflow Gamefarm",
+      primaryColor: "green",
+      secondaryColor: "gold",
+    });
+    const stake = (i: number) => (i + 1) * 100;
+    const half = PINTAKASI.MAX_BRACKET / 2;
+    for (let i = 0; i < PINTAKASI.MAX_BRACKET; i++) {
+      const farmId = i < half ? w.rivalId : overflow.id;
+      const dummy = makeBird(w.db, { farmId, name: `Dummy ${i}`, age: 3 });
+      earned(w.db, dummy.id, farmId, stake(i));
+      escrowEntry(w.db, t.id, dummy.id, farmId, t.entryFee);
+    }
+    const hopeful = makeBird(w.db, { name: "Bagong Pag-asa", age: 3 });
+    earned(w.db, hopeful.id, w.devId, 50);
+    // Refused twice: the first refusal computes and memoizes the weakest, the
+    // second rides the memo. Both must say the same thing.
+    expect(() => w.dev.enter(hopeful.id, "b1")).toThrow(/weakest/);
+    expect(() => w.dev.enter(hopeful.id, "b1")).toThrow(/weakest/);
+    // The bird then WINS money — past the weakest incumbent's 1.00 GP.
+    earned(w.db, hopeful.id, w.devId, stake(0) + 25);
+    w.dev.enter(hopeful.id, "b1");
+    const entries = w.db
+      .select()
+      .from(tournamentEntries)
+      .where(eq(tournamentEntries.tournamentId, t.id))
+      .all();
+    expect(entries.filter((e) => e.status === "pending").length).toBe(PINTAKASI.MAX_BRACKET);
+    const bumped = entries.filter((e) => e.status === "bumped");
+    expect(bumped.length).toBe(1);
+    expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe("Dummy 0");
+    expectConserved(w.db);
+  });
 });
 
 /**

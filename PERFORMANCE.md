@@ -1,7 +1,7 @@
 # Simulation performance — state of play and where to dig next
 
-Written at the end of round 43, updated in round 44. Everything below is
-MEASURED unless it says otherwise; re-measure before trusting any of it two
+Written at the end of round 43, updated in rounds 44 and 47. Everything below
+is MEASURED unless it says otherwise; re-measure before trusting any of it two
 rounds from now.
 
 ## The headline numbers (M-series Mac, one core)
@@ -12,8 +12,15 @@ rounds from now.
 | 91 days, after round 43 | ~110s | 7.5 |
 | 112 days, after round 43 | 241s | 8.3 |
 | 182 days, after round 43 | 3,087s (51 min) | 21.3 |
-| **112 days, after round 44** | **164s** | **5.5** |
-| **182 days, after round 44** | **812s (13.5 min)** | **5.25** |
+| 112 days, after round 44 | 164s | 5.5 |
+| 182 days, after round 44 | 812s (13.5 min) | 5.25 |
+| **112 days, after round 47** | **2:11 (131s)** | **4.48** |
+| **182 days, after round 47** | **9:58 (598s)** | **4.10** |
+
+(Wall clocks print as m:ss since round 47 — Zane's ask — so the table follows.
+The 182-day ms/fight now sits BELOW the 112-day figure: the bump-line memo
+below earns most of its keep in the back half of a long run, when the Major
+fields are full every week and refusals dominate the crown chase.)
 
 The round-43 182-day row is the story round 44 attacked: **per-fight cost
 tripled across a long run** (11 → 34 ms/fight comparing week 3 to week 25)
@@ -81,13 +88,44 @@ compare runs only under the same `--seed`.
   — with the skip set REFRESHED after every successful entry, because our own
   entry can bump our own weakest bird back off the pending list (a stale
   snapshot silently un-declares it; the seed-7 diff caught exactly this).
+- **Round 47, the settle-up ledger** (`SettleLedger` in lobbies.ts): resolving
+  a fight used to re-SELECT both bird rows and both farm rows and write every
+  increment as its own UPDATE — ~10 statements per fight on what was the
+  largest remaining block (25% of a 112-day run). `complete()` now reads each
+  lobby's birds once and all ~20 farms once per pass, applies every mutation
+  (records, cent-carry credits, refunds, land, claim transfers) to the cached
+  rows in the original order, and flushes one UPDATE per dirty row. None of
+  the replaced statements emitted events, so the event stream is untouched.
+  Proven bit-identical: seed-1 event logs (17,602 lines over 35 days) and
+  final farm/bird tables diff to zero against the per-statement engine.
+  Worth ~0.99 ms/fight of the round's 1.14 at 112 days. The group deal in
+  `close()` also batched (one UPDATE per group, not per entry).
+- **Round 47, the bump-line memo**: a refused Major entry — the COMMON case,
+  ~124 declarations chasing 96 seats, re-attempted daily — re-priced the whole
+  committee book (cards for 32 incumbents + newcomer, then a sort) just to
+  rediscover the same weakest bird. Refusals now memoize the weakest per
+  (world, tournament), valid only while provably fresh: same day, no fight
+  recorded and no purse settled since (`bookVersion` in scout.ts), and no
+  entry inserted or bumped (every insert deletes the memo). A memo hit prices
+  only the newcomer's own card; anything that might BUMP falls through to the
+  live read, so seating decisions never ride the cache. ~0.15 ms/fight at 112
+  days, more at 182 (fields are full longer). Guarded by a staleness test in
+  tournaments.test.ts.
 
-## Where the remaining time goes (112-day profile, round 44, ~163s total)
+## Where the remaining time goes
+
+⚠ The per-phase table below is the ROUND-44 profile (112 days, ~163s total).
+Round 47 took its top two rows (resolve and the crown chase's refusal bill)
+but did not re-profile the split — re-run the `__prof` method before trusting
+these shares for the next dig. What certainly remains per fight: the
+battle_log insert + bird_form upsert (`recordFight`) and the fight event's
+insert (plus `emit`'s one-row gameState read), and per entry the escrow
+debit and entry insert on the way in.
 
 | Phase | cost | share | What it is |
 |---|---|---|---|
-| tick: lobbies.resolve | 40.3s | 25% | the fights going off: per-fight bird/farm reads, settle-up, battle_log + book writes |
-| bots "3b crowns" | 32.7s | 20% | crown chase; ~2/3 of it is thrown/refused `Tournaments.enter` attempts (committee evaluations on full fields are genuine work now) |
+| tick: lobbies.resolve | 40.3s | 25% | **taken in round 47** (the settle-up ledger) — what's left is recordFight + the fight event |
+| bots "3b crowns" | 32.7s | 20% | crown chase; the refusal bill **taken in round 47** (bump-line memo); the skip-the-seated scan and entry preamble remain |
 | bots "3 breeding" | 17.2s | 11% | the round-43 batched browse — already fixed once |
 | bots "5 carding" | 15.0s | 9% | `weatherCardsToday` + `pickOffering` + `enter` |
 | bots "4 liquidity" | 11.4s | 7% | odd-lobby filling |
@@ -97,31 +135,25 @@ compare runs only under the same `--seed`.
 
 ## Candidate directions, in EV order
 
-1. **Batch `Lobbies.resolve`** — now the single biggest block. Each fight
-   re-selects both bird rows and both farm rows, updates them one statement
-   at a time, and a group of four birds fighting three rounds re-reads the
-   same rows per round. One read per lobby (the rows are already in hand at
-   deal time) plus grouped writes is the same shape as the breeding fix.
-2. **The crown chase's refusal bill.** The remaining throwers are committee
-   refusals on full fields — real bump-line evaluations, now book-fed, but
-   still one sort + three reads per attempt, re-run nightly per rejected
-   barn. A per-(tournament, day) memo of the current weakest would cut most
-   of it; invalidate on any entry/bump to that tournament.
-3. **Threading.** The tick is one SQLite transaction, so in-tick parallelism
+1. ~~Batch `Lobbies.resolve`~~ — DONE round 47 (the settle-up ledger; see
+   above). 5.62 → 4.63 ms/fight on the seed-1 112-day A/B by itself.
+2. ~~The crown chase's refusal bill~~ — DONE round 47 (the bump-line memo;
+   see above). 4.63 → 4.48 ms/fight at 112 days, and the gap between the
+   112- and 182-day ms/fight suggests more of its value lands late-run.
+3. **Re-profile, then pick.** The round-44 phase table is now two rounds
+   stale and its two biggest rows are gone; the next dig should start by
+   re-running the `__prof` accumulator, not by trusting the table. Likely
+   new leaders: carding/liquidity (board reads + `enter`'s per-entry
+   escrow round-trips) and breeding's browse.
+4. **Threading.** The tick is one SQLite transaction, so in-tick parallelism
    is hard; the honest split is coarser — fight resolution batches, or the
    doctor off-thread. Measure what's parallelizable first.
-4. **Fight volume itself — Zane's note, verbatim policy.** If profiling shows
+5. **Fight volume itself — Zane's note, verbatim policy.** If profiling shows
    the fights (resolve + their settle-up reads) are a big share of a late day,
    **reconsider multi-fight lobbies**: the round-34 group stage 3×'d the
-   number of fights per entry. Round-44 status: resolve is 25% of the run —
-   the largest single block, but Zane read the round-43 numbers and ruled
-   "doesn't seem to be the multi-fight lobbies"; direction (1) should come
-   first since it attacks the same seconds without touching game design.
-5. ~~Re-run 182 days~~ — DONE (see headline table): 812s, ms/fight flat at
-   ~5 across all 26 weeks. The dev default stays 112 (Zane's ruling: <3 min
-   is right for iteration); 182 is now a ~14-minute judgement run. Late days
-   cost ~13–17s each purely from fight volume, so directions (1) and (2)
-   above are what would shrink the long run further.
+   number of fights per entry. Round-47 status: resolve's per-fight overhead
+   was more than halved without touching game design, and the 182-day run is
+   under 10 minutes; the design question stays shelved.
 
 ## Traps for the next round
 
@@ -138,6 +170,15 @@ compare runs only under the same `--seed`.
   worlds are disposable by design; don't "fix" this with a backfill.
 - `enter()`'s `.lobby` receipt is LAZY — it re-derives on access. Read it
   before mutating further if a snapshot reading matters.
+- **Inside `Lobbies.complete()`, the DATABASE's farm and bird rows are stale**
+  (round 47): mutations ride the settle-up ledger and only flush at the end
+  of the pass (birds per lobby, farms once). New code inside the card must
+  read and write the ledger, not the tables — a fresh SELECT mid-pass sees
+  pre-fight balances, and a direct UPDATE gets overwritten by the flush.
+- The bump-line memo's freshness rests on `recordFight` and `payPurse`
+  bumping `bookVersion` — a NEW write site for committee-visible earnings
+  (battle_log deltas or `gpWonCents`) must bump it too, or a same-day refusal
+  can be judged against a dead seating order.
 - Fresh worlds only for comparisons; `--keep` re-seeds farms mid-world.
 - Real-player worlds could be bigger than 20 farms; the target should be set
   from the sim_timings curve, not from wishing.

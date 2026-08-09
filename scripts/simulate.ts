@@ -124,7 +124,14 @@ const game = new Game(db, DEV_FARM_ID, discoveryPolicy);
 let honestMs = 0;
 let tickMs = 0;
 const dayMs: { day: number; ms: number }[] = [];
-const fmtSec = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+// Durations under a minute stay decimal seconds; past a minute they print as
+// m:ss (Zane's ask, round 47 — a 182-day run says "12:42", not "762.7s",
+// because nobody should be dividing by sixty in their head mid-run).
+const fmtSec = (ms: number) => {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const whole = Math.round(ms / 1000);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+};
 
 let weekStart = performance.now();
 let weekDays = 0;

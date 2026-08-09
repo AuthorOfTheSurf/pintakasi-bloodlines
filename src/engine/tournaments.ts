@@ -20,7 +20,7 @@ import { Flock } from "./flock";
 import { canHardcore, canJuvenile } from "./lifecycle";
 import { overallGradeOf } from "./grades";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
-import { recordFight } from "./scout";
+import { bookVersion, bumpBookVersion, recordFight } from "./scout";
 
 /**
  * Which championship: the Thursday MAJORS (age 3+, hardcore, the crowns) or
@@ -299,7 +299,10 @@ export class Tournaments {
     // (ruled round 20 — load the blade with specialists, but no barn owns
     // a bracket).
     const rules = DIVISION_RULES[division];
-    const mine = this.pendingEntries(tournament.id).filter((e) => e.farmId === this.farmId);
+    // One field read serves both gates below (round 47) — this used to be
+    // read again for the committee check a few lines down.
+    const field = this.pendingEntries(tournament.id);
+    const mine = field.filter((e) => e.farmId === this.farmId);
     if (mine.length >= rules.maxPerBarn)
       throw new Error(
         `Your barn already has ${mine.length} in the ${label(tournament.format)} — ${rules.maxPerBarn} is the limit per championship`
@@ -315,8 +318,32 @@ export class Tournaments {
 
     // The Selection Committee's live bump: a full field takes a newcomer
     // only over the body of its current weakest.
-    const field = this.pendingEntries(tournament.id);
     if (field.length >= rules.maxBracket) {
+      // ── THE BUMP-LINE MEMO (round 47) ─────────────────────────────────────
+      // A refused entry is the COMMON outcome here — ~124 declarations chase 96
+      // Major seats and every rejected barn re-declares daily — and each refusal
+      // used to price the committee's whole book: cards for all 32 incumbents
+      // plus the newcomer, then a full sort, just to rediscover the same weakest
+      // bird the last refusal found. The memo keeps that answer per tournament
+      // for as long as it can be proven fresh: same day, no fight recorded and
+      // no purse settled since (bookVersion — earnings are the committee's lead
+      // key), and no entry has joined or left (every insert and bump deletes
+      // the memo). On a hit, a refusal costs the newcomer's own card and one
+      // comparison. Anything that might beat the memoized weakest falls through
+      // to the full read below, so a BUMP is always decided on live data.
+      const memoKey = tournament.id;
+      let memoMap = Tournaments.bumpLine.get(this.database);
+      if (!memoMap) Tournaments.bumpLine.set(this.database, (memoMap = new Map()));
+      const memo = memoMap.get(memoKey);
+      if (memo && memo.day === today && memo.version === bookVersion(this.database)) {
+        const myCard = Tournaments.committeeCards(this.database, [birdId]).get(birdId)!;
+        if (
+          Tournaments.compareRank(myCard, memo.weakestCard, Number.MAX_SAFE_INTEGER, memo.weakestEntryId) >= 0
+        )
+          throw new Error(
+            `The Selection Committee finds ${bird.name} the weakest in a full field — entry refused`
+          );
+      }
       const cards = Tournaments.committeeCards(this.database, [
         ...field.map((e) => e.birdId),
         birdId,
@@ -333,10 +360,17 @@ export class Tournaments {
           Number.MAX_SAFE_INTEGER,
           weakest.id
         ) >= 0
-      )
+      ) {
+        memoMap.set(memoKey, {
+          day: today,
+          version: bookVersion(this.database),
+          weakestEntryId: weakest.id,
+          weakestCard: cards.get(weakest.birdId)!,
+        });
         throw new Error(
           `The Selection Committee finds ${bird.name} the weakest in a full field — entry refused`
         );
+      }
       // The weakest goes home, refunded, in public.
       const bumpedFarm = this.database.select().from(farms).where(eq(farms.id, weakest.farmId)).get()!;
       const bumpedBird = this.database.select().from(birds).where(eq(birds.id, weakest.birdId)).get()!;
@@ -367,6 +401,13 @@ export class Tournaments {
       .values({ tournamentId: tournament.id, birdId, farmId: this.farmId, fee, dayEntered: today })
       .returning({ id: tournamentEntries.id })
       .get();
+    // The field just changed, so the bump-line memo is stale. EVERY insert
+    // deletes it — not just a bump — because this is the only door an entry
+    // comes in through, which makes it the one invalidation that catches any
+    // membership change (a refund elsewhere only ever SHRINKS the field, and
+    // a shrunk field is not full, so its memo is never consulted until an
+    // insert refills it — and that insert lands here).
+    Tournaments.bumpLine.get(this.database)?.delete(tournament.id);
     // ⚠ ROUND 37 — BOTH OF THESE USED TO SAY "hardcore" UNCONDITIONALLY, and
     // had since the juvenile division arrived in round 23. For a juvenile
     // registrant all three claims were false: it runs Wednesday, not Thursday,
@@ -1036,6 +1077,17 @@ export class Tournaments {
   // ── committee, purse & helpers ────────────────────────────────────────────
 
   /**
+   * The bump-line memo's store — per world (WeakMap on the DB handle), per
+   * tournament: the current weakest incumbent as of `day`/`version`. See the
+   * full-field branch in `enter()` for the freshness rules; see `bookVersion`
+   * in scout.ts for what advances the version.
+   */
+  private static bumpLine = new WeakMap<
+    object,
+    Map<number, { day: number; version: number; weakestEntryId: number; weakestCard: CommitteeCard }>
+  >();
+
+  /**
    * The committee's book on a set of birds — earnings, wins, figure.
    *
    * ── THREE QUERIES, NOT THREE PER BIRD (round 43) ───────────────────────────
@@ -1246,6 +1298,9 @@ export class Tournaments {
       .set({ gpWonCents: cents })
       .where(eq(tournamentEntries.id, entry.id))
       .run();
+    // Purse money is committee-visible earnings — the bump-line memo must not
+    // outlive this write (round 47).
+    bumpBookVersion(database);
     emit(database, {
       type: "purse_payout",
       farmId: entry.farmId,

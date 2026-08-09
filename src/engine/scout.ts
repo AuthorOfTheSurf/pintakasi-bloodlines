@@ -35,7 +35,24 @@ export function normalizedScoutFigure(figure: number, selfGrade: Grade, opponent
  * rounding, storing the average): the scores tie-break real decisions, and a
  * last-digit change silently rewrites every world.
  */
+/**
+ * A monotonic version on each world's committee-visible numbers (round 47).
+ * The Selection Committee's bump-line memo (tournaments.ts) is valid only
+ * while nothing that feeds a CommitteeCard has moved — every recorded fight
+ * and every purse settlement bumps this, so the memo can never survive into
+ * a world where the seating order might have changed. Keyed by the DB handle
+ * (a WeakMap), so parallel test worlds never see each other's counter.
+ */
+const bookVersions = new WeakMap<object, number>();
+export function bookVersion(db: object): number {
+  return bookVersions.get(db) ?? 0;
+}
+export function bumpBookVersion(db: object): void {
+  bookVersions.set(db, bookVersion(db) + 1);
+}
+
 export function recordFight(db: DB, row: typeof battleLog.$inferInsert): number {
+  bumpBookVersion(db);
   const inserted = db.insert(battleLog).values(row).returning({ id: battleLog.id }).get();
   // The schema defaults grades to B+ when an insert omits them (old test
   // worlds do); the book must normalize with what the row actually stores.

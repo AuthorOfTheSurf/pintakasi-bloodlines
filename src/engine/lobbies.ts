@@ -38,7 +38,7 @@ import {
   fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
-import { creditCents, payStakers } from "./farms";
+import { payStakers } from "./farms";
 import { overallGradeOf } from "./grades";
 import { recordFight } from "./scout";
 import { simulatePair, toCombatant } from "./fight-sim";
@@ -228,6 +228,33 @@ interface LobbyLookup {
   birdName: Map<string, string>;
   farms: Map<string, typeof farms.$inferSelect>;
   flockFor: (farmId: string) => Flock;
+}
+
+/**
+ * THE SETTLE-UP LEDGER (round 47) — the in-memory bird and farm rows one
+ * `complete()` pass mutates, flushed to SQLite in one statement per dirty row.
+ *
+ * Before this, resolving a fight re-SELECTed both bird rows and both farm rows
+ * and wrote each increment as its own UPDATE — ~10 statements per fight, and a
+ * bird fighting three rounds in its group re-read the same row three times.
+ * That was measured as the single biggest block left in the simulation (25% of
+ * a 112-day run). The rows are read once per lobby (birds) or once per pass
+ * (farms — the table is ~20 rows), every mutation lands on the cached row, and
+ * the final values flush before `complete()` returns, so everything after the
+ * card — crown resolution, staking, the doctor — reads exactly what it always
+ * read.
+ *
+ * ⚠ BIT-IDENTICAL, NOT MERELY EQUIVALENT. All the arithmetic is integer GP /
+ * centi-GP applied in the original order, and none of the removed statements
+ * emitted events, so a same-seed world diffs to zero against the per-statement
+ * engine. If a future flow inside the card starts emitting on credit, it
+ * cannot ride this cache — event order is part of the world.
+ */
+interface SettleLedger {
+  farms: Map<string, typeof farms.$inferSelect>;
+  dirtyFarms: Set<string>;
+  birds: Map<string, BirdRow>;
+  dirtyBirds: Set<string>;
 }
 
 /** One lobby going off at the tick — a public event. */
@@ -666,9 +693,19 @@ export class Lobbies {
         .from(lobbyEntries)
         .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
         .all();
+      // One statement per GROUP, not per entry (round 47) — every entry in a
+      // group takes the same groupNo, so the deal writes in group-sized sets.
       Lobbies.dealGroups(entries, rng).forEach((group, groupNo) => {
-        for (const e of group)
-          database.update(lobbyEntries).set({ groupNo }).where(eq(lobbyEntries.id, e.id)).run();
+        database
+          .update(lobbyEntries)
+          .set({ groupNo })
+          .where(
+            inArray(
+              lobbyEntries.id,
+              group.map((e) => e.id)
+            )
+          )
+          .run();
       });
       database.update(lobbies).set({ status: "closed" }).where(eq(lobbies.id, lobby.id)).run();
       closedCount++;
@@ -687,6 +724,10 @@ export class Lobbies {
     const week = Math.floor(
       database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
     );
+    // The farm half of the settle-up ledger spans the whole pass — ~20 rows,
+    // and every lobby's fights, refunds and claims touch the same barns.
+    const farmCache = new Map(database.select().from(farms).all().map((f) => [f.id, f]));
+    const dirtyFarms = new Set<string>();
 
     for (const lobby of database.select().from(lobbies).where(eq(lobbies.status, "closed")).all()) {
       const rng = mulberry32((lobby.seed ^ 0x9e3779b9) >>> 0); // the post-time stream
@@ -695,6 +736,23 @@ export class Lobbies {
         .from(lobbyEntries)
         .where(and(eq(lobbyEntries.lobbyId, lobby.id), eq(lobbyEntries.status, "pending")))
         .all();
+      // The bird half is per lobby — one card per bird per day, so no bird
+      // appears in two lobbies of the same pass. Chunked under SQLite's
+      // bound-parameter ceiling, like scoutReports.
+      const birdCache = new Map<string, BirdRow>();
+      for (let i = 0; i < entries.length; i += 500)
+        for (const row of database
+          .select()
+          .from(birds)
+          .where(
+            inArray(
+              birds.id,
+              entries.slice(i, i + 500).map((e) => e.birdId)
+            )
+          )
+          .all())
+          birdCache.set(row.id, row);
+      const ledger: SettleLedger = { farms: farmCache, dirtyFarms, birds: birdCache, dirtyBirds: new Set() };
 
       const label = labelOf(lobby);
       const event: LobbyResolution = {
@@ -728,7 +786,7 @@ export class Lobbies {
             if (a.farmId === b.farmId) continue; // matchmaking never pairs barn-mates
             const stake = stakePerFight(a.fee);
             event.fights.push(
-              Lobbies.runFight(database, lobby, a, b, label, rng, week, weather, stake, groupNo)
+              Lobbies.runFight(database, lobby, a, b, label, rng, week, weather, stake, groupNo, ledger)
             );
             taken.set(a.id, taken.get(a.id)! + 1);
             taken.set(b.id, taken.get(b.id)! + 1);
@@ -746,18 +804,16 @@ export class Lobbies {
         const staked = stakePerFight(entry.fee) * fights;
         const refunded = entry.fee - staked;
         const land = fights > 0 ? landForFight(staked) : 0;
-        const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
-        database
-          .update(farms)
-          .set({ gp: farm.gp + refunded, landTokensCents: farm.landTokensCents + land })
-          .where(eq(farms.id, entry.farmId))
-          .run();
+        const farm = farmCache.get(entry.farmId)!;
+        farm.gp += refunded;
+        farm.landTokensCents += land;
+        dirtyFarms.add(farm.id);
         database
           .update(lobbyEntries)
           .set({ status: fights > 0 ? "fought" : "unmatched", fights })
           .where(eq(lobbyEntries.id, entry.id))
           .run();
-        const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+        const bird = birdCache.get(entry.birdId)!;
         event.settlements.push({ farm: farm.name, bird: bird.name, fights, staked, refunded, land });
         if (fights === 0) {
           emit(database, {
@@ -802,16 +858,36 @@ export class Lobbies {
           // the bird's, and voiding a sale over it would punish the seller for
           // the draw.
           if ((taken.get(entry.id) ?? 0) === 0) {
-            Lobbies.refundClaims(database, entry.id, "the bird drew no opponent");
+            Lobbies.refundClaims(database, entry, "the bird drew no opponent", ledger);
             continue;
           }
-          const settled = Lobbies.settleClaims(database, entry.id, lobby.price!, rng);
+          const settled = Lobbies.settleClaims(database, entry, lobby.price!, rng, ledger);
           if (settled) event.claims.push(settled);
         }
       }
 
+      // The lobby's bird rows flush here; the shared farm rows flush once,
+      // after the last lobby, below.
+      for (const id of ledger.dirtyBirds) {
+        const b = birdCache.get(id)!;
+        database
+          .update(birds)
+          .set({ wins: b.wins, losses: b.losses, stakesWins: b.stakesWins, farmId: b.farmId })
+          .where(eq(birds.id, id))
+          .run();
+      }
+
       database.update(lobbies).set({ status: "completed" }).where(eq(lobbies.id, lobby.id)).run();
       events.push(event);
+    }
+
+    for (const id of dirtyFarms) {
+      const f = farmCache.get(id)!;
+      database
+        .update(farms)
+        .set({ gp: f.gp, gpCents: f.gpCents, wins: f.wins, losses: f.losses, landTokensCents: f.landTokensCents })
+        .where(eq(farms.id, id))
+        .run();
     }
     return events;
   }
@@ -921,11 +997,15 @@ export class Lobbies {
     // rule lives in exactly one place (config.stakePerFight) and the fight
     // never has to know how many fights the night holds.
     stake: number,
-    groupNo: number
+    groupNo: number,
+    ledger: SettleLedger
   ): FightReport {
     const simSeed = randInt(rng, 1, 2 ** 31 - 1);
-    const rowA = database.select().from(birds).where(eq(birds.id, ea.birdId)).get()!;
-    const rowB = database.select().from(birds).where(eq(birds.id, eb.birdId)).get()!;
+    // Off the ledger, not the database (round 47): a bird's second fight of
+    // the night sees its first fight's record because the cached row is the
+    // one the first fight incremented — exactly what the re-SELECT used to see.
+    const rowA = ledger.birds.get(ea.birdId)!;
+    const rowB = ledger.birds.get(eb.birdId)!;
     const sim = simulatePair(
       toCombatant(rowA),
       toCombatant(rowB),
@@ -956,7 +1036,7 @@ export class Lobbies {
 
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
-      const farm = database.select().from(farms).where(eq(farms.id, side.entry.farmId)).get()!;
+      const farm = ledger.farms.get(side.entry.farmId)!;
       farmNames.push(farm.name);
       // Escrow settle: winner takes this fight's pooled pot (own stake back +
       // the other side's), the loser's stake is what fed it. Land does NOT
@@ -965,28 +1045,25 @@ export class Lobbies {
       // The FARM's record moves here too — it can't be derived from owned
       // birds later, because birds transfer. ONE record (ruled round 15):
       // juvenile fights count toward the lifetime record like any other.
-      const farmRecord = side.won ? { wins: farm.wins + 1 } : { losses: farm.losses + 1 };
-      database.update(farms).set(farmRecord).where(eq(farms.id, side.entry.farmId)).run();
-      // The pot, less the rake — through creditCents because 78.40 GP isn't
-      // a whole number and the books are kept to the cent.
-      if (side.won) creditCents(database, side.entry.farmId, potCents - rakeCents);
-      database
-        .update(birds)
-        .set(
-          side.won
-            ? {
-                wins: side.row.wins + 1,
-                // The ladder's line: practice wins don't graduate a maiden.
-                stakesWins: side.row.stakesWins + (lobby.mode === "juvenile" ? 0 : 1),
-                // A crown point was banked here too, from round 22 until 37.
-                // The road to a Major still runs through this line — it is
-                // just the PURSE the fight pays, not a parallel counter, that
-                // now seats the Thursday field. See PINTAKASI in config.ts.
-              }
-            : { losses: side.row.losses + 1 }
-        )
-        .where(eq(birds.id, side.row.id))
-        .run();
+      if (side.won) farm.wins += 1;
+      else farm.losses += 1;
+      // The pot, less the rake — through the ledger's cent carry (the same
+      // arithmetic as creditCents) because 78.40 GP isn't a whole number and
+      // the books are kept to the cent.
+      if (side.won) Lobbies.creditLedger(ledger, side.entry.farmId, potCents - rakeCents);
+      ledger.dirtyFarms.add(farm.id);
+      if (side.won) {
+        side.row.wins += 1;
+        // The ladder's line: practice wins don't graduate a maiden.
+        side.row.stakesWins += lobby.mode === "juvenile" ? 0 : 1;
+        // A crown point was banked here too, from round 22 until 37.
+        // The road to a Major still runs through this line — it is
+        // just the PURSE the fight pays, not a parallel counter, that
+        // now seats the Thursday field. See PINTAKASI in config.ts.
+      } else {
+        side.row.losses += 1;
+      }
+      ledger.dirtyBirds.add(side.row.id);
       // The key rule's teeth used to live here. Round 31 took hardcore off the
       // daily card entirely (Zane: "There should be 0 hardcore fights outside
       // the Finals"), so nothing in a lobby force-retires any more — the only
@@ -1058,21 +1135,42 @@ export class Lobbies {
   }
 
   /**
+   * The ledger's twin of `creditCents` (farms.ts) — the SAME cent-carry
+   * arithmetic applied to the cached row instead of a fresh SELECT + UPDATE.
+   * They must stay identical operation for operation: the ledger's whole
+   * claim to correctness is that flushing it leaves the exact bytes the
+   * per-statement path would have.
+   */
+  private static creditLedger(ledger: SettleLedger, farmId: string, cents: number): void {
+    if (cents <= 0) return;
+    const farm = ledger.farms.get(farmId)!;
+    const total = farm.gpCents + cents;
+    farm.gp += Math.floor(total / 100);
+    farm.gpCents = total % 100;
+    ledger.dirtyFarms.add(farmId);
+  }
+
+  /**
    * Hand every claim on an entry back (round 23) — used when the bird never
    * fought. The claimant's escrow returns in full and the bird stays home.
    */
-  private static refundClaims(database: DB, entryId: number, why: string): void {
+  private static refundClaims(
+    database: DB,
+    entry: typeof lobbyEntries.$inferSelect,
+    why: string,
+    ledger: SettleLedger
+  ): void {
     const standing = database
       .select()
       .from(claims)
-      .where(and(eq(claims.entryId, entryId), eq(claims.status, "pending")))
+      .where(and(eq(claims.entryId, entry.id), eq(claims.status, "pending")))
       .all();
     if (standing.length === 0) return;
-    const entry = database.select().from(lobbyEntries).where(eq(lobbyEntries.id, entryId)).get()!;
-    const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+    const bird = ledger.birds.get(entry.birdId)!;
     for (const c of standing) {
-      const claimant = database.select().from(farms).where(eq(farms.id, c.farmId)).get()!;
-      database.update(farms).set({ gp: claimant.gp + c.price }).where(eq(farms.id, c.farmId)).run();
+      const claimant = ledger.farms.get(c.farmId)!;
+      claimant.gp += c.price;
+      ledger.dirtyFarms.add(c.farmId);
       database.update(claims).set({ status: "refunded" }).where(eq(claims.id, c.id)).run();
       emit(database, {
         type: "claim_refund",
@@ -1086,26 +1184,27 @@ export class Lobbies {
 
   private static settleClaims(
     database: DB,
-    entryId: number,
+    entry: typeof lobbyEntries.$inferSelect,
     price: number,
-    rng: Rng
+    rng: Rng,
+    ledger: SettleLedger
   ): LobbyResolution["claims"][number] | null {
     const entryClaims = database
       .select()
       .from(claims)
-      .where(and(eq(claims.entryId, entryId), eq(claims.status, "pending")))
+      .where(and(eq(claims.entryId, entry.id), eq(claims.status, "pending")))
       .all();
     if (entryClaims.length === 0) return null;
-    const entry = database.select().from(lobbyEntries).where(eq(lobbyEntries.id, entryId)).get()!;
 
-    const preBird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+    const preBird = ledger.birds.get(entry.birdId)!;
     const winner = entryClaims[randInt(rng, 0, entryClaims.length - 1)];
     for (const c of entryClaims) {
       if (c.id === winner.id) {
         database.update(claims).set({ status: "won" }).where(eq(claims.id, c.id)).run();
       } else {
-        const claimant = database.select().from(farms).where(eq(farms.id, c.farmId)).get()!;
-        database.update(farms).set({ gp: claimant.gp + c.price }).where(eq(farms.id, c.farmId)).run();
+        const claimant = ledger.farms.get(c.farmId)!;
+        claimant.gp += c.price;
+        ledger.dirtyFarms.add(c.farmId);
         database.update(claims).set({ status: "refunded" }).where(eq(claims.id, c.id)).run();
         emit(database, {
           type: "claim_refund",
@@ -1119,20 +1218,22 @@ export class Lobbies {
     // The tag settles 98/2 (round 22): the selling barn banks the tag less
     // the staker rake. Same rule is reserved for the marketplace when it's
     // built — see STAKER_FLOWS.MARKET_RAKE.
-    const owner = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+    const owner = ledger.farms.get(entry.farmId)!;
     const tagCents = price * 100;
     const tagRakeCents = Math.round(tagCents * STAKER_FLOWS.CLAIM_RAKE);
-    creditCents(database, entry.farmId, tagCents - tagRakeCents);
+    Lobbies.creditLedger(ledger, entry.farmId, tagCents - tagRakeCents);
     payStakers(database, tagRakeCents, "claim_rake", `${preBird.name}'s ${price} GP tag`);
-    database.update(birds).set({ farmId: winner.farmId }).where(eq(birds.id, entry.birdId)).run();
+    // The transfer itself — on the ledger; the flush writes the new barn.
+    const bird = ledger.birds.get(entry.birdId)!;
+    bird.farmId = winner.farmId;
+    ledger.dirtyBirds.add(bird.id);
     database
       .update(lobbyEntries)
       .set({ claimedByFarmId: winner.farmId })
-      .where(eq(lobbyEntries.id, entryId))
+      .where(eq(lobbyEntries.id, entry.id))
       .run();
 
-    const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
-    const to = database.select().from(farms).where(eq(farms.id, winner.farmId)).get()!;
+    const to = ledger.farms.get(winner.farmId)!;
     emit(database, {
       type: "claim_won",
       farmId: winner.farmId,
