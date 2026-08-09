@@ -89,3 +89,73 @@ export function recordFight(db: DB, row: typeof battleLog.$inferInsert): number 
     .run();
   return inserted.id;
 }
+
+/**
+ * The paired hot-path form of recordFight (round 48). Every real bout writes
+ * two mirrored sides, and dispatching both inserts and both form-book upserts
+ * separately made four SQLite programs out of one indivisible fact.
+ *
+ * The form rows are guaranteed to have different bird ids, so SQLite applies
+ * the two `excluded` increments independently. A bird's own normSum therefore
+ * still receives exactly one float addition at exactly this point in its fight
+ * history. Returned ids are matched by the stored side rather than trusting a
+ * driver's RETURNING order.
+ */
+export function recordFightPair(
+  db: DB,
+  rows: readonly [typeof battleLog.$inferInsert, typeof battleLog.$inferInsert]
+): [number, number] {
+  if (rows[0].birdId === rows[1].birdId)
+    throw new Error("A fight pair must contain two different birds");
+  if (rows[0].side === rows[1].side)
+    throw new Error("A fight pair must contain side 0 and side 1");
+  bumpBookVersion(db);
+  bumpBookVersion(db);
+  const inserted = db
+    .insert(battleLog)
+    .values([...rows])
+    .returning({ id: battleLog.id, side: battleLog.side })
+    .all();
+  const idBySide = new Map(inserted.map((r) => [r.side, r.id]));
+
+  db.insert(birdForm)
+    .values(
+      rows.map((row) => {
+        const win = row.result === "win" ? 1 : 0;
+        return {
+          birdId: row.birdId,
+          format: row.format,
+          fights: 1,
+          wins: win,
+          losses: 1 - win,
+          figureSum: row.pitFigure,
+          bestFigure: row.pitFigure,
+          normSum: normalizedScoutFigure(
+            row.pitFigure,
+            (row.selfGrade ?? "B+") as Grade,
+            (row.opponentGrade ?? "B+") as Grade
+          ),
+          earnCents: Math.max(0, row.gpDeltaCents),
+        };
+      })
+    )
+    .onConflictDoUpdate({
+      target: [birdForm.birdId, birdForm.format],
+      set: {
+        fights: sql`${birdForm.fights} + excluded.fights`,
+        wins: sql`${birdForm.wins} + excluded.wins`,
+        losses: sql`${birdForm.losses} + excluded.losses`,
+        figureSum: sql`${birdForm.figureSum} + excluded.figure_sum`,
+        bestFigure: sql`max(${birdForm.bestFigure}, excluded.best_figure)`,
+        normSum: sql`${birdForm.normSum} + excluded.norm_sum`,
+        earnCents: sql`${birdForm.earnCents} + excluded.earn_cents`,
+      },
+    })
+    .run();
+
+  const first = idBySide.get(rows[0].side);
+  const second = idBySide.get(rows[1].side);
+  if (first === undefined || second === undefined)
+    throw new Error("Fight pair insert did not return both mirrored sides");
+  return [first, second];
+}

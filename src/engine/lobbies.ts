@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
@@ -40,7 +40,7 @@ import {
 import { emit, fmtGp } from "./events";
 import { payStakers } from "./farms";
 import { overallGradeOf } from "./grades";
-import { recordFight } from "./scout";
+import { recordFightPair } from "./scout";
 import { simulatePair, toCombatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canJuvenile, canRealFight } from "./lifecycle";
@@ -464,13 +464,42 @@ export class Lobbies {
     // keeps every one a world ever ran — 768 rows by day 91 and climbing — and
     // this read the lot to keep the dozen still live. `ix_lobbies_status_day`
     // covers the predicate.
-    const real = this.database
+    const liveRows = this.database
       .select()
       .from(lobbies)
       .where(inArray(lobbies.status, ["open", "closed"]))
       .all()
-      .filter((l) => opts.classType === undefined || l.classType === opts.classType)
-      .map((l) => this.viewLobby(l.id, detail));
+      .filter((l) => opts.classType === undefined || l.classType === opts.classType);
+    // THE LIQUIDITY TOTE (round 48): `fills` means exactly one number per
+    // room. It used to call viewLobby for every row, re-SELECTing the lobby
+    // and materialising every entry in it so Array.length could throw the
+    // rows away. Every bot reads this tote after the bots before it have made
+    // the fields larger, so that innocent shape repeatedly copied most of the
+    // night's card. One grouped count keeps the same row order and output with
+    // two queries total, however many rooms or entries exist.
+    const fillByLobby = new Map<number, number>();
+    if (detail === "fills" && liveRows.length > 0)
+      for (const row of this.database
+        .select({ lobbyId: lobbyEntries.lobbyId, filled: count() })
+        .from(lobbyEntries)
+        .where(inArray(lobbyEntries.lobbyId, liveRows.map((l) => l.id)))
+        .groupBy(lobbyEntries.lobbyId)
+        .all())
+        fillByLobby.set(row.lobbyId, row.filled);
+    const real =
+      detail === "fills"
+        ? liveRows.map((l): LobbyView => ({
+            lobbyId: l.id,
+            status: l.status === "closed" ? "closed" : "open",
+            mode: l.mode,
+            classType: l.classType,
+            format: l.format,
+            price: l.price,
+            fee: feeFor(l.mode, l.classType, l.price ?? undefined),
+            filled: fillByLobby.get(l.id) ?? 0,
+            entries: [],
+          }))
+        : liveRows.map((l) => this.viewLobby(l.id, detail));
     const sameKey = (a: LobbyView, b: CardKey) =>
       a.mode === b.mode &&
       a.classType === b.classType &&
@@ -799,6 +828,7 @@ export class Lobbies {
       // home, and land pays once on what was — so a bird alone in its room
       // gets everything back and no land (land is for FIGHTING), and a bird
       // whose group was short gets the difference back and a smaller award.
+      const settledEntryIds = new Map<string, number[]>();
       for (const entry of entries) {
         const fights = taken.get(entry.id)!;
         const staked = stakePerFight(entry.fee) * fights;
@@ -808,11 +838,11 @@ export class Lobbies {
         farm.gp += refunded;
         farm.landTokensCents += land;
         dirtyFarms.add(farm.id);
-        database
-          .update(lobbyEntries)
-          .set({ status: fights > 0 ? "fought" : "unmatched", fights })
-          .where(eq(lobbyEntries.id, entry.id))
-          .run();
+        const status = fights > 0 ? "fought" : "unmatched";
+        const settleKey = `${status}|${fights}`;
+        const sameSettlement = settledEntryIds.get(settleKey) ?? [];
+        sameSettlement.push(entry.id);
+        settledEntryIds.set(settleKey, sameSettlement);
         const bird = birdCache.get(entry.birdId)!;
         event.settlements.push({ farm: farm.name, bird: bird.name, fights, staked, refunded, land });
         if (fights === 0) {
@@ -839,6 +869,21 @@ export class Lobbies {
               (refunded > 0 ? ` · ${refunded} GP unfought and returned` : ""),
           });
         }
+      }
+      // FOUR SHAPES, NOT ONE WRITE PER BIRD (round 48). A group-stage entry
+      // can finish unmatched or with 1..FIGHTS_PER_GROUP_BIRD fights. Updating
+      // every row separately made settlement dispatch scale with the field
+      // even though all rows in one shape receive identical values. Bucketed
+      // IN updates preserve the final bytes and all event ordering while
+      // reducing a thousand-entry room to at most four statements.
+      for (const [key, ids] of settledEntryIds) {
+        const [status, fights] = key.split("|") as ["fought" | "unmatched", string];
+        for (let i = 0; i < ids.length; i += 500)
+          database
+            .update(lobbyEntries)
+            .set({ status, fights: Number(fights) })
+            .where(inArray(lobbyEntries.id, ids.slice(i, i + 500)))
+            .run();
       }
 
       // Claims settle last — after the fights. Prize money stayed with the
@@ -1031,7 +1076,7 @@ export class Lobbies {
     const potCents = stake * 200;
     const rakeCents = Math.round(potCents * STAKER_FLOWS.FIGHT_RAKE);
     const forcedRetirements: string[] = [];
-    const logIds: number[] = [];
+    const fightRows: (typeof battleLog.$inferInsert)[] = [];
     const farmNames: string[] = [];
 
     for (const [i, side] of sides.entries()) {
@@ -1074,7 +1119,7 @@ export class Lobbies {
       // fill it.
       // Through recordFight, not a bare insert — the log row and the scout's
       // running book (bird_form) move together or not at all.
-      const insertedId = recordFight(database, {
+      fightRows.push({
           dayIndex: lobby.dayOpened, // the fight belongs to the day it was carded
           lobbyId: lobby.id,
           farmId: side.entry.farmId,
@@ -1100,10 +1145,16 @@ export class Lobbies {
           gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
           seed: simSeed,
       });
-      logIds.push(insertedId);
       // The entry's status and fight count are set once, at settle-up in
       // `complete` — a bird may be in the middle of its group here.
     }
+    const logIds = recordFightPair(
+      database,
+      fightRows as [
+        typeof battleLog.$inferInsert,
+        typeof battleLog.$inferInsert,
+      ]
+    );
 
     const winnerSide = sides[sim.winner];
     const loserSide = sides[1 - sim.winner];

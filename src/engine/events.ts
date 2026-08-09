@@ -74,21 +74,72 @@ export interface EmitInput {
   data?: unknown; // extra structure, JSON-serialized
 }
 
+type EventInsert = typeof events.$inferInsert;
+type EventBuffer = { dayIndex: number; rows: EventInsert[] };
+
+/**
+ * THE TICK'S WRITE-AHEAD LEDGER (round 48).
+ *
+ * A long simulation emits several rows per fight. At day 182 that meant
+ * 407,185 one-row INSERT statements and, before every one, a SELECT of the
+ * same one-row game_state table just to rediscover today's date. The event
+ * order is meaningful, but individual statement boundaries are not.
+ *
+ * Game.tick wraps its already-atomic transaction in this buffer. `emit`
+ * serializes the row at the original call site, preserving errors and order,
+ * then the successful tick writes that sequence in bounded multi-row chunks.
+ * Calls outside a tick still insert immediately, which keeps every public
+ * engine method's existing transaction semantics.
+ *
+ * WeakMap keeps parallel test worlds isolated and lets closed DB handles go.
+ */
+const buffers = new WeakMap<object, EventBuffer>();
+const EVENT_INSERT_CHUNK = 250; // 9 columns × 250 stays well below SQLite's parameter ceiling
+
+export function withBufferedEvents<T>(database: DB, dayIndex: number, fn: () => T): T {
+  if (buffers.has(database))
+    throw new Error("Event buffering cannot be nested for the same world");
+  const buffer: EventBuffer = { dayIndex, rows: [] };
+  buffers.set(database, buffer);
+  try {
+    const result = fn();
+    for (let i = 0; i < buffer.rows.length; i += EVENT_INSERT_CHUNK)
+      database.insert(events).values(buffer.rows.slice(i, i + EVENT_INSERT_CHUNK)).run();
+    return result;
+  } finally {
+    // On a throw no rows have been flushed, and Game.tick's outer transaction
+    // rolls back the rest of the day. Never leave a dead buffer attached.
+    buffers.delete(database);
+  }
+}
+
+/**
+ * Move buffered event time with the world clock. The clock advances before
+ * Hatch Friday callbacks and card resolution, so those rows historically
+ * carry the post-tick day while bot/card-entry rows carry the pre-tick day.
+ */
+export function setBufferedEventDay(database: DB, dayIndex: number): void {
+  const buffer = buffers.get(database);
+  if (buffer) buffer.dayIndex = dayIndex;
+}
+
 export function emit(database: DB, input: EmitInput): void {
-  const state = database.select().from(gameState).where(eq(gameState.id, 1)).get();
-  database
-    .insert(events)
-    .values({
-      dayIndex: state?.dayIndex ?? 0,
-      type: input.type,
-      farmId: input.farmId ?? null,
-      birdId: input.birdId ?? null,
-      gpCents: input.gpCents ?? null,
-      lt: input.lt ?? null,
-      message: input.message,
-      data: input.data === undefined ? null : JSON.stringify(input.data),
-    })
-    .run();
+  const buffer = buffers.get(database);
+  const row: EventInsert = {
+    dayIndex:
+      buffer?.dayIndex ??
+      database.select().from(gameState).where(eq(gameState.id, 1)).get()?.dayIndex ??
+      0,
+    type: input.type,
+    farmId: input.farmId ?? null,
+    birdId: input.birdId ?? null,
+    gpCents: input.gpCents ?? null,
+    lt: input.lt ?? null,
+    message: input.message,
+    data: input.data === undefined ? null : JSON.stringify(input.data),
+  };
+  if (buffer) buffer.rows.push(row);
+  else database.insert(events).values(row).run();
 }
 
 /** Format centi-GP for messages: whole GP stay whole, fractions show cents. */

@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { birdForm, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birdForm, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
 import {
   DAY_NAMES,
   FORMATS,
@@ -20,7 +20,7 @@ import { Flock } from "./flock";
 import { canHardcore, canJuvenile } from "./lifecycle";
 import { overallGradeOf } from "./grades";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
-import { bookVersion, bumpBookVersion, recordFight } from "./scout";
+import { bookVersion, bumpBookVersion, recordFightPair } from "./scout";
 
 /**
  * Which championship: the Thursday MAJORS (age 3+, hardcore, the crowns) or
@@ -939,6 +939,7 @@ export class Tournaments {
     // instead (see PINTAKASI.LAND_POT and payLandPot below). What this function
     // still owes the pot is the COUNT of fights, which the bracket loop tallies.
     const farmNames: string[] = [];
+    const fightRows: (typeof battleLog.$inferInsert)[] = [];
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
       const farm = database.select().from(farms).where(eq(farms.id, side.entry.farmId)).get()!;
@@ -1013,7 +1014,7 @@ export class Tournaments {
       }
       // Through recordFight, not a bare insert — the log row and the scout's
       // running book (bird_form) move together or not at all.
-      recordFight(database, {
+      fightRows.push({
           // ⚠ ROUND 38 — THIS WAS HARDCODED TO PINTAKASI.DAY_OF_WEEK, so every
           // JUVENILE Championship fight was archived under THURSDAY's date
           // while it was actually fought on Wednesday. Two harms. The archive
@@ -1050,6 +1051,13 @@ export class Tournaments {
           seed: simSeed,
       });
     }
+    recordFightPair(
+      database,
+      fightRows as [
+        typeof battleLog.$inferInsert,
+        typeof battleLog.$inferInsert,
+      ]
+    );
     const w = sim.winner;
     emit(database, {
       type: "fight",

@@ -7,6 +7,7 @@ import { Breeding, splitBreedFee } from "./breeding";
 import { ECONOMY, ENTRY_FEES, FIGHTS_PER_GROUP_BIRD, LT_CENTS, stakePerFight } from "./config";
 import { Farms } from "./farms";
 import { Game } from "./game";
+import { emit, setBufferedEventDay, withBufferedEvents } from "./events";
 import { mulberry32 } from "./rng";
 import { onCard } from "./testkit";
 
@@ -43,6 +44,42 @@ const ofType = (db: ReturnType<typeof createDb>, type: string) =>
   db.select().from(events).all().filter((e) => e.type === type);
 
 describe("the unified ledger", () => {
+  test("a buffered tick preserves call order and the clock side of every event", () => {
+    const w = world();
+    const before = w.db.select().from(events).all().length;
+
+    withBufferedEvents(w.db, 4, () => {
+      emit(w.db, { type: "check_in", farmId: w.devId, message: "before the turn" });
+      setBufferedEventDay(w.db, 5);
+      emit(w.db, { type: "fight", message: "after the turn" });
+      // The buffer is write-ahead memory, not a partial ledger other code can
+      // observe midway through an atomic tick.
+      expect(w.db.select().from(events).all().length).toBe(before);
+    });
+
+    const written = w.db.select().from(events).all().slice(before);
+    expect(written.map((e) => [e.dayIndex, e.type, e.message])).toEqual([
+      [4, "check_in", "before the turn"],
+      [5, "fight", "after the turn"],
+    ]);
+    expect(written[1].id).toBe(written[0].id + 1);
+  });
+
+  test("a failed buffer writes nothing and detaches cleanly", () => {
+    const w = world();
+    const before = w.db.select().from(events).all().length;
+    expect(() =>
+      withBufferedEvents(w.db, 4, () => {
+        emit(w.db, { type: "fight", message: "must roll back" });
+        throw new Error("tick failed");
+      })
+    ).toThrow("tick failed");
+    expect(w.db.select().from(events).all().length).toBe(before);
+
+    emit(w.db, { type: "fight", message: "ordinary emit still works" });
+    expect(w.db.select().from(events).all().at(-1)?.message).toBe("ordinary emit still works");
+  });
+
   test("registration and check-in land on the ledger with exact deltas", () => {
     const w = world();
     const reg = ofType(w.db, "farm_registered");

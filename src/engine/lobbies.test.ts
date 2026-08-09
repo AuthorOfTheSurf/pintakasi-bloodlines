@@ -342,6 +342,23 @@ describe("unbounded lobbies (round 31 — one room per posted key, no ceiling)",
     expect("agility" in card.bird).toBe(false);
   });
 
+  test("the liquidity tote matches the full board without building cards", () => {
+    const w = world();
+    const spec = REAL(w.db);
+    w.dev.enter(byName(w.devFlock, "Alab").id, spec);
+    w.rival.enter(
+      w.rivalFlock.all().find((b) => b.status === "active" && b.age >= 2)!.id,
+      spec
+    );
+
+    const full = w.dev.board();
+    const fills = w.dev.board({ detail: "fills" });
+    expect(
+      fills.map(({ entries: _entries, ...lobby }) => lobby)
+    ).toEqual(full.map(({ entries: _entries, ...lobby }) => lobby));
+    expect(fills.every((l) => l.entries.length === 0)).toBe(true);
+  });
+
   test("a lobby keeps growing — there is no ceiling to arrive after", () => {
     const w = world();
     // Three more waves into the same key. Under the old capacity this would

@@ -1,4 +1,4 @@
-import { count, eq, isNotNull, type SQL } from "drizzle-orm";
+import { count, desc, eq, isNotNull, lt, type SQL } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { DB } from "@/db/client";
 import {
@@ -129,10 +129,12 @@ export function computeTopline(db: DB): Topline {
     landMinted: landStaked + landLiquid,
     landStaked,
     landLiquid,
-    // COUNT IN SQLITE (round 35). These pulled whole tables into JS to measure
-    // their length — battle_log alone is 21,000 rows by day 91, read twice a
-    // tick for a number SQLite can produce without building a single object.
-    fights: countRows(db, battleLog, eq(battleLog.result, "win")),
+    // EVERY FIGHT IS TWO MIRRORED ROWS (round 48), which the doctor's Pit
+    // Figure invariant proves independently. Counting only `result = win`
+    // forced SQLite to test every wide battle row because result has no index;
+    // plain COUNT(*) walks its narrowest covering index and is ~13× faster on
+    // the 182-day world without adding another write-amplifying index.
+    fights: countRows(db, battleLog) / 2,
     cancelled: countRows(db, lobbyEntries, eq(lobbyEntries.status, "unmatched")),
     // A bred bird is one with a dam — `ix_birds_mother` covers the predicate.
     covers: countRows(db, birds, isNotNull(birds.motherId)),
@@ -226,15 +228,21 @@ export function stakingBook(db: DB): StakingBook {
 /** Write (or overwrite) today's snapshot. */
 export function recordSnapshot(db: DB): Topline {
   const topline = computeTopline(db);
-  db.delete(snapshots).where(eq(snapshots.dayIndex, topline.day)).run();
-  db.insert(snapshots).values({ dayIndex: topline.day, data: JSON.stringify(topline) }).run();
+  const data = JSON.stringify(topline);
+  db.insert(snapshots)
+    .values({ dayIndex: topline.day, data })
+    .onConflictDoUpdate({ target: snapshots.dayIndex, set: { data } })
+    .run();
   return topline;
 }
 
 /** The last snapshot strictly BEFORE `today` — the diff baseline. */
 export function baselineBefore(db: DB, today: number): Topline | null {
-  const rows = db.select().from(snapshots).all().filter((s) => s.dayIndex < today);
-  if (rows.length === 0) return null;
-  rows.sort((a, b) => b.dayIndex - a.dayIndex);
-  return JSON.parse(rows[0].data) as Topline;
+  const row = db
+    .select()
+    .from(snapshots)
+    .where(lt(snapshots.dayIndex, today))
+    .orderBy(desc(snapshots.dayIndex))
+    .get();
+  return row ? (JSON.parse(row.data) as Topline) : null;
 }

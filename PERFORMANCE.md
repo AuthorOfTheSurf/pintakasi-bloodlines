@@ -1,6 +1,6 @@
 # Simulation performance — state of play and where to dig next
 
-Written at the end of round 43, updated in rounds 44 and 47. Everything below
+Written at the end of round 43, updated in rounds 44, 47 and 48. Everything below
 is MEASURED unless it says otherwise; re-measure before trusting any of it two
 rounds from now.
 
@@ -16,6 +16,7 @@ rounds from now.
 | 182 days, after round 44 | 812s (13.5 min) | 5.25 |
 | **112 days, after round 47** | **2:11 (131s)** | **4.48** |
 | **182 days, after round 47** | **9:58 (598s)** | **4.10** |
+| **91 days, after round 48** | **1:08 (68s)** | **4.31** |
 
 (Wall clocks print as m:ss since round 47 — Zane's ask — so the table follows.
 The 182-day ms/fight now sits BELOW the 112-day figure: the bump-line memo
@@ -32,6 +33,13 @@ still grows — 0.9s/day around week 3 to ~13s/day at week 24 — but that is
 fight VOLUME (963 → ~33,000 fights per fortnight as the population compounds
 to ~6,300 birds), not per-fight cost. Totals mislead; compare ms/fight, and
 compare runs only under the same `--seed`.
+
+Round 48's matched seed-1 91-day A/B ran immediately sequentially on the same
+machine: round 47 at 1:15 / 4.75 ms per fight, round 48 at 1:08 / 4.31 ms per
+fight, over the same 15,823 fights and 11,074 entries. That is a 9.3% reduction
+in per-fight cost. The normalized event stream (63,990 rows) and final farms,
+birds, battle log, scout book, lobby entries, tournament entries and snapshots
+all diffed to zero.
 
 ## How to measure (do this before optimizing anything)
 
@@ -111,16 +119,34 @@ compare runs only under the same `--seed`.
   live read, so seating decisions never ride the cache. ~0.15 ms/fight at 112
   days, more at 182 (fields are full longer). Guarded by a staleness test in
   tournaments.test.ts.
+- **Round 48, the write-ahead event ledger**: a tick buffers its ordered event
+  rows and flushes them in bounded multi-row inserts at commit. `emit()` no
+  longer rereads the one-row world clock for every fight, entry and settlement;
+  the clock moves the buffer from pre-tick to post-tick day at the same point it
+  updates `game_state`. Calls outside a tick still write immediately. The
+  182-day audit found 407,185 events, so this removes one query per row and most
+  event INSERT dispatch without changing a byte of the ledger.
+- **Round 48, paired fight persistence + grouped settlement**: the two mirrored
+  battle rows insert together and their independent `bird_form` upserts run in
+  one statement. Entry settlement buckets the four possible
+  `(fought/unmatched, fight count)` shapes and updates each bucket in chunks,
+  rather than one statement per bird. The liquidity tote also became one live
+  lobby read plus one grouped entry count instead of materialising every field
+  once per bot.
+- **Round 48, cheaper office memory**: all-time fights use the engine's
+  doctor-proven two-rows-per-fight contract (`COUNT(*) / 2`) rather than scanning
+  every wide battle row for `result = win`; the final-size query on the
+  279,322-row audit world measured 26.7 ms → 2.1 ms. Snapshot overwrite is one
+  upsert, and predecessor lookup is an indexed `ORDER BY ... LIMIT 1`.
 
 ## Where the remaining time goes
 
 ⚠ The per-phase table below is the ROUND-44 profile (112 days, ~163s total).
-Round 47 took its top two rows (resolve and the crown chase's refusal bill)
-but did not re-profile the split — re-run the `__prof` method before trusting
-these shares for the next dig. What certainly remains per fight: the
-battle_log insert + bird_form upsert (`recordFight`) and the fight event's
-insert (plus `emit`'s one-row gameState read), and per entry the escrow
-debit and entry insert on the way in.
+Rounds 47–48 took its top two rows, the event-dispatch tax, paired fight
+persistence, settlement updates and the liquidity tote, but did not re-profile
+the split — re-run the `__prof` method before trusting these shares for the next
+dig. What certainly remains per entry is the door's eligibility, cap, wallet
+and escrow work; breeding still rebuilds a global market once per priced hen.
 
 | Phase | cost | share | What it is |
 |---|---|---|---|
@@ -140,11 +166,12 @@ debit and entry insert on the way in.
 2. ~~The crown chase's refusal bill~~ — DONE round 47 (the bump-line memo;
    see above). 4.63 → 4.48 ms/fight at 112 days, and the gap between the
    112- and 182-day ms/fight suggests more of its value lands late-run.
-3. **Re-profile, then pick.** The round-44 phase table is now two rounds
-   stale and its two biggest rows are gone; the next dig should start by
+3. **Re-profile, then pick.** The round-44 phase table is now four rounds
+   stale and its two biggest rows plus round 48's persistence dispatch are gone;
+   the next dig should start by
    re-running the `__prof` accumulator, not by trusting the table. Likely
-   new leaders: carding/liquidity (board reads + `enter`'s per-entry
-   escrow round-trips) and breeding's browse.
+   new leaders: carding (`enter`'s per-entry preamble and escrow round-trips)
+   and breeding's repeated per-hen market browse.
 4. **Threading.** The tick is one SQLite transaction, so in-tick parallelism
    is hard; the honest split is coarser — fight resolution batches, or the
    doctor off-thread. Measure what's parallelizable first.
@@ -162,9 +189,9 @@ debit and entry insert on the way in.
   later decision. Same seed + zero-diff event logs is the acceptance test.
 - Bird ids are `randomUUID()` and NOT seeded. Any new ordering, Map
   iteration, or tie-break that touches them is a determinism bug.
-- **battle_log rows go through `engine/scout.ts` `recordFight`, never a bare
-  insert** — the scout book must advance with the log or the ninth invariant
-  fails the run. Test helpers included.
+- **battle_log rows go through `engine/scout.ts` `recordFight` / paired
+  `recordFightPair`, never a bare insert** — the scout book must advance with
+  the log or the ninth invariant fails the run. Test helpers included.
 - **Sim databases from before round 44 have no `bird_form`**, so the doctor
   (and the scout) read them wrong — the invariant fails loudly. Old sim
   worlds are disposable by design; don't "fix" this with a backfill.

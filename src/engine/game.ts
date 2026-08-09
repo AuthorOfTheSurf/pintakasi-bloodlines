@@ -10,6 +10,7 @@ import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
 import { Gacha } from "./gacha";
+import { withBufferedEvents } from "./events";
 import { baselineBefore, recordSnapshot } from "./snapshots";
 import { Tournaments, type TournamentResolution } from "./tournaments";
 
@@ -103,7 +104,10 @@ export class Game {
    * times had to reason our way past. Now a day either happens or it doesn't.
    */
   private tick(kind: "day" | "week"): TickView {
-    return this.database.transaction((): TickView => this.runTick(kind)) as TickView;
+    return this.database.transaction(
+      (): TickView =>
+        withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind))
+    ) as TickView;
   }
 
   private runTick(kind: "day" | "week"): TickView {

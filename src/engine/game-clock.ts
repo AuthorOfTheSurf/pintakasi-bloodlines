@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
 import { CALENDAR } from "./config";
+import { setBufferedEventDay } from "./events";
 
 /**
  * The game calendar. Day 0 = the first Friday of the Year 3000, so every
@@ -90,6 +91,7 @@ export class GameClock {
       if (GameClock.isFriday(d)) crossed.push(GameClock.weekOf(d));
     }
     this.database.update(gameState).set({ dayIndex: target }).where(eq(gameState.id, 1)).run();
+    setBufferedEventDay(this.database, target);
     for (const week of crossed) onFriday?.(week);
     return {
       state: GameClock.stateOf(target),
