@@ -142,6 +142,33 @@ This is the moment the sim stops being a batch job: nineteen barns with differen
 
 **Same run: the per-verb schema paid off in full.** `RESPONSE_SCHEMA` became an `anyOf` with one branch per verb, so "`bird` is required when `do` is `enter`" is finally sayable — that whole failure class became *unrepresentable at generation time* instead of dropped at translation time. The 14-day run dropped 22 of 258 actions, every one a birdless `enter`; this run: **32 calls, 152 proposed, 0 dropped.** The #1 measured quality lever, closed by making the invalid shape impossible to emit.
 
+## Phase 4: the full fleet, and the night the world fell over
+
+Phase 4's design splits skill into two loops: the **player** (a local model, in the tick, 14+ wakes a day) and the **coach** (a big model, out of the tick, reading `brain_log` and writing standing orders via `tune` — see `COACHING.md`). The personas (`src/actors/personas.ts`, `--personas`) are the coach's opening move made automatic: each llm barn starts under its scripted twin's house creed. **Goals port over; decision logic does not** — the scripted knobs (entryRate 0.85, claimAggression 0.75…) stay un-ported so the A/B measures brains, not imitations.
+
+### The flagship run: 19 barns × 7 days, and two new failure modes
+
+The first full-fleet week (qwen3:14b, days 57–63) died at its 30-minute cap on the final day, and taught more by failing than a clean run would have:
+
+1. **The 64 KB letter slot.** bot-14 — a whale sitting on a 100-bird barn — bounced out of *every single day* with `incoming_too_long`. The raw `BotView` crosses the wire to the actor (the digest happens inside, in the decider), and a 100-bird view is ~100 KB against rivetkit's default 64 KB incoming-message limit. This failure is retry-proof: the payload is the same size every attempt. **Fix:** `maxIncomingMessageSize: 8 MB` on the registry. The lesson generalizes: the digest saved *inference* cost, but the un-digested view still had to fit through the actor's front door.
+2. **The wake stampede.** Barns sleep between game-days; every morning all 19 wake at once on a machine Ollama has already pinned. The engine gives an actor 5 s to answer its wake signal — and on days 59–60 that deadline missed en masse (fleet collapsed to 8/19 answering, all wake-signal or cascading HTTP timeouts, actor generations climbing 4→6 as they thrashed). **Fix:** `noSleep: true` — a barn's whole life is one sim run; the envoy drain retires it — plus "wake signal" in the retry regex for the stragglers.
+
+The run itself became the **baseline arm by accident** (the launch command dropped `--personas`; the actors confirmed "standing orders: none"). Baselines are cheap to acquire when you make them by mistake.
+
+### qwen3:30b-a3b: the MoE pays out double
+
+| Model | Disk | Warm decode | 19-barn fleet | s/day |
+|---|---|---|---|---|
+| qwen3:14b (dense) | 9.3 GB | 28.0 tok/s | 19/19 after timeout fix | **102.8** |
+| qwen3:30b-a3b (MoE) | 18.6 GB | **63.7 tok/s** | 38 calls, **0 failures** | **51.3** |
+
+Twice the parameters on disk, half the wall clock: a mixture-of-experts model stores 30B weights but activates ~3B per token, so it *reads* like a big model and *streams* like a small one — decode is bandwidth ÷ **active** bytes, not total bytes. Prefill is nearly free warm (KV-cached). A full-fleet 92-day world drops from ~2.6 hours to **~1.3 hours**.
+
+### First persona fingerprints (2-day burst, day 49–50)
+
+- The world's only two `buy_land` proposals came from bot-11 and bot-13 — **the two landlords**. bot-13 also staked.
+- bot-14, a whale with 11,405 GP, rolled the gacha. bot-10, a whale with **159 GP**, thought for 25–55 s and returned an empty day — which is the creed ("buy while GP stays above the reserve") being read *correctly enough to abstain*. Orders are goals, and a broke whale honoring its reserve is the goal working.
+
 ## Findings (phase 1)
 
 ### 1. It was never a context-window problem

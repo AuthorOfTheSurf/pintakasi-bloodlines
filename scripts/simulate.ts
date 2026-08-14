@@ -104,6 +104,15 @@ if (useActors && !brainArg) {
   console.error("--actors needs --brain and --llm — actors are the llm barns' home.");
   process.exit(1);
 }
+// --personas (round 52, phase 4): each llm barn starts the world with the
+// standing orders its scripted twin's profile implies — the claim shark
+// claims, the whale rolls, the land baron buys the cap. GOALS port over;
+// decision logic does not (see src/actors/personas.ts).
+const usePersonas = args.includes("--personas");
+if (usePersonas && !useActors) {
+  console.error("--personas needs --actors — orders live in the barn actors' state.");
+  process.exit(1);
+}
 
 function stamp(): string {
   const t = new Date();
@@ -195,10 +204,16 @@ if (useActors) {
 // Same sink for both brains; the rows can't tell --actors from direct.
 const dayBrainLogs: BrainCallLog[] = [];
 const sink = (log: BrainCallLog) => dayBrainLogs.push(log);
+// The timeout scales with the fleet. Ollama runs a few requests truly in
+// parallel and QUEUES the rest, so the 19th barn's wait is mostly other
+// barns' turns — the first full-fleet day timed out 6 of 19 at the flat
+// 120s. A queue wait is not a hung model; give the tail room.
+const llmCount = llmArg ? (/^\d+$/.test(llmArg) ? Number(llmArg) : llmArg.split(",").length) : 0;
+const brainTimeoutMs = 120_000 + 15_000 * llmCount;
 const decider = brainArg
   ? rivetClient
-    ? barnDecider(rivetClient, worldName, { model: brainArg, verbose: true, sink })
-    : ollamaDecider({ model: brainArg, verbose: true, sink })
+    ? barnDecider(rivetClient, worldName, { model: brainArg, verbose: true, sink, timeoutMs: brainTimeoutMs })
+    : ollamaDecider({ model: brainArg, verbose: true, sink, timeoutMs: brainTimeoutMs })
   : null;
 if (llmArg) {
   const botIds = db
@@ -218,6 +233,17 @@ if (llmArg) {
   db.update(farms).set({ brain: "scripted" }).where(eq(farms.isBot, 1)).run();
   for (const id of chosen) db.update(farms).set({ brain: "llm" }).where(eq(farms.id, id)).run();
   console.log(`Brain: ${brainArg} plays ${chosen.length} stable(s) — ${chosen.join(", ")}\n`);
+
+  if (usePersonas && rivetClient) {
+    const { BOT_FARMS } = await import("@/engine/bot-config");
+    const { personaOrders } = await import("@/actors/personas");
+    for (const id of chosen) {
+      const profile = BOT_FARMS.find((p) => p.id === id);
+      if (!profile) continue;
+      await rivetClient.barn.getOrCreate([worldName, id]).tune(personaOrders(profile));
+    }
+    console.log(`Personas set: ${chosen.length} barn(s) start under their house creed\n`);
+  }
 }
 
 const game = new Game(db, DEV_FARM_ID, discoveryPolicy);

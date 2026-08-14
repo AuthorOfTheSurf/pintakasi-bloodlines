@@ -55,12 +55,20 @@ interface BarnMemory {
 
 export const barn = actor({
   options: {
-    // A barn-day is an LLM call: ~14s warm, worse cold, worse under a full
-    // roster's concurrency (the 4-barn test saw a straggler at 31s). The
-    // default action timeout is 60s, which is one bad batch away from
-    // killing a healthy turn — and the decider already carries its own
-    // 120s AbortController, so the honest budget lives there, not here.
-    actionTimeout: 300_000,
+    // A barn-day is an LLM call: ~14s warm, worse cold, and at full fleet
+    // (19 barns) mostly QUEUE — Ollama batches a few and the tail waits its
+    // turn behind everyone else's. The default action timeout is 60s, which
+    // is one bad batch away from killing a healthy turn; the decider carries
+    // its own fleet-scaled AbortController, so the honest budget lives
+    // there — this just has to stay comfortably above it.
+    actionTimeout: 600_000,
+    // The flagship 19-barn run found the wake stampede: barns sleep between
+    // game-days, then all 19 wake at once each morning on a machine already
+    // saturated by Ollama — and the engine's 5s wake-signal deadline starts
+    // missing (days 59–60 collapsed to 8/19 barns, every failure a wake or
+    // HTTP timeout). A barn's whole life is one sim run; keep it awake for
+    // the duration and let the envoy drain retire it.
+    noSleep: true,
   },
   state: {
     farmName: null,
@@ -136,6 +144,13 @@ export const barn = actor({
 
 export const registry = setup({
   use: { barn },
+  // A morning view grows with the world — roster, card, claim board — and
+  // bot-14's crossed rivetkit's default 64 KB message limit on the flagship
+  // run, bouncing it out of every single day (the retry can't absorb a
+  // payload that is the same size every attempt). 8 MB is "never think
+  // about this again" territory for a JSON brief.
+  maxIncomingMessageSize: 8 * 1024 * 1024,
+  maxOutgoingMessageSize: 8 * 1024 * 1024,
   // The sim's terminal is the sim's; the engine speaks when spoken to.
   noWelcome: true,
   logging: { level: "warn" },
@@ -194,7 +209,10 @@ export function barnDecider(
           const msg = String(err);
           // Only the binding failure is worth retrying — a model error or a
           // timeout inside the actor is a real answer, not a bounced letter.
-          if (!/no_envoys|failed to start|actor_ready_timeout/i.test(msg)) throw err;
+          // "wake signal" joined the list after the flagship run: a loaded
+          // machine can miss the engine's 5s wake deadline even when the
+          // actor is healthy. noSleep makes it rare; the retry makes it free.
+          if (!/no_envoys|failed to start|actor_ready_timeout|wake signal/i.test(msg)) throw err;
           if (attempt < 3) await new Promise((r) => setTimeout(r, 10_000 * attempt));
         }
       }
