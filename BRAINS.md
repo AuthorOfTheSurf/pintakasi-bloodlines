@@ -120,6 +120,28 @@ SELECT day_index, farm_id, brief_tokens, proposed_json FROM brain_log ORDER BY 1
 
 **The finding — parity with the scripted bots.** At the day-48 fork the four stables ranked **4, 5, 7, 8** of 19 on GP; after two llm-played weeks they rank **4, 5, 6, 7**, and their GP gains (+10.3k–12.6k) sit inside the scripted pack's range. Unlike phase 1's caveat-laden rank (a rich barn plus one llm week), this is a clean read: identical scripted history for all 19, then 14 days of model play. **A general 14B holding position against purpose-written TS logic at its own game — nobody taught it the meta; it read a 15-line system prompt.** The next honest question is whether it can *gain* ground (strategy, memory, `tune` — phase 3 territory), and `brain_log` is the instrument that will answer it.
 
+## Phase 3: `tune` — reaching into a running world
+
+The barn's durable state grew its first *strategy*: **standing orders**, set by a second action on the actor, folded into the next morning's prompt (after the house rules, marked as outranking them). `bun run tune <farm> "<orders>"` from any terminal, any time — including while a sim is mid-run in another one.
+
+**The live demo, measured.** During an 8-day run, after day 51's turn, from a second process:
+
+```bash
+bun run tune bot-3 "STOP entering fights entirely. Do not use the enter action at all. …"
+```
+
+The world never paused, nothing restarted, and `brain_log` shows the break exactly where the tune landed:
+
+| bot-3's day | 49 | 50 | 51 | ← tune → | 52 | 53 | 54 | 55 |
+|---|---|---|---|---|---|---|---|---|
+| `enter` actions | 3 | 3 | 3 | | **0** | **0** | **0** | **0** |
+
+The mid-run call bound on the **first attempt** — the actor was live on the sim's envoy, so no rebind window. (Tuning a *cold* barn after its sim exits is the flaky path — it walks straight into the rebind window and, under an aged daemon, the no-rebind bug. Prefer tuning live worlds; restart the daemon otherwise.)
+
+This is the moment the sim stops being a batch job: nineteen barns with different standing orders are nineteen *different players*, and an operator — or another agent — can coach any of them mid-season without touching the engine.
+
+**Same run: the per-verb schema paid off in full.** `RESPONSE_SCHEMA` became an `anyOf` with one branch per verb, so "`bird` is required when `do` is `enter`" is finally sayable — that whole failure class became *unrepresentable at generation time* instead of dropped at translation time. The 14-day run dropped 22 of 258 actions, every one a birdless `enter`; this run: **32 calls, 152 proposed, 0 dropped.** The #1 measured quality lever, closed by making the invalid shape impossible to emit.
+
 ## Findings (phase 1)
 
 ### 1. It was never a context-window problem

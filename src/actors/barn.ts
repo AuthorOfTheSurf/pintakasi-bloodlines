@@ -45,6 +45,12 @@ interface BarnMemory {
   droppedActions: number;
   failures: number;
   thinkingMs: number;
+  /**
+   * The owner's standing orders (round 51, phase 3) — the first per-barn
+   * personality. Set by `tune`, read into every takeTurn's prompt, durable
+   * like everything else here. null = play the house style.
+   */
+  strategy: string | null;
 }
 
 export const barn = actor({
@@ -64,6 +70,7 @@ export const barn = actor({
     droppedActions: 0,
     failures: 0,
     thinkingMs: 0,
+    strategy: null,
   } as BarnMemory,
   actions: {
     /**
@@ -86,7 +93,14 @@ export const barn = actor({
       // cannot cross the actor's serialization boundary — but a return
       // value crosses it for free.
       let log: BrainCallLog | null = null;
-      const decide = ollamaDecider({ ...opts, sink: (l) => (log = l) });
+      // The barn's own standing orders ride into the prompt here — the one
+      // place actor state feeds the model. This is what makes tuning a barn
+      // mid-world change its NEXT morning without touching the sim.
+      const decide = ollamaDecider({
+        ...opts,
+        strategy: c.state.strategy ?? undefined,
+        sink: (l) => (log = l),
+      });
       c.state.farmName = view.farm.name;
       try {
         const actions = await decide(view);
@@ -103,6 +117,17 @@ export const barn = actor({
         // sits this barn out — the same honest outcome as phase 1.
         throw err;
       }
+    },
+    /**
+     * Set (or clear, with null) the owner's standing orders — from ANY
+     * client, at ANY time, including mid-run from a second terminal. That
+     * reachability is the phase-3 demo: the world does not pause, the sim
+     * is not restarted, and the barn simply plays its next morning under
+     * the new orders. `bun run tune <farm> "<orders>"`.
+     */
+    tune: (c, strategy: string | null): BarnMemory => {
+      c.state.strategy = strategy && strategy.trim() ? strategy.trim() : null;
+      return { ...c.state };
     },
     /** The career so far — durable across runs, which is the demo. */
     career: (c): BarnMemory => ({ ...c.state }),

@@ -66,6 +66,13 @@ export interface OllamaOptions {
    * so simulate.ts writes brain_log rows without knowing which brain it has.
    */
   sink?: (log: BrainCallLog) => void;
+  /**
+   * The owner's standing orders (round 51, phase 3). Appended to the system
+   * prompt when present. This is where a barn stops playing the house style:
+   * the text lives in the barn ACTOR's durable state, set by `tune`, and
+   * arrives here per call — the decider itself stays stateless.
+   */
+  strategy?: string;
 }
 
 const DEFAULT_BASE_URL = "http://localhost:11434";
@@ -247,43 +254,53 @@ A GOOD DAY
 - list_stud any retired rooster not yet listed.
 - Claim a bird only if its record and stars beat its tag.`;
 
-/** The JSON schema Ollama constrains generation to. */
+/**
+ * The JSON schema Ollama constrains generation to.
+ *
+ * PER-VERB BRANCHES, not one flat shape (round 51). The flat schema could
+ * not say "`bird` is required when `do` is `enter`", and the cost was
+ * measured before it was fixed: in the 14-day run, all 22 dropped actions —
+ * 100% of the quality loss — were birdless `enter`s the flat schema had
+ * happily permitted. An `anyOf` per verb makes each verb's required fields
+ * REQUIRED, so that entire failure class becomes unrepresentable at
+ * generation time instead of dropped at translation time.
+ */
+const verb = (
+  verbs: string[],
+  required: Record<string, unknown>,
+  optional: Record<string, unknown> = {}
+) => ({
+  type: "object",
+  properties: { do: { type: "string", enum: verbs }, ...required, ...optional },
+  required: ["do", ...Object.keys(required)],
+});
+
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     actions: {
       type: "array",
       items: {
-        type: "object",
-        properties: {
-          do: {
-            type: "string",
-            enum: [
-              "check_in",
-              "roll_gacha",
-              "buy_bundle",
-              "buy_land",
-              "stake",
-              "unstake",
-              "expand_barn",
-              "list_stud",
-              "breed",
-              "enter",
-              "claim",
-              "crown",
-            ],
-          },
-          bird: { type: "string" },
-          mother: { type: "string" },
-          father: { type: "string" },
-          classType: { type: "string", enum: ["maiden", "nw3", "open", "claimer"] },
-          format: { type: "string", enum: Object.keys(FORMATS) },
-          mode: { type: "string", enum: ["real", "hardcore"] },
-          price: { type: "number" },
-          tokens: { type: "number" },
-          entryId: { type: "number" },
-        },
-        required: ["do"],
+        anyOf: [
+          verb(["check_in", "roll_gacha", "buy_bundle", "expand_barn"], {}),
+          verb(["buy_land", "stake", "unstake"], { tokens: { type: "number" } }),
+          verb(["list_stud"], { bird: { type: "string" } }),
+          verb(["breed"], { mother: { type: "string" }, father: { type: "string" } }),
+          verb(
+            ["enter"],
+            {
+              bird: { type: "string" },
+              classType: { type: "string", enum: ["maiden", "nw3", "open", "claimer"] },
+              format: { type: "string", enum: Object.keys(FORMATS) },
+            },
+            { mode: { type: "string", enum: ["real", "hardcore"] }, price: { type: "number" } }
+          ),
+          verb(["claim"], { entryId: { type: "number" } }),
+          verb(["crown"], {
+            bird: { type: "string" },
+            format: { type: "string", enum: Object.keys(FORMATS) },
+          }),
+        ],
       },
     },
   },
@@ -478,7 +495,15 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
           // stalls" into "this barn proposes a bit less".
           options: { temperature: 0.7, num_predict: 700 },
           messages: [
-            { role: "system", content: SYSTEM },
+            {
+              role: "system",
+              // Standing orders come LAST — a small model weights the most
+              // recent instruction heaviest, and the owner's word should
+              // outrank the house defaults when they disagree.
+              content: opts.strategy
+                ? `${SYSTEM}\n\nOWNER'S STANDING ORDERS (these outrank A GOOD DAY)\n${opts.strategy}`
+                : SYSTEM,
+            },
             { role: "user", content: briefJson },
           ],
         }),
