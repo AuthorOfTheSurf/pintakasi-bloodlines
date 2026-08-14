@@ -169,6 +169,40 @@ Twice the parameters on disk, half the wall clock: a mixture-of-experts model st
 - The world's only two `buy_land` proposals came from bot-11 and bot-13 — **the two landlords**. bot-13 also staked.
 - bot-14, a whale with 11,405 GP, rolled the gacha. bot-10, a whale with **159 GP**, thought for 25–55 s and returned an empty day — which is the creed ("buy while GP stays above the reserve") being read *correctly enough to abstain*. Orders are goals, and a broke whale honoring its reserve is the goal working.
 
+## The 10v10 experiments (round 53–55): coaching, measured three times
+
+Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
+(qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
+Each experiment started with everything the previous one taught.
+
+| Measure | Exp1 | Exp2 | Exp3 |
+|---|---|---|---|
+| llm avg net worth | 61,343 | 69,905 | **70,419** |
+| llm/scripted ratio | 0.48 | 0.58 | **0.59** |
+| llm crowns | 0 | 6 | **12 — every barn ≥1** |
+
+What three experiments established, one lesson each:
+
+1. **Exp1 — a coach cannot fix a fact-gap.** The crown order went 0-for-560
+   while the brief carried no tournament facts; the day-56 instrument fix
+   produced 28 real declarations within one segment. Facts in the brief,
+   skill in the standing orders — now proven in both directions.
+2. **Exp2 — lessons compound.** Crown-sighted from day 1 + the three-law
+   preamble: first llm championships (six), a real breeding pipeline after
+   one pointed coach session, ratio +10 points.
+3. **Exp3 — the model has a gait.** With every instrument ceiling lifted
+   (fighter window 24, reply budget 1400), the 30b still proposes ~5
+   actions/day where scripted logic writes 20+. Volume is now a
+   model-capability question, not an instrument one — and crown brackets
+   force-retire losers, so shallow rosters pay double. Exp4 levers filed in
+   the postmortem.
+
+Operational finds along the way: the cold-tune wedge is POSITIONAL (the
+first actor called after a daemon generation change wedges once; the rest
+bind) — a tighter repro signature for the rivetkit issue. And two host
+SIGTERMs mid-run cost nothing: `--keep` resumed from the last committed
+day with actor orders intact — durable state doing exactly what it's for.
+
 ## Findings (phase 1)
 
 ### 1. It was never a context-window problem
