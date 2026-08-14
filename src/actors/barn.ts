@@ -29,7 +29,12 @@
 import { actor, setup } from "rivetkit";
 import type { Client } from "rivetkit/client";
 import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
-import { ollamaDecider, type DeciderStats, type OllamaOptions } from "@/engine/decider-ollama";
+import {
+  ollamaDecider,
+  type BrainCallLog,
+  type DeciderStats,
+  type OllamaOptions,
+} from "@/engine/decider-ollama";
 
 /** The barn's career memory — everything it knows about itself so far. */
 interface BarnMemory {
@@ -66,12 +71,22 @@ export const barn = actor({
      * with intentions. The Ollama call happens HERE, inside the actor —
      * the sim never talks to the model any more, only to the barn.
      */
-    takeTurn: async (c, view: BotView, opts: OllamaOptions): Promise<BotAction[]> => {
+    takeTurn: async (
+      c,
+      view: BotView,
+      opts: OllamaOptions
+    ): Promise<{ actions: BotAction[]; log: BrainCallLog | null }> => {
       // A fresh decider per turn is deliberate: the expensive state (the
       // loaded model) lives in the Ollama server, not in this closure, so
       // recreating it costs nothing — and the stats it collects get folded
       // into the actor's durable memory, which is the copy that matters.
-      const decide = ollamaDecider(opts);
+      //
+      // The paper trail RETURNS with the reply rather than being written
+      // here: the world database has one writer (the sim), and a callback
+      // cannot cross the actor's serialization boundary — but a return
+      // value crosses it for free.
+      let log: BrainCallLog | null = null;
+      const decide = ollamaDecider({ ...opts, sink: (l) => (log = l) });
       c.state.farmName = view.farm.name;
       try {
         const actions = await decide(view);
@@ -80,7 +95,7 @@ export const barn = actor({
         c.state.proposedActions += decide.stats.proposedActions;
         c.state.droppedActions += decide.stats.droppedActions;
         c.state.thinkingMs += decide.stats.totalMs;
-        return actions;
+        return { actions, log };
       } catch (err) {
         c.state.failures++;
         c.state.thinkingMs += decide.stats.totalMs;
@@ -130,6 +145,9 @@ export function barnDecider(
     stats.calls++;
     try {
       const handle = client.barn.getOrCreate([world, view.farm.id]);
+      // The sink is a function and functions cannot ride an HTTP body — the
+      // actor returns the log instead, and it is re-emitted here.
+      const { sink, ...wireOpts } = opts;
       // ⚠ THE REBIND WINDOW. An actor that a PREVIOUS sim process created
       // stays bound to that process's (now-drained) envoy for a while after
       // a new process registers its own — and a takeTurn sent in that window
@@ -141,7 +159,8 @@ export function barnDecider(
       let lastErr: unknown;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          const actions = await handle.takeTurn(view, opts);
+          const { actions, log } = await handle.takeTurn(view, wireOpts);
+          if (log) sink?.(log);
           stats.proposedActions += actions.length;
           stats.totalMs += Date.now() - started;
           return actions;

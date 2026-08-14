@@ -28,7 +28,8 @@ import { eq } from "drizzle-orm";
 import { copyFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
-import { farms, simTimings } from "@/db/schema";
+import { brainLog, farms, simTimings } from "@/db/schema";
+import type { BrainCallLog } from "@/engine/decider-ollama";
 import { seedGame, DEV_FARM_ID } from "@/db/seed-data";
 import { playAllHonestDays } from "@/engine/auto-play";
 import { SIMULATION } from "@/engine/config";
@@ -188,10 +189,16 @@ if (useActors) {
   await registry.startAndWait();
   rivetClient = createClient<typeof registry>(RIVET_ENDPOINT);
 }
+// The paper trail (round 50): every barn-day's brief size, proposals, and
+// drops land in the brain_log table so a long run can be STUDIED — which
+// decisions followed which context — instead of scraped from scrollback.
+// Same sink for both brains; the rows can't tell --actors from direct.
+const dayBrainLogs: BrainCallLog[] = [];
+const sink = (log: BrainCallLog) => dayBrainLogs.push(log);
 const decider = brainArg
   ? rivetClient
-    ? barnDecider(rivetClient, worldName, { model: brainArg, verbose: true })
-    : ollamaDecider({ model: brainArg, verbose: true })
+    ? barnDecider(rivetClient, worldName, { model: brainArg, verbose: true, sink })
+    : ollamaDecider({ model: brainArg, verbose: true, sink })
   : null;
 if (llmArg) {
   const botIds = db
@@ -275,6 +282,19 @@ for (let day = 1; day <= days; day++) {
   const proposals = await collectProposals(db, decider);
   const afterBrains = performance.now();
   brainMs += afterBrains - afterHonest;
+  for (const log of dayBrainLogs.splice(0)) {
+    db.insert(brainLog)
+      .values({
+        dayIndex: log.day,
+        farmId: log.farmId,
+        model: log.model,
+        briefTokens: log.briefTokens,
+        proposedJson: JSON.stringify(log.proposed),
+        droppedJson: JSON.stringify(log.dropped),
+        decideMs: Math.round(log.ms),
+      })
+      .run();
+  }
 
   // ── The day turns: bots play, the card goes off, staking pays ────────
   const tick = game.tickDay({ proposals });

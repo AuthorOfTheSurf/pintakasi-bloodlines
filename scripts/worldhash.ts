@@ -53,11 +53,13 @@ interface BunDb {
 
 /**
  * `sim_timings` is wall-clock milliseconds — it differs between two runs of
- * IDENTICAL code and says nothing about the world. Nothing else in the
- * schema carries real time (checked round 49), which is why every other
- * table can be compared verbatim.
+ * IDENTICAL code and says nothing about the world. `brain_log` (round 50)
+ * is the same class of telemetry: what a model was told and answered, with
+ * wall-clock in it, none of it world state. Nothing else in the schema
+ * carries real time (checked round 49), which is why every other table can
+ * be compared verbatim.
  */
-const SKIP_TABLES = new Set(["sim_timings"]);
+const SKIP_TABLES = new Set(["sim_timings", "brain_log"]);
 
 /**
  * ── --ignore-ids, AND WHY IT IS NOT CHEATING ───────────────────────────────

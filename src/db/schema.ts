@@ -414,6 +414,28 @@ export const simTimings = sqliteTable("sim_timings", {
   ms: integer("ms").notNull(),
 });
 
+// What each llm barn was told and what it answered, one row per barn per
+// game-day — written by scripts/simulate.ts ONLY, and only on brains-on runs.
+// Round 50, Zane's ask: the decisions were printing to the terminal and
+// vanishing, leaving nothing to study "decision-making vs. context given"
+// with. This is the instrument the phase-4 A/B reads. Telemetry, not world
+// state: worldhash skips it exactly as it skips sim_timings.
+//   sqlite3 data/sim-….db "SELECT day_index, farm_id, proposed_json FROM brain_log ORDER BY 1"
+export const brainLog = sqliteTable("brain_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dayIndex: integer("day_index").notNull(),
+  farmId: text("farm_id").notNull(),
+  model: text("model").notNull(),
+  // Estimated tokens of the brief actually sent (chars/3.5 — same rule of
+  // thumb brain-bench uses, so the two are comparable).
+  briefTokens: integer("brief_tokens").notNull(),
+  // Everything the model proposed that survived translation, as JSON.
+  proposedJson: text("proposed_json").notNull(),
+  // What fell at translation, with reasons — the model-quality signal.
+  droppedJson: text("dropped_json").notNull(),
+  decideMs: integer("decide_ms").notNull(),
+});
+
 export type BirdRow = typeof birds.$inferSelect;
 export type NewBird = typeof birds.$inferInsert;
 export type GameStateRow = typeof gameState.$inferSelect;

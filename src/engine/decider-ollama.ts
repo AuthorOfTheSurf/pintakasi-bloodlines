@@ -59,6 +59,13 @@ export interface OllamaOptions {
   timeoutMs?: number;
   /** Log the prompt and reply for each barn — the phase-1 workhorse. */
   verbose?: boolean;
+  /**
+   * Receives one BrainCallLog per successful call. NOT serialized anywhere —
+   * which is why it is a callback and not part of the return value: the
+   * direct decider and the actor-routed one both feed the same sink shape,
+   * so simulate.ts writes brain_log rows without knowing which brain it has.
+   */
+  sink?: (log: BrainCallLog) => void;
 }
 
 const DEFAULT_BASE_URL = "http://localhost:11434";
@@ -414,6 +421,21 @@ export interface DeciderStats {
   totalMs: number;
 }
 
+/**
+ * One barn-day's paper trail (round 50) — what was sent, what came back,
+ * what fell at translation. The sim writes these to the `brain_log` table so
+ * a long run can be studied afterward instead of scraped from scrollback.
+ */
+export interface BrainCallLog {
+  farmId: string;
+  day: number;
+  model: string;
+  briefTokens: number;
+  proposed: BotAction[];
+  dropped: string[];
+  ms: number;
+}
+
 export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: DeciderStats } {
   const baseUrl = opts.baseUrl ?? DEFAULT_BASE_URL;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -427,6 +449,7 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
 
   const decide = async (view: BotView): Promise<BotAction[]> => {
     const { brief, birds } = digest(view);
+    const briefJson = JSON.stringify(brief);
     const started = Date.now();
     stats.calls++;
 
@@ -456,7 +479,7 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
           options: { temperature: 0.7, num_predict: 700 },
           messages: [
             { role: "system", content: SYSTEM },
-            { role: "user", content: JSON.stringify(brief) },
+            { role: "user", content: briefJson },
           ],
         }),
       });
@@ -469,6 +492,15 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
       stats.droppedActions += dropped;
       stats.proposedActions += actions.length;
       stats.totalMs += Date.now() - started;
+      opts.sink?.({
+        farmId: view.farm.id,
+        day: view.day,
+        model: opts.model,
+        briefTokens: Math.round(briefJson.length / 3.5),
+        proposed: actions,
+        dropped: reasons,
+        ms: Date.now() - started,
+      });
       if (opts.verbose)
         console.log(
           `  [brain] ${view.farm.name}: ${actions.length} actions` +

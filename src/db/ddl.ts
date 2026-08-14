@@ -207,6 +207,20 @@ CREATE TABLE IF NOT EXISTS sim_timings (
   ms INTEGER NOT NULL
 );
 
+-- What each llm barn was told and what it answered (round 50) -- one row per
+-- barn per game-day, brains-on runs only. Telemetry like sim_timings: the
+-- study table for "decision-making vs. context given", skipped by worldhash.
+CREATE TABLE IF NOT EXISTS brain_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_index INTEGER NOT NULL,
+  farm_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  brief_tokens INTEGER NOT NULL,
+  proposed_json TEXT NOT NULL,
+  dropped_json TEXT NOT NULL,
+  decide_ms INTEGER NOT NULL
+);
+
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────
 -- There were NONE until now, on any table, and it had quietly become the
 -- single biggest cost in the project. Every lookup on a non-key column was a

@@ -108,6 +108,20 @@ bun run simulate 7 --from=data/snapshots/day48-seed1.db --brain=qwen3:14b --llm=
 
 `--from` copies the snapshot to a fresh timestamped db and plays on; the snapshot is never written. Day 49 is where the population and fight volume start compounding (week 7 — past the retirement trough), so experiments begin at the interesting part. Keep the roster identical across worlds you mean to compare. One trap, found the hard way: a stale `-wal` file beside the target path gets replayed over the fresh copy and silently resurrects whatever world it belonged to — the fork clears sidecars first.
 
+## The 14-day run, and the paper trail (`brain_log`)
+
+The decisions used to print to the terminal and vanish. Now every brains-on run writes a **`brain_log`** row per barn per game-day — brief size, everything proposed, everything dropped with reasons, decide time — so a long run can be *studied*: which decisions followed which context. (Telemetry like `sim_timings`; `worldhash` skips it.)
+
+```sql
+SELECT day_index, farm_id, brief_tokens, proposed_json FROM brain_log ORDER BY 1;
+```
+
+**The run:** 14 game-days × 4 barns, forked from the day-48 snapshot, all decisions through actors. 56 actor calls, **0 failures** (fresh keys + fresh daemon + the retry — the reliability recipe holds). 8:16 wall clock, 34.7 s/day of it brains. 0 warnings, 0 invariant failures. Aggregates: mean brief **590 tokens**, mean decide **21.8 s**, 258 actions proposed, 22 dropped — every single drop the same known gap (`enter` with no bird; the per-verb `oneOf` schema fix is still untried and is now measurably the #1 quality lever).
+
+**The finding — parity with the scripted bots.** At the day-48 fork the four stables ranked **4, 5, 7, 8** of 19 on GP; after two llm-played weeks they rank **4, 5, 6, 7**, and their GP gains (+10.3k–12.6k) sit inside the scripted pack's range. Unlike phase 1's caveat-laden rank (a rich barn plus one llm week), this is a clean read: identical scripted history for all 19, then 14 days of model play. **A general 14B holding position against purpose-written TS logic at its own game — nobody taught it the meta; it read a 15-line system prompt.** The next honest question is whether it can *gain* ground (strategy, memory, `tune` — phase 3 territory), and `brain_log` is the instrument that will answer it.
+
+## Findings (phase 1)
+
 ### 1. It was never a context-window problem
 
 The digest exists because a `BotView` is "too big to hand a model" — that was the working assumption, and measured, **it is wrong as stated.** 24,500 tokens fits comfortably in this model's window. It is not a *limit* problem, it is a *time* problem: reading it costs two minutes at 200 tok/s.
