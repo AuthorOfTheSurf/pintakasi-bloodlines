@@ -7,6 +7,7 @@
  * http://localhost:3435/admin.
  *
  *   bun run simulate [days=91] [--keep] [--db=path] [--force] [--seed=N]
+ *                    [--brain=<ollama model> --llm=<farm ids|count>]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
@@ -16,6 +17,7 @@
  *          randomness. See seedWorld in engine/rng.
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
+import { eq } from "drizzle-orm";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
@@ -26,6 +28,7 @@ import { SIMULATION } from "@/engine/config";
 import { cardHealth, diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
 import { collectProposals } from "@/engine/bot-brain";
+import { ollamaDecider } from "@/engine/decider-ollama";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
 import { seedWorld } from "@/engine/rng";
@@ -60,6 +63,25 @@ if (policyArg && policyArg !== "current" && policyArg !== "end-first") {
   process.exit(1);
 }
 const discoveryPolicy: DiscoveryPolicy = (policyArg ?? "current") as DiscoveryPolicy;
+
+// ── THE OUTSIDE BRAIN (round 49) ───────────────────────────────────────────
+// --brain=qwen3:14b   run the named local Ollama model as a barn's decider
+// --llm=bot-1,bot-3   which stables it plays; --llm=2 takes the first N bots
+//
+// Both are required together and BOTH DEFAULT OFF. A run without them is the
+// ordinary reproducible sim, which is the one every balance number and every
+// determinism guarantee rests on — the AI barns are an experiment run beside
+// that baseline, never a replacement for it.
+const brainArg = args.find((a) => a.startsWith("--brain="))?.slice("--brain=".length);
+const llmArg = args.find((a) => a.startsWith("--llm="))?.slice("--llm=".length);
+if (brainArg && !llmArg) {
+  console.error("--brain needs --llm=<farm ids or a count> — which stables should it play?");
+  process.exit(1);
+}
+if (llmArg && !brainArg) {
+  console.error("--llm needs --brain=<model> — who is deciding for them?");
+  process.exit(1);
+}
 
 function stamp(): string {
   const t = new Date();
@@ -101,6 +123,29 @@ if (!keep) {
   console.log(`Fresh world seeded at ${dbPath} — day 0, Friday\n`);
 }
 const seedMs = performance.now() - t0;
+
+// Flip the chosen stables over to the outside brain. Done AFTER seeding so a
+// --keep run can add or move brains between sessions without reseeding.
+const decider = brainArg ? ollamaDecider({ model: brainArg, verbose: true }) : null;
+if (llmArg) {
+  const botIds = db
+    .select()
+    .from(farms)
+    .where(eq(farms.isBot, 1))
+    .all()
+    .map((f) => f.id);
+  const chosen = /^\d+$/.test(llmArg) ? botIds.slice(0, Number(llmArg)) : llmArg.split(",");
+  const unknown = chosen.filter((id) => !botIds.includes(id));
+  if (unknown.length > 0) {
+    console.error(`--llm names farms that are not bot stables: ${unknown.join(", ")}`);
+    process.exit(1);
+  }
+  // Reset first: on a --keep run, yesterday's llm barns should not linger just
+  // because today's --llm named someone else.
+  db.update(farms).set({ brain: "scripted" }).where(eq(farms.isBot, 1)).run();
+  for (const id of chosen) db.update(farms).set({ brain: "llm" }).where(eq(farms.id, id)).run();
+  console.log(`Brain: ${brainArg} plays ${chosen.length} stable(s) — ${chosen.join(", ")}\n`);
+}
 
 const game = new Game(db, DEV_FARM_ID, discoveryPolicy);
 
@@ -156,7 +201,7 @@ for (let day = 1; day <= days; day++) {
   // day where waiting is allowed. Its cost lands OUTSIDE `tickMs`, which
   // keeps PERFORMANCE.md's ms/fight comparable to every number ever measured
   // against it.
-  const proposals = await collectProposals(db, null);
+  const proposals = await collectProposals(db, decider);
   const afterBrains = performance.now();
 
   // ── The day turns: bots play, the card goes off, staking pays ────────
