@@ -26,7 +26,9 @@ scout, operator — two barns each.
 three resumable segments — `simulate 28` → coach → `simulate 28 --keep` →
 coach → `simulate 35 --keep` → day-91 postmortem. Between segments, restart
 the engine daemon before tuning cold barns (AGENTS.md), open with the
-scoreboard (query #0), and write one line per barn or KEEP. The postmortem
+scoreboard (query #0), and write one line per barn or KEEP. **File every
+session as `runs/10v10/coachN-dayM.md`** — scoreboard seen, diagnosis,
+orders written, what the next segment must show. The postmortem
 compares the scripted ten against the llm ten on the two group lines at the
 bottom of the scoreboard.
 
