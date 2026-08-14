@@ -12,4 +12,6 @@ run matters, its log lands here.
   every 4 weeks (see COACHING.md). One log per segment, AND one
   `coachN-dayM.md` per coach session — the scoreboard the coach saw, the
   diagnosis, and the exact orders written. The coaching is part of the loop;
-  a run log without its coach notes is half a story.
+  a run log without its coach notes is half a story. `journal.md` stitches
+  segments and sessions into one chronological read — the reading copy;
+  the per-file originals stay pure.
