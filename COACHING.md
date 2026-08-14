@@ -13,6 +13,23 @@ not an API key in the game. It reads a few query results and emits `bun run
 tune` lines. Nothing in the engine knows the coach exists — it is just another
 client addressing the barn actors, which works mid-run (phase 3's demo).
 
+## The goal the coach coaches toward (the 10v10, round 53)
+
+**Net worth: GP + 0.8 × LT** — land valued at the game's own purchase price
+(80 GP per 100 LT), because that's what the position cost and land never
+sells back. Championships are the +EV peaks; the creeds
+(`--personas=championship`, `src/actors/personas.ts`) all share that goal and
+differ only in HOW: bloodline architect, card shark, claim scout, talent
+scout, operator — two barns each.
+
+**Cadence: every 4 weeks, like a human coach.** The 91-day experiment runs in
+three resumable segments — `simulate 28` → coach → `simulate 28 --keep` →
+coach → `simulate 35 --keep` → day-91 postmortem. Between segments, restart
+the engine daemon before tuning cold barns (AGENTS.md), open with the
+scoreboard (query #0), and write one line per barn or KEEP. The postmortem
+compares the scripted ten against the llm ten on the two group lines at the
+bottom of the scoreboard.
+
 ## The session, step by step
 
 1. **Pull the paper trail** for the world you're coaching (queries below).
@@ -28,6 +45,9 @@ engine daemon if it never binds (AGENTS.md).
 ## What the coach reads
 
 All against the world's sim db (`sqlite3 data/<world>.db`):
+
+Query #0 is `bun run scoreboard [db]` — net-worth ranks, crowns, and the
+scripted-vs-llm group totals. Then:
 
 ```sql
 -- Standings and brains

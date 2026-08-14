@@ -616,4 +616,18 @@ export const BOT_FARMS: BotProfile[] = [
     hardcoreNerve: 0.05, sellRate: 0.65, tagCourage: 0.05, ladderCourage: 0.05, housePair: 0,
     gachaHabit: 0.25, // the poorest barn on the roster spends least
   },
+  {
+    // THE TWENTIETH BARN — added in round 53 to make the 10-scripted-vs-10-llm
+    // experiment an even split (the llm side gets this one). The profile is a
+    // middle-of-the-road pit crew ON PURPOSE: when this barn runs scripted it
+    // should be unremarkable, because in the experiment it runs under an llm
+    // and its standing orders — not these knobs — are its personality. Nothing
+    // about it should distort the scripted economy on the runs where it plays
+    // by numbers.
+    id: "bot-17", name: "Bagong Laban", country: "🇵🇭", handler: "Islaw",
+    primaryColor: "teal", secondaryColor: "gold", style: "pit",
+    flockSeed: 1306, entryRate: 0.6, claimAggression: 0.2, breedDrive: 0.3,
+    hardcoreNerve: 0.3, sellRate: 0.2, tagCourage: 0.35, ladderCourage: 0.3, housePair: 2,
+    gachaHabit: 0.4,
+  },
 ];

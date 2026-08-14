@@ -108,7 +108,19 @@ if (useActors && !brainArg) {
 // standing orders its scripted twin's profile implies — the claim shark
 // claims, the whale rolls, the land baron buys the cap. GOALS port over;
 // decision logic does not (see src/actors/personas.ts).
-const usePersonas = args.includes("--personas");
+//
+// --personas=championship (round 53, the 10v10): the palette instead — one
+// shared net-worth goal, five ways of chasing it, fixed two-barns-per-creed
+// assignment. Bare --personas keeps meaning the style creeds.
+const personasArg = args.find((a) => a === "--personas" || a.startsWith("--personas="));
+const usePersonas = Boolean(personasArg);
+const personaSet = personasArg?.startsWith("--personas=")
+  ? personasArg.slice("--personas=".length)
+  : "style";
+if (usePersonas && !["style", "championship"].includes(personaSet)) {
+  console.error(`Unknown persona set "${personaSet}" — use bare --personas or --personas=championship.`);
+  process.exit(1);
+}
 if (usePersonas && !useActors) {
   console.error("--personas needs --actors — orders live in the barn actors' state.");
   process.exit(1);
@@ -236,13 +248,14 @@ if (llmArg) {
 
   if (usePersonas && rivetClient) {
     const { BOT_FARMS } = await import("@/engine/bot-config");
-    const { personaOrders } = await import("@/actors/personas");
+    const { personaOrders, championshipOrders } = await import("@/actors/personas");
+    const orders = personaSet === "championship" ? championshipOrders : personaOrders;
     for (const id of chosen) {
       const profile = BOT_FARMS.find((p) => p.id === id);
       if (!profile) continue;
-      await rivetClient.barn.getOrCreate([worldName, id]).tune(personaOrders(profile));
+      await rivetClient.barn.getOrCreate([worldName, id]).tune(orders(profile));
     }
-    console.log(`Personas set: ${chosen.length} barn(s) start under their house creed\n`);
+    console.log(`Personas set: ${chosen.length} barn(s) start under the ${personaSet} creeds\n`);
   }
 }
 

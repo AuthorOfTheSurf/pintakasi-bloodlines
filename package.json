@@ -16,7 +16,8 @@
     "brain-bench": "bun run scripts/brain-bench.ts",
     "tune": "bun run scripts/tune.ts",
     "balance": "bun run scripts/balance.ts",
-    "test:watch": "bun test --watch"
+    "test:watch": "bun test --watch",
+    "scoreboard": "bun run scripts/scoreboard.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",

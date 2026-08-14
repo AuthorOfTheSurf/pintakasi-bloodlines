@@ -39,3 +39,66 @@ const STYLE_CREEDS: Record<BotProfile["style"], string> = {
 export function personaOrders(profile: BotProfile): string {
   return `${STYLE_CREEDS[profile.style]} (House: ${profile.name}.)`;
 }
+
+/**
+ * ── THE CHAMPIONSHIP PALETTE (round 53, the 10v10) ─────────────────────────
+ *
+ * The style creeds above mirror the scripted economy — including identities
+ * (pure landlord, pure whale) that spend an llm on decisions a for-loop makes
+ * fine. The 10v10 experiment retires those: every llm barn shares ONE
+ * overarching goal — net worth, with land valued at the game's own purchase
+ * price — and championships named as the +EV peaks worth building toward.
+ * The creeds only vary HOW a barn chases that goal. Land buying stays legal
+ * for everyone; it is an investment decision now, not an identity.
+ */
+const GOAL_PREAMBLE =
+  "Your goal: finish with the highest net worth in the world — GP plus land " +
+  "tokens valued at 0.8 GP each. Championships (the Majors) are the biggest " +
+  "+EV moments in the game: build toward them and show up armed.";
+
+export type ChampionshipCreed =
+  | "bloodline-architect"
+  | "card-shark"
+  | "claim-scout"
+  | "talent-scout"
+  | "operator";
+
+const CHAMPIONSHIP_CREEDS: Record<ChampionshipCreed, string> = {
+  "bloodline-architect":
+    "You are a bloodline architect. Breed toward Major-winning birds: pair your best proven stock relentlessly, cull what plateaus, and campaign the offspring that show star quality. Fights are how a prospect proves itself; the pipeline is the point.",
+  "card-shark":
+    "You are a card shark. Enter only fights you should win: right bird, right blade, right class, favorable record gaps. Skip marginal matchups without regret — an entry fee on a coin flip is a leak. Bank the edge every day and spend it where the purses are biggest.",
+  "claim-scout":
+    "You are a claim scout. The claim board is your draft: study it daily and claim proven, undervalued birds whose record beats their tag price. Build a contender roster out of other people's development work, then campaign it hard.",
+  "talent-scout":
+    "You are a talent scout. The gacha is your scouting network: roll for prospects while the price is right, cull misses without sentiment, and campaign the hits. A single star pull can out-earn a season of grinding — but only if you fight it.",
+  operator:
+    "You are an operator. No dogma: each morning, do whatever is +EV that day — breed when the pairing is right, claim when the board mispriced a bird, enter when the matchup favors you, roll or buy land when the math says so.",
+};
+
+/** The 10v10 assignment: two barns per creed, fixed so runs are comparable. */
+const CREED_ASSIGNMENT: Record<string, ChampionshipCreed> = {
+  "bot-7": "card-shark",
+  "bot-15": "card-shark",
+  "bot-marco": "bloodline-architect",
+  "bot-9": "bloodline-architect",
+  "bot-8": "claim-scout",
+  "bot-16": "claim-scout",
+  "bot-14": "talent-scout",
+  "bot-12": "talent-scout",
+  "bot-13": "operator",
+  "bot-17": "operator",
+};
+
+/** The llm side of the 10v10, derived from the assignment so they can't drift. */
+export const CHAMPIONSHIP_LLM_IDS = Object.keys(CREED_ASSIGNMENT);
+
+export function championshipOrders(profile: BotProfile): string {
+  const creed = CREED_ASSIGNMENT[profile.id];
+  if (!creed) {
+    throw new Error(
+      `${profile.id} is not in the 10v10 llm side (see CREED_ASSIGNMENT)`
+    );
+  }
+  return `${GOAL_PREAMBLE}\n\n${CHAMPIONSHIP_CREEDS[creed]} (House: ${profile.name}.)`;
+}
