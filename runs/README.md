@@ -21,4 +21,4 @@ regenerate.
 | Directory | What it was | Verdict |
 |---|---|---|
 | `2026-08-14-phase4-fleet/` | First full-fleet week (19 barns, 14B) + the 30b bench + the 7-day persona A/B arms | Found the 64 KB message cap + wake stampede (both fixed); 30b MoE halves the clock; creeds redirect behavior |
-| `2026-08-15-10v10-coached/` | 10 scripted vs 10 llm (30b), 91 days, coached every 4 weeks | in progress |
+| `2026-08-15-10v10-coached/` | 10 scripted vs 10 llm (30b), 91 days, coached every 4 weeks | scripted sweep (127k vs 61k avg, crowns 44–0) — but: coaching doubled volume; the crown blindness found + fixed (28 declarations post-fix); breeding never took |
