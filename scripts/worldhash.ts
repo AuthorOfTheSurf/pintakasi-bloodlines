@@ -8,6 +8,7 @@
  * on the rounds somebody already suspected. This makes it one command:
  *
  *   bun run worldhash data/sim-A.db data/sim-B.db
+ *   bun run worldhash data/sim-A.db data/sim-B.db --ignore-ids
  *
  * Give it ONE database and it prints that world's table hashes. Give it TWO
  * and it prints a per-table verdict and exits non-zero on any difference —
@@ -58,13 +59,47 @@ interface BunDb {
  */
 const SKIP_TABLES = new Set(["sim_timings"]);
 
+/**
+ * ── --ignore-ids, AND WHY IT IS NOT CHEATING ───────────────────────────────
+ *
+ * Bird ids are `randomUUID()`s. They never touch the seeded stream — the
+ * determinism.test.ts header says so in as many words, and that fact is the
+ * bug round 43 spent a round chasing. So TWO RUNS OF IDENTICAL CODE at the
+ * same seed produce the same world with different bird ids, and every table
+ * carrying one hashes differently for a reason that means nothing.
+ *
+ * `--ignore-ids` drops exactly those columns, which turns this into the
+ * comparison round 48 ran by hand: the NORMALIZED log and the final state,
+ * where every value that carries meaning still has to match to the byte.
+ *
+ * ⚠ Do not reach for it first. Run the comparison whole; if the only tables
+ * that differ are the ones on this list, THEN normalize and confirm the rest
+ * is identical. A run where `farms`, `lobbies` or `snapshots` differ is a
+ * behaviour change and no amount of excluding will make it otherwise.
+ */
+const UUID_COLUMNS = [
+  "birds.id",
+  "birds.mother_id",
+  "birds.father_id",
+  "battle_log.bird_id",
+  "battle_log.opponent_bird_id",
+  "bird_form.bird_id",
+  "events.bird_id",
+  "lobby_entries.bird_id",
+  "tournament_entries.bird_id",
+];
+
 const args = process.argv.slice(2);
 const excludeArg = args.find((a) => a.startsWith("--exclude="))?.slice("--exclude=".length);
 const paths = args.filter((a) => !a.startsWith("--"));
 
 /** "farms.brain,birds.foo" → { farms: Set{brain}, birds: Set{foo} } */
 const excluded = new Map<string, Set<string>>();
-for (const entry of excludeArg?.split(",").filter(Boolean) ?? []) {
+const entries = [
+  ...(args.includes("--ignore-ids") ? UUID_COLUMNS : []),
+  ...(excludeArg?.split(",").filter(Boolean) ?? []),
+];
+for (const entry of entries) {
   const [table, column] = entry.split(".");
   if (!table || !column) {
     console.error(`--exclude wants table.column pairs (got "${entry}")`);
@@ -75,7 +110,7 @@ for (const entry of excludeArg?.split(",").filter(Boolean) ?? []) {
 }
 
 if (paths.length === 0 || paths.length > 2) {
-  console.error("usage: bun run worldhash <db> [<db>] [--exclude=table.col,...]");
+  console.error("usage: bun run worldhash <db> [<db>] [--ignore-ids] [--exclude=table.col,...]");
   process.exit(2);
 }
 for (const p of paths) {
@@ -91,6 +126,37 @@ interface TableHash {
 }
 
 /**
+ * Read-only if the file will allow it, read-write if it will not.
+ *
+ * A database the simulator only just finished writing still has a hot `-wal`
+ * beside it, and SQLite cannot open one of those read-only — it needs to
+ * write the shared-memory index to read the committed pages. The first
+ * comparison after a run hits this every time, so the tool handles it
+ * rather than asking for a manual checkpoint.
+ *
+ * `create: false` stays on both paths: a mistyped filename must be an error,
+ * never an empty database that cheerfully hashes to nothing and reports
+ * "0 rows" as though it had an answer.
+ */
+function open(path: string): BunDb {
+  // ⚠ THE PROBE IS LOAD-BEARING. bun:sqlite opens lazily — the constructor
+  // returns happily and the failure surfaces on the first statement, so a
+  // try/catch around `new Database` alone catches nothing and the fallback
+  // never runs. Force the open here, where it can still be handled.
+  try {
+    const db = new Database(path, { readonly: true, create: false });
+    db.prepare("SELECT 1").all();
+    return db;
+  } catch {
+    // `readwrite`, not `readonly: false` — bun:sqlite rejects the latter
+    // outright (SQLITE_MISUSE: flags must include one or the other).
+    const db = new Database(path, { readwrite: true, create: false });
+    db.prepare("SELECT 1").all();
+    return db;
+  }
+}
+
+/**
  * Hash one database, table by table.
  *
  * Every table is ordered by its full column list rather than by primary key:
@@ -101,7 +167,7 @@ interface TableHash {
  * and nothing else.
  */
 function hashWorld(path: string): Map<string, TableHash> {
-  const db = new Database(path, { readonly: true, create: false });
+  const db = open(path);
   const out = new Map<string, TableHash>();
   const tables = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")

@@ -25,6 +25,7 @@ import { playAllHonestDays } from "@/engine/auto-play";
 import { SIMULATION } from "@/engine/config";
 import { cardHealth, diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
+import { collectProposals } from "@/engine/bot-brain";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
 import { seedWorld } from "@/engine/rng";
@@ -144,9 +145,23 @@ for (let day = 1; day <= days; day++) {
   const afterHonest = performance.now();
   honestMs += afterHonest - dayStart;
 
+  // ── Outside deciders think, BEFORE the transaction opens ─────────────
+  // Round 49's two-phase bot day (engine/bot-brain.ts). On an ordinary world
+  // this returns an empty map without building a single view — no farm
+  // carries brain='llm' unless somebody set it by hand — so the await costs
+  // nothing and the sim plays exactly the day it always has.
+  //
+  // The decider is null until a model is wired in. When one arrives, THIS is
+  // the line that gets slow, and deliberately so: it is the only point in a
+  // day where waiting is allowed. Its cost lands OUTSIDE `tickMs`, which
+  // keeps PERFORMANCE.md's ms/fight comparable to every number ever measured
+  // against it.
+  const proposals = await collectProposals(db, null);
+  const afterBrains = performance.now();
+
   // ── The day turns: bots play, the card goes off, staking pays ────────
-  const tick = game.tickDay();
-  tickMs += performance.now() - afterHonest;
+  const tick = game.tickDay({ proposals });
+  tickMs += performance.now() - afterBrains;
   const elapsed = performance.now() - dayStart;
   dayMs.push({ day: tick.clock.dayIndex, ms: elapsed });
   // …and into the database, so the run's cost curve outlives the terminal
