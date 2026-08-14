@@ -7,7 +7,7 @@
  * http://localhost:3435/admin.
  *
  *   bun run simulate [days=91] [--keep] [--db=path] [--force] [--seed=N]
- *                    [--brain=<ollama model> --llm=<farm ids|count>]
+ *                    [--brain=<ollama model> --llm=<farm ids|count>] [--actors]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
@@ -29,6 +29,8 @@ import { cardHealth, diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
 import { collectProposals } from "@/engine/bot-brain";
 import { ollamaDecider } from "@/engine/decider-ollama";
+import { barnDecider, registry, RIVET_ENDPOINT } from "@/actors/barn";
+import { createClient } from "rivetkit/client";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
 import { seedWorld } from "@/engine/rng";
@@ -82,6 +84,18 @@ if (llmArg && !brainArg) {
   console.error("--llm needs --brain=<model> — who is deciding for them?");
   process.exit(1);
 }
+// --actors (round 50, phase 2): each llm barn becomes a Rivet Actor. The sim
+// stops calling Ollama itself and instead mails each barn its morning view;
+// the barn actor thinks (the Ollama call moves inside it) and mails back its
+// intentions, accumulating a durable career (days played, actions proposed,
+// time spent thinking) that SURVIVES across runs — same world + same farm =
+// same actor. rivetkit boots a local Rivet Engine in-process; nothing leaves
+// the laptop.
+const useActors = args.includes("--actors");
+if (useActors && !brainArg) {
+  console.error("--actors needs --brain and --llm — actors are the llm barns' home.");
+  process.exit(1);
+}
 
 function stamp(): string {
   const t = new Date();
@@ -126,7 +140,23 @@ const seedMs = performance.now() - t0;
 
 // Flip the chosen stables over to the outside brain. Done AFTER seeding so a
 // --keep run can add or move brains between sessions without reseeding.
-const decider = brainArg ? ollamaDecider({ model: brainArg, verbose: true }) : null;
+// The world name scopes each barn actor's key — bot-1 of one world and bot-1
+// of another are different careers (see src/actors/barn.ts).
+const worldName = path.basename(dbPath, ".db");
+let rivetClient: ReturnType<typeof createClient<typeof registry>> | null = null;
+if (useActors) {
+  // startAndWait, not start(): start() returns before the envoy has
+  // registered with the engine, and a barn mailed in that gap fails with
+  // "no_envoys" — it cost bot-1 two whole game-days to teach us that. The
+  // wait is ~2s once per run.
+  await registry.startAndWait();
+  rivetClient = createClient<typeof registry>(RIVET_ENDPOINT);
+}
+const decider = brainArg
+  ? rivetClient
+    ? barnDecider(rivetClient, worldName, { model: brainArg, verbose: true })
+    : ollamaDecider({ model: brainArg, verbose: true })
+  : null;
 if (llmArg) {
   const botIds = db
     .select()
@@ -287,10 +317,32 @@ console.log(
     `${totalEntries > 0 ? (simMs / totalEntries).toFixed(2) : "—"} ms/entry`
 );
 
+// ── The careers (round 50): what each barn actor remembers about itself ────
+// Read back AFTER the run so the number printed is the durable copy, not a
+// local counter. Run again with --keep and daysPlayed keeps climbing — that
+// continuity across process restarts is the thing phase 2 exists to show.
+if (rivetClient) {
+  const llmFarms = db.select().from(farms).where(eq(farms.brain, "llm")).all();
+  console.log("\nBARN CAREERS (durable actor state — persists across runs)");
+  for (const f of llmFarms) {
+    const c = await rivetClient.barn.getOrCreate([worldName, f.id]).career();
+    console.log(
+      `  ${f.id.padEnd(8)} ${String(c.daysPlayed).padStart(3)} day(s) played · last day ${c.lastDay} · ` +
+        `${c.proposedActions} proposed, ${c.droppedActions} dropped, ${c.failures} failure(s) · ` +
+        `${(c.thinkingMs / 1000).toFixed(1)}s thinking`
+    );
+  }
+}
+
 console.log("\n" + formatReport(report));
 
 console.log(`\nDone → ${dbPath}`);
 console.log(`Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`);
+// The registry holds the process open (the embedded engine is still
+// listening); drain it so the sim exits like a sim.
+if (useActors) await registry.shutdown();
+
 // LAST, so the path is still on screen when it fails — a broken world is
 // exactly the one you want to open.
 if (!report.ok) process.exit(1);
+if (useActors) process.exit(0);
