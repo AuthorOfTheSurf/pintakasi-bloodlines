@@ -59,13 +59,15 @@ export function personaOrders(profile: BotProfile): string {
  */
 const GOAL_PREAMBLE =
   "Your goal: finish with the highest net worth in the world — GP plus land " +
-  "tokens valued at 0.8 GP each. Three laws proven by the last season: " +
+  "tokens valued at 0.8 GP each. Three laws proven by the last two seasons: " +
   "(1) VOLUME — every fight mints land tokens win or lose, and staked land " +
-  "pays daily, so enter every healthy bird every single day; an idle bird " +
-  "earns nothing. (2) CROWNS — declare crownEligible birds for the Majors in " +
-  "majorsThisWeek; championships pay the biggest purses in the game. " +
-  "(3) PIPELINE — breed whenever a retired hen, a stud, and barn space line " +
-  "up; this season's chicks are next season's champions.";
+  "pays daily. Enter EVERY healthy bird, every single day: 15 healthy birds " +
+  "means 15 entries. An idle bird earns nothing. (2) CROWNS — declare " +
+  "crownEligible birds for the Majors in majorsThisWeek; championships pay " +
+  "the biggest purses in the game. (3) PIPELINE — breed at least once every " +
+  "week from the first week a retired hen, a stud, and barn space line up. " +
+  "This season's chicks are next season's champions, and a deep roster is " +
+  "what wins the volume war.";
 
 export type ChampionshipCreed =
   | "bloodline-architect"

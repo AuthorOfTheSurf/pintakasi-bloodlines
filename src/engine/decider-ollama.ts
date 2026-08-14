@@ -87,7 +87,13 @@ const DEFAULT_TIMEOUT_MS = 120_000;
  * buried, and the digest reports what it dropped (`moreFighters`) so the
  * model is never silently told it owns less than it does.
  */
-const LIMITS = { fighters: 12, hens: 6, studs: 6, claims: 8 } as const;
+// fighters 12 → 24 for exp3: exp2's postmortem found the 12-bird window was
+// a structural volume ceiling — a barn cannot enter a bird its brief never
+// shows, and scripted rosters run 70+ birds deep by late game. 24 costs
+// ~400 more prefill tokens (cheap, warm prefill is ~free) and lets "enter
+// every healthy bird" mean what it says for any roster the llm side has
+// actually grown so far.
+const LIMITS = { fighters: 24, hens: 6, studs: 6, claims: 8 } as const;
 
 /**
  * ── THE HANDLE PREFIX, AND THE BUG THAT CHOSE IT ───────────────────────────
@@ -503,7 +509,12 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
           // and a generation longer than that is a model looping, not a model
           // thinking harder. Bounding it turns the worst case from "the run
           // stalls" into "this barn proposes a bit less".
-          options: { temperature: 0.7, num_predict: 700 },
+          //
+          // 700 → 1400 for exp3: with the fighter window at 24, a full-card
+          // day is legitimately ~25 actions, and 700 sized the reply to ~10 —
+          // the cap was quietly the volume ceiling the coach kept ordering
+          // the barns through. Still a loop-stopper, just no longer a lid.
+          options: { temperature: 0.7, num_predict: 1400 },
           messages: [
             {
               role: "system",
