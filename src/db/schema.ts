@@ -36,6 +36,25 @@ export const farms = sqliteTable("farms", {
   createdDay: integer("created_day").notNull().default(0),
   // House-run bot stables (see engine/bot-config.ts) — rivals, not the house.
   isBot: integer("is_bot").notNull().default(0),
+  // WHO DECIDES THIS BARN'S DAY (round 49). Only meaningful when isBot = 1.
+  //
+  //   "scripted" — engine/bots.ts plays it: weighted TypeScript, seeded off
+  //                the day index, and therefore REPLAYABLE. The default, and
+  //                what every test, every `simulate` and every `doctor` run
+  //                must see, because determinism.test.ts, replay.test.ts and
+  //                playthrough.test.ts all rest on a bot day being a pure
+  //                function of the world.
+  //   "llm"      — an outside decider proposes the day's actions and the
+  //                engine applies them (engine/bot-brain.ts). NOT replayable:
+  //                a model is not a pure function of anything.
+  //
+  // The two are a permanent PAIR, not a migration (Zane, 2026-08-14). The
+  // scripted bots are the reproducible baseline that makes the AI ones
+  // measurable — drop them and there is nothing to measure an LLM barn
+  // against. Nothing seeds "llm"; a world only gets one when asked by hand.
+  brain: text("brain", { enum: ["scripted", "llm"] })
+    .notNull()
+    .default("scripted"),
   // The FARM's career record (real + hardcore), stamped at fight time —
   // it can't be derived from owned birds later, because birds transfer
   // (claims, future sales) and take their own records with them.

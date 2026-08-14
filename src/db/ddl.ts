@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS farms (
   handler TEXT,
   created_day INTEGER NOT NULL DEFAULT 0,
   is_bot INTEGER NOT NULL DEFAULT 0,
+  -- Who decides this barn's day (round 49): 'scripted' = engine/bots.ts,
+  -- 'llm' = an outside decider proposing actions. See schema.ts for the
+  -- ruling on why both are permanent. The CHECK is the guard that keeps a
+  -- typo from silently becoming a third, unhandled kind of bot.
+  brain TEXT NOT NULL DEFAULT 'scripted' CHECK (brain IN ('scripted','llm')),
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
   barn_expansions INTEGER NOT NULL DEFAULT 0

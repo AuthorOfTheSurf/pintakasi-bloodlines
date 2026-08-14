@@ -3,6 +3,7 @@ import type { DB } from "@/db/client";
 import { gameState } from "@/db/schema";
 import { shopAllClaimers } from "./auto-play";
 import { Bots, type BotDayReport, type DiscoveryPolicy } from "./bots";
+import type { BotAction } from "./bot-brain";
 import { Breeding } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
 import { cardOfDay, weatherOfDay, type CardKey, type Element } from "./config";
@@ -23,6 +24,16 @@ export interface GameStateView {
   // Tonight's posted card + tomorrow's (round 31). Lobbies are no longer
   // conjured on demand: a key is enterable only if the day posted it.
   card: { today: CardKey[]; tomorrow: CardKey[] };
+}
+
+/**
+ * What a caller may hand a tick. One field so far; it exists as an options
+ * object rather than a positional argument because the next thing anyone
+ * wants to pass a tick will not be proposals either.
+ */
+export interface TickOptions {
+  /** farmId → the day an outside decider chose for that barn (round 49). */
+  proposals?: ReadonlyMap<string, BotAction[]>;
 }
 
 export interface TickView {
@@ -79,12 +90,24 @@ export class Game {
     };
   }
 
-  tickDay(): TickView {
-    return this.tick("day");
+  /**
+   * Round 49. `proposals` carries the days that OUTSIDE deciders already
+   * chose for their barns — collected by `collectProposals` before this call,
+   * because collecting is async and a tick is one synchronous transaction
+   * (see engine/bot-brain.ts for the full argument).
+   *
+   * ⚠ THE TICK STAYS SYNCHRONOUS, deliberately. Making it async to hide the
+   * collect step inside would push a promise through `Game`, both tick
+   * routes, two MCP tools and the sim loop, to buy nothing — the engine's
+   * job is applying rules, and waiting on a network is not that. Whoever
+   * drives the tick does the waiting; the engine does the writing.
+   */
+  tickDay(opts: TickOptions = {}): TickView {
+    return this.tick("day", opts);
   }
 
-  tickWeek(): TickView {
-    return this.tick("week");
+  tickWeek(opts: TickOptions = {}): TickView {
+    return this.tick("week", opts);
   }
 
   /**
@@ -103,14 +126,14 @@ export class Game {
    * the "800.00 GP MISSING" shape we saw twice from interrupted sims and both
    * times had to reason our way past. Now a day either happens or it doesn't.
    */
-  private tick(kind: "day" | "week"): TickView {
+  private tick(kind: "day" | "week", opts: TickOptions): TickView {
     return this.database.transaction(
       (): TickView =>
-        withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind))
+        withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind, opts))
     ) as TickView;
   }
 
-  private runTick(kind: "day" | "week"): TickView {
+  private runTick(kind: "day" | "week", opts: TickOptions): TickView {
     // Baseline snapshot for the pre-tick day, if this world has none yet —
     // the first diff needs something to diff against.
     const preDay = this.clock.currentDay();
@@ -118,7 +141,7 @@ export class Game {
     // The bot stables play the closing day first — filling lobbies, placing
     // claims — so the card that goes off has their money on it. No-op on
     // worlds without bots seeded.
-    const bots = Bots.playDay(this.database, this.discoveryPolicy);
+    const bots = Bots.playDay(this.database, this.discoveryPolicy, opts.proposals);
     // Now that tonight's tags are posted, the player-side stables shop the
     // claimer board (round 19) — they run their honest day BEFORE the bots,
     // when the claimer fields are still empty.
