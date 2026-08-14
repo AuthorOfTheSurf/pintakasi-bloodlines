@@ -11,6 +11,13 @@
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
+ * --from   START FROM A SNAPSHOT (Zane's ask, round 50): copy the named world
+ *          into a fresh timestamped db and play on from there. The snapshot is
+ *          never written to. The first 48 days of a seeded world are
+ *          deterministic — simulating them again buys nothing, so bank one
+ *          (e.g. cp the db into data/snapshots/) and every experiment starts
+ *          at the interesting part. Keep the roster identical across worlds
+ *          you mean to compare.
  * --force  required to reseed a db holding registered player farms.
  * --seed   pin the world stream — the SAME seed replays the SAME world, which
  *          is what makes an A/B of two code paths honest. Omit for live-style
@@ -18,7 +25,7 @@
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
 import { eq } from "drizzle-orm";
-import { existsSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
 import { farms, simTimings } from "@/db/schema";
@@ -103,11 +110,40 @@ function stamp(): string {
   return `${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}-${pad(t.getHours())}${pad(t.getMinutes())}`;
 }
 
+// --from=<snapshot.db>: fork a saved world instead of seeding or continuing.
+const fromArg = args.find((a) => a.startsWith("--from="))?.slice("--from=".length);
+if (fromArg && (keep || dbArg)) {
+  console.error("--from forks a snapshot into a NEW db — it can't combine with --keep or --db.");
+  process.exit(1);
+}
+
 const dbPath = path.resolve(
   dbArg ?? (keep ? latestSimDb() : path.join(process.cwd(), "data", `sim-${stamp()}.db`))
 );
 
-if (!keep && existsSync(dbPath)) {
+if (fromArg) {
+  const snapshot = path.resolve(fromArg);
+  if (!existsSync(snapshot)) {
+    console.error(`--from: no snapshot at ${snapshot}`);
+    process.exit(1);
+  }
+  // Clear the target's sidecars FIRST. A stale -wal beside the target path
+  // is not debris — SQLite will replay it over the fresh copy on open and
+  // silently resurrect whatever world it belonged to. (Found the hard way:
+  // a fork "started at day 48" and played somebody else's day 2.)
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (existsSync(dbPath + suffix)) rmSync(dbPath + suffix);
+  }
+  // The snapshot's own -wal carries any un-checkpointed pages; copying it
+  // alongside keeps the fork byte-honest even if saved mid-checkpoint.
+  copyFileSync(snapshot, dbPath);
+  for (const suffix of ["-wal", "-shm"]) {
+    if (existsSync(snapshot + suffix)) copyFileSync(snapshot + suffix, dbPath + suffix);
+  }
+  console.log(`Forked ${path.relative(process.cwd(), snapshot)} → ${path.relative(process.cwd(), dbPath)}\n`);
+}
+
+if (!keep && !fromArg && existsSync(dbPath)) {
   // The wipe guard: a database holding farms that were REGISTERED (not
   // seeded — the dev farm and the bots don't count) is somebody's world.
   const existing = createDb(dbPath)
@@ -131,7 +167,7 @@ const db = createDb(dbPath);
 // The clock starts here so `seed + bots` in the TIMING block below measures the
 // seeding it names, rather than measuring nothing because it began after.
 const t0 = performance.now();
-if (!keep) {
+if (!keep && !fromArg) {
   seedGame(db);
   Bots.seed(db);
   console.log(`Fresh world seeded at ${dbPath} — day 0, Friday\n`);

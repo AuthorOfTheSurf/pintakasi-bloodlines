@@ -69,7 +69,44 @@ At ~200 tok/s, the raw view for a big barn would take **about two minutes to rea
 
 ---
 
-## Findings
+## Phase 2: the barns become Rivet Actors
+
+Phase 1's brain was a function the sim called. Phase 2 moves it into a **Rivet Actor** — a durable, addressable correspondent (`src/actors/barn.ts`). The sim mails a barn its morning view; the barn thinks (the Ollama call now lives inside the actor) and mails back intentions. `--actors` on any brains-on run.
+
+**The gate run:** a full game-week, four barns, every decision through actors — days 66–72 of the seed-1 world.
+
+| | Result |
+|---|---|
+| Actor calls | 28, **0 failures** |
+| Doctor | 0 warnings · **0 invariant failures** |
+| Careers | all four barns: 7 days played, read back from durable state |
+| Wall clock | 42.9 s/day (a much richer world than the phase-1 test: 117–289 fights/day) |
+| Actor overhead | ≈ none — 1 barn direct 13.7 s/day (phase 1) vs ~11 s/day through an actor |
+
+**What `bun add rivetkit` actually installs.** The entire Rivet Engine — a native Rust binary that self-starts on `127.0.0.1:6420`, keeps its state in `~/.rivetkit/var/engine/db`, and **outlives the process that spawned it** (it is a daemon; `registry.shutdown()` drains your envoy but leaves the engine running). "Self-hosted agent infra" turned out to mean one package install and zero configuration.
+
+**The career is the demo.** A barn actor's state is what the barn knows about *itself* — days played, actions proposed and dropped, seconds spent thinking — never game state, which the world database owns alone. Measured surviving: a sim process restart (2 → 4 days played across two runs), and then a full engine-daemon restart (state reloaded from disk, career continued). The mailbox outlives the mailman, the letters, and the post office being rebuilt.
+
+### Field notes, phase 2
+
+1. **`start()` vs `startAndWait()` — the gap wedges actors forever.** `registry.start()` returns before the envoy registers with the engine. An actor whose first message arrives in that gap gets *created* but bound to no pool — and because actor records are durable, it stays unstartable in every later run. Durable state means durable mistakes: in a stateless system a botched create vanishes at restart; here it was faithfully preserved. (Second lesson, same shape: deleting the engine's RocksDB store while a live daemon held it open let the daemon's shutdown flush resurrect the corruption. Kill the process, *then* clear the store.)
+2. **The rebind window: reused actors bounce, fresh ones don't.** An actor created by a previous sim process stays bound to that process's dead envoy for ~30–40s after a new process registers its own. A `takeTurn` sent in that window fails `no_envoys`; the same actor answers fine a minute later. Fresh actors never hit it. The fix is a retry in `barnDecider` — which is also just what mailing a durable correspondent *is*: a bounced letter gets resent; it does not mean the recipient died.
+3. **A long-lived engine daemon degrades.** After several registry generations (sim runs) against one daemon, old actors stopped rebinding at all — three retries over two minutes, nothing. A daemon restart with the *same* persisted store rebound them on the first retry. Recipe for now: restart the engine between sessions if `no_envoys` persists. Worth raising with the Rivet folks — this is serverful-mode wake-after-owner-drain, exercised harder than a dev loop usually would.
+4. **The decider seam paid for itself.** `--actors` swaps in a different `BotDecider`; `collectProposals`, the engine, and the tests are untouched. Direct-Ollama vs actor-routed differ in exactly one constructor call, so the A/B stays honest by construction — same discipline as the one-line model swap.
+5. **The failure path costs 3× the success path.** A wedged barn burned ~30 s/day (the engine's ready-timeout) to accomplish nothing; a healthy one thinks for ~11 s. Budgets should assume failures are *slower* than successes, not free.
+
+### Snapshots: skip the deterministic runway (Zane's idea)
+
+The first 48 days of a seeded world replay identically every time — simulating them again buys nothing. So bank the world once and fork it per experiment:
+
+```bash
+bun run simulate 48 --seed=1                 # build the runway once (~45s)
+sqlite3 data/<that db> "PRAGMA wal_checkpoint(TRUNCATE);"
+cp data/<that db> data/snapshots/day48-seed1.db
+bun run simulate 7 --from=data/snapshots/day48-seed1.db --brain=qwen3:14b --llm=4 --actors
+```
+
+`--from` copies the snapshot to a fresh timestamped db and plays on; the snapshot is never written. Day 49 is where the population and fight volume start compounding (week 7 — past the retirement trough), so experiments begin at the interesting part. Keep the roster identical across worlds you mean to compare. One trap, found the hard way: a stale `-wal` file beside the target path gets replayed over the fresh copy and silently resurrects whatever world it belonged to — the fork clears sidecars first.
 
 ### 1. It was never a context-window problem
 

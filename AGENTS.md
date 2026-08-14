@@ -64,6 +64,12 @@ The voice is for someone who has never played: short sentences, roughly a 5th-gr
 - **Run it whole first.** If the only tables that differ are those six, normalize and confirm the rest matches. If `farms`, `lobbies`, `snapshots` or `game_state` differ, that is a real behaviour change and no amount of excluding will make it otherwise.
 - `--exclude=table.col` drops a column a round legitimately adds (`--exclude=farms.brain`), so every other column still has to match exactly.
 
+**AI barns and Rivet Actors have their own ledger** — `BRAINS.md` at the root: the inference-side speed numbers, the design findings, and the phase-2 actor notes. The short operational version:
+
+- `--brain=<ollama model> --llm=<ids|count>` puts a local model behind stables; add `--actors` and each llm barn runs as a durable Rivet Actor (careers persist across runs — same world + same farm = same actor).
+- `--from=data/snapshots/day48-seed1.db` forks a banked world instead of replaying the deterministic runway — LLM experiments should start at day 49, where fight volume compounds. The snapshot is never written to.
+- The Rivet Engine (`bun add rivetkit` ships it) is a **daemon that outlives the sim** and keeps state in `~/.rivetkit/var/engine/db`. If reused actors keep failing `no_envoys` past the built-in retry, restart it: `pkill -f rivet-engine` (the store survives; careers reload). Never delete the store while the daemon lives — its shutdown flush resurrects what you deleted.
+
 **`bun run doctor` is the verification loop.** It asserts the nine invariants (GP and LT conservation to the cent, no negative balances, no Pit Figure inversions, purses settling exactly, no stranded escrow, one card per bird per day, fight counts matching the log, and the scout's running book matching the log) and prints the health block: unmatched rate, the worst lobby keys, population and supply-vs-attrition, staker inflows by source, championship fields, and **mechanic adoption**. It exits non-zero on a broken invariant, so `simulate` fails loudly rather than printing a happy log.
 
 - `bun run doctor` — the newest sim · `--live` — `data/game.db` · `--quiet` — invariants only, for pasting · `--json` — the raw report

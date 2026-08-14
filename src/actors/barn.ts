@@ -130,10 +130,31 @@ export function barnDecider(
     stats.calls++;
     try {
       const handle = client.barn.getOrCreate([world, view.farm.id]);
-      const actions = await handle.takeTurn(view, opts);
-      stats.proposedActions += actions.length;
-      stats.totalMs += Date.now() - started;
-      return actions;
+      // ⚠ THE REBIND WINDOW. An actor that a PREVIOUS sim process created
+      // stays bound to that process's (now-drained) envoy for a while after
+      // a new process registers its own — and a takeTurn sent in that window
+      // fails "no_envoys" even though the same actor answers fine a minute
+      // later (measured: the career readout 30s after a failed takeTurn
+      // succeeded). Fresh actors never hit this; only reused ones do. So:
+      // retry. This is also just what mailing a durable correspondent IS —
+      // a bounced letter gets resent, it does not mean the recipient died.
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const actions = await handle.takeTurn(view, opts);
+          stats.proposedActions += actions.length;
+          stats.totalMs += Date.now() - started;
+          return actions;
+        } catch (err) {
+          lastErr = err;
+          const msg = String(err);
+          // Only the binding failure is worth retrying — a model error or a
+          // timeout inside the actor is a real answer, not a bounced letter.
+          if (!/no_envoys|failed to start|actor_ready_timeout/i.test(msg)) throw err;
+          if (attempt < 3) await new Promise((r) => setTimeout(r, 10_000 * attempt));
+        }
+      }
+      throw lastErr;
     } catch (err) {
       stats.failures++;
       stats.totalMs += Date.now() - started;
