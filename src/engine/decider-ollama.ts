@@ -143,6 +143,7 @@ export function digest(view: BotView): Digest {
     return sb - sa;
   });
 
+  const crownable = new Set(view.crowns.eligibleBirdIds);
   const fighters = ranked.slice(0, LIMITS.fighters).map((b) => {
     const report = view.scout[b.id];
     return {
@@ -156,6 +157,8 @@ export function digest(view: BotView): Digest {
       // the scout does better and for free.
       bestBlade: report?.bestBlade ?? null,
       fights: report?.totalFights ?? 0,
+      // Only present when true — a token spent on `false` is a token wasted.
+      ...(crownable.has(b.id) ? { crownEligible: true } : {}),
     };
   });
 
@@ -213,6 +216,9 @@ export function digest(view: BotView): Digest {
         barn: `${view.farm.barn.count}/${view.farm.barn.capacity}`,
       },
       cardTonight: card,
+      // The day-56 instrument fix: without this line the crown verb went
+      // unused for 560 straight calls, coach orders notwithstanding.
+      majorsThisWeek: view.crowns.weekFormats,
       fighters,
       moreFighters: Math.max(0, active.length - fighters.length),
       hens,
@@ -245,11 +251,15 @@ RULES
 - A bird enters at most ONE lobby per day.
 - Entering costs a fee. Never spend below 400 GP in reserve.
 - Breeding needs a retired hen and a stud. Eggs need barn space.
+- crown declares a bird for this week's Major championship (fights Thursday).
+  Only birds marked crownEligible, only formats listed in majorsThisWeek.
 - Illegal actions are refused silently, so do not guess.
 
 A GOOD DAY
 - check_in first, always.
 - roll_gacha while freePulls > 0.
+- crown a crownEligible bird at its bestBlade when majorsThisWeek offers it —
+  Majors pay the biggest purses in the game.
 - Enter your best fighters at their bestBlade when the card offers it.
 - list_stud any retired rooster not yet listed.
 - Claim a bird only if its record and stars beat its tag.`;

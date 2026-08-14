@@ -30,9 +30,11 @@
  * `doctor` run — never reaches this file, which is what keeps
  * determinism.test.ts, replay.test.ts and playthrough.test.ts honest.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { farms, gameState } from "@/db/schema";
+import { birds, farms, gameState } from "@/db/schema";
+import { CROWN_CHASE } from "./bot-config";
+import { canHardcore } from "./lifecycle";
 import type { BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
 import { Farms } from "./farms";
@@ -126,6 +128,18 @@ export interface BotView {
   claimerBoard: ReturnType<Lobbies["board"]>;
   /** The scout's read per active bird: where the evidence says it belongs. */
   scout: Record<string, ReturnType<Lobbies["scoutReport"]>>;
+  /**
+   * This week's Majors, and which of MY birds clear the bar to declare
+   * (round 53, the day-56 instrument fix). The 10v10 found the blind spot
+   * the hard way: the coach ordered "declare for a Major crown whenever a
+   * bird qualifies," and 280 calls later the crown verb had been used zero
+   * times — because nothing in the view mentioned the tournament. Scripted
+   * bots reach into the db for this (`chaseCrowns`); an outside brain only
+   * knows what its mail says. Facts in the brief, skill in the standing
+   * orders — this is the facts half. Eligibility mirrors chaseCrowns
+   * exactly: active, named, hardcore age, ≥ CROWN_MIN_REAL_WINS real wins.
+   */
+  crowns: { weekFormats: FightFormat[]; eligibleBirdIds: string[] };
 }
 
 /** An outside brain: given what the barn can see, say what it wants to do. */
@@ -168,6 +182,31 @@ export function buildView(db: DB, farmId: string): BotView {
     board: lobbies.board({ detail: "fills" }),
     claimerBoard: lobbies.board({ classType: "claimer", detail: "field" }),
     scout,
+    crowns: (() => {
+      // Same facts chaseCrowns reads, through the same indexed query.
+      const proven = new Set(
+        db
+          .select({ id: birds.id })
+          .from(birds)
+          .where(
+            and(
+              eq(birds.farmId, farmId),
+              gte(birds.stakesWins, CROWN_CHASE.CROWN_MIN_REAL_WINS)
+            )
+          )
+          .all()
+          .map((b) => b.id)
+      );
+      return {
+        weekFormats: Tournaments.bladesOfWeek(Tournaments.targetWeek(day)),
+        eligibleBirdIds: mine
+          .filter(
+            (b) =>
+              b.status === "active" && b.named && canHardcore(b.age) && proven.has(b.id)
+          )
+          .map((b) => b.id),
+      };
+    })(),
   };
 }
 
