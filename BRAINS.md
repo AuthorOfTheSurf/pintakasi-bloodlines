@@ -1,0 +1,141 @@
+# Brains: running the stables on a local model
+
+A running log of what we hit putting language models behind the bot stables, and what it costs in seconds. Companion to `PERFORMANCE.md`, which owns the engine's speed; this file owns the *inference* side and the design findings that came with it.
+
+Two rules, same as that file: **numbers come from a run, not from an argument**, and the method is written down beside the number so a later run can be compared to it honestly.
+
+Reproduce anything here with:
+
+```bash
+bun run simulate 45 --seed=1                                       # build a world
+bun run simulate 7 --keep --seed=1 --brain=qwen3:14b --llm=bot-1   # a brain plays it
+bun run brain-bench --farm=bot-1                                   # where the seconds go
+```
+
+---
+
+## The speed ledger
+
+**Machine:** MacBook Pro, M1 Max, 10 cores, 64 GB unified memory. ~400 GB/s memory bandwidth.
+**Model:** `qwen3:14b` via Ollama 0.32.11, 4-bit, 9.3 GB on disk. Nothing leaves the laptop.
+
+### A game-day, with and without a brain
+
+| Run | Days | s/day | Notes |
+|---|---|---|---|
+| Scripted only | 92 | **0.90** | 5.11 ms/fight · 7.29 ms/entry |
+| One llm barn | 7 | **13.74** | 18 of 19 stables still scripted |
+
+**One barn's brain costs ~12.8 s/day** — about **fourteen times the entire rest of the day's work**, engine, card, championships and all. The engine is not the cost any more and will not be again. Every speed question from here is an inference question.
+
+### Concurrency: four barns cost twice one barn, not four times
+
+| llm barns | s/day | vs. 1 barn |
+|---|---|---|
+| 1 | 13.74 | — |
+| 4 | **27.91** | **2.0×** for 4× the work |
+
+**Four times the barns for twice the wall clock.** The fan-out in `collectProposals` is real parallelism, not a queue: Ollama batches the concurrent requests, and because a barn-day is ~90% *reading*, and reading batches well on a GPU, the marginal barn is far cheaper than the first.
+
+Marginal cost per extra barn: **~4.7 s**, against ~13.7 s for the first one. The staggered replies make the batching visible — four calls issued together came back at 4.4 s, 24.7 s, 27.8 s, 30.9 s.
+
+Projecting all nineteen stables: `13.7 + 18 × 4.7 ≈ **100 s/game-day**`. ⚠ That is extrapolated from two points and should be measured before being believed — but it is the difference between a full llm world being a coffee break and being an overnight job. **A 92-day world with every stable on a model comes out around 2.5 hours**, which is a thing you can run, not a thing you plan around.
+
+And with brains on, the engine has left the chart entirely: **inference was 98% of that run.**
+
+### Where those seconds go (`bun run brain-bench`)
+
+| Phase | Cold | Warm |
+|---|---|---|
+| Model load | **5,971 ms** | **121 ms** |
+| Prompt eval | 4,550 ms (870 tok, ~191 tok/s) | 5,268 ms (1,086 tok, ~206 tok/s) |
+| Generation | 177 ms (5 tok) | 180 ms (5 tok) |
+
+Two things fall straight out:
+
+1. **Loading the model costs 49× more cold than warm.** That is the measured argument for waking every barn in the same moment rather than spreading them across the day — one load serves the whole roster. The tick already had this shape for its own reasons.
+2. **Reading dominates. Generating is nearly free.** ~200 tokens/second in, and a day's decisions are only a few hundred tokens out. **A barn-day is about 90% reading its mail.** Which means the lever on speed is the size of the brief, not the cleverness of the model — and that is a very different optimization than the ones `PERFORMANCE.md` records.
+
+### What the digest actually saves
+
+| Barn | Birds | Raw `BotView` | Digest | Ratio |
+|---|---|---|---|---|
+| bot-1 (Sabungero Syndicate) | 19 | ~5,900 tok | **692 tok** | 8.5× |
+| bot-14 (Sugalan Social Club) | 100 | ~24,500 tok | **866 tok** | 28.3× |
+
+**The view grows with the barn; the digest barely does.** Five times the birds costs 174 more tokens, because `LIMITS` caps each list and the caps are what make the cost of a barn-day independent of how rich the stable got. A world where every stable ends at a hundred birds costs the same to think about as one where they end at twenty.
+
+At ~200 tok/s, the raw view for a big barn would take **about two minutes to read** — per barn, per day. Nineteen of those is a 38-minute game-day. The digest makes it about five seconds each.
+
+---
+
+## Findings
+
+### 1. It was never a context-window problem
+
+The digest exists because a `BotView` is "too big to hand a model" — that was the working assumption, and measured, **it is wrong as stated.** 24,500 tokens fits comfortably in this model's window. It is not a *limit* problem, it is a *time* problem: reading it costs two minutes at 200 tok/s.
+
+Worth being precise about, because the two have different fixes. A limit problem is solved by a bigger window or a bigger model. A time problem is solved by sending less — and sending less is cheap, portable, and helps every model including the ones with room to spare.
+
+### 2. Prompt-eval cost is the thing to optimize, and it is barely started
+
+Everything in `digest()` today is *selection* — take the top 12 fighters, the top 6 hens. Nothing yet is *compression*. Obvious next moves, none of them tried:
+
+- **The brief repeats its own keys.** JSON pays for `"bestBlade"` once per bird; a header-plus-rows table pays once per brief. Probably 30–40% off the fighters block alone.
+- **Most of the brief does not change between days.** Farm identity, barn size, the stud list. If the provider ever caches prompt prefixes, ordering the brief stable-part-first turns most of the read into a cache hit — and the ordering is free to do now, before it pays.
+- **The card is described five times over.** `cardTonight` lists every open key; a barn only cares about the ones matching a bird it owns.
+
+### 3. The model is fine at the game and bad at ambiguity
+
+Given a well-formed brief it proposes 8–10 sensible actions: check in, roll the free pulls, enter its best fighters at the blade the scout points to, list retired roosters at stud. It does not need to be told the strategy.
+
+What broke it was **an ambiguous namespace, and that was our fault, not its.** Bird handles were `b1, b2, b3…` and the five blade formats in this game are named `b1`–`b5`. The brief handed the model `"format":"b1"` and `"id":"b1"` in the same JSON object.
+
+On an opening-week day when every bird was still an egg and the fighters list was empty, it reached for the only `b` tokens on the page and proposed entering the *formats* as birds. Five dropped actions reading `unknown bird b1` — with a `b1` sitting right there in the prompt.
+
+**An identifier invented for a prompt must not share a namespace with one the domain already uses.** Handles are `#1, #2` now. Zero handle errors since.
+
+### 4. An empty list invites invention
+
+The same incident says something more general. Asked to act with an empty `fighters` list, the model did not answer "nothing to do" — it found the nearest plausible tokens and used them. **Absence reads as a gap to fill.** Where a brief can legitimately be empty, it is probably worth saying so in words (`"fighters": []` plus a `"note": "no birds are old enough to fight yet"`) rather than letting an empty array speak for itself. Untested; worth an experiment.
+
+### 5. A schema constrains shape, never sense
+
+Ollama's `format` parameter genuinely works — every reply was valid JSON matching the schema, with no parsing and no retries. But a flat schema cannot say *"`bird` is required when `do` is `enter`"*, so three actions arrived as well-formed `enter`s with no bird at all. A per-verb `oneOf` would close it. **Structured output removes the parsing problem completely and the correctness problem not at all.**
+
+### 6. The database decided the architecture
+
+The tick runs inside one synchronous `better-sqlite3` transaction because GP conservation only holds across a whole day. An `await` cannot go in there. That single fact forced **collect-then-apply** — gather every barn's intent outside the transaction, apply it inside — which turns out to be the right shape for three unrelated reasons:
+
+- it is the only way to hold the conservation proof while a decider is slow;
+- it makes the wakes cluster, which is what makes the model load once;
+- and it means **the engine cannot tell a bot from a human**, since both are now just an actor that received "your turn" and mailed an action back.
+
+An architecture arrived at from a database constraint, and it is the same architecture the actor model would have suggested.
+
+### 7. The fault tolerance was already there
+
+`quietly()` — swallow the refusal, take no for an answer, carry on — was written for scripted bots long before any model existed. It is exactly what makes an unreliable decider safe: a model proposing a breed it cannot afford is refused at the same door a bot is. **We had built the safety net years before the thing that needed it.**
+
+### 8. Fixed order, not proposal order
+
+Actions are sorted into a canonical sequence before being applied. A model that lists its day back-to-front should not get a worse day than one that happens to list it correctly — and a model that discovers it can reorder its way into an advantage has found a bug, not a strategy.
+
+---
+
+## Open questions
+
+- ✅ **Does concurrency help?** Yes — 4 barns cost 2.0× one barn, not 4×. Measured above. What is *not* measured is where it stops: `OLLAMA_NUM_PARALLEL` has a default ceiling, and somewhere past it the batch turns into a queue and the marginal barn goes back to full price. Finding that knee is the next measurement, and it sets the real cost of a full llm world.
+- **How small can the model go?** 14B was chosen to get it working, not because the task needs it. Choosing one action from a typed menu given a brief may well be an 8B task, and 8B halves the read.
+- **Does a bigger model play better, or just slower?** 32B and 70B both fit in 64 GB. Untested.
+- **What does a barn's memory do to the brief?** Nothing carries between days yet. Memory and beliefs are the point of a per-barn actor, and they are also more tokens to read every single day — the first real tension between playing well and playing cheaply.
+- **Is the local model actually worse here?** Unmeasured against a hosted model. The comparison is one environment variable away and is the experiment worth running.
+
+---
+
+## Method notes
+
+- `bun run brain-bench [--model=] [--farm=] [--db=]` reads the newest sim database, prints raw-vs-digest size, and makes one real call to report Ollama's own load / prompt-eval / generation split. It writes nothing.
+- The sim's `TIMING` block grew a **`brains`** line, reported separately from `tickMs` on purpose: folding inference latency into the engine's ms/fight would make every number in `PERFORMANCE.md` incomparable the day a model arrived.
+- Token counts are `chars / 3.5`, a rule of thumb for dense JSON. Rough, deliberately — the interesting figure is the *ratio*, which survives any reasonable estimate.
+- Barn size varies enormously by house style (19 birds to 100 in the same world), so quote which farm a measurement came from. `bot-1` is a mid-sized stable and `bot-14` is the largest.

@@ -169,6 +169,11 @@ const game = new Game(db, DEV_FARM_ID, discoveryPolicy);
 // the numbers an A/B can actually be run on.
 let honestMs = 0;
 let tickMs = 0;
+// Time spent WAITING ON BRAINS — zero on an ordinary run, and the dominant
+// cost the moment one barn goes llm. Tracked separately from tickMs on
+// purpose: mixing inference latency into the engine's ms/fight would make
+// every PERFORMANCE.md number incomparable the day a model arrives.
+let brainMs = 0;
 const dayMs: { day: number; ms: number }[] = [];
 // Durations under a minute stay decimal seconds; past a minute they print as
 // m:ss (Zane's ask, round 47 — a 182-day run says "12:42", not "762.7s",
@@ -203,6 +208,7 @@ for (let day = 1; day <= days; day++) {
   // against it.
   const proposals = await collectProposals(db, decider);
   const afterBrains = performance.now();
+  brainMs += afterBrains - afterHonest;
 
   // ── The day turns: bots play, the card goes off, staking pays ────────
   const tick = game.tickDay({ proposals });
@@ -262,6 +268,14 @@ console.log(
     `${(simMs / Math.max(1, days) / 1000).toFixed(2)}s/day · honest ` +
     `${Math.round((honestMs / Math.max(1, honestMs + tickMs)) * 100)}% / tick ` +
     `${Math.round((tickMs / Math.max(1, honestMs + tickMs)) * 100)}%)\n` +
+    // The brain line only appears when there was a brain — an ordinary run's
+    // timing block should look exactly as it always has.
+    (brainMs > 1
+      ? `  brains       ${fmtSec(brainMs).padStart(8)}   (${((brainMs / Math.max(1, days)) / 1000).toFixed(2)}s/day · ` +
+        `${Math.round((brainMs / Math.max(1, simMs)) * 100)}% of the run` +
+        (decider ? `, ${decider.stats.calls} call(s), ${decider.stats.failures} failed` : "") +
+        `)\n`
+      : "") +
     `  doctor       ${fmtSec(doctorMs).padStart(8)}\n` +
     `  total        ${fmtSec(performance.now() - t0).padStart(8)}\n` +
     (slowest.length
