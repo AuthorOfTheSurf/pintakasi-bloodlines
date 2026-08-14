@@ -51,10 +51,21 @@ export function personaOrders(profile: BotProfile): string {
  * The creeds only vary HOW a barn chases that goal. Land buying stays legal
  * for everyone; it is an investment decision now, not an identity.
  */
+/**
+ * v2 preamble (exp2): experiment #1's coaching lessons, baked in from day 1
+ * so the coach can refine instead of remediate. The three additions are the
+ * three findings of the 91-day postmortem — volume mints land, crowns must
+ * actually be declared, and the pipeline must actually be run.
+ */
 const GOAL_PREAMBLE =
   "Your goal: finish with the highest net worth in the world — GP plus land " +
-  "tokens valued at 0.8 GP each. Championships (the Majors) are the biggest " +
-  "+EV moments in the game: build toward them and show up armed.";
+  "tokens valued at 0.8 GP each. Three laws proven by the last season: " +
+  "(1) VOLUME — every fight mints land tokens win or lose, and staked land " +
+  "pays daily, so enter every healthy bird every single day; an idle bird " +
+  "earns nothing. (2) CROWNS — declare crownEligible birds for the Majors in " +
+  "majorsThisWeek; championships pay the biggest purses in the game. " +
+  "(3) PIPELINE — breed whenever a retired hen, a stud, and barn space line " +
+  "up; this season's chicks are next season's champions.";
 
 export type ChampionshipCreed =
   | "bloodline-architect"

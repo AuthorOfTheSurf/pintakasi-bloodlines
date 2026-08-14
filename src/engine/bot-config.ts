@@ -499,8 +499,16 @@ export const BOT_FARMS: BotProfile[] = [
     primaryColor: "gold", secondaryColor: "black", style: "whale",
     flockSeed: 1010, entryRate: 0.5, claimAggression: 0.1, breedDrive: 0.2,
     hardcoreNerve: 0.1, sellRate: 0.2, tagCourage: 0.5, ladderCourage: 0.25, housePair: 1,
-    gachaHabit: 1, // a whale's habit is daily by definition
-    gachaAppetite: 1, // rolls every single day, to the bottom of the wallet
+    // ⚠ TAMED IN ROUND 53 (Zane's ruling, for the 10v10 experiments). The
+    // original Ginto rolled every day to the bottom of the wallet
+    // (gachaHabit 1, gachaAppetite 1) — a deliberate revenue-shape stress
+    // test, and it worked: rank 20 with three-digit net worth in every run.
+    // But a scripted side that carries a designated bankrupt isn't an honest
+    // baseline for a scripted-vs-llm comparison, so Ginto now spends like a
+    // heavy-but-solvent whale (bot-14 shape, turned up). If a future round
+    // needs the roll-to-zero customer again, restore the two 1s and say so.
+    gachaHabit: 0.9,
+    gachaAppetite: 0.5,
   },
   {
     id: "bot-11", name: "Lupa Land Holdings", country: "🇵🇭", handler: "Lupa",
