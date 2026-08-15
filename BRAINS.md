@@ -175,12 +175,13 @@ Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
 (qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
 Each experiment started with everything the previous one taught.
 
-| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 |
-|---|---|---|---|---|---|---|
-| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 | 53,235 | 50,129 |
-| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 | 0.43 | 0.40 |
-| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 | 7 | 6 |
-| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** | 1,053 | 1,253 |
+| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 | Exp7 |
+|---|---|---|---|---|---|---|---|
+| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 | 53,235 | 50,129 | 54,078 |
+| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 | 0.43 | 0.40 | 0.44 |
+| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 | 7 | 6 | 5 |
+| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** | 1,053 | 1,253 | 1,978 |
+| llm juvenile fights | 0 | 0 | 0 | 0 | 0 | 0 | **568** |
 
 Exp4 is the arc's honest negative result: the bird-by-bird checklist bought
 record volume and LOST ground — entry fees scale with entries, purses scale
@@ -207,11 +208,21 @@ the meta-finding: across six experiments the GOAL_PREAMBLE has set identity
 but has NEVER initiated a multi-step season plan — every behavior chain
 (retire→breed, cull rhythm) started only after a coach session issued it as
 a blunt dated order. **Coaching is the executive function**; standing text
-decays into wallpaper. (Production implication for the world actor: a
+decays into wallpaper — and exp7 proved the mechanism by A/B: identical
+season-plan content was inert as exp6's preamble and immediately effective
+as exp7's blunt day-2 dated orders through the SAME standing-orders field.
+The channel was never the variable; wording specificity is. (Production implication for the world actor: a
 scheduled coach tick, or re-delivering the season plan as fresh daily
-orders.) Two instrument rounds also both lost ground to exp3's simple
-laws — exp7 should test whether the margin-caution language itself is the
-10-19-point tax.
+orders.) Two instrument rounds both lost ground to exp3's simple laws. Exp7 (mode
+enum open + day-2 orders + gap #6, the naming law, fixed at day 56) ran
+the full discovery loop end to end for the first time — 568 juvenile
+fights across both generations, 20 juvenile crown entries, 1,260 LT of
+juvenile land — and still finished 0.44: the age-9 cliff against 46
+bred/season is the whole remaining gap (17 vs 377 end actives). The pipe
+law's final tally is six layers: facts, capacity, verbs, defaults, legal
+field values, and engine-assumed chores (christening). Next lever: breeding
+volume (exp8); if depth still can't keep pace, the wall is the ~5-action
+gait — a model-capability question, answered with a bigger model.
 
 What three experiments established, one lesson each:
 
