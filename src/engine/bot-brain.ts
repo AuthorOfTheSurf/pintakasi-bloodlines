@@ -68,6 +68,7 @@ export type BotAction =
   | { do: "stake"; tokens: number }
   | { do: "unstake"; tokens: number }
   | { do: "expand_barn" }
+  | { do: "retire"; birdId: string }
   | { do: "list_stud"; birdId: string }
   | { do: "breed"; motherId: string; fatherId: string }
   | { do: "enter"; birdId: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }
@@ -83,6 +84,7 @@ export const BOT_VERBS = [
   "stake",
   "unstake",
   "expand_barn",
+  "retire",
   "list_stud",
   "breed",
   "enter",
@@ -347,6 +349,9 @@ const ORDER: BotAction["do"][] = [
   "buy_land",
   "unstake",
   "expand_barn",
+  // Retire BEFORE breed — the exp5 day-28 finding: a barn that culls a loser
+  // into the shed this morning should be able to pair her the same day.
+  "retire",
   "list_stud",
   "breed",
   "enter",
@@ -426,6 +431,15 @@ export function applyProposals(
         break;
       case "expand_barn":
         quietly(() => void farmsApi.expandBarn(farmId));
+        break;
+      case "retire":
+        // The exp5 day-28 instrument fix, third of its kind: the cull law
+        // ordered "retire chronic losers to the breeding shed" while the verb
+        // menu had no retire — a prompt commanding an action the barn could
+        // not express. Same public API the web route and MCP call; the engine
+        // still says no to a bird under age 3 (manual retirement unlocks with
+        // hardcore, lifecycle.ts).
+        quietly(() => void flock.retire(action.birdId));
         break;
       case "list_stud":
         if (quietly(() => void breeding.listStud(action.birdId))) report.studsListed++;

@@ -290,7 +290,8 @@ A GOOD DAY
   on whether a chick is a b1/b2 bird or a b4/b5 bird, at no career risk.
 - Enter your best fighters at their bestBlade when the card offers it.
 - After ~5 fights a bird's record IS the verdict: keep campaigning winners,
-  drop chronic losers to cheap claimers or retire them to the breeding shed.
+  drop chronic losers to cheap claimers or retire them (the retire verb,
+  age 3+) — a retired hen breeds, a retired rooster stands at stud.
   Never declare a proven loser for a hardcore Major.
 - When the barn shows full (like "100/100"), expand_barn — it costs land
   tokens and a full barn blocks every egg your pipeline needs.
@@ -327,7 +328,7 @@ const RESPONSE_SCHEMA = {
         anyOf: [
           verb(["check_in", "roll_gacha", "buy_bundle", "expand_barn"], {}),
           verb(["buy_land", "stake", "unstake"], { tokens: { type: "number" } }),
-          verb(["list_stud"], { bird: { type: "string" } }),
+          verb(["list_stud", "retire"], { bird: { type: "string" } }),
           verb(["breed"], { mother: { type: "string" }, father: { type: "string" } }),
           verb(
             ["enter"],
@@ -430,6 +431,12 @@ export function toActions(
         const id = real(a.bird);
         if (id) actions.push({ do: "list_stud", birdId: id });
         else drop(`list_stud: unknown bird ${a.bird ?? "(none)"}`);
+        break;
+      }
+      case "retire": {
+        const id = real(a.bird);
+        if (id) actions.push({ do: "retire", birdId: id });
+        else drop(`retire: unknown bird ${a.bird ?? "(none)"}`);
         break;
       }
       case "breed": {
