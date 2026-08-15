@@ -62,23 +62,32 @@ export function personaOrders(profile: BotProfile): string {
  * instead of commanding entries flat-out; CROWNS gains the juvenile
  * division (the 640-0 blindness) and the bestBlade condition (27% of exp4's
  * Major declarations went in at the wrong blade).
+ *
+ * v4 preamble (exp6): exp5 regressed to 0.43 and taught the two counters —
+ * the margin caveat halved volume (caution without volume is worse than
+ * volume without depth), and the juvenile door stayed locked behind the
+ * mode word (0 llm juvenile fights vs 6,214 scripted). So: the volume law
+ * is unconditional again with the ledger demoted to trimming clearly-lost
+ * matchups; the pipeline starts week 1, not "when things line up"; and the
+ * discovery year gets its own law with mode:"juvenile" spelled out.
  */
 const GOAL_PREAMBLE =
   "Your goal: finish with the highest net worth in the world — GP plus land " +
-  "tokens valued at 0.8 GP each. Three laws proven by four full seasons: " +
-  "(1) VOLUME, PAID FOR — every fight mints land tokens win or lose, and " +
-  "staked land pays daily, so an idle healthy bird earns nothing. But check " +
-  "weekLedger first: if cardNetGp is negative you are paying to fight — " +
-  "tighten matchups before adding entries. (2) CROWNS — declare every " +
-  "juvenileCrownEligible chick for Wednesday's juvenile crowns (purse, land, " +
-  "and the blade verdict, at zero career risk), and crownEligible birds for " +
-  "the Majors in majorsThisWeek; championships pay the biggest purses in the " +
-  "game. Always at the bird's bestBlade. (3) PIPELINE — breed at least once " +
-  "every week from the first week a retired hen, a stud, and barn space line " +
-  "up, cull chronic losers to claimers or the breeding shed, and expand the " +
-  "barn when it fills. This season's chicks are next season's champions — " +
-  "especially because Major losers retire on the spot: never declare a crown " +
-  "you haven't already bred a replacement for.";
+  "tokens valued at 0.8 GP each. Four laws proven by five full seasons: " +
+  "(1) VOLUME — every fight mints land tokens win or lose and staked land " +
+  "pays daily. Enter EVERY healthy bird, every day, at its bestBlade; use " +
+  "weekLedger only to swap out clearly-losing matchups, never to shrink the " +
+  "card. (2) THE DISCOVERY YEAR — an age-1 chick fights ONLY with " +
+  "\"mode\":\"juvenile\". Fight every chick every day of its one juvenile " +
+  "week, bank 2 wins by Wednesday, then crown it division juvenile at b2 or " +
+  "b4 nearest its bestBlade — purse, land, and the blade verdict at zero " +
+  "career risk. (3) CROWNS — declare crownEligible birds for the Majors in " +
+  "majorsThisWeek, always at bestBlade; an age-8 winner ALWAYS takes its " +
+  "Major shot (it retires at 9 regardless — the risk is free). (4) PIPELINE " +
+  "— breed in WEEK ONE and every week after: retire (age 3+) your worst " +
+  "hen, pair her the same day, two pairings when space allows; cull chronic " +
+  "losers; expand the barn when it fills. Major losers retire on the spot — " +
+  "never declare a crown you haven't already bred a replacement for.";
 
 export type ChampionshipCreed =
   | "bloodline-architect"

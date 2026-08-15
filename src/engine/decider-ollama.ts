@@ -167,6 +167,12 @@ export function digest(view: BotView): Digest {
       // Only present when true — a token spent on `false` is a token wasted.
       ...(crownable.has(b.id) ? { crownEligible: true } : {}),
       ...(juvenileCrownable.has(b.id) ? { juvenileCrownEligible: true } : {}),
+      // Exp6, instrument gap #4 (the mode word): an age-1 bird may ONLY
+      // fight mode:"juvenile", and exp5 proved the model cannot infer that —
+      // llm chicks logged 0 juvenile fights all season against the scripted
+      // side's 6,214, because every enter defaulted to mode:"real" and the
+      // engine quietly refused. The flag pairs with the system-prompt law.
+      ...(b.age === 1 ? { juvenile: true } : {}),
     };
   });
 
@@ -275,9 +281,13 @@ RULES
   juvenileCrownsThisWeek. NOT hardcore — a juvenile loser fights on.
 - ALWAYS declare a crown at the bird's bestBlade when that format is offered.
   A crown at the wrong blade is a donation to the barn that bred for it.
+- Fighters marked "juvenile":true are age-1 birds in their discovery year.
+  They may ONLY fight with "mode":"juvenile" — a juvenile entered without
+  it is refused silently and wastes its day. Fight every one, every day.
 - weekLedger is your last 7 days: cardNetGp (daily-card stakes won minus
-  lost), crownFeesGp, crownWinningsGp. If cardNetGp runs negative, you are
-  paying to fight — enter fewer, better matchups, not more.
+  lost), crownFeesGp, crownWinningsGp. A negative cardNetGp means cut your
+  clearly-losing matchups — never your card as a whole; an idle bird earns
+  nothing and every fight mints land.
 - Illegal actions are refused silently, so do not guess.
 
 A GOOD DAY
@@ -288,11 +298,15 @@ A GOOD DAY
 - crown every juvenileCrownEligible bird at its bestBlade — the juvenile
   crowns are the discovery year's main event: purse, land, AND the verdict
   on whether a chick is a b1/b2 bird or a b4/b5 bird, at no career risk.
-- Enter your best fighters at their bestBlade when the card offers it.
+- Enter EVERY healthy fighter at its bestBlade when the card offers it —
+  juveniles with "mode":"juvenile", everyone else real. Rest a bird only
+  with a reason.
 - After ~5 fights a bird's record IS the verdict: keep campaigning winners,
   drop chronic losers to cheap claimers or retire them (the retire verb,
   age 3+) — a retired hen breeds, a retired rooster stands at stud.
   Never declare a proven loser for a hardcore Major.
+- An age-8 veteran retires at 9 no matter what: campaign it EVERY night and
+  give a winner its Major shot at bestBlade — the hardcore risk is free.
 - When the barn shows full (like "100/100"), expand_barn — it costs land
   tokens and a full barn blocks every egg your pipeline needs.
 - list_stud any retired rooster not yet listed.
