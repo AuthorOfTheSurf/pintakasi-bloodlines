@@ -45,6 +45,7 @@ import { Lobbies, type LobbySpec } from "./lobbies";
 import { Tournaments, type Division } from "./tournaments";
 import { barnCapacity, cardOfDay, weatherOfDay, type CardKey, type Element } from "./config";
 import type { FightFormat, FightMode, Lobby } from "./config";
+import { drawStarterNames } from "./naming";
 import { mulberry32, type Rng } from "./rng";
 
 /**
@@ -397,6 +398,18 @@ export function applyProposals(
       return false; // a house rule said no — an llm barn takes no for an answer too
     }
   };
+
+  // THE NAMING LAW, applied as bookkeeping (exp7 day-56 — instrument gap
+  // #6): no bird fights under an auto-name (Lobbies.enter throws), and both
+  // the scripted bots and auto-play christen hatchlings as a pre-card CHORE
+  // — but this path had no naming affordance at all, so exp7's month-two
+  // chicks were silently unenterable: 76 juvenile proposals, 0 landed, and
+  // the only tell was `named: 0` in the db. Christening is a chore, not a
+  // strategy — it lives here with the plumbing rather than spending model
+  // tokens on inventing cockfighting names.
+  for (const bird of flock.all().filter((b) => b.status === "active" && !b.named)) {
+    quietly(() => void flock.rename(bird.id, drawStarterNames(db, 1, rng)[0]));
+  }
 
   const sorted = [...actions]
     .slice(0, MAX_ACTIONS)
