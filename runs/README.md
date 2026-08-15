@@ -25,6 +25,7 @@ regenerate.
 | `2026-08-15-10v10-v2/` | Exp #2: llms start with exp1's lessons (crown-sighted, three-law creeds), Ginto tamed | still a scripted sweep (121k vs 70k avg) but ratio 0.48→0.58, SIX llm crowns (from zero), real breeding pipeline; remaining gap = roster depth × the brief's 12-fighter window |
 | `2026-08-15-10v10-v3/` | Exp #3: exp2 + volume ceilings lifted (fighter window 24, reply 1400), literal laws | ratio 0.59, TWELVE llm crowns — every barn a champion; bot-12 reached rank 7 mid-run; the real ceiling identified: the model's ~5-action/day gait + crown brackets eating shallow rosters |
 | `2026-08-15-10v10-v4/` | Exp #4: exp3 + bird-by-bird checklist + the hardcore truth (Majors retire losers) | honest negative result: record volume (+44% fights), ratio DOWN to 0.52 — volume without roster depth is negative-margin; exp3 stands as high-water mark |
+| `2026-08-15-10v10-v5/` | Exp #5: the INSTRUMENT round — juvenile crown visibility, weekLedger margin feedback, blade-fit + cull laws, the retire verb (attempt 1 aborted day 75: daemon store corruption, see `aborted-attempt-1/`) | ratio 0.43 — better-informed, worse-paid: margin law halved volume (1,053 fights), and the juvenile door stayed locked behind a MODE WORD (0 llm juvenile fights vs 6,214 scripted — age-1 birds need `mode:"juvenile"` and nothing ever said so; instrument gap #4). Real wins: retire→breed loop alive (87 bred, 18 culls), clean infra |
 
 ## Cross-cutting investigations
 

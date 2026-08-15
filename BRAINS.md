@@ -175,19 +175,29 @@ Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
 (qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
 Each experiment started with everything the previous one taught.
 
-| Measure | Exp1 | Exp2 | Exp3 | Exp4 |
-|---|---|---|---|---|
-| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 |
-| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 |
-| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 |
-| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** |
+| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 |
+|---|---|---|---|---|---|
+| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 | 53,235 |
+| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 | 0.43 |
+| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 | 7 |
+| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** | 1,053 |
 
 Exp4 is the arc's honest negative result: the bird-by-bird checklist bought
 record volume and LOST ground — entry fees scale with entries, purses scale
 with winning, and at 5.5 birds average depth the margin goes negative.
 Roster depth is the binding constraint; exp3 stands as the high-water mark.
-Exp5 candidates in its postmortem (depth-first laws, economy feedback in
-the brief, EV gating).
+
+Exp5 (the instrument round: juvenile crown visibility, weekLedger margin
+feedback, blade-fit + cull laws, the retire verb) regressed to 0.43 and
+earned two lessons at once: **caution without volume is worse than volume
+without depth** (the margin law halved fights to 1,053, and land + purses
+halved with them), and **instrument gap #4 — the mode word**: age-1 birds
+may only fight `mode:"juvenile"`, nothing ever said so, so llm chicks
+logged 0 juvenile fights against the scripted side's 6,214 and the
+juvenile crowns stayed locked. Its real wins: the retire→breed loop ran
+(87 bred — a record — 18 culls), and attempt 2 was infrastructure-clean.
+Exp6 bakes in the mode law, week-1 breeding, a volume floor, and the
+endgame veteran law.
 
 What three experiments established, one lesson each:
 
