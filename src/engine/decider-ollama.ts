@@ -150,6 +150,7 @@ export function digest(view: BotView): Digest {
   });
 
   const crownable = new Set(view.crowns.eligibleBirdIds);
+  const juvenileCrownable = new Set(view.crowns.juvenileEligibleBirdIds);
   const fighters = ranked.slice(0, LIMITS.fighters).map((b) => {
     const report = view.scout[b.id];
     return {
@@ -165,6 +166,7 @@ export function digest(view: BotView): Digest {
       fights: report?.totalFights ?? 0,
       // Only present when true — a token spent on `false` is a token wasted.
       ...(crownable.has(b.id) ? { crownEligible: true } : {}),
+      ...(juvenileCrownable.has(b.id) ? { juvenileCrownEligible: true } : {}),
     };
   });
 
@@ -225,6 +227,13 @@ export function digest(view: BotView): Digest {
       // The day-56 instrument fix: without this line the crown verb went
       // unused for 560 straight calls, coach orders notwithstanding.
       majorsThisWeek: view.crowns.weekFormats,
+      // Exp5's instrument fix — the same bug a second time. Four experiments
+      // ended 640-0 in scripted juvenile-crown entries because this line was
+      // missing: the discovery stage existed and the mail never said so.
+      juvenileCrownsThisWeek: view.crowns.juvenileFormats,
+      // Exp4's other lesson made visible: fees and purses side by side, so
+      // "is fighting paying?" is a fact the model can read, not a vibe.
+      weekLedger: view.ledger,
       fighters,
       moreFighters: Math.max(0, active.length - fighters.length),
       hens,
@@ -261,6 +270,14 @@ RULES
   Only birds marked crownEligible, only formats listed in majorsThisWeek.
 - Majors are HARDCORE: the loser's career ends on the spot. Declare only a
   bird whose loss you can absorb, and breed replacements ahead of it.
+- crown with "division":"juvenile" declares an age-1 bird for Wednesday's
+  juvenile crowns. Only birds marked juvenileCrownEligible, only formats in
+  juvenileCrownsThisWeek. NOT hardcore — a juvenile loser fights on.
+- ALWAYS declare a crown at the bird's bestBlade when that format is offered.
+  A crown at the wrong blade is a donation to the barn that bred for it.
+- weekLedger is your last 7 days: cardNetGp (daily-card stakes won minus
+  lost), crownFeesGp, crownWinningsGp. If cardNetGp runs negative, you are
+  paying to fight — enter fewer, better matchups, not more.
 - Illegal actions are refused silently, so do not guess.
 
 A GOOD DAY
@@ -268,9 +285,15 @@ A GOOD DAY
 - roll_gacha while freePulls > 0.
 - crown a crownEligible bird at its bestBlade when majorsThisWeek offers it —
   Majors pay the biggest purses in the game (and retire their losers).
-- Go through fighters BIRD BY BIRD: enter every healthy one somewhere on
-  tonight's card at its bestBlade, or have a reason to rest it. A good barn
-  cards nearly its whole roster every night — 12 fighters means ~12 enters.
+- crown every juvenileCrownEligible bird at its bestBlade — the juvenile
+  crowns are the discovery year's main event: purse, land, AND the verdict
+  on whether a chick is a b1/b2 bird or a b4/b5 bird, at no career risk.
+- Enter your best fighters at their bestBlade when the card offers it.
+- After ~5 fights a bird's record IS the verdict: keep campaigning winners,
+  drop chronic losers to cheap claimers or retire them to the breeding shed.
+  Never declare a proven loser for a hardcore Major.
+- When the barn shows full (like "100/100"), expand_barn — it costs land
+  tokens and a full barn blocks every egg your pipeline needs.
 - list_stud any retired rooster not yet listed.
 - Claim a bird only if its record and stars beat its tag.`;
 
@@ -316,10 +339,14 @@ const RESPONSE_SCHEMA = {
             { mode: { type: "string", enum: ["real", "hardcore"] }, price: { type: "number" } }
           ),
           verb(["claim"], { entryId: { type: "number" } }),
-          verb(["crown"], {
-            bird: { type: "string" },
-            format: { type: "string", enum: Object.keys(FORMATS) },
-          }),
+          verb(
+            ["crown"],
+            {
+              bird: { type: "string" },
+              format: { type: "string", enum: Object.keys(FORMATS) },
+            },
+            { division: { type: "string", enum: ["major", "juvenile"] } }
+          ),
         ],
       },
     },
@@ -349,6 +376,7 @@ const ReplySchema = z.object({
           classType: z.string().optional(),
           format: z.string().optional(),
           mode: z.string().optional(),
+          division: z.string().optional(),
           price: z.number().optional(),
           tokens: z.number().optional(),
           entryId: z.number().optional(),
@@ -432,7 +460,17 @@ export function toActions(
       }
       case "crown": {
         const id = real(a.bird);
-        if (id && a.format) actions.push({ do: "crown", birdId: id, format: a.format as never });
+        if (id && a.format)
+          actions.push({
+            do: "crown",
+            birdId: id,
+            format: a.format as never,
+            // "major" and "juvenile" pass through; anything else falls back to
+            // the default the engine has always applied to a bare crown.
+            ...(a.division === "juvenile" || a.division === "major"
+              ? { division: a.division }
+              : {}),
+          });
         else drop(!id ? `crown: unknown bird ${a.bird ?? "(none)"}` : "crown: missing format");
         break;
       }

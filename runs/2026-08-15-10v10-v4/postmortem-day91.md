@@ -1,4 +1,4 @@
-# Postmortem #4 — day 91 (2026-08-16)
+# Postmortem #4 — day 91 (2026-08-15)
 
 World: `sim-20260815-1255` · 0 invariant failures.
 

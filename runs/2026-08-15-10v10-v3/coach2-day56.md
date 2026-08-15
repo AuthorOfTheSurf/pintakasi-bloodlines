@@ -1,4 +1,4 @@
-# Coach session #2 — day 56 (2026-08-16, overnight)
+# Coach session #2 — day 56 (2026-08-15, overnight)
 
 World: `sim-20260815-0419` · 0 invariant failures.
 

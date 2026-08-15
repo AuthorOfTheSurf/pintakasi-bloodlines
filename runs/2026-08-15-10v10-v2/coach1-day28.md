@@ -1,4 +1,4 @@
-# Coach session #1 — day 28 (2026-08-16, overnight)
+# Coach session #1 — day 28 (2026-08-15, overnight)
 
 World: `sim-20260815-0245`. Segment 1 health: 280 calls / 0 failed /
 35.39 s/day · 0 invariant failures.

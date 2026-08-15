@@ -1,4 +1,4 @@
-# Postmortem — day 91 (2026-08-16, overnight)
+# Postmortem — day 91 (2026-08-15, overnight)
 
 World: `sim-20260815-0137` · 91 days · 910 llm barn-days scheduled, 890
 played (two full-fleet no_envoys sit-outs after the segment-3 daemon

@@ -1,6 +1,6 @@
 # The 10v10 v2 journal — one continuous read
 
-Experiment #2 (2026-08-16, overnight): same protocol as exp1 — 10 scripted
+Experiment #2 (2026-08-15, overnight): same protocol as exp1 — 10 scripted
 vs 10 llm, 91 days, coach at days 28/56 — but the llm side starts with
 everything exp1 taught: crown-sighted briefs from day 1, and the three-law
 preamble (volume mints land · declare the crowns · run the pipeline) baked
@@ -594,7 +594,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Coach session #1 — day 28 (2026-08-16, overnight)
+## Coach session #1 — day 28 (2026-08-15, overnight)
 
 World: `sim-20260815-0245`. Segment 1 health: 280 calls / 0 failed /
 35.39 s/day · 0 invariant failures.
@@ -1145,7 +1145,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Coach session #2 — day 56 (2026-08-16, overnight)
+## Coach session #2 — day 56 (2026-08-15, overnight)
 
 World: `sim-20260815-0245`. Segment 2 ran in three pieces: the host reaped
 the sim process twice mid-run (SIGTERM at day 39 and day 49); each time the
@@ -1827,7 +1827,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Postmortem #2 — day 91 (2026-08-16, overnight)
+## Postmortem #2 — day 91 (2026-08-15, overnight)
 
 World: `sim-20260815-0245` · 91 days · 0 invariant failures · segment 2
 survived two host SIGTERMs with clean `--keep` resumes.

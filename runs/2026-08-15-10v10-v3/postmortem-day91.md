@@ -1,4 +1,4 @@
-# Postmortem #3 — day 91 (2026-08-16, dawn)
+# Postmortem #3 — day 91 (2026-08-15, dawn)
 
 World: `sim-20260815-0419` · 0 invariant failures · clean run, no host reaps.
 

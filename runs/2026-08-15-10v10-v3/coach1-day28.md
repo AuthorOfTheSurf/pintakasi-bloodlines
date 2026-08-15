@@ -1,4 +1,4 @@
-# Coach session #1 — day 28 (2026-08-16, overnight)
+# Coach session #1 — day 28 (2026-08-15, overnight)
 
 World: `sim-20260815-0419`. Segment 1: 280 calls / 1 failed / 37.5 s/day ·
 0 invariant failures. Exp3 = exp2 + lifted volume ceilings (fighter window

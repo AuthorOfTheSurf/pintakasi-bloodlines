@@ -1,12 +1,13 @@
 # The 10v10 v4 journal — one continuous read
 
-Experiment #4 (2026-08-16): exp3's build plus the postmortem's two levers —
+Experiment #4 (2026-08-15): exp3's build plus the postmortem's two levers —
 A GOOD DAY walks the fighters list bird by bird ("12 fighters means ~12
 enters"), and the instrument finally tells the barns what the game always
 knew: Majors force-retire their losers, so a crown declaration should have
 a bred replacement behind it. Same split, seed, model, segments, coach
-cadence. This experiment also hosted the envoy-bug repro session at its
-day-28 boundary (`rivet-repro-session.md`).
+cadence. The envoy-bug repro session ran alongside this experiment's day-28
+boundary; it lives in `../2026-08-15-rivet-envoy-bug/rivet-repro-session.md`
+(cross-cutting — the bug hit every 10v10 experiment, not just this one).
 
 ---
 
@@ -622,7 +623,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Coach session #1 — day 28 (2026-08-16)
+## Coach session #1 — day 28 (2026-08-15)
 
 World: `sim-20260815-1255`. Segment 1: 280 calls / 0 failed / 34.3 s/day ·
 0 invariant failures. Exp4 = exp3 + the bird-by-bird checklist in A GOOD
@@ -1135,7 +1136,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Coach session #2 — day 56 (2026-08-16)
+## Coach session #2 — day 56 (2026-08-15)
 
 World: `sim-20260815-1255` · 0 invariant failures.
 
@@ -1769,7 +1770,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Postmortem #4 — day 91 (2026-08-16)
+## Postmortem #4 — day 91 (2026-08-15)
 
 World: `sim-20260815-1255` · 0 invariant failures.
 

@@ -1,4 +1,4 @@
-# Postmortem #2 — day 91 (2026-08-16, overnight)
+# Postmortem #2 — day 91 (2026-08-15, overnight)
 
 World: `sim-20260815-0245` · 91 days · 0 invariant failures · segment 2
 survived two host SIGTERMs with clean `--keep` resumes.

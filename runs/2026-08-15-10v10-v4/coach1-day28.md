@@ -1,4 +1,4 @@
-# Coach session #1 — day 28 (2026-08-16)
+# Coach session #1 — day 28 (2026-08-15)
 
 World: `sim-20260815-1255`. Segment 1: 280 calls / 0 failed / 34.3 s/day ·
 0 invariant failures. Exp4 = exp3 + the bird-by-bird checklist in A GOOD

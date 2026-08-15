@@ -30,10 +30,11 @@
  * `doctor` run — never reaches this file, which is what keeps
  * determinism.test.ts, replay.test.ts and playthrough.test.ts honest.
  */
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gt, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { birds, farms, gameState } from "@/db/schema";
+import { battleLog, birds, farms, gameState, tournamentEntries } from "@/db/schema";
 import { CROWN_CHASE } from "./bot-config";
+import { JUVENILE_MAJOR } from "./config";
 import { canHardcore } from "./lifecycle";
 import type { BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
@@ -138,8 +139,31 @@ export interface BotView {
    * knows what its mail says. Facts in the brief, skill in the standing
    * orders — this is the facts half. Eligibility mirrors chaseCrowns
    * exactly: active, named, hardcore age, ≥ CROWN_MIN_REAL_WINS real wins.
+   *
+   * The juvenile pair is exp5's instrument fix, and it is the SAME bug a
+   * second time: exp4 closed with scripted barns holding 640 juvenile-crown
+   * entries against the llm side's zero — not because the llms declined the
+   * discovery stage but because their mail never mentioned it existed. The
+   * verb had supported `division: "juvenile"` all along. Eligibility mirrors
+   * chaseJuvenileCrowns exactly: active, named, age 1, ≥ QUALIFYING_WINS
+   * juvenile wins.
    */
-  crowns: { weekFormats: FightFormat[]; eligibleBirdIds: string[] };
+  crowns: {
+    weekFormats: FightFormat[];
+    eligibleBirdIds: string[];
+    juvenileFormats: FightFormat[];
+    juvenileEligibleBirdIds: string[];
+  };
+  /**
+   * The last seven days' fight economics (exp5). Exp4 proved the model will
+   * follow a volume law straight through zero: fees appear at entry time and
+   * purses at settle time, never side by side, so profitability was
+   * invisible and 2,460 fights ran at a negative margin without one barn
+   * noticing. Three numbers make margin a fact instead of a vibe: net GP
+   * from the daily card (stakes won minus stakes lost — battle_log already
+   * nets each fight), crown fees paid, crown purses won.
+   */
+  ledger: { cardNetGp: number; crownFeesGp: number; crownWinningsGp: number };
 }
 
 /** An outside brain: given what the barn can see, say what it wants to do. */
@@ -205,6 +229,45 @@ export function buildView(db: DB, farmId: string): BotView {
               b.status === "active" && b.named && canHardcore(b.age) && proven.has(b.id)
           )
           .map((b) => b.id),
+        juvenileFormats: Tournaments.juvenileBladesOfWeek(Tournaments.targetWeek(day)),
+        juvenileEligibleBirdIds: mine
+          .filter(
+            (b) =>
+              b.status === "active" &&
+              b.named &&
+              b.age === 1 &&
+              b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS
+          )
+          .map((b) => b.id),
+      };
+    })(),
+    ledger: (() => {
+      const since = day - 7;
+      // battle_log nets each daily-card fight (win = stake minus rake, loss =
+      // -stake); tournament fights write 0 there and settle through
+      // tournament_entries instead, so the two sources never double-count.
+      const cardNetCents = db
+        .select({ v: battleLog.gpDeltaCents })
+        .from(battleLog)
+        .where(and(eq(battleLog.farmId, farmId), gt(battleLog.dayIndex, since)))
+        .all()
+        .reduce((sum, r) => sum + r.v, 0);
+      const crownRows = db
+        .select({
+          fee: tournamentEntries.fee,
+          won: tournamentEntries.gpWonCents,
+          status: tournamentEntries.status,
+        })
+        .from(tournamentEntries)
+        .where(and(eq(tournamentEntries.farmId, farmId), gt(tournamentEntries.dayEntered, since)))
+        .all()
+        // A refunded or bumped entry got its fee back — money that came home
+        // is not a cost, and counting it would overstate the crown bill.
+        .filter((r) => r.status !== "refunded" && r.status !== "bumped");
+      return {
+        cardNetGp: Math.round(cardNetCents / 100),
+        crownFeesGp: crownRows.reduce((sum, r) => sum + r.fee, 0),
+        crownWinningsGp: Math.round(crownRows.reduce((sum, r) => sum + r.won, 0) / 100),
       };
     })(),
   };

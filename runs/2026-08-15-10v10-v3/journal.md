@@ -1,6 +1,6 @@
 # The 10v10 v3 journal — one continuous read
 
-Experiment #3 (2026-08-16, overnight): exp2's build plus the postmortem's
+Experiment #3 (2026-08-15, overnight): exp2's build plus the postmortem's
 carry-forward — the volume ceilings lifted (brief fighter window 12→24,
 reply budget 700→1400) and the preamble's laws made literal ("15 healthy
 birds means 15 entries"; "breed at least once every week"). Same split,
@@ -613,7 +613,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Coach session #1 — day 28 (2026-08-16, overnight)
+## Coach session #1 — day 28 (2026-08-15, overnight)
 
 World: `sim-20260815-0419`. Segment 1: 280 calls / 1 failed / 37.5 s/day ·
 0 invariant failures. Exp3 = exp2 + lifted volume ceilings (fighter window
@@ -1205,7 +1205,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Coach session #2 — day 56 (2026-08-16, overnight)
+## Coach session #2 — day 56 (2026-08-15, overnight)
 
 World: `sim-20260815-0419` · 0 invariant failures.
 
@@ -1893,7 +1893,7 @@ Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the n
 
 ---
 
-## Postmortem #3 — day 91 (2026-08-16, dawn)
+## Postmortem #3 — day 91 (2026-08-15, dawn)
 
 World: `sim-20260815-0419` · 0 invariant failures · clean run, no host reaps.
 

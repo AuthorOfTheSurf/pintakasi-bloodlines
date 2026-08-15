@@ -1,4 +1,4 @@
-# Coach session #2 — day 56 (2026-08-16, overnight)
+# Coach session #2 — day 56 (2026-08-15, overnight)
 
 World: `sim-20260815-0245`. Segment 2 ran in three pieces: the host reaped
 the sim process twice mid-run (SIGTERM at day 39 and day 49); each time the

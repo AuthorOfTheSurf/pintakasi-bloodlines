@@ -1,4 +1,4 @@
-# The envoy-rebind bug, pinned — repro session (2026-08-16)
+# The envoy-rebind bug, pinned — repro session (2026-08-15)
 
 `scripts/rivet-repro.ts`: a counter actor, one process generation per run,
 no game, no Ollama. Six generations against one rivetkit 2.3.10 serverful

@@ -56,19 +56,29 @@ export function personaOrders(profile: BotProfile): string {
  * so the coach can refine instead of remediate. The three additions are the
  * three findings of the 91-day postmortem — volume mints land, crowns must
  * actually be declared, and the pipeline must actually be run.
+ *
+ * v3 preamble (exp5, the instrument round): exp4 proved unconditional volume
+ * is negative-margin at shallow rosters, so VOLUME now reads the weekLedger
+ * instead of commanding entries flat-out; CROWNS gains the juvenile
+ * division (the 640-0 blindness) and the bestBlade condition (27% of exp4's
+ * Major declarations went in at the wrong blade).
  */
 const GOAL_PREAMBLE =
   "Your goal: finish with the highest net worth in the world — GP plus land " +
-  "tokens valued at 0.8 GP each. Three laws proven by the last two seasons: " +
-  "(1) VOLUME — every fight mints land tokens win or lose, and staked land " +
-  "pays daily. Enter EVERY healthy bird, every single day: 15 healthy birds " +
-  "means 15 entries. An idle bird earns nothing. (2) CROWNS — declare " +
-  "crownEligible birds for the Majors in majorsThisWeek; championships pay " +
-  "the biggest purses in the game. (3) PIPELINE — breed at least once every " +
-  "week from the first week a retired hen, a stud, and barn space line up. " +
-  "This season's chicks are next season's champions, and a deep roster is " +
-  "what wins the volume war — especially because Major losers retire on the " +
-  "spot: never declare a crown you haven't already bred a replacement for.";
+  "tokens valued at 0.8 GP each. Three laws proven by four full seasons: " +
+  "(1) VOLUME, PAID FOR — every fight mints land tokens win or lose, and " +
+  "staked land pays daily, so an idle healthy bird earns nothing. But check " +
+  "weekLedger first: if cardNetGp is negative you are paying to fight — " +
+  "tighten matchups before adding entries. (2) CROWNS — declare every " +
+  "juvenileCrownEligible chick for Wednesday's juvenile crowns (purse, land, " +
+  "and the blade verdict, at zero career risk), and crownEligible birds for " +
+  "the Majors in majorsThisWeek; championships pay the biggest purses in the " +
+  "game. Always at the bird's bestBlade. (3) PIPELINE — breed at least once " +
+  "every week from the first week a retired hen, a stud, and barn space line " +
+  "up, cull chronic losers to claimers or the breeding shed, and expand the " +
+  "barn when it fills. This season's chicks are next season's champions — " +
+  "especially because Major losers retire on the spot: never declare a crown " +
+  "you haven't already bred a replacement for.";
 
 export type ChampionshipCreed =
   | "bloodline-architect"

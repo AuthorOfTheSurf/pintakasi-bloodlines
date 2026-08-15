@@ -21,7 +21,7 @@
  * Usage (one generation):
  *   bun run scripts/rivet-repro.ts --gen=1 --keys=a,b,c [--attempts=5]
  *
- * The driver loop lives in runs/<experiment>/rivet-repro-session.md — this
+ * The driver loop lives in runs/2026-08-15-rivet-envoy-bug/rivet-repro-session.md — this
  * script deliberately does NOT retry-away failures; every attempt's result
  * is printed raw, because the failures ARE the data.
  */
