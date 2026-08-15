@@ -1,0 +1,56 @@
+Brain: qwen3:30b-a3b plays 10 stable(s) — bot-7, bot-15, bot-marco, bot-9, bot-8, bot-16, bot-14, bot-12, bot-13, bot-17
+
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lbu6jiup5x9qljjd7wzmu719dgbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"966fkw22jc2ki7bvg4ndhfbhjvcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"txgl09a877rnehsze84l2j8g7ybl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"x4dajfo1jyzux02qbyaf30hsgadl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"ddulym801ouikh0web6c048h43bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"96e9kr6d5v0od1hp28d0rsxgwxal00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"dtu0ql1p32kvsf1m3tsg78knt2dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lv98iv9kzhk1z6wyk98p4thit8dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"xweq5mulv9tdnfefcnqbpifxsbcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lz82g6ttbg3hhbc3gx2ttk1t6nal00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lbu6jiup5x9qljjd7wzmu719dgbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"966fkw22jc2ki7bvg4ndhfbhjvcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"dtu0ql1p32kvsf1m3tsg78knt2dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"96e9kr6d5v0od1hp28d0rsxgwxal00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"xweq5mulv9tdnfefcnqbpifxsbcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"x4dajfo1jyzux02qbyaf30hsgadl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"txgl09a877rnehsze84l2j8g7ybl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lv98iv9kzhk1z6wyk98p4thit8dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lz82g6ttbg3hhbc3gx2ttk1t6nal00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"ddulym801ouikh0web6c048h43bl00\"}"
+  [brain] Pulang Bagwis: 10 actions (10.0s)
+  [brain] Cavite Bloodlines: 7 actions (13.9s)
+  [brain] Hacienda Verde: 0 actions (15.4s)
+  [brain] Ilonggo Ironworks: 0 actions (17.1s)
+  [brain] Batangas Sprint Club: 8 actions (21.9s)
+  [brain] Marco Gamefarm: 0 actions (23.8s)
+  [brain] Bagong Laban: 1 actions (25.7s)
+  [brain] Cuchillos de Sonora: 0 actions (27.2s)
+  [brain] Talisay Tari Club: 0 actions (29.0s)
+  [brain] Sugalan Social Club: 12 actions (34.7s)
+Day 57 (Saturday): 122 fights, 3 unmatched, 3 claims settled, staking paid 2440.98 GP to 21 stakers — 2:06
+  [brain] Bagong Laban: 0 actions (1.8s)
+  [brain] Pulang Bagwis: 0 actions (3.1s)
+  [brain] Ilonggo Ironworks: 3 actions (5.0s)
+  [brain] Batangas Sprint Club: 0 actions (6.4s)
+  [brain] Marco Gamefarm: 1 actions (8.1s)
+  [brain] Talisay Tari Club: 7 actions (11.0s)
+  [brain] Cavite Bloodlines: 0 actions (12.3s)
+  [brain] Cuchillos de Sonora: 3 actions (14.6s)
+  [brain] Sugalan Social Club: 0 actions (16.0s)
+  [brain] Hacienda Verde: 0 actions (17.4s)
+Day 58 (Sunday): 156 fights, 0 unmatched, 4 claims settled, staking paid 1178.80 GP to 21 stakers — 18.1s
+  [brain] Ilonggo Ironworks: 0 actions (2.2s)
+  [brain] Pulang Bagwis: 1 actions (3.7s)
+  [brain] Cavite Bloodlines: 0 actions (5.2s)
+  [brain] Marco Gamefarm: 16 actions (15.3s)
+  [brain] Batangas Sprint Club: 15 actions (21.9s)
+  [brain] Cuchillos de Sonora: 0 actions (23.3s)
+  [brain] Hacienda Verde: 0 actions (24.8s)
+  [brain] Talisay Tari Club: 0 actions (26.6s)
+  [brain] Sugalan Social Club: 0 actions (28.1s)
+  [brain] Bagong Laban: 0 actions (29.6s)
+Day 59 (Monday): 138 fights, 1 unmatched, 5 claims settled, staking paid 1146.80 GP to 21 stakers — 30.1s
+  [brain] Pulang Bagwis: 0 actions (1.5s)
