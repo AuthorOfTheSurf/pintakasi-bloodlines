@@ -190,6 +190,14 @@ export function digest(view: BotView): Digest {
   // Claimable birds: other stables' entries in claimer lobbies, which are the
   // one class where the field is public (a claim is placed on a named bird
   // before it fights — that exposure IS the class).
+  // The stud MARKET (exp8, gap #7): other farms' listed studs — the fathers
+  // scripted bots have shopped all along and this brief never showed.
+  const studMarket = view.studMarket.slice(0, LIMITS.studs).map((s) => ({
+    id: handle(s.id),
+    name: s.name,
+    stars: s.stars,
+  }));
+
   const claimable = view.claimerBoard
     .flatMap((lobby) =>
       lobby.entries
@@ -244,6 +252,7 @@ export function digest(view: BotView): Digest {
       moreFighters: Math.max(0, active.length - fighters.length),
       hens,
       studs,
+      studMarket,
       claimable,
     },
   };
@@ -271,7 +280,8 @@ RULES
 - Only enter a bird in a class+format listed in cardTonight.
 - A bird enters at most ONE lobby per day.
 - Entering costs a fee. Never spend below 400 GP in reserve.
-- Breeding needs a retired hen and a stud. Eggs need barn space.
+- Breeding needs a retired hen (hens list) and a stud — YOURS (studs list)
+  or anyone's from studMarket (a stud fee applies). Eggs need barn space.
 - crown declares a bird for this week's Major championship (fights Thursday).
   Only birds marked crownEligible, only formats listed in majorsThisWeek.
 - Majors are HARDCORE: the loser's career ends on the spot. Declare only a
@@ -296,6 +306,9 @@ A GOOD DAY
   enters tonight's card with "mode":"juvenile" at its bestBlade. Juvenile
   entry fees are deliberately cheap and the discovery year is ONE week —
   a chick that sits idle discovers nothing and forfeits its crown shot.
+- SECOND PRIORITY: breed EVERY day a hen in hens and any stud — yours or
+  studMarket's — are both free. A barn that skips a breeding day is
+  choosing to be outnumbered next month.
 - roll_gacha while freePulls > 0.
 - crown a crownEligible bird at its bestBlade when majorsThisWeek offers it —
   Majors pay the biggest purses in the game (and retire their losers).

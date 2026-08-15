@@ -158,6 +158,17 @@ export interface BotView {
     juvenileEligibleBirdIds: string[];
   };
   /**
+   * The stud MARKET (exp8 — instrument gap #7, the pipeline killer). The
+   * brief's `studs` list has only ever shown the barn's OWN retired
+   * roosters, while every scripted bot breeds by shopping OTHER farms'
+   * listed studs ("bots shop other farms' listed studs like anyone else").
+   * Result across seven experiments: llm breed proposals failed for want
+   * of a legal father the mail never showed — exp8 day 28: 18 proposals,
+   * 0 eggs. The engine has always accepted a cross-farm listed stud; only
+   * the visibility was missing.
+   */
+  studMarket: { id: string; name: string; stars: number; farm: string }[];
+  /**
    * The last seven days' fight economics (exp5). Exp4 proved the model will
    * follow a volume law straight through zero: fees appear at entry time and
    * purses at settle time, never side by side, so profitability was
@@ -244,6 +255,20 @@ export function buildView(db: DB, farmId: string): BotView {
           .map((b) => b.id),
       };
     })(),
+    studMarket: db
+      .select()
+      .from(birds)
+      .where(and(eq(birds.sex, "male"), eq(birds.status, "retired"), eq(birds.listedStud, 1)))
+      .all()
+      .filter((b) => b.farmId !== farmId)
+      .sort((a, b) => b.halfStars - a.halfStars)
+      .slice(0, 12)
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        stars: b.halfStars / 2,
+        farm: b.farmId,
+      })),
     ledger: (() => {
       const since = day - 7;
       // battle_log nets each daily-card fight (win = stake minus rake, loss =
