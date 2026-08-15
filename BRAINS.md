@@ -175,12 +175,12 @@ Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
 (qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
 Each experiment started with everything the previous one taught.
 
-| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 |
-|---|---|---|---|---|---|
-| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 | 53,235 |
-| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 | 0.43 |
-| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 | 7 |
-| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** | 1,053 |
+| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 |
+|---|---|---|---|---|---|---|
+| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 | 53,235 | 50,129 |
+| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 | 0.43 | 0.40 |
+| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 | 7 | 6 |
+| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** | 1,053 | 1,253 |
 
 Exp4 is the arc's honest negative result: the bird-by-bird checklist bought
 record volume and LOST ground — entry fees scale with entries, purses scale
@@ -196,8 +196,22 @@ may only fight `mode:"juvenile"`, nothing ever said so, so llm chicks
 logged 0 juvenile fights against the scripted side's 6,214 and the
 juvenile crowns stayed locked. Its real wins: the retire→breed loop ran
 (87 bred — a record — 18 culls), and attempt 2 was infrastructure-clean.
-Exp6 bakes in the mode law, week-1 breeding, a volume floor, and the
-endgame veteran law.
+Exp6 baked in the mode law, week-1 breeding, a volume floor, and the
+endgame veteran law — and landed at 0.40 with the juvenile door STILL shut:
+**instrument gap #5**, the response schema's `enter` mode enum lacked
+"juvenile", so the ordered word was unrepresentable at generation time
+(125 proposals, zero legal — fixed round 59). Five gaps, one law: facts,
+verbs, field values, defaults, and prompt must all agree, because the model
+can only play the game its pipe can carry. Exp6's lasting contribution is
+the meta-finding: across six experiments the GOAL_PREAMBLE has set identity
+but has NEVER initiated a multi-step season plan — every behavior chain
+(retire→breed, cull rhythm) started only after a coach session issued it as
+a blunt dated order. **Coaching is the executive function**; standing text
+decays into wallpaper. (Production implication for the world actor: a
+scheduled coach tick, or re-delivering the season plan as fresh daily
+orders.) Two instrument rounds also both lost ground to exp3's simple
+laws — exp7 should test whether the margin-caution language itself is the
+10-19-point tax.
 
 What three experiments established, one lesson each:
 

@@ -351,7 +351,16 @@ const RESPONSE_SCHEMA = {
               classType: { type: "string", enum: ["maiden", "nw3", "open", "claimer"] },
               format: { type: "string", enum: Object.keys(FORMATS) },
             },
-            { mode: { type: "string", enum: ["real", "hardcore"] }, price: { type: "number" } }
+            // "juvenile" joined this enum in round 59, closing instrument gap
+            // #5 — exp6's mode law ordered chicks entered with mode:"juvenile"
+            // while THIS enum made the word unrepresentable at generation
+            // time: 125 juvenile proposals in exp6's brain_log, zero of them
+            // able to carry the one field that would have made them legal.
+            // A schema is part of the instrument too.
+            {
+              mode: { type: "string", enum: ["juvenile", "real", "hardcore"] },
+              price: { type: "number" },
+            }
           ),
           verb(["claim"], { entryId: { type: "number" } }),
           verb(
