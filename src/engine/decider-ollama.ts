@@ -259,14 +259,18 @@ RULES
 - Breeding needs a retired hen and a stud. Eggs need barn space.
 - crown declares a bird for this week's Major championship (fights Thursday).
   Only birds marked crownEligible, only formats listed in majorsThisWeek.
+- Majors are HARDCORE: the loser's career ends on the spot. Declare only a
+  bird whose loss you can absorb, and breed replacements ahead of it.
 - Illegal actions are refused silently, so do not guess.
 
 A GOOD DAY
 - check_in first, always.
 - roll_gacha while freePulls > 0.
 - crown a crownEligible bird at its bestBlade when majorsThisWeek offers it —
-  Majors pay the biggest purses in the game.
-- Enter your best fighters at their bestBlade when the card offers it.
+  Majors pay the biggest purses in the game (and retire their losers).
+- Go through fighters BIRD BY BIRD: enter every healthy one somewhere on
+  tonight's card at its bestBlade, or have a reason to rest it. A good barn
+  cards nearly its whole roster every night — 12 fighters means ~12 enters.
 - list_stud any retired rooster not yet listed.
 - Claim a bird only if its record and stars beat its tag.`;
 

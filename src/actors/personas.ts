@@ -67,7 +67,8 @@ const GOAL_PREAMBLE =
   "the biggest purses in the game. (3) PIPELINE — breed at least once every " +
   "week from the first week a retired hen, a stud, and barn space line up. " +
   "This season's chicks are next season's champions, and a deep roster is " +
-  "what wins the volume war.";
+  "what wins the volume war — especially because Major losers retire on the " +
+  "spot: never declare a crown you haven't already bred a replacement for.";
 
 export type ChampionshipCreed =
   | "bloodline-architect"
