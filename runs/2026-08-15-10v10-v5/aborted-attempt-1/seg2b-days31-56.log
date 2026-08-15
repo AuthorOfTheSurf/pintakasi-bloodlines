@@ -287,3 +287,226 @@ Day 79 (Sunday): 175 fights, 3 unmatched, 5 claims settled, staking paid 1376.96
   [brain] Sugalan Social Club: 0 actions (26.7s)
   [brain] Cavite Bloodlines: 5 actions (29.2s)
   [brain] Pulang Bagwis: 0 actions (30.6s)
+  [brain] Hacienda Verde: 0 actions (32.1s)
+Day 80 (Monday): 181 fights, 0 unmatched, 6 claims settled, staking paid 1282.00 GP to 21 stakers — 33.1s
+  [brain] Ilonggo Ironworks: 1 actions, 5 dropped (20.7s)
+          ✗ 1× crown: unknown bird #3
+          ✗ 1× crown: unknown bird #1
+          ✗ 1× enter: unknown bird #3
+          ✗ 1× enter: unknown bird #1
+          ✗ 1× enter: unknown bird #2
+  [brain] Bagong Laban: 0 actions (21.6s)
+  [brain] Pulang Bagwis: 3 actions, 8 dropped (28.4s)
+          ✗ 1× crown: unknown bird #7
+          ✗ 1× crown: unknown bird #13
+          ✗ 1× crown: unknown bird #10
+          ✗ 1× enter: unknown bird #1
+          ✗ 1× enter: unknown bird #2
+          ✗ 1× enter: unknown bird #3
+          ✗ 1× enter: unknown bird #4
+          ✗ 1× enter: unknown bird #5
+  [brain] Batangas Sprint Club: 0 actions (38.4s)
+  [brain] Pulang Bagwis: 0 actions (22.2s)
+  [brain] Talisay Tari Club: 10 actions (25.7s)
+  [brain] Batangas Sprint Club: 0 actions (26.7s)
+  [brain] Marco Gamefarm: 2 actions (28.0s)
+  [brain] Ilonggo Ironworks: 5 actions (30.9s)
+  [brain] Cavite Bloodlines: 0 actions (32.0s)
+  [brain] Hacienda Verde: 0 actions (33.3s)
+  [brain] Bagong Laban: 1 actions (34.6s)
+  [brain] Cuchillos de Sonora: 0 actions (35.9s)
+  [brain] Sugalan Social Club: 0 actions (37.1s)
+Day 81 (Tuesday): 157 fights, 0 unmatched, 5 claims settled, staking paid 1128.19 GP to 21 stakers — 37.8s
+  [brain] Ilonggo Ironworks: 0 actions (17.3s)
+  [brain] Batangas Sprint Club: 3 actions, 7 dropped (25.1s)
+          ✗ 3× enter: unknown bird #7
+          ✗ 1× crown: unknown bird #5
+          ✗ 1× crown: unknown bird #3
+          ✗ 1× enter: unknown bird #5
+          ✗ 1× enter: unknown bird #3
+  [brain] Pulang Bagwis: 0 actions (27.6s)
+  [brain] Bagong Laban: 0 actions (28.3s)
+  [brain] Ilonggo Ironworks: 0 actions (12.7s)
+  [brain] Cavite Bloodlines: 0 actions (14.2s)
+  [brain] Talisay Tari Club: 0 actions (15.8s)
+  [brain] Sugalan Social Club: 0 actions (17.3s)
+  [brain] Pulang Bagwis: 5 actions (20.6s)
+  [brain] Batangas Sprint Club: 0 actions (21.9s)
+  [brain] Bagong Laban: 0 actions (23.2s)
+  [brain] Marco Gamefarm: 0 actions (24.6s)
+  [brain] Hacienda Verde: 0 actions (26.1s)
+  [brain] Cuchillos de Sonora: 2 actions (28.0s)
+Day 82 (Wednesday): 134 fights, 1 unmatched, 5 claims settled, staking paid 1097.01 GP to 21 stakers — 28.7s
+
+TIMING
+  seed + bots      0.0s
+  simulation      12:28   (26 day(s), avg 28.76s/day · honest 9% / tick 91%)
+  brains          12:10   (28.10s/day · 98% of the run, 260 call(s), 1 failed)
+  doctor           1.5s
+  total           12:29
+  slowest days d79 59.2s · d76 51.8s · d66 41.3s
+  per unit     113.58 ms/fight · 146.23 ms/entry
+
+BARN CAREERS (durable actor state — persists across runs)
+  bot-7     26 day(s) played · last day 81 · 121 proposed, 0 dropped, 0 failure(s) · 424.2s thinking
+  bot-8     26 day(s) played · last day 81 · 83 proposed, 0 dropped, 0 failure(s) · 510.2s thinking
+  bot-9     26 day(s) played · last day 81 · 110 proposed, 0 dropped, 0 failure(s) · 422.1s thinking
+  bot-marco  26 day(s) played · last day 81 · 93 proposed, 0 dropped, 0 failure(s) · 446.3s thinking
+  bot-12    26 day(s) played · last day 81 · 123 proposed, 0 dropped, 0 failure(s) · 465.1s thinking
+  bot-13    26 day(s) played · last day 81 · 70 proposed, 0 dropped, 0 failure(s) · 440.8s thinking
+  bot-14    25 day(s) played · last day 81 · 85 proposed, 0 dropped, 1 failure(s) · 439.3s thinking
+  bot-15    26 day(s) played · last day 81 · 87 proposed, 0 dropped, 0 failure(s) · 360.9s thinking
+  bot-16    26 day(s) played · last day 81 · 59 proposed, 0 dropped, 0 failure(s) · 361.8s thinking
+  bot-17    26 day(s) played · last day 81 · 82 proposed, 0 dropped, 0 failure(s) · 397.6s thinking
+
+PINTAKASI DOCTOR · data/sim-20260815-1625.db
+day 82 · Wednesday, March 26, 3000 · week 11 · 21 farms · 872 birds
+
+INVARIANTS
+  PASS  GP conservation            1,104,000.00 GP in world = 1,104,000.00 expected
+  PASS  LT conservation            635,960.03 LT held = 635,960.03 LT ledgered
+  PASS  no negative balances       staker 0.11 · juice 14,600.02 · 21 wallets clean
+  PASS  pit figures                6584 fights · 6584 mirrored · 0 inversions
+  PASS  purses settle              43 completed crown(s), exact to the cent
+  PASS  no stranded entries        43 resolved championship(s), every entry settled
+  PASS  one card per bird per day  5114 entries across 5114 bird-days · 0 over cap
+  PASS  fight counts match the log 5114 settled entries · 12118 fights claimed · 0 mismatched
+  PASS  scout book matches the log 2256 book lines audited · 0 out of step
+
+CARD HEALTH
+  5114 entries · 4973 fought · 141 unmatched (2.8%) · 646 lobbies
+  weather timing  1324/4756 starred entries ran on the bird's own element day (27.8% vs 20.0% by chance, 1.39×) ✓ entries are being timed
+
+GROUP STAGE
+  fights per settled entry  mean 2.37 of 3 · 5114 settled entries
+  full cards  2603 (50.9%) took all 3 · short 2370 (46.3%) fought 1–2 · 141 (2.8%) never fought
+  groups  1535 dealt · mean 3.33 birds · 53 of one (53 were the lobby's only entry)
+
+LOBBY FILL
+  mean 7.92 birds per lobby · 646 lobbies · 53 held a single bird (8.2%)
+      1 ██                       8.2%
+    2-3 ██████                   24.5%
+    4-7 ██████                   23.7%
+   8-15 ███████                  30.2%
+    16+ ███                      13.5%
+  same-barn-only lobbies 27 · 69 birds stranded with no cross-barn opponent
+
+WORST LOBBY KEYS
+  real/maiden/b4                       27 entries, 22.2% unmatched
+  juvenile/maiden/b2                   15 entries, 20.0% unmatched
+  real/maiden/b3                       21 entries, 19.0% unmatched
+
+POPULATION
+  eggs 224 · active 263 · retired 385 · 21 farms
+  by age  1:89  2:71  3:67  4:16  5:14  6:3  7:2  8:1
+  supply  hatches 648 · gacha eggs 159 · covers 545
+  loss    hardcore 308 · manual 6 · age 71
+  barns   0 of 21 at capacity · 2 expansion(s) bought
+
+FIGHT VOLUME
+  wk  0       0  
+  wk  1     507  █████████████
+  wk  2     641  ████████████████
+  wk  3     686  █████████████████
+  wk  4     205  █████
+  wk  5     118  ███
+  wk  6     312  ████████
+  wk  7     599  ███████████████
+  wk  8     821  ████████████████████
+  wk  9     813  ████████████████████
+  wk 10     920  ███████████████████████
+  wk 11     962  ████████████████████████  (6 days)
+  trough wk5 (118) = 17.2% of the wk3 peak (686) — EXPECTED: the age-3 founder flock is culled by the hardcore
+  Majors before the first bred generation reaches fighting age, then volume
+  recovers. Reference: wk3/4/5/6/7 = 1092/397/145/498/871 fights (20 farms, 91 days).
+
+BLOODLINES
+  gen   birds   mean grade     stars   home margin
+  0       327   B+ ( 330.9)    1.70★      8.3
+  1       444   B+ ( 347.0)    2.12★     13.7
+  2       101   B+ ( 354.7)    2.35★     12.1
+  gen 2 vs gen 0  +23.8 mean stat · +0.7★ · +3.9 pts of home margin
+
+FIGHT ECONOMY BY RUNG
+    rung                      fee  entries  share   GP risked   LT minted  LT/100GP
+    juvenile/claimer@90        24      122   2.4%       2,240      320.60     14.31
+    juvenile/maiden            30      152   3.0%       3,180      468.39     14.73
+    juvenile/claimer@180       48      110   2.2%       3,936      626.01     15.90
+    real/claimer@90            48      485   9.5%      17,952    2,858.29     15.92
+    real/maiden                60      114   2.2%       4,000      644.63     16.12
+    real/nw3                   60      188   3.7%       7,960    1,302.84     16.37
+    juvenile/claimer@270       72       89   1.7%       4,560      764.02     16.75
+    real/claimer@180           96      203   4.0%      14,720    2,598.74     17.65
+    real/claimer@270          144      198   3.9%      19,680    3,660.72     18.60
+    juvenile/open             150    1,518  29.7%     182,200   34,502.54     18.94
+    real/open                 300    1,935  37.8%     485,000  102,361.25     21.11
+
+LAND SUPPLY
+  circulating 635,960.03 LT · 635,538.00 staked (99.9%) · 422.03 idle
+  minted      651,760.03 LT over 83 day(s) · 7,852.53 LT per day
+    purse_payout    417,000.00 LT   64.0%
+    card_settled    150,108.03 LT   23.0%
+    buy_land         82,000.00 LT   12.6%
+    gacha             2,652.00 LT    0.4%
+  burned      15,800.00 LT (2.4% of issuance) — the sinks
+    stud_listed      13,800.00 LT   87.3%
+    barn_expanded     2,000.00 LT   12.7%
+  valuation   at $0.01/LT (pencilled) the world has issued $6,518 of land against $13,800 of GP faucet — $0.47 of LT per $1 of GP
+  runway      100B-token target reached in 10,000+ year(s) at this population's rate — scales with farms, not with time
+
+REPLAY
+  203/203 sampled fight rows rebuild exactly from their seed
+
+STAKER POOL
+  paid out 86,702.49 GP over 82 day(s) · 0.11 waiting · 635,538.00 LT staked
+  land_purchase 65,600.00 · gacha 11,416.00 · breed 8,720.00 · claim_rake 966.60
+
+CHAMPIONSHIPS
+  major     24 run / 0 cancelled · field 13.8 · purse 154,333.04
+            paid 170/332 entrants (51%) · biggest take 3.3% of all purse GP · smallest 118.56 GP
+            entry fees 53,120.00 GP fund 34% of the purse · the rest is juice (gacha + breed fees) · net to the field 101,213.04 GP
+            under the door 20/170 winners (12%) took less purse than their entry fee
+  juvenile  19 run / 0 cancelled · field 12.4 · purse 44,258.94
+            paid 116/236 entrants (49%) · biggest take 8.7% of all purse GP · smallest 45.28 GP
+            entry fees 11,328.00 GP fund 26% of the purse · the rest is juice (gacha + breed fees) · net to the field 32,930.94 GP
+            under the door 2/116 winners (2%) took less purse than their entry fee
+
+MECHANIC ADOPTION            farms of 21
+  claims placed             20  ████████████████████░
+  studs listed              11  ███████████░░░░░░░░░░
+  land purchased             1  █░░░░░░░░░░░░░░░░░░░░
+  paid gacha rolls          10  ██████████░░░░░░░░░░░
+  gacha bundles bought       1  █░░░░░░░░░░░░░░░░░░░░
+  barn expanded              2  ██░░░░░░░░░░░░░░░░░░░
+  Major entries             21  █████████████████████
+  juvenile championship     11  ███████████░░░░░░░░░░
+
+DISCOVERY
+  age 1    carded 957/4678 at the true best blade (20.5% vs random 20.0%) · 48.5% on or adjacent (random 48.6%) · answer coverage 31.1% · SCOUT 762/1457 right (52.3% vs random 20.0%), 70.3% on or adjacent · clear home 443/788 (56.2%, 71.8% adjacent)
+  age 2–3  carded 1821/7019 at the true best blade (25.9% vs random 20.0%) · 55.8% on or adjacent (random 48.8%) · answer coverage 77.5% · SCOUT 2383/5443 right (43.8% vs random 20.0%), 68.8% on or adjacent · clear home 1508/2886 (52.3%, 75.1% adjacent)
+  age 4+   carded 128/421 at the true best blade (30.4% vs random 20.0%) · 57.7% on or adjacent (random 46.8%) · answer coverage 67.5% · SCOUT 158/284 right (55.6% vs random 20.0%), 77.8% on or adjacent · clear home 101/186 (54.3%, 73.7% adjacent)
+  explored  5/5 blades saw an age-1 entry in the discovery year
+  flock shape  median home blade beats its runner-up by 11.0 pts · 54.1% of birds clear the 10-pt bar
+  breeding  503 bot covers · hens carry +55.0 of their own shape (any bird: +72.0) · the sires chosen reinforce it by +49.0 (an unchosen sire: +11.5) · foals land at +58.0
+  broodmare band  72.2% of 158 settled retired hens have ever carried · busiest hen 8 foals
+  ✓ the scout beats chance on mature birds with a home — 54.3% vs 20.0%
+
+0 warnings · 0 invariant failures
+
+Done → /Users/plumeria/Repos/pintakasi-bloodlines/data/sim-20260815-1625.db
+Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the newest sim.
+  [brain] Bagong Laban: 0 actions (20.8s)
+  [brain] Batangas Sprint Club: 0 actions (33.3s)
+ts=2026-08-15T09:39:54.750437Z level=warn message="actor work cancelled by shutdown deadline" actor_id=dxduqtequee4xmqepxizne34jccl00 kind=action reason=shutdown_deadline_elapsed
+ts=2026-08-15T09:39:54.751702Z level=warn message="actor shutdown reached the grace deadline" actor_id=dxduqtequee4xmqepxizne34jccl00 reason=sleep deadline_missed_by_ms=3 core_dispatched_hook_count=1 shutdown_task_count=0 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=0 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-15T09:39:54.751751Z level=error message="shutdown serialize-state enqueue failed" error="not_ready: Actor is not ready."
+ts=2026-08-15T09:39:54.751714Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-15T09:39:54.751783Z level=warn message="actor framework action error response" actor_id=dxduqtequee4xmqepxizne34jccl00 generation=1 actor_key="Some(\"sim-20260815-1736/bot-15\")" group=actor code=dropped_reply
+ts=2026-08-15T09:39:54.751821Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+ts=2026-08-15T09:39:54.761276Z level=warn message="actor shutdown reached the grace deadline" actor_id=l7rt7vwaav992wn1wsh2k0xf06dl00 reason=sleep deadline_missed_by_ms=1 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-15T09:39:54.761289Z level=warn message="actor work cancelled by shutdown deadline" actor_id=l7rt7vwaav992wn1wsh2k0xf06dl00 kind=action reason=shutdown_deadline_elapsed
+ts=2026-08-15T09:39:54.7613Z level=warn message="graceful cleanup aborted by shutdown grace deadline" actor_id=l7rt7vwaav992wn1wsh2k0xf06dl00 reason=Sleep
+ts=2026-08-15T09:39:54.761381Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-15T09:39:54.76136Z level=warn message="actor framework action error response" actor_id=l7rt7vwaav992wn1wsh2k0xf06dl00 generation=1 actor_key="Some(\"sim-20260815-1736/bot-16\")" group=actor code=dropped_reply
+ts=2026-08-15T09:39:54.761446Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
