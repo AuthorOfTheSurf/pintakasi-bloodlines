@@ -292,6 +292,10 @@ RULES
 
 A GOOD DAY
 - check_in first, always.
+- FIRST PRIORITY AFTER CHECK-IN: every fighter marked "juvenile":true
+  enters tonight's card with "mode":"juvenile" at its bestBlade. Juvenile
+  entry fees are deliberately cheap and the discovery year is ONE week —
+  a chick that sits idle discovers nothing and forfeits its crown shot.
 - roll_gacha while freePulls > 0.
 - crown a crownEligible bird at its bestBlade when majorsThisWeek offers it —
   Majors pay the biggest purses in the game (and retire their losers).
