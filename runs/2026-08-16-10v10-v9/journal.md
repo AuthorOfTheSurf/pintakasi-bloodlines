@@ -54,3 +54,20 @@ only (never cold).
   Protocol fix: resumes never pass --personas (creeds are durable).
 - Coach #1: strategy-differentiation orders only (no dated imperatives),
   10/10 bound + verified mid-run. Seg2 running days 29–56.
+- Seg2 was killed externally at day 36 (world db committed cleanly —
+  nothing lost). Resumed as seg2b (days 37–56) without incident: the
+  takeTurn retry path binds reused actors reliably; only the unretried
+  persona call ever crashed a launch.
+
+## Day 56 — coach #2 done (ratio 0.985, llm leads crowns 15–12)
+
+- Statistical parity with the scripted side; five llm barns in the world
+  top ten; Bagong Laban #2. Full readout in `coach2-day56.md`.
+- EV capture diverged by creed exactly as ordered (98% operators → 58%
+  claim scout): coaching effects are now a measurable number.
+- Envoy bug third dataset: seg3 launch wedged all 10 barns out of days
+  57–58 (no_envoys through full retry after a CLEAN process exit);
+  daemon restart + relaunch (seg3b) bound 10/10 instantly.
+- Endgame orders bound 10/10 verified: breed daily (cull outpaced shed
+  103 vs 68), retire only losers, chicks to juvenile crowns, age-8
+  Majors, architects expand.
