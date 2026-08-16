@@ -441,6 +441,12 @@ export const brainLog = sqliteTable("brain_log", {
   // Nullable, and simulate.ts omits it from the INSERT when absent, so
   // pre-round-63 worlds resume cleanly under --keep.
   offeredJson: text("offered_json"),
+  // Round 64: the full offered menu (every row with pick letter, value,
+  // fee, hardcore flag, why) with the taken picks joined on (a MenuLog,
+  // JSON). What offered_json aggregates away: value ties at the top,
+  // near-miss margins, which non-first rows get taken. Nullable + omitted
+  // from the INSERT when absent, same contract as offered_json.
+  menuJson: text("menu_json"),
 });
 
 export type BirdRow = typeof birds.$inferSelect;

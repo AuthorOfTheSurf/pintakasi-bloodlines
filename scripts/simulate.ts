@@ -351,6 +351,10 @@ for (let day = 1; day <= days; day++) {
         // brain_log has no offered_json column) keeps working on the
         // legacy brief.
         ...(log.offered ? { offeredJson: JSON.stringify(log.offered) } : {}),
+        // Round 64: same contract — a --keep resume of a pre-round-64 world
+        // (no menu_json column) keeps working as long as the column is
+        // absent from the INSERT.
+        ...(log.menu ? { menuJson: JSON.stringify(log.menu) } : {}),
       })
       .run();
   }

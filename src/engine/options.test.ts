@@ -410,4 +410,40 @@ describe("translation: a pick is a lookup, never an interpretation", () => {
     expect(out.actions.find((x) => x.do === "retire")).toEqual({ do: "retire", birdId: a.id });
     expect(out.offered.offMenuActions).toBe(1);
   });
+
+  test("tie-aware capture: an equal-value non-A pick counts as top-VALUE but not top-PICK", () => {
+    const { view } = translationView();
+    const { maps } = digestOptions(view);
+    // Find a bird whose row B ties row A on value; if the fixture offers
+    // none, force one — the metric's contract is what's under test.
+    const byValue = maps.values.get("#1")!;
+    const topLetter = maps.topPick.get("#1")!;
+    const topValue = byValue.get(topLetter)!;
+    const rival = [...byValue.entries()].find(([l, v]) => l !== topLetter && v === topValue);
+    const rivalLetter = rival ? rival[0] : "B";
+    if (!rival) byValue.set("B", topValue); // synthesize the tie
+    const out = toActionsFromPicks(
+      { picks: [{ bird: "#1", pick: rivalLetter }], barnPicks: [], offMenu: [] },
+      maps
+    );
+    expect(out.offered.topPicksTaken).toBe(0); // not letter A
+    expect(out.offered.topValuePicksTaken).toBe(1); // but same value — tie-aware credit
+  });
+
+  test("taken picks come back keyed for the menu join; untouched entries stay empty", () => {
+    const { view } = translationView();
+    const { maps, menu } = digestOptions(view);
+    const out = toActionsFromPicks(
+      { picks: [{ bird: "#1", pick: "a" }], barnPicks: [], offMenu: [] },
+      maps
+    );
+    expect(out.taken.birds).toEqual({ "#1": "A" }); // uppercased, keyed by handle
+    expect(out.taken.barn).toEqual([]);
+    // The offered half ships with taken empty — decide() owns the join.
+    expect(menu.birds.every((b) => b.taken === null)).toBe(true);
+    expect(menu.barn.every((r) => r.taken === false)).toBe(true);
+    // And the menu is the shown form: values present, engine actions absent.
+    expect(menu.birds[0].rows[0].value).toBeDefined();
+    expect(JSON.stringify(menu)).not.toContain('"action"');
+  });
 });

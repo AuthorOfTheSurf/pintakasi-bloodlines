@@ -222,7 +222,10 @@ CREATE TABLE IF NOT EXISTS brain_log (
   -- Round 63 (options brief): EV-capture stats, JSON. NULL on legacy-brief
   -- calls -- and simulate.ts omits the column from the INSERT when absent,
   -- so pre-round-63 worlds (which lack it) still resume under --keep.
-  offered_json TEXT
+  offered_json TEXT,
+  -- Round 64: the full offered menu with taken picks joined on (MenuLog,
+  -- JSON) -- the tie-aware EV-capture study table. Same NULL/omit contract.
+  menu_json TEXT
 );
 
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────

@@ -632,6 +632,10 @@ interface OptionsMaps {
   birdPicks: Map<string, Map<string, BotAction | null>>;
   /** handle → the pick letter carrying the bird's top value. */
   topPick: Map<string, string>;
+  /** handle → (pick → value). Round 64: tie-aware EV capture needs the
+   * scores themselves — `topPick` alone can't tell a deviation from an
+   * equal-value sibling row. */
+  values: Map<string, Map<string, number>>;
   /** "@n" → barn action. */
   barnPicks: Map<string, BotAction>;
   /** roll_gacha expands to this many actions when picked (all free pulls). */
@@ -646,23 +650,45 @@ const rowForBrief = (row: OptionRow) => {
   return shown;
 };
 
+/** A shown row — what the model saw, verbatim (round 64: also what
+ * menu_json archives, so the analysis reads exactly the model's inputs). */
+type ShownRow = ReturnType<typeof rowForBrief>;
+
+/** The full offered menu, per call — brain_log.menu_json's payload once
+ * decide() joins the `taken` picks onto it. Answers the questions the
+ * aggregate stats can't: was the top row UNIQUELY best, how close was the
+ * row actually taken, which values tie. */
+export interface MenuLog {
+  birds: { h: string; rows: ShownRow[]; taken: string | null }[];
+  barn: (ShownRow & { taken: boolean })[];
+}
+
 export function digestOptions(view: BotView): {
   brief: Record<string, unknown>;
   maps: OptionsMaps;
   offeredRows: number;
+  /** The offered half of MenuLog — `taken` starts empty/false; decide()
+   * fills it from the reply. */
+  menu: MenuLog;
 } {
   const plan = buildOptions(view);
   const birds = new Map<string, string>();
   const birdPicks: OptionsMaps["birdPicks"] = new Map();
   const topPick: OptionsMaps["topPick"] = new Map();
+  const values: OptionsMaps["values"] = new Map();
   let offeredRows = 0;
 
   const fighters = plan.birds.slice(0, LIMITS.fighters).map((card, i) => {
     const handle = `${HANDLE_PREFIX}${i + 1}`;
     birds.set(handle, card.birdId);
     const byPick = new Map<string, BotAction | null>();
-    for (const row of card.options) byPick.set(row.pick, row.action);
+    const byValue = new Map<string, number>();
+    for (const row of card.options) {
+      byPick.set(row.pick, row.action);
+      byValue.set(row.pick, row.value);
+    }
     birdPicks.set(handle, byPick);
+    values.set(handle, byValue);
     // Rows arrive sorted by value with rest last; the first row IS the top.
     topPick.set(handle, card.options[0].pick);
     offeredRows += card.options.length;
@@ -697,8 +723,12 @@ export function digestOptions(view: BotView): {
       moreFighters: Math.max(0, plan.birds.length - fighters.length),
       barnOptions: plan.barn.map(rowForBrief),
     },
-    maps: { birdPicks, topPick, barnPicks, gachaPulls: view.farm.freePulls, birds },
+    maps: { birdPicks, topPick, values, barnPicks, gachaPulls: view.farm.freePulls, birds },
     offeredRows,
+    menu: {
+      birds: fighters.map((f) => ({ h: f.id, rows: f.options, taken: null })),
+      barn: plan.barn.map((row) => ({ ...rowForBrief(row), taken: false })),
+    },
   };
 }
 
@@ -707,10 +737,25 @@ export interface OfferedStats {
   birdsOffered: number;
   rowsOffered: number;
   picksTaken: number;
+  /** Picks that took row A specifically — exp9's original metric. Kept
+   * unchanged so the arc stays comparable; it UNDERSTATES agreement when
+   * the top value is tied across rows. */
   topPicksTaken: number;
+  /** Round 64, tie-aware: picks whose VALUE equals the bird's max value,
+   * whatever the letter. The honest "took the scout's best advice" count. */
+  topValuePicksTaken: number;
   rests: number;
   barnPicksTaken: number;
   offMenuActions: number;
+}
+
+/** Which menu entries the reply actually took — joined onto the offered
+ * menu for brain_log's menu_json (round 64). */
+export interface TakenPicks {
+  /** bird handle → accepted pick letter. */
+  birds: Record<string, string>;
+  /** accepted "@n" barn picks. */
+  barn: string[];
 }
 
 /**
@@ -721,15 +766,23 @@ export interface OfferedStats {
 export function toActionsFromPicks(
   parsed: z.infer<typeof OptionsReplySchema>,
   maps: OptionsMaps
-): { actions: BotAction[]; dropped: number; reasons: string[]; offered: OfferedStats } {
+): {
+  actions: BotAction[];
+  dropped: number;
+  reasons: string[];
+  offered: OfferedStats;
+  taken: TakenPicks;
+} {
   const actions: BotAction[] = [];
   const reasons: string[] = [];
   const picked = new Set<string>();
+  const taken: TakenPicks = { birds: {}, barn: [] };
   const offered: OfferedStats = {
     birdsOffered: maps.birdPicks.size,
     rowsOffered: 0, // filled by the caller, which knows the digest total
     picksTaken: 0,
     topPicksTaken: 0,
+    topValuePicksTaken: 0,
     rests: 0,
     barnPicksTaken: 0,
     offMenuActions: 0,
@@ -755,8 +808,14 @@ export function toActionsFromPicks(
       continue;
     }
     picked.add(bird);
+    taken.birds[bird] = letter;
     offered.picksTaken++;
     if (maps.topPick.get(bird) === letter) offered.topPicksTaken++;
+    // Tie-aware: rows are sorted by value, so the top pick's value IS the max.
+    const byValue = maps.values.get(bird);
+    const topValue = byValue?.get(maps.topPick.get(bird) ?? "");
+    if (topValue !== undefined && byValue?.get(letter) === topValue)
+      offered.topValuePicksTaken++;
     const action = byPick.get(letter)!;
     if (action === null) offered.rests++; // an explicit rest — legal, counted
     else actions.push(action);
@@ -769,6 +828,7 @@ export function toActionsFromPicks(
       continue;
     }
     offered.barnPicksTaken++;
+    taken.barn.push(pick);
     if (action.do === "roll_gacha")
       for (let i = 0; i < Math.max(1, maps.gachaPulls); i++) actions.push({ do: "roll_gacha" });
     else actions.push(action);
@@ -779,7 +839,7 @@ export function toActionsFromPicks(
   reasons.push(...offMenu.reasons);
   offered.offMenuActions = offMenu.actions.length;
 
-  return { actions, dropped: reasons.length, reasons, offered };
+  return { actions, dropped: reasons.length, reasons, offered, taken };
 }
 
 // ── THE DECIDER ────────────────────────────────────────────────────────────
@@ -808,6 +868,10 @@ export interface BrainCallLog {
   ms: number;
   /** Options-brief runs only: the EV-capture numbers (spec §7). */
   offered?: OfferedStats;
+  /** Round 64, options-brief runs only: the full offered menu with the
+   * taken picks joined on — value distributions, ties, and near-misses
+   * become computable post-hoc instead of lost at aggregation. */
+  menu?: MenuLog;
 }
 
 export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: DeciderStats } {
@@ -887,12 +951,25 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
       let dropped: number;
       let reasons: string[];
       let offered: OfferedStats | undefined;
+      let menu: MenuLog | undefined;
       if (isOptions) {
         const parsed = OptionsReplySchema.parse(JSON.parse(content));
         const t = toActionsFromPicks(parsed, optionsDigest!.maps);
         t.offered.rowsOffered = optionsDigest!.offeredRows;
         ({ actions, dropped, reasons } = t);
         offered = t.offered;
+        // Join the reply onto the offered menu — the archived record shows
+        // both halves of the decision: what was on the table, what was taken.
+        menu = {
+          birds: optionsDigest!.menu.birds.map((b) => ({
+            ...b,
+            taken: t.taken.birds[b.h] ?? null,
+          })),
+          barn: optionsDigest!.menu.barn.map((row) => ({
+            ...row,
+            taken: t.taken.barn.includes(row.pick),
+          })),
+        };
       } else {
         const parsed = ReplySchema.parse(JSON.parse(content));
         ({ actions, dropped, reasons } = toActions(parsed.actions, legacyDigest!.birds));
@@ -910,6 +987,7 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
         dropped: reasons,
         ms: Date.now() - started,
         ...(offered ? { offered } : {}),
+        ...(menu ? { menu } : {}),
       });
       if (opts.verbose)
         console.log(
