@@ -232,6 +232,18 @@ tax), and juvenile champions need the lead time. The envoy bug got its
 full characterization (park-on-process-exit, restart-proof, window-y
 recovery — see runs/2026-08-16-10v10-v10/postmortem-day91.md §envoy).
 
+**Exp11 (the seamless season) closed the arc at 0.85 with zero infra
+tax.** One continuous 91-day process — no segment splits, no handoffs,
+no wedge exposure (exp10 proved the park is caused by process exit, so
+exp11 removed process exits). Coach sessions ran MID-SIM: all ten
+creeds tuned in 6 seconds at day 28, endgame orders in 5 seconds at day
+58, both read-back verified, world never paused — mid-run `tune` is the
+statefulness demo in its strongest form. Final: **0.85 (ties exp9)**,
+17 crowns, 121 bred, 27 real translation losses in 909 calls, zero
+`no_envoys` lines all season. The options-brief arc: **0.85 / 0.82 /
+0.85** across three seasons vs the prose arc's 0.59 peak. Exp11 is the
+citable season: full instrumentation, no confounders.
+
 **Exp8's paradox was the finding that forced the redesign:** lowest ratio
 (0.38) and the most structurally successful season ever — first juvenile
 crown champion (Cruel Beak, Ilonggo Ironworks, B2), 252 bred, the age
