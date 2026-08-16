@@ -8,6 +8,7 @@
  *
  *   bun run simulate [days=91] [--keep] [--db=path] [--force] [--seed=N]
  *                    [--brain=<ollama model> --llm=<farm ids|count>] [--actors]
+ *                    [--brief=legacy|options]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
  * --db     target a specific database file.
@@ -125,6 +126,20 @@ if (usePersonas && !useActors) {
   console.error("--personas needs --actors — orders live in the barn actors' state.");
   process.exit(1);
 }
+// --brief=options (round 63 — runs/options-brief-spec.md): the llm barns
+// read the OPTIONS brief — every legal move pre-computed into valued rows,
+// the reply collapsed to picks. Default stays the legacy digest that played
+// experiments 1–8, so the A/B is this one flag.
+const briefArg = args.find((a) => a.startsWith("--brief="))?.slice("--brief=".length) ?? "legacy";
+if (!["legacy", "options"].includes(briefArg)) {
+  console.error(`Unknown brief "${briefArg}" — use --brief=legacy (default) or --brief=options.`);
+  process.exit(1);
+}
+const brief = briefArg as "legacy" | "options";
+if (brief === "options" && !brainArg) {
+  console.error("--brief=options only means something with --brain/--llm.");
+  process.exit(1);
+}
 
 function stamp(): string {
   const t = new Date();
@@ -224,8 +239,8 @@ const llmCount = llmArg ? (/^\d+$/.test(llmArg) ? Number(llmArg) : llmArg.split(
 const brainTimeoutMs = 120_000 + 15_000 * llmCount;
 const decider = brainArg
   ? rivetClient
-    ? barnDecider(rivetClient, worldName, { model: brainArg, verbose: true, sink, timeoutMs: brainTimeoutMs })
-    : ollamaDecider({ model: brainArg, verbose: true, sink, timeoutMs: brainTimeoutMs })
+    ? barnDecider(rivetClient, worldName, { model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
+    : ollamaDecider({ model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
   : null;
 if (llmArg) {
   const botIds = db
@@ -331,6 +346,11 @@ for (let day = 1; day <= days; day++) {
         proposedJson: JSON.stringify(log.proposed),
         droppedJson: JSON.stringify(log.dropped),
         decideMs: Math.round(log.ms),
+        // Only present on options-brief calls — and only in the INSERT when
+        // present, so a --keep resume of a pre-round-63 world (whose
+        // brain_log has no offered_json column) keeps working on the
+        // legacy brief.
+        ...(log.offered ? { offeredJson: JSON.stringify(log.offered) } : {}),
       })
       .run();
   }

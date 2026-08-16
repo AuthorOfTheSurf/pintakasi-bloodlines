@@ -4,6 +4,7 @@ import { createDb, type DB } from "@/db/client";
 import { events, farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { applyProposals, brainRng, buildView, collectProposals, type BotAction } from "./bot-brain";
+import { ECONOMY } from "./config";
 import { Bots } from "./bots";
 import { Game } from "./game";
 import { seedWorld } from "./rng";
@@ -159,9 +160,12 @@ describe("apply: the house rules bind an llm barn exactly as they bind a bot", (
     expect(report.bred).toEqual([]);
     expect(report.entered).toEqual([]);
     expect(report.claimsPlaced).toBe(0);
-    // The wallet is untouched: every refusal happened at the engine's door,
-    // before any money moved. A decider cannot spend what the rules forbid.
-    expect(after.gp).toBe(before.gp);
+    // The wallet moved by exactly the check-in drip and nothing else —
+    // check-in became an apply-path CHORE in round 63 (spec decision #1),
+    // so even a nonsense day banks the reflex. Every refusal still happened
+    // at the engine's door: a decider cannot spend what the rules forbid.
+    expect(report.checkedIn).toBe(true);
+    expect(after.gp).toBe(before.gp + ECONOMY.DAILY_DRIP);
     expect(after.landTokensCents).toBe(before.landTokensCents);
   });
 

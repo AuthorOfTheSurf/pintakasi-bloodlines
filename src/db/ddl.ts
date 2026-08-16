@@ -218,7 +218,11 @@ CREATE TABLE IF NOT EXISTS brain_log (
   brief_tokens INTEGER NOT NULL,
   proposed_json TEXT NOT NULL,
   dropped_json TEXT NOT NULL,
-  decide_ms INTEGER NOT NULL
+  decide_ms INTEGER NOT NULL,
+  -- Round 63 (options brief): EV-capture stats, JSON. NULL on legacy-brief
+  -- calls -- and simulate.ts omits the column from the INSERT when absent,
+  -- so pre-round-63 worlds (which lack it) still resume under --keep.
+  offered_json TEXT
 );
 
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────

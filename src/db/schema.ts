@@ -434,6 +434,13 @@ export const brainLog = sqliteTable("brain_log", {
   // What fell at translation, with reasons — the model-quality signal.
   droppedJson: text("dropped_json").notNull(),
   decideMs: integer("decide_ms").notNull(),
+  // Round 63, options-brief runs only (null on legacy): the EV-capture
+  // numbers — rows offered, picks taken, top-value picks taken, rests,
+  // offMenu count (an OfferedStats, JSON). THE instrument exp9 reads:
+  // "what fraction of the scout's best advice did this barn take?"
+  // Nullable, and simulate.ts omits it from the INSERT when absent, so
+  // pre-round-63 worlds resume cleanly under --keep.
+  offeredJson: text("offered_json"),
 });
 
 export type BirdRow = typeof birds.$inferSelect;

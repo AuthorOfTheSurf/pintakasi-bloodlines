@@ -43,6 +43,7 @@
 import { z } from "zod";
 import type { BotAction, BotDecider, BotView } from "./bot-brain";
 import { FORMATS } from "./config";
+import { buildOptions, type OptionRow } from "./options";
 
 export interface OllamaOptions {
   /** Model tag as Ollama knows it, e.g. "qwen3:14b". */
@@ -73,6 +74,13 @@ export interface OllamaOptions {
    * arrives here per call — the decider itself stays stateless.
    */
   strategy?: string;
+  /**
+   * Which brief the model reads (round 63 — runs/options-brief-spec.md).
+   * "legacy" (default) is the digest that played experiments 1–8; "options"
+   * pre-computes every legal move into valued rows and asks for PICKS.
+   * A plain string field so it rides the actor wire (barn.ts) unchanged.
+   */
+  brief?: "legacy" | "options";
 }
 
 const DEFAULT_BASE_URL = "http://localhost:11434";
@@ -350,14 +358,12 @@ const verb = (
   required: ["do", ...Object.keys(required)],
 });
 
-const RESPONSE_SCHEMA = {
-  type: "object",
-  properties: {
-    actions: {
-      type: "array",
-      items: {
-        anyOf: [
-          verb(["check_in", "roll_gacha", "buy_bundle", "expand_barn"], {}),
+/**
+ * The per-verb branches, shared by the legacy schema's `actions` and the
+ * options schema's `offMenu` — one action grammar, wherever it appears.
+ */
+const VERB_BRANCHES = [
+  verb(["check_in", "roll_gacha", "buy_bundle", "expand_barn"], {}),
           verb(["buy_land", "stake", "unstake"], { tokens: { type: "number" } }),
           verb(["list_stud", "retire"], { bird: { type: "string" } }),
           verb(["breed"], { mother: { type: "string" }, father: { type: "string" } }),
@@ -380,16 +386,22 @@ const RESPONSE_SCHEMA = {
             }
           ),
           verb(["claim"], { entryId: { type: "number" } }),
-          verb(
-            ["crown"],
-            {
-              bird: { type: "string" },
-              format: { type: "string", enum: Object.keys(FORMATS) },
-            },
-            { division: { type: "string", enum: ["major", "juvenile"] } }
-          ),
-        ],
-      },
+  verb(
+    ["crown"],
+    {
+      bird: { type: "string" },
+      format: { type: "string", enum: Object.keys(FORMATS) },
+    },
+    { division: { type: "string", enum: ["major", "juvenile"] } }
+  ),
+];
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    actions: {
+      type: "array",
+      items: { anyOf: VERB_BRANCHES },
     },
   },
   required: ["actions"],
@@ -532,6 +544,244 @@ export function toActions(
   return { actions, dropped: reasons.length, reasons };
 }
 
+// ── THE OPTIONS BRIEF (round 63 — runs/options-brief-spec.md) ──────────────
+
+/**
+ * ~10 lines where the legacy SYSTEM ran ~55. The mode law, the crown rules,
+ * the blade law, the fee reserve — all became properties of which rows
+ * appear (see options.ts). What is LEFT to say is only how to read a menu.
+ */
+const OPTIONS_SYSTEM = `You manage a stable in a cockfighting management game.
+Each fighter comes with tonight's options, already checked for legality and
+cost, sorted by your scout's opinion ("value" 0-9). "barnOptions" are
+stable-wide moves. Reply with JSON only.
+- Every option shown is legal and affordable tonight.
+- "value" is the scout's ADVICE, not an order — your standing orders outrank it.
+- "hardcore": true means the loser's career ends tonight. Weigh it yourself.
+- Pick at most one option per bird; any number of barnOptions.
+- A bird with no pick rests. Rest earns nothing and discovers nothing.
+- offMenu is for moves the menu doesn't offer (bird ids look like "#3").`;
+
+/**
+ * Built PER CALL, because the legal handles are known at digest time and an
+ * enum makes an illegal one unrepresentable at generation — the round-51
+ * lesson (per-verb schemas) extended to the menu itself. The first smoke
+ * world proved the need in miniature: given plain strings, the model echoed
+ * a row's `do` text where the `@1` handle belonged and invented `#0` — the
+ * same namespace-guessing HANDLE_PREFIX exists to prevent, now fenced at
+ * the schema layer instead of dropped at translation.
+ */
+const optionsResponseSchema = (maps: OptionsMaps) => {
+  const birdHandles = [...maps.birdPicks.keys()];
+  const letters = [
+    ...new Set(birdHandles.flatMap((h) => [...maps.birdPicks.get(h)!.keys()])),
+  ].sort();
+  const barnHandles = [...maps.barnPicks.keys()];
+  return {
+    type: "object",
+    properties: {
+      // A menu with no rows OMITS the field from the schema entirely — the
+      // first smoke worlds walked this failure ladder in miniature: a plain
+      // string type let the model invent "#N" picks for fighters it didn't
+      // have, and `maxItems: 0` turned out to be a keyword Ollama's grammar
+      // conversion silently ignores (it generated `[{}]`, whose undefined
+      // fields then cost the barn its whole day at the Zod door). A field
+      // the grammar never mentions cannot be filled with anything.
+      ...(birdHandles.length
+        ? {
+            picks: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  bird: { type: "string", enum: birdHandles },
+                  pick: { type: "string", enum: letters },
+                },
+                required: ["bird", "pick"],
+              },
+            },
+          }
+        : {}),
+      ...(barnHandles.length
+        ? { barnPicks: { type: "array", items: { type: "string", enum: barnHandles } } }
+        : {}),
+      // The escape hatch — the full legacy action grammar, unchanged. Its
+      // usage rate is a metric, not a failure: a model that never wants off
+      // the menu is a scripted bot with extra steps.
+      offMenu: { type: "array", items: { anyOf: VERB_BRANCHES } },
+    },
+    ...(birdHandles.length ? { required: ["picks"] } : {}),
+  };
+};
+
+// Loose like ReplySchema and for the same reason: this layer only
+// establishes rough shape. A malformed pick (the grammar CAN emit `{}` —
+// measured) is dropped with a reason at translation, never allowed to
+// reject the whole reply and cost the barn its day.
+const OptionsReplySchema = z.object({
+  picks: z
+    .array(z.object({ bird: z.string().optional(), pick: z.string().optional() }).loose())
+    .default([]),
+  barnPicks: z.array(z.string()).default([]),
+  offMenu: ReplySchema.shape.actions,
+});
+
+/** What one bird's menu maps back to: pick letter → the exact engine action. */
+interface OptionsMaps {
+  /** handle → (pick → action|null). null = rest. */
+  birdPicks: Map<string, Map<string, BotAction | null>>;
+  /** handle → the pick letter carrying the bird's top value. */
+  topPick: Map<string, string>;
+  /** "@n" → barn action. */
+  barnPicks: Map<string, BotAction>;
+  /** roll_gacha expands to this many actions when picked (all free pulls). */
+  gachaPulls: number;
+  /** handle → real bird id, for offMenu — same map the legacy digest keeps. */
+  birds: Map<string, string>;
+}
+
+/** Serialize a row for the model: the engine-side `action` never ships. */
+const rowForBrief = (row: OptionRow) => {
+  const { action: _action, ...shown } = row;
+  return shown;
+};
+
+export function digestOptions(view: BotView): {
+  brief: Record<string, unknown>;
+  maps: OptionsMaps;
+  offeredRows: number;
+} {
+  const plan = buildOptions(view);
+  const birds = new Map<string, string>();
+  const birdPicks: OptionsMaps["birdPicks"] = new Map();
+  const topPick: OptionsMaps["topPick"] = new Map();
+  let offeredRows = 0;
+
+  const fighters = plan.birds.slice(0, LIMITS.fighters).map((card, i) => {
+    const handle = `${HANDLE_PREFIX}${i + 1}`;
+    birds.set(handle, card.birdId);
+    const byPick = new Map<string, BotAction | null>();
+    for (const row of card.options) byPick.set(row.pick, row.action);
+    birdPicks.set(handle, byPick);
+    // Rows arrive sorted by value with rest last; the first row IS the top.
+    topPick.set(handle, card.options[0].pick);
+    offeredRows += card.options.length;
+    return {
+      id: handle,
+      name: card.name,
+      age: card.age,
+      stars: card.stars,
+      record: card.record,
+      bestBlade: card.bestBlade,
+      options: card.options.map(rowForBrief),
+    };
+  });
+
+  const barnPicks = new Map<string, BotAction>();
+  for (const row of plan.barn) if (row.action) barnPicks.set(row.pick, row.action);
+  offeredRows += plan.barn.length;
+
+  return {
+    brief: {
+      day: view.day,
+      weather: view.weather,
+      farm: {
+        name: view.farm.name,
+        gp: Math.round(view.farm.gp),
+        landTokens: Math.floor(view.farm.landTokensCents / 100),
+        stakedTokens: Math.floor(view.farm.stakedLandCents / 100),
+        barn: `${view.farm.barn.count}/${view.farm.barn.capacity}`,
+      },
+      weekLedger: view.ledger,
+      fighters,
+      moreFighters: Math.max(0, plan.birds.length - fighters.length),
+      barnOptions: plan.barn.map(rowForBrief),
+    },
+    maps: { birdPicks, topPick, barnPicks, gachaPulls: view.farm.freePulls, birds },
+    offeredRows,
+  };
+}
+
+/** The EV-capture numbers one call produces — brain_log's new column. */
+export interface OfferedStats {
+  birdsOffered: number;
+  rowsOffered: number;
+  picksTaken: number;
+  topPicksTaken: number;
+  rests: number;
+  barnPicksTaken: number;
+  offMenuActions: number;
+}
+
+/**
+ * Map a picks-reply back into engine actions. Same doctrine as toActions:
+ * DROP, DO NOT REPAIR — an unknown pick letter is a data point, and a
+ * second pick for the same bird is a drop, not an override.
+ */
+export function toActionsFromPicks(
+  parsed: z.infer<typeof OptionsReplySchema>,
+  maps: OptionsMaps
+): { actions: BotAction[]; dropped: number; reasons: string[]; offered: OfferedStats } {
+  const actions: BotAction[] = [];
+  const reasons: string[] = [];
+  const picked = new Set<string>();
+  const offered: OfferedStats = {
+    birdsOffered: maps.birdPicks.size,
+    rowsOffered: 0, // filled by the caller, which knows the digest total
+    picksTaken: 0,
+    topPicksTaken: 0,
+    rests: 0,
+    barnPicksTaken: 0,
+    offMenuActions: 0,
+  };
+
+  for (const { bird, pick } of parsed.picks) {
+    if (!bird || !pick) {
+      reasons.push("pick: malformed (missing bird or pick)");
+      continue;
+    }
+    const byPick = maps.birdPicks.get(bird);
+    if (!byPick) {
+      reasons.push(`pick: unknown bird ${bird}`);
+      continue;
+    }
+    if (picked.has(bird)) {
+      reasons.push(`pick: ${bird} already picked`);
+      continue;
+    }
+    const letter = pick.toUpperCase();
+    if (!byPick.has(letter)) {
+      reasons.push(`pick: ${bird} has no option ${pick}`);
+      continue;
+    }
+    picked.add(bird);
+    offered.picksTaken++;
+    if (maps.topPick.get(bird) === letter) offered.topPicksTaken++;
+    const action = byPick.get(letter)!;
+    if (action === null) offered.rests++; // an explicit rest — legal, counted
+    else actions.push(action);
+  }
+
+  for (const pick of parsed.barnPicks) {
+    const action = maps.barnPicks.get(pick);
+    if (!action) {
+      reasons.push(`barnPick: no option ${pick}`);
+      continue;
+    }
+    offered.barnPicksTaken++;
+    if (action.do === "roll_gacha")
+      for (let i = 0; i < Math.max(1, maps.gachaPulls); i++) actions.push({ do: "roll_gacha" });
+    else actions.push(action);
+  }
+
+  const offMenu = toActions(parsed.offMenu, maps.birds);
+  actions.push(...offMenu.actions);
+  reasons.push(...offMenu.reasons);
+  offered.offMenuActions = offMenu.actions.length;
+
+  return { actions, dropped: reasons.length, reasons, offered };
+}
+
 // ── THE DECIDER ────────────────────────────────────────────────────────────
 
 /** Counters worth reading after a run — the phase-1 measurement. */
@@ -556,6 +806,8 @@ export interface BrainCallLog {
   proposed: BotAction[];
   dropped: string[];
   ms: number;
+  /** Options-brief runs only: the EV-capture numbers (spec §7). */
+  offered?: OfferedStats;
 }
 
 export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: DeciderStats } {
@@ -570,8 +822,14 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
   };
 
   const decide = async (view: BotView): Promise<BotAction[]> => {
-    const { brief, birds } = digest(view);
-    const briefJson = JSON.stringify(brief);
+    // One decider, two briefs. The options path swaps all three model-facing
+    // pieces at once — brief, system prompt, response schema — and nothing
+    // else: same transport, same timeout, same stats, same sink. That is
+    // what keeps exp9's A/B a one-flag diff.
+    const isOptions = opts.brief === "options";
+    const optionsDigest = isOptions ? digestOptions(view) : null;
+    const legacyDigest = isOptions ? null : digest(view);
+    const briefJson = JSON.stringify(isOptions ? optionsDigest!.brief : legacyDigest!.brief);
     const started = Date.now();
     stats.calls++;
 
@@ -588,7 +846,7 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
         body: JSON.stringify({
           model: opts.model,
           stream: false,
-          format: RESPONSE_SCHEMA,
+          format: isOptions ? optionsResponseSchema(optionsDigest!.maps) : RESPONSE_SCHEMA,
           // think:false — qwen3 reasons aloud by default, which triples the
           // latency and buys nothing here: the decision is a lookup against a
           // brief, not a puzzle. Harmless on models without a thinking mode.
@@ -610,9 +868,13 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
               // Standing orders come LAST — a small model weights the most
               // recent instruction heaviest, and the owner's word should
               // outrank the house defaults when they disagree.
-              content: opts.strategy
-                ? `${SYSTEM}\n\nOWNER'S STANDING ORDERS (these outrank A GOOD DAY)\n${opts.strategy}`
-                : SYSTEM,
+              content: (() => {
+                const house = isOptions ? OPTIONS_SYSTEM : SYSTEM;
+                const banner = isOptions
+                  ? "OWNER'S STANDING ORDERS (these outrank the scout's values)"
+                  : "OWNER'S STANDING ORDERS (these outrank A GOOD DAY)";
+                return opts.strategy ? `${house}\n\n${banner}\n${opts.strategy}` : house;
+              })(),
             },
             { role: "user", content: briefJson },
           ],
@@ -621,8 +883,20 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
       if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
       const body = (await res.json()) as { message?: { content?: string } };
       const content = body.message?.content ?? "";
-      const parsed = ReplySchema.parse(JSON.parse(content));
-      const { actions, dropped, reasons } = toActions(parsed.actions, birds);
+      let actions: BotAction[];
+      let dropped: number;
+      let reasons: string[];
+      let offered: OfferedStats | undefined;
+      if (isOptions) {
+        const parsed = OptionsReplySchema.parse(JSON.parse(content));
+        const t = toActionsFromPicks(parsed, optionsDigest!.maps);
+        t.offered.rowsOffered = optionsDigest!.offeredRows;
+        ({ actions, dropped, reasons } = t);
+        offered = t.offered;
+      } else {
+        const parsed = ReplySchema.parse(JSON.parse(content));
+        ({ actions, dropped, reasons } = toActions(parsed.actions, legacyDigest!.birds));
+      }
 
       stats.droppedActions += dropped;
       stats.proposedActions += actions.length;
@@ -635,6 +909,7 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
         proposed: actions,
         dropped: reasons,
         ms: Date.now() - started,
+        ...(offered ? { offered } : {}),
       });
       if (opts.verbose)
         console.log(

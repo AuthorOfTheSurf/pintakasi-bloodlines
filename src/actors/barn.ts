@@ -26,7 +26,7 @@
  * (the sim db's filename): bot-1 of one world and bot-1 of another are
  * different careers, and sharing an actor between them would blur both.
  */
-import { actor, setup } from "rivetkit";
+import { actor, setup, UserError } from "rivetkit";
 import type { Client } from "rivetkit/client";
 import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
 import {
@@ -122,8 +122,12 @@ export const barn = actor({
         c.state.failures++;
         c.state.thinkingMs += decide.stats.totalMs;
         // Rethrow so the client-side decider rejects and collectProposals
-        // sits this barn out — the same honest outcome as phase 1.
-        throw err;
+        // sits this barn out — the same honest outcome as phase 1. Wrapped
+        // in UserError (round 63) because rivetkit masks a plain throw as
+        // "An internal error occurred", which cost the first options-brief
+        // actor smoke its diagnosis — the sim-side log should say WHAT
+        // failed, not that something did.
+        throw new UserError(`takeTurn: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
     /**

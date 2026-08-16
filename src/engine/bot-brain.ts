@@ -436,6 +436,14 @@ export function applyProposals(
     quietly(() => void flock.rename(bird.id, drawStarterNames(db, 1, rng)[0]));
   }
 
+  // CHECK-IN, same doctrine (round 63, spec decision #1): the daily-login
+  // reflex measures nothing as a model decision — eight experiments never
+  // saw a barn meaningfully forget it. Scripted bots and auto-play treat it
+  // as a reflex; now this path does too. The verb stays in the grammar
+  // (legacy replies and offMenu still carry it) and lands harmlessly on the
+  // sticky report below.
+  report.checkedIn = quietly(() => void farmsApi.checkIn(farmId));
+
   const sorted = [...actions]
     .slice(0, MAX_ACTIONS)
     .sort((a, b) => ORDER.indexOf(a.do) - ORDER.indexOf(b.do));

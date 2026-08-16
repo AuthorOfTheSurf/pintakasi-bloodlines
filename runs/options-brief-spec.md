@@ -1,7 +1,16 @@
 # The Options Brief — design spec (Phase 1, 2026-08-16)
 
-Status: **SPEC ONLY — no code changed.** Implementation is Phase 2, behind a
-flag, after Zane signs off on the open decisions at the bottom.
+Status: **IMPLEMENTED (round 63, 2026-08-16)** behind `--brief=options`
+(default stays legacy). §1–§7 + decision #1 (check-in chore) are live;
+§10 (the claim window) remains v1.1 as scoped. Smoke-proven both paths
+(direct + `--actors`): 9–10-day worlds, zero drops, menu picks landing as
+juvenile-mode entries and juvenile crown declarations, EV capture logged
+to `brain_log.offered_json`. Two instrument findings from the smokes,
+both fixed structurally: the reply schema is now built PER CALL with the
+legal handles as enums (the model echoed `do` strings and invented "#N"
+handles when given plain strings), and a fighter-less day omits `picks`
+from the schema entirely (Ollama's grammar conversion silently ignores
+`maxItems: 0` — measured, it generated `[{}]`).
 
 ## Why (one paragraph, then the receipts)
 
