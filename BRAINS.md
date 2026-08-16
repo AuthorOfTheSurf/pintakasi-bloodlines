@@ -175,14 +175,14 @@ Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
 (qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
 Each experiment started with everything the previous one taught.
 
-| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 | Exp7 | Exp8 | Exp9 |
-|---|---|---|---|---|---|---|---|---|---|
-| llm avg net worth | 61,343 | 69,905 | 70,419 | 65,542 | 53,235 | 50,129 | 54,078 | 50,482 | **99,198** |
-| llm/scripted ratio | 0.48 | 0.58 | 0.59 | 0.52 | 0.43 | 0.40 | 0.44 | 0.38 | **0.85** |
-| llm crowns | 0 | 6 | 12 — every barn ≥1 | 6 | 7 | 6 | 5 | 3 | **22 (17 from bred birds)** |
-| llm fights | ~1,700 | ~1,780 | 1,711 | 2,460 | 1,053 | 1,253 | 1,978 | 2,216 | 2,674 |
-| llm juvenile fights | 0 | 0 | 0 | 0 | 0 | 0 | 568 | 969 + the first juvenile CHAMPION | **1,446 + 10 juvenile crowns** |
-| llm bred / end actives | ~0 / low | — | — | — | 87/87† | 57/68 | 46/17 | 252 / 167 | 153 / 46 |
+| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 | Exp7 | Exp8 | Exp9 | Exp10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| llm avg net worth | 61,343 | 69,905 | 70,419 | 65,542 | 53,235 | 50,129 | 54,078 | 50,482 | **99,198** | 96,010 |
+| llm/scripted ratio | 0.48 | 0.58 | 0.59 | 0.52 | 0.43 | 0.40 | 0.44 | 0.38 | **0.85** | 0.82 (replication) |
+| llm crowns | 0 | 6 | 12 — every barn ≥1 | 6 | 7 | 6 | 5 | 3 | **22 (17 from bred birds)** | 9 |
+| llm fights | ~1,700 | ~1,780 | 1,711 | 2,460 | 1,053 | 1,253 | 1,978 | 2,216 | 2,674 | 5,401 |
+| llm juvenile fights | 0 | 0 | 0 | 0 | 0 | 0 | 568 | 969 + the first juvenile CHAMPION | **1,446 + 10 juvenile crowns** | 1,867 |
+| llm bred / end actives | ~0 / low | — | — | — | 87/87† | 57/68 | 46/17 | 252 / 167 | 153 / 46 | 89 / 44 |
 
 † exp5 attempt figures; see its postmortem.
 
@@ -217,6 +217,20 @@ trust-the-scout operators finished #4 in the world. Synthesis was the
 bottleneck all along; selection is the shape a small model can play.
 Remaining structural gap: the claim window (gap #8, temporal — see
 runs/options-brief-spec.md §10).
+
+**Exp10 (round 64, the instrumentation season) replicated and answered
+the argmax question.** Same seed as exp9, `menu_json` logging every
+offered row + the taken pick: final ratio **0.82** (vs 0.85) through a
+night of envoy-wedge fire — the options-brief jump is real. The
+tie-aware readout: the old topPicksTaken metric understated agreement
+~7 points (ties scored as deviations); 17% of menus tie at the top and
+the model takes letter A only ~57% of those — **content-selection, not
+position bias**; bot-17's seg2 read 86% topA / 100% topVALUE (zero true
+deviations — obedience exactly measurable). Crown lag (9 vs 22) traces
+to the shed: endgame breed orders landed day 62 instead of 57 (wedge
+tax), and juvenile champions need the lead time. The envoy bug got its
+full characterization (park-on-process-exit, restart-proof, window-y
+recovery — see runs/2026-08-16-10v10-v10/postmortem-day91.md §envoy).
 
 **Exp8's paradox was the finding that forced the redesign:** lowest ratio
 (0.38) and the most structurally successful season ever — first juvenile

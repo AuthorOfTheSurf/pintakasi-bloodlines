@@ -523,3 +523,19 @@ ts=2026-08-16T07:36:49.064906Z level=info message="published workflow wake signa
 ts=2026-08-16T07:36:49.076178Z level=info message="published workflow wake signal" ray_id=xgy2f59gu9mr78pjasrk90q6i2dl00 workflow_id=lvlpbrl6vc8dvf8pbbammduemicl00 signal_id=5f6y6bzoyhtyu3kcwd7e3x398tcl00 signal_name=pegboard_actor2_wake elapsed_ms=13.099375 uri=/gateway/x8cshisflmzf4sw791joqxsw5zcl00/action/takeTurn req_id=pie6lq99hf2stf96qxy8ffeah5bl00 ray_id=xgy2f59gu9mr78pjasrk90q6i2dl00 hostname=127.0.0.1 path=/gateway/x8cshisflmzf4sw791joqxsw5zcl00/action/takeTurn signal_name=pegboard_actor2_wake signal_id=5f6y6bzoyhtyu3kcwd7e3x398tcl00
 ts=2026-08-16T07:36:49.08729Z level=info message="published workflow wake signal" ray_id=1g0rdhzd0g5mtz4lvsbbt6pauncl00 workflow_id=5jtywutn8w4x79erqhqpinc8ozal00 signal_id=txgdoz5lh8dxc5omhge6bwa5nmal00 signal_name=pegboard_actor2_wake elapsed_ms=34.575167 uri=/gateway/lrm3kob3eecafswu6qnr67jj3adl00/action/takeTurn req_id=lz4jgrjgg8s8zl4krc2ik9qf4xcl00 ray_id=1g0rdhzd0g5mtz4lvsbbt6pauncl00 hostname=127.0.0.1 path=/gateway/lrm3kob3eecafswu6qnr67jj3adl00/action/takeTurn signal_name=pegboard_actor2_wake signal_id=txgdoz5lh8dxc5omhge6bwa5nmal00
 ts=2026-08-16T07:51:35.314425Z level=info message="envoy websocket closed" namespace_id=dl8i8iq4jpm4hhs7aix30qq7lmbl00 pool_name=default envoy_key=85a2cf4f-7141-42c5-8dfe-5f760044011c protocol_version=6 topic=pegboard.envoy.dl8i8iq4jpm4hhs7aix30qq7lmbl00.85a2cf4f-7141-42c5-8dfe-5f760044011c lifetime_seconds=886.396287125 lifecycle_kind=closed incoming_close_code=Some(1000) incoming_close_reason="Some(\"envoy.shutdown\")" outgoing_close_code=Some(1000) outgoing_close_reason="Some(\"ws.closed\")" err=None uri="/envoys/connect?protocol_version=6&namespace=default&envoy_key=85a2cf4f-7141-42c5-8dfe-5f760044011c&version=1&pool_name=default" req_id=5r77a55d44tq57k04i2u9dvj2fbl00 ray_id=10spfz1txu0b82vpkmpmd2wm4icl00 ray_id=10spfz1txu0b82vpkmpmd2wm4icl00 req_id=5r77a55d44tq57k04i2u9dvj2fbl00 namespace_id=dl8i8iq4jpm4hhs7aix30qq7lmbl00 pool_name=default envoy_key=85a2cf4f-7141-42c5-8dfe-5f760044011c protocol_version=6
+ts=2026-08-16T09:06:22.226452Z level=info message="received SIGTERM"
+ts=2026-08-16T09:06:22.226679Z level=info message="gateway shutdown in-flight requests abandoned without close" in_flight_aborted=0
+ts=2026-08-16T09:06:22.226736Z level=info message="starting worker shutdown" duration=30s remaining_workflows=1 worker_id=1omtpo400tufkmdxp4sydb6idcbl00
+ts=2026-08-16T09:06:22.227588Z level=info message="starting guard shutdown" remaining_tasks=0 hyper_shutdown=false duration=600s
+ts=2026-08-16T09:06:22.228571Z level=info message="all guard tasks completed"
+ts=2026-08-16T09:06:22.228587Z level=info message="guard shutdown complete"
+ts=2026-08-16T09:06:22.228758Z level=info message="all workflows evicted" worker_id=1omtpo400tufkmdxp4sydb6idcbl00
+ts=2026-08-16T09:06:22.228793Z level=info message="worker shutdown complete" worker_id=1omtpo400tufkmdxp4sydb6idcbl00
+ts=2026-08-16T09:06:22.229194Z level=info message="service exited" service=workflow_worker
+ts=2026-08-16T09:06:22.230164Z level=info message="force shutdown timer started" force_shutdown_duration=600s
+ts=2026-08-16T09:06:22.230186Z level=info message="starting outbound shutdown" remaining_conns=0 duration=600s
+ts=2026-08-16T09:06:22.231223Z level=info message="service exited" service=guard
+ts=2026-08-16T09:06:22.231472Z level=info message="all outbound connections complete"
+ts=2026-08-16T09:06:22.231483Z level=info message="outbound shutdown complete"
+ts=2026-08-16T09:06:22.231495Z level=info message="service exited" service=pegboard_outbound
+ts=2026-08-16T09:06:22.231514Z level=info message="all services finished"
