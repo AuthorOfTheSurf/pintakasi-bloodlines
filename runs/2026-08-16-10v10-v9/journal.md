@@ -71,3 +71,13 @@ only (never cold).
 - Endgame orders bound 10/10 verified: breed daily (cull outpaced shed
   103 vs 68), retire only losers, chicks to juvenile crowns, age-8
   Majors, architects expand.
+
+## Day 91 — season complete (ratio 0.85, doctor clean)
+
+- Final: llm 991,976 total (avg 99,198) vs scripted 1,168,744 —
+  **0.85**, vs the arc's previous best-ever 0.59. 22 llm crowns, 17
+  from bred birds. Full autopsy in `postmortem-day91.md`.
+- Seg3b was SIGTERMed externally at day 65; resumed as seg3c (66–91)
+  after a proactive daemon cycle — bound 10/10, zero sit-outs.
+- BRAINS.md arc table + laws updated; exp10 candidates filed (claim
+  window v1.1 / two-season world / bigger model on the menu).

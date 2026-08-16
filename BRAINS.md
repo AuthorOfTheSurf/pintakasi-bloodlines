@@ -175,14 +175,14 @@ Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
 (qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
 Each experiment started with everything the previous one taught.
 
-| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 | Exp7 | Exp8 |
-|---|---|---|---|---|---|---|---|---|
-| llm avg net worth | 61,343 | 69,905 | **70,419** | 65,542 | 53,235 | 50,129 | 54,078 | 50,482 |
-| llm/scripted ratio | 0.48 | 0.58 | **0.59** | 0.52 | 0.43 | 0.40 | 0.44 | 0.38 |
-| llm crowns | 0 | 6 | **12 — every barn ≥1** | 6 | 7 | 6 | 5 | 3 |
-| llm fights | ~1,700 | ~1,780 | 1,711 | **2,460** | 1,053 | 1,253 | 1,978 | 2,216 |
-| llm juvenile fights | 0 | 0 | 0 | 0 | 0 | 0 | 568 | **969 + the first juvenile CHAMPION** |
-| llm bred / end actives | ~0 / low | — | — | — | 87/87† | 57/68 | 46/17 | **252 / 167** |
+| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 | Exp7 | Exp8 | Exp9 |
+|---|---|---|---|---|---|---|---|---|---|
+| llm avg net worth | 61,343 | 69,905 | 70,419 | 65,542 | 53,235 | 50,129 | 54,078 | 50,482 | **99,198** |
+| llm/scripted ratio | 0.48 | 0.58 | 0.59 | 0.52 | 0.43 | 0.40 | 0.44 | 0.38 | **0.85** |
+| llm crowns | 0 | 6 | 12 — every barn ≥1 | 6 | 7 | 6 | 5 | 3 | **22 (17 from bred birds)** |
+| llm fights | ~1,700 | ~1,780 | 1,711 | 2,460 | 1,053 | 1,253 | 1,978 | 2,216 | 2,674 |
+| llm juvenile fights | 0 | 0 | 0 | 0 | 0 | 0 | 568 | 969 + the first juvenile CHAMPION | **1,446 + 10 juvenile crowns** |
+| llm bred / end actives | ~0 / low | — | — | — | 87/87† | 57/68 | 46/17 | 252 / 167 | 153 / 46 |
 
 † exp5 attempt figures; see its postmortem.
 
@@ -194,14 +194,31 @@ chores (exp7: the naming law), and MARKETS (exp8: listed studs invisible).
 The model can only play the game its pipe can carry — all seven layers
 must agree with every law you write.
 
-**The first-link law (proven three times):** a multi-step chain's first
-link (retire) never fires from standing orders — preamble or blunt day-2
-form alike — and fires immediately from a dated mid-season imperative
-("TODAY, before any entry, retire your worst hen": 119 proposals, 52
-retirements in one segment). Coach ticks must name the first link, not
-the chain's goal.
+**The first-link law (proven three times, then DISSOLVED by exp9):** a
+multi-step chain's first link (retire) never fired from standing orders —
+preamble or blunt day-2 form alike — only from a dated mid-season
+imperative ("TODAY, before any entry, retire your worst hen": 119
+proposals, 52 retirements in one segment). Exp9 ended the law: presented
+as a scored option ROW on the bird, retire self-initiated on day 21 — the
+first day the row could legally render — with no coach in existence. The
+law was an interface artifact: the model could always TAKE the first
+link; it could never ORIGINATE it from prose. Coach ticks in a row-based
+world carry strategy, not first links.
 
-**Exp8's paradox is the arc's closing finding so far:** lowest ratio
+**Exp9 (round 63, the options brief) is the arc's answer:** one flag —
+every legal move pre-computed into valued rows, the reply collapsed to
+picks — took the SAME model, personas, and coach cadence from 0.38 to
+**0.85** (previous all-time record: 0.59), with 22 crowns (17 won by
+birds bred in-world), ~19 real translation losses all season, and EV
+capture (fraction of top-value rows taken) as the new instrument:
+uniform 78% uncoached, spread 58%–98% along creed lines after one coach
+session — coaching finally measurable as a number, and the
+trust-the-scout operators finished #4 in the world. Synthesis was the
+bottleneck all along; selection is the shape a small model can play.
+Remaining structural gap: the claim window (gap #8, temporal — see
+runs/options-brief-spec.md §10).
+
+**Exp8's paradox was the finding that forced the redesign:** lowest ratio
 (0.38) and the most structurally successful season ever — first juvenile
 crown champion (Cruel Beak, Ilonggo Ironworks, B2), 252 bred, the age
 cliff out-bred at last (167 end actives vs exp7's 17). A 91-day scoreboard
