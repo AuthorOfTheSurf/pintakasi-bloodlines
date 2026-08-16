@@ -39,3 +39,4 @@ whichever experiment happened to be running that day buries them.
 | Directory | What it is |
 |---|---|
 | `2026-08-15-rivet-envoy-bug/` | The envoy-rebind bug hunt: hit in the wild across ALL 10v10 experiments (cold-tune wedges, slow rebinds, aged-daemon no-rebind), pinned with the minimal repro in `scripts/rivet-repro.ts`. `rivet-repro-session.md` is the six-generation session that isolated the mechanism. |
+| `options-brief-spec.md` | Design spec for the OPTIONS BRIEF (pre-exp9): every fighter arrives with legal, pre-valued, sorted options attached; the reply collapses to picks + an off-menu escape hatch. The generalization of all seven pipe-law gaps and the proposed dissolution of the first-link law — synthesis becomes selection. Spec only; implementation gated on sign-off. |
