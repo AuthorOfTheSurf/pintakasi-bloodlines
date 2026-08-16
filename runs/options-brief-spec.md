@@ -204,13 +204,78 @@ New columns in `brain_log` (or derivable from `proposed` + a new
 Nothing about collect/apply, `quietly`, fixed ORDER, or the actor plumbing
 changes. Legacy brief stays fully runnable — the A/B is one flag.
 
-## Open decisions (Zane)
+## 10. Gap #8 — the claim window (found while answering decision #2)
 
-1. **`check_in` chore-ification** — recommended yes (measures nothing),
-   but it's a behavior change to the llm path, so it's called out.
-2. **Claim rows in v1?** — spec includes them (`@` rows); could defer to
-   keep v1 smaller. Recommended: include — the data already flows.
-3. **How many option rows per bird?** — recommended cap 4 (top 3 + rest).
-   More rows = more tokens and a muddier EV-capture metric.
-4. **Breed pairings offered** — top 2–3 vs. just the single best.
-   Recommended 2–3: leaves the persona a real choice.
+Zane's diagnosis, verified against the exp8 world: **577 scripted claims
+vs. 6 llm claims**, and the cause is structural timing, not judgment.
+
+- Claimer lobbies fill and resolve **inside one tick**. Scripted bots
+  decide inside that tick (roster order — bot *i* sees the entries of bots
+  1..*i−1*; `shopAllClaimers` runs after all of them). This mirrors real
+  claiming: entries close, a window opens, then the races run.
+- LLM proposals are collected **between ticks**, when yesterday's fields
+  have resolved and tonight's don't exist yet. The `claimable` list in the
+  brief is empty nearly every time the model reads it. The 6 that landed
+  prove the verb works; the 571-claim deficit is pure window position.
+
+This is the pipe law again, in time instead of space: the model can only
+shop a board its collect-moment can see.
+
+**Proposed fix — the claim window (two-phase day).** Split the llm day to
+match the scripted shape:
+1. Pre-tick collect (unchanged): every verb except claim.
+2. Tick phase A: all entries post (scripted + llm).
+3. **Claim-window collect** (new, async, tiny): brief = claimer fields +
+   GP only; reply = claim picks only. Cheap call — small brief, small
+   reply.
+4. Tick phase B: claims apply, card resolves, day settles.
+
+Cost: the tick's one-transaction atomicity has to split into two
+transactions with an async gap (entries-phase / resolve-phase), each
+internally consistent, conservation checked across the pair. That's a real
+engine change — bigger than anything else in this spec — so it ships as
+**v1.1, its own round**, not bundled into the brief rewrite. V1 keeps `@`
+claim rows built from whatever is visible (they'll fire on the rare
+carryover entry, as the 6 did).
+
+## 11. Tracking the gait ceiling (first-class, per Zane)
+
+The gait problem — the llm side is throughput-bound where scripted logic
+is not — is **experiment-breaking if untracked**, because every ratio in
+the arc silently includes it. Three constraints stack:
+1. One decision cycle per day (scripted bots effectively act 2×+ per day —
+   the claim window above is one consequence).
+2. `num_predict: 1400` caps the reply (~25 actions on a full-card day).
+3. Latency budget per barn per tick.
+
+Instrumentation (added to the exp9 verdict tools):
+- **Gait = realized actions/barn/day**, llm vs. scripted, reported per
+  segment by the scoreboard — the arc has never printed this number.
+- **Ceiling-hit rate**: fraction of calls whose reply ran to the
+  `num_predict` cap (a capped reply = decisions that were never emitted).
+- The options brief attacks constraint 2 directly (picks are ~10× smaller
+  than action objects), and the claim window attacks constraint 1. If
+  gait still trails after both, that's the bigger-model experiment's
+  opening question — with a number attached instead of a suspicion.
+
+## Decisions (resolved with Zane, 2026-08-16)
+
+1. **`check_in` chore-ification — YES.** Plain terms: `check_in` is the
+   daily-login reflex (like collecting a login bonus). Today the model
+   must remember to *propose* it every day as one of its actions; it
+   basically always does, so the token and the attention are pure
+   overhead. The christening precedent (exp7): the engine now names
+   hatchlings itself in the apply path, as a pre-card chore, instead of
+   asking the model to invent names. Same move here: the engine checks
+   the barn in automatically at the start of its applied day, and the
+   verb leaves the llm decision space. Scripted bots and auto-play
+   already treat it as a reflex, so parity improves.
+2. **Claim rows in v1 — YES** ("claiming is a big part of the game"), plus
+   the claim-window fix (section 10) as v1.1 — without it the rows have
+   almost nothing to show.
+3. **Option rows per bird — cap 4** (top 3 + rest). Adjust later as
+   needed.
+4. **Breed pairings — top 2–3.** Start small; the long-run intent is a
+   richer, more informative breeding decision (it's a genuinely fun and
+   complex one) — for now, making it a real choice (>1 option) is the
+   win.
