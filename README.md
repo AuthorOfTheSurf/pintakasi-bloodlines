@@ -64,6 +64,10 @@ The Stewards' Office is an inspection surface, not an unauthenticated game-contr
 
 The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-development convenience**, not real authentication. Do not reuse it to protect a public or player-facing deployment.
 
+## License
+
+This is a source-available portfolio repository, not open-source software. See [LICENSE](LICENSE): the code and documentation are public for viewing and evaluation, but reuse requires written permission.
+
 ## The loop (what "playable" means)
 
 Breed an egg ("Egg of \<mother\>", age 0) → it hatches next **Hatch Friday** as an age-1 chick → fight the **discovery year** as a juvenile → real fights from age 2 → **age 3 the fork opens**: hardcore runs (loser force-retired) and safe retirement unlock on the same birthday → ride the career (cap 9) or retire while ahead → breed the retiree (bloodline restriction: no siblings/parents/grandparents/great-grandparents) → a measurably better bird next Friday.
