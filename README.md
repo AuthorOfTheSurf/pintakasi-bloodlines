@@ -2,13 +2,11 @@
 
 Breed, fight, retire. A digital sabong auto-battler where **careers end in the breeding barn, not the grave** — and hardcore duels (loser force-retired) carry the stakes.
 
-**Claude is the game client** — the game is played through MCP at `/api/mcp`, and REST exists for scripted tests. There are two web pages, and neither of them plays the game: the **Stewards' Office** at `/admin` (what the operators watch) and **The Pintakasi Handbook** at `/wiki` (the player-facing rules, every number imported live from the engine).
+**Players and agents connect through MCP** at `/api/mcp`; REST exists for scripted tests. Claude Code is the client used during development. There are two web pages, and neither of them plays the game: the **Stewards' Office** at `/admin` (what the operators watch) and **The Pintakasi Handbook** at `/wiki` (the player-facing rules, every number imported live from the engine).
 
 ## Source of truth
 
-In this repo, in order: **`src/engine/config.ts`** (every balance knob, with a comment saying what it does in gameplay terms), **`RULINGS.md`** (what changed each round and why — including the reversals), **`CLAUDE.md`** / **`AGENTS.md`** (the house rules for working here), **`PROGRESS.md`** (standing watch items). The original build spec lives in `wiki/projects/pintakasi-mvp.md` in the private `zane-knowledge-system` repo; it is the historical scope ledger, not the current rules.
-
-Future design explorations may live in that sibling knowledge base without becoming rules here. The current idle-gathering brainstorm is **[Pintakasi Idle Expeditions — Callings, Barn Skills, and Cooperative Parties](../zane-knowledge-system/wiki/games/pintakasi-idle-expeditions.md)**. It explores replacing Ground/Air carriage with inherited gathering Callings, async three-bird expeditions, persistent barn skills, missions, and optional friend-composed parties. Until a ruling and implementation land in this repo, it is a design note only.
+In this repo, in order: **`src/engine/config.ts`** (every balance knob, with a comment saying what it does in gameplay terms), **`RULINGS.md`** (what changed each round and why — including reversals), **`CLAUDE.md`** / **`AGENTS.md`** (the house rules for working here), and **`PROGRESS.md`** (standing watch items). These are the complete public source of truth.
 
 ## Stack
 
@@ -39,6 +37,32 @@ To play, point an MCP client at the running server. `.mcp.json` in the repo root
 **Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get *"Multiple farms exist — pass your farm key"*, which is the server being careful, not broken. Playing as somebody new instead? `register_farm` over MCP hands you a fresh key; put that in the URL.
 
 Tests: `bun test` · Types: `bun run typecheck` · Health of a world: `bun run doctor` · The combat lab: `bun run balance`
+
+## Run a simulation
+
+The ordinary simulation uses scripted barns and needs no model:
+
+```sh
+bun run simulate 91 --seed=1
+bun dev:sim           # inspect the newest simulation at http://localhost:3435/admin
+```
+
+The LLM experiment is optional. Install [Ollama](https://ollama.com/), pull a local model, then give one or more barns that model as their decision-maker:
+
+```sh
+ollama pull qwen3:30b-a3b
+
+# One LLM barn, seven game-days: a practical smoke run.
+bun run simulate 7 --seed=1 --brain=qwen3:30b-a3b --llm=1 --actors --brief=options
+```
+
+`--actors` makes each LLM barn a durable Rivet Actor. `--llm=10` runs ten model-controlled barns against ten scripted barns. Full seasons are intentionally slow on a local model; see `BRAINS.md` and `runs/` for the measured experiments and their exact commands.
+
+## Public deployment safety
+
+The Stewards' Office is an inspection surface, not an unauthenticated game-control panel. Production deployments hide the clock controls and reject tick requests unless `PINTAKASI_ALLOW_PUBLIC_TICKS=1` is explicitly set.
+
+The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-development convenience**, not real authentication. Do not reuse it to protect a public or player-facing deployment.
 
 ## The loop (what "playable" means)
 
