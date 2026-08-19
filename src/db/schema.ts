@@ -36,6 +36,25 @@ export const farms = sqliteTable("farms", {
   createdDay: integer("created_day").notNull().default(0),
   // House-run bot stables (see engine/bot-config.ts) — rivals, not the house.
   isBot: integer("is_bot").notNull().default(0),
+  // WHO DECIDES THIS BARN'S DAY (round 49). Only meaningful when isBot = 1.
+  //
+  //   "scripted" — engine/bots.ts plays it: weighted TypeScript, seeded off
+  //                the day index, and therefore REPLAYABLE. The default, and
+  //                what every test, every `simulate` and every `doctor` run
+  //                must see, because determinism.test.ts, replay.test.ts and
+  //                playthrough.test.ts all rest on a bot day being a pure
+  //                function of the world.
+  //   "llm"      — an outside decider proposes the day's actions and the
+  //                engine applies them (engine/bot-brain.ts). NOT replayable:
+  //                a model is not a pure function of anything.
+  //
+  // The two are a permanent PAIR, not a migration (Zane, 2026-08-14). The
+  // scripted bots are the reproducible baseline that makes the AI ones
+  // measurable — drop them and there is nothing to measure an LLM barn
+  // against. Nothing seeds "llm"; a world only gets one when asked by hand.
+  brain: text("brain", { enum: ["scripted", "llm"] })
+    .notNull()
+    .default("scripted"),
   // The FARM's career record (real + hardcore), stamped at fight time —
   // it can't be derived from owned birds later, because birds transfer
   // (claims, future sales) and take their own records with them.
@@ -393,6 +412,41 @@ export const snapshots = sqliteTable("snapshots", {
 export const simTimings = sqliteTable("sim_timings", {
   dayIndex: integer("day_index").primaryKey(),
   ms: integer("ms").notNull(),
+});
+
+// What each llm barn was told and what it answered, one row per barn per
+// game-day — written by scripts/simulate.ts ONLY, and only on brains-on runs.
+// Round 50, Zane's ask: the decisions were printing to the terminal and
+// vanishing, leaving nothing to study "decision-making vs. context given"
+// with. This is the instrument the phase-4 A/B reads. Telemetry, not world
+// state: worldhash skips it exactly as it skips sim_timings.
+//   sqlite3 data/sim-….db "SELECT day_index, farm_id, proposed_json FROM brain_log ORDER BY 1"
+export const brainLog = sqliteTable("brain_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dayIndex: integer("day_index").notNull(),
+  farmId: text("farm_id").notNull(),
+  model: text("model").notNull(),
+  // Estimated tokens of the brief actually sent (chars/3.5 — same rule of
+  // thumb brain-bench uses, so the two are comparable).
+  briefTokens: integer("brief_tokens").notNull(),
+  // Everything the model proposed that survived translation, as JSON.
+  proposedJson: text("proposed_json").notNull(),
+  // What fell at translation, with reasons — the model-quality signal.
+  droppedJson: text("dropped_json").notNull(),
+  decideMs: integer("decide_ms").notNull(),
+  // Round 63, options-brief runs only (null on legacy): the EV-capture
+  // numbers — rows offered, picks taken, top-value picks taken, rests,
+  // offMenu count (an OfferedStats, JSON). THE instrument exp9 reads:
+  // "what fraction of the scout's best advice did this barn take?"
+  // Nullable, and simulate.ts omits it from the INSERT when absent, so
+  // pre-round-63 worlds resume cleanly under --keep.
+  offeredJson: text("offered_json"),
+  // Round 64: the full offered menu (every row with pick letter, value,
+  // fee, hardcore flag, why) with the taken picks joined on (a MenuLog,
+  // JSON). What offered_json aggregates away: value ties at the top,
+  // near-miss margins, which non-first rows get taken. Nullable + omitted
+  // from the INSERT when absent, same contract as offered_json.
+  menuJson: text("menu_json"),
 });
 
 export type BirdRow = typeof birds.$inferSelect;

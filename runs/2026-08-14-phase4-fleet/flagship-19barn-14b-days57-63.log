@@ -1,0 +1,268 @@
+Brain: qwen3:14b plays 19 stable(s) — bot-1, bot-2, bot-3, bot-4, bot-5, bot-6, bot-7, bot-8, bot-9, bot-10, bot-11, bot-marco, bot-reno, bot-kevin, bot-12, bot-13, bot-14, bot-15, bot-16
+
+ts=2026-08-14T15:18:58.649722Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=1 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=1 actorKey=sim-20260814-2224/bot-14
+  [brain] Marco Gamefarm: 1 actions (7.3s)
+  [brain] Kidlat sa Silangan: 1 actions (12.0s)
+  [brain] Ilonggo Ironworks: 1 actions (19.4s)
+  [brain] Hacienda Verde: 1 actions (26.6s)
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"pymzi7ocecnap0c985dljnibs5bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"ljwxtd6tkxydtxt41r0cayvapxal00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"dtqxxfz1149ansupr00qnn47aoal00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"t1kemmj17tw0b6hklvsvzp4zaxal00\"}"
+  [brain] Lupa Land Holdings: 1 actions (31.4s)
+  [brain] Batangas Sprint Club: 9 actions (51.8s)
+  [brain] Reno Gamefarm: 8 actions (70.4s)
+  [brain] Ginto Gaming Club: 1 actions (75.9s)
+  [brain] Cuchillos de Sonora: 1 actions (82.7s)
+  [brain] Pulang Bagwis: 1 actions (89.8s)
+  [brain] Sagupaan Stables: 1 actions (94.9s)
+  [brain] Cavite Bloodlines: 1 actions (99.1s)
+  [brain] Talisay Tari Club: 1 actions (105.1s)
+  [brain] Kevin Gamefarm: 1 actions (112.4s)
+  [brain] Bulawan Broodfarm: 1 actions (78.0s)
+  [brain] Dugo't Dangal Farms: 6 actions (89.2s)
+  [brain] Tari ng Bayan: 6 actions (97.3s)
+  [brain] Sabungero Syndicate: 1 actions (103.3s)
+Day 57 (Saturday): 17 fights, 14 unmatched, 0 claims settled, staking paid 16.01 GP to 20 stakers — 2:24
+ts=2026-08-14T15:21:22.264436Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=2 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=2 actorKey=sim-20260814-2224/bot-14
+  [brain] Bulawan Broodfarm: 1 actions (5.6s)
+  [brain] Sabungero Syndicate: 7 actions (17.4s)
+  [brain] Dugo't Dangal Farms: 10 actions (36.1s)
+  [brain] Tari ng Bayan: 1 actions (40.1s)
+  [brain] Kevin Gamefarm: 8 actions (55.0s)
+  [brain] Talisay Tari Club: 1 actions (61.2s)
+  [brain] Reno Gamefarm: 10 actions (82.8s)
+  [brain] Batangas Sprint Club: 1 actions (90.3s)
+  [brain] Pulang Bagwis: 9 actions (110.0s)
+  [brain] Ilonggo Ironworks: 10 actions, 1 dropped (128.5s)
+          ✗ 1× list_stud: unknown bird 22
+  [brain] Marco Gamefarm: 16 actions, 1 dropped (156.3s)
+          ✗ 1× list_stud: unknown bird Savage Reaper
+  [brain] Ginto Gaming Club: 6 actions (173.0s)
+  [brain] Hacienda Verde: 11 actions (197.4s)
+  [brain] Sagupaan Stables: 7 actions (210.7s)
+  [brain] Lupa Land Holdings: 7 actions (222.8s)
+  [brain] Cavite Bloodlines: 5 actions (231.0s)
+  [brain] Kidlat sa Silangan: 5 actions (240.8s)
+  [brain] Cuchillos de Sonora: 1 actions (249.2s)
+Day 58 (Sunday): 51 fights, 11 unmatched, 0 claims settled, staking paid 16.00 GP to 20 stakers — 4:10
+ts=2026-08-14T15:25:31.818644Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=3 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=3 actorKey=sim-20260814-2224/bot-14
+  [brain] Kidlat sa Silangan: 6 actions (14.3s)
+  [brain] Dugo't Dangal Farms: 6 actions (27.5s)
+  [brain] Lupa Land Holdings: 7 actions (43.8s)
+  [brain] Sagupaan Stables: 1 actions (49.9s)
+  [brain] Cavite Bloodlines: 4 actions (59.7s)
+  [brain] Sabungero Syndicate: 7 actions (73.3s)
+  [brain] Pulang Bagwis: 12 actions (104.8s)
+  [brain] Batangas Sprint Club: 10 actions (124.4s)
+  [brain] Cuchillos de Sonora: 1 actions (132.9s)
+  [brain] Reno Gamefarm: 1 actions (141.4s)
+  [brain] Kevin Gamefarm: 8 actions (159.4s)
+  [brain] Ilonggo Ironworks: 1 actions (167.9s)
+  [brain] Hacienda Verde: 9 actions (191.8s)
+  [brain] Talisay Tari Club: 1 actions (199.2s)
+  [brain] Marco Gamefarm: 10 actions (221.8s)
+  [brain] Bulawan Broodfarm: 1 actions (228.7s)
+  [brain] Ginto Gaming Club: 9 actions (248.0s)
+  [brain] Tari ng Bayan: 6 actions (261.9s)
+Day 59 (Monday): 42 fights, 11 unmatched, 0 claims settled, staking paid 16.01 GP to 20 stakers — 4:22
+ts=2026-08-14T15:29:54.121075Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=4 actorKey=sim-20260814-2224/bot-14
+  [brain] Ginto Gaming Club: 9 actions (19.2s)
+  [brain] Tari ng Bayan: 6 actions (30.9s)
+  [brain] Cavite Bloodlines: 6 actions (45.8s)
+  [brain] Cuchillos de Sonora: 7 actions (66.3s)
+  [brain] Pulang Bagwis: 7 actions (86.6s)
+  [brain] Kidlat sa Silangan: 6 actions (145.3s)
+ts=2026-08-14T15:32:19.579617Z level=error message="websocket not available for sending"
+ts=2026-08-14T15:32:30.980932Z level=warn message="actor shutdown reached the grace deadline" actor_id=lvtjavec9pdbzfdn8kouvmw8rkal00 reason=sleep deadline_missed_by_ms=790 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:30.981133Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:30.981235Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:31.523022Z level=warn message="actor framework action error response" actor_id=lvtjavec9pdbzfdn8kouvmw8rkal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-marco\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:31.622511Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+level=warn msg="http error response" group=pegboard code=route_wake_signal_timeout message="Timed out sending actor wake signal for actor pymzi7ocecnap0c985dljnibs5bl00 after 5911ms (timeout 5000ms)." metadata="{\"actor_id\":\"pymzi7ocecnap0c985dljnibs5bl00\",\"elapsed_ms\":5911,\"timeout_ms\":5000}"
+level=warn msg="http error response" group=pegboard code=route_wake_signal_timeout message="Timed out sending actor wake signal for actor 5ncsxvqj7djx30gel675asce1ddl00 after 5961ms (timeout 5000ms)." metadata="{\"actor_id\":\"5ncsxvqj7djx30gel675asce1ddl00\",\"elapsed_ms\":5961,\"timeout_ms\":5000}"
+level=warn msg="http error response" group=pegboard code=route_wake_signal_timeout message="Timed out sending actor wake signal for actor l34lbl4b47qkroc3ck4fzp1gchbl00 after 5022ms (timeout 5000ms)." metadata="{\"actor_id\":\"l34lbl4b47qkroc3ck4fzp1gchbl00\",\"elapsed_ms\":5022,\"timeout_ms\":5000}"
+level=warn msg="http error response" group=pegboard code=route_wake_signal_timeout message="Timed out sending actor wake signal for actor p6xoxmsen2ttafxri3h04jo3bjcl00 after 5029ms (timeout 5000ms)." metadata="{\"actor_id\":\"p6xoxmsen2ttafxri3h04jo3bjcl00\",\"elapsed_ms\":5029,\"timeout_ms\":5000}"
+ts=2026-08-14T15:32:39.691553Z level=error message="sqlite atomic commit failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 new_db_size_pages=18 dirty_pages=1 err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:39.691676Z level=error message="sqlite atomic write file control failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 last_error="Some(\"actor does not exist\")" err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:39.883175Z level=error message="sqlite flush commit failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 new_db_size_pages=18 dirty_pages=1 err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:39.883257Z level=error message="sqlite sync failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 last_error="Some(\"actor does not exist\")" err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:39.883396Z level=warn message="slow sqlite transaction" database=5nkaz2ad7uis21pdv9dkpuyga1bl00 duration_ms=17067 statement_count=4 get_pages_round_trips=0 commit_round_trips=0 total_round_trips=0
+ts=2026-08-14T15:32:39.912846Z level=error message="sqlite operation failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=Some(3) backend=LocalNative operation=execute_batch sql=<batch> binding_count=3 statement_count=2 group=core code=internal_error error_message="An internal error occurred" metadata="Some(Object {\"error\": String(\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n\\nCaused by:\\n    0: commit sqlite batch transaction\\n    1: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n    2: failed to step sqlite execute statement: disk I/O error\")})" error_chain="[\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"commit sqlite batch transaction\", \"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"failed to step sqlite execute statement: disk I/O error\"]"
+ts=2026-08-14T15:32:39.912928Z level=error message="failed to persist actor save tick" error="persist actor state and connection deltas to sqlite\n\nCaused by:\n    0: persist internal actor state and connection deltas\n    1: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n    2: commit sqlite batch transaction\n    3: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n    4: failed to step sqlite execute statement: disk I/O error"
+ts=2026-08-14T15:32:40.989974Z level=error message="sqlite flush commit failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 new_db_size_pages=18 dirty_pages=1 err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:40.990044Z level=error message="sqlite sync failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 last_error="Some(\"actor does not exist\")" err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:41.516015Z level=error message="sqlite operation failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=Some(3) backend=LocalNative operation=execute_batch sql=<batch> binding_count=3 statement_count=2 group=core code=internal_error error_message="An internal error occurred" metadata="Some(Object {\"error\": String(\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n\\nCaused by:\\n    0: execute sqlite batch statement\\n    1: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n    2: failed to step sqlite execute statement: disk I/O error\")})" error_chain="[\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"execute sqlite batch statement\", \"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"failed to step sqlite execute statement: disk I/O error\"]"
+ts=2026-08-14T15:32:41.516474Z level=error message="failed to persist actor save tick" error="persist actor state and connection deltas to sqlite\n\nCaused by:\n    0: persist internal actor state and connection deltas\n    1: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n    2: execute sqlite batch statement\n    3: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n    4: failed to step sqlite execute statement: disk I/O error"
+ts=2026-08-14T15:32:41.929598Z level=error message="sqlite flush commit failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 new_db_size_pages=18 dirty_pages=1 err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:41.929668Z level=error message="sqlite sync failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 last_error="Some(\"actor does not exist\")" err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:41.951395Z level=error message="sqlite operation failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=Some(3) backend=LocalNative operation=execute_batch sql=<batch> binding_count=3 statement_count=2 group=core code=internal_error error_message="An internal error occurred" metadata="Some(Object {\"error\": String(\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n\\nCaused by:\\n    0: execute sqlite batch statement\\n    1: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n    2: failed to step sqlite execute statement: disk I/O error\")})" error_chain="[\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"execute sqlite batch statement\", \"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"failed to step sqlite execute statement: disk I/O error\"]"
+ts=2026-08-14T15:32:41.953085Z level=error message="failed to persist actor save tick" error="persist actor state and connection deltas to sqlite\n\nCaused by:\n    0: persist internal actor state and connection deltas\n    1: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n    2: execute sqlite batch statement\n    3: actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n    4: failed to step sqlite execute statement: disk I/O error"
+ts=2026-08-14T15:32:42.790977Z level=error message="sqlite flush commit failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 new_db_size_pages=18 dirty_pages=1 err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:42.791078Z level=error message="sqlite sync failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 last_error="Some(\"actor does not exist\")" err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:42.839624Z level=error message="sqlite operation failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=Some(3) backend=LocalNative operation=query sql="SELECT MIN(trigger_at) FROM _rivet_schedule_events" binding_count=0 statement_count=1 group=core code=internal_error error_message="An internal error occurred" metadata="Some(Object {\"error\": String(\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\\n\\nCaused by:\\n    failed to step sqlite execute statement: disk I/O error\")})" error_chain="[\"actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\", \"failed to step sqlite execute statement: disk I/O error\"]"
+ts=2026-08-14T15:32:42.83971Z level=error message="failed to sync scheduled actor alarm" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 error="actor 5nkaz2ad7uis21pdv9dkpuyga1bl00 generation 3 key sim-20260814-2224/bot-6\n\nCaused by:\n    failed to step sqlite execute statement: disk I/O error"
+ts=2026-08-14T15:32:43.861267Z level=error message="sqlite flush commit failed" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 new_db_size_pages=18 dirty_pages=1 err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:43.861356Z level=warn message="failed to flush sqlite database before close" err="Other(\"actor does not exist\")"
+ts=2026-08-14T15:32:54.592207Z level=warn message="actor shutdown reached the grace deadline" actor_id=dtqxxfz1149ansupr00qnn47aoal00 reason=sleep deadline_missed_by_ms=517 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592461Z level=warn message="actor shutdown reached the grace deadline" actor_id=5ncsxvqj7djx30gel675asce1ddl00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592501Z level=warn message="actor shutdown reached the grace deadline" actor_id=pujemjqia9n92yxbzec4p9papwal00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.59253Z level=warn message="actor shutdown reached the grace deadline" actor_id=t1kemmj17tw0b6hklvsvzp4zaxal00 reason=sleep deadline_missed_by_ms=616 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592559Z level=warn message="actor shutdown reached the grace deadline" actor_id=xk928yu259tb0f8nts3x27olyxal00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592586Z level=warn message="actor shutdown reached the grace deadline" actor_id=hg3eysxm680ahidkis5qqxq9mobl00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592614Z level=warn message="actor shutdown reached the grace deadline" actor_id=p6xoxmsen2ttafxri3h04jo3bjcl00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592641Z level=warn message="actor shutdown reached the grace deadline" actor_id=l34lbl4b47qkroc3ck4fzp1gchbl00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592669Z level=warn message="actor shutdown reached the grace deadline" actor_id=pymzi7ocecnap0c985dljnibs5bl00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592699Z level=warn message="actor shutdown reached the grace deadline" actor_id=tddpwuq2fubhs7nitfmur9r1gnal00 reason=sleep deadline_missed_by_ms=617 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592726Z level=warn message="actor shutdown reached the grace deadline" actor_id=1o6lmbq4t2ej7frsrhhj0o5y42cl00 reason=sleep deadline_missed_by_ms=517 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:32:54.592826Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.592908Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.592934Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.592966Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.592987Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.593016Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.593045Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.593076Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.593098Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.593792Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.593848Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.593886Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.59392Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.594312Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.594638Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.594684Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.594713Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.594749Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.594776Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.594808Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.594833Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:32:54.594864Z level=error message="core dispatched hook failed" error="dropped_reply: Actor reply channel was dropped without a response." operation=run_graceful_cleanup
+ts=2026-08-14T15:32:54.789275Z level=warn message="actor framework action error response" actor_id=hg3eysxm680ahidkis5qqxq9mobl00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-13\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:54.876761Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.877473Z level=warn message="actor framework action error response" actor_id=p6xoxmsen2ttafxri3h04jo3bjcl00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-12\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:54.877771Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.877843Z level=warn message="actor framework action error response" actor_id=l34lbl4b47qkroc3ck4fzp1gchbl00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-reno\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:54.877997Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.878077Z level=warn message="actor framework action error response" actor_id=pymzi7ocecnap0c985dljnibs5bl00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-1\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:54.87814Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.878202Z level=warn message="actor framework action error response" actor_id=tddpwuq2fubhs7nitfmur9r1gnal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-15\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:54.87823Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.878287Z level=warn message="actor framework action error response" actor_id=1o6lmbq4t2ej7frsrhhj0o5y42cl00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-kevin\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:54.87832Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:55.002198Z level=warn message="actor framework action error response" actor_id=t1kemmj17tw0b6hklvsvzp4zaxal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-4\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:55.003306Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:55.003467Z level=warn message="actor framework action error response" actor_id=xk928yu259tb0f8nts3x27olyxal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-5\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:55.003509Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:55.003545Z level=warn message="actor framework action error response" actor_id=5ncsxvqj7djx30gel675asce1ddl00 generation=3 actor_key="Some(\"sim-20260814-2224/bot-11\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:55.003584Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.876007Z level=warn message="actor framework action error response" actor_id=pujemjqia9n92yxbzec4p9papwal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-7\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:55.009046Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+ts=2026-08-14T15:32:54.787822Z level=warn message="actor framework action error response" actor_id=dtqxxfz1149ansupr00qnn47aoal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-3\")" group=actor code=dropped_reply
+ts=2026-08-14T15:32:55.011234Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="deferred native sleep cleanup failed" error="RivetError: Actor capability 'lifecycle events' is not configured."
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5nkaz2ad7uis21pdv9dkpuyga1bl00\"}"
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=dtqxxfz1149ansupr00qnn47aoal00 generation=4 actorKey=sim-20260814-2224/bot-3
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=hg3eysxm680ahidkis5qqxq9mobl00 generation=4 actorKey=sim-20260814-2224/bot-13
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=tddpwuq2fubhs7nitfmur9r1gnal00 generation=4 actorKey=sim-20260814-2224/bot-15
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=1o6lmbq4t2ej7frsrhhj0o5y42cl00 generation=4 actorKey=sim-20260814-2224/bot-kevin
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=t1kemmj17tw0b6hklvsvzp4zaxal00 generation=4 actorKey=sim-20260814-2224/bot-4
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=xk928yu259tb0f8nts3x27olyxal00 generation=4 actorKey=sim-20260814-2224/bot-5
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=pujemjqia9n92yxbzec4p9papwal00 generation=4 actorKey=sim-20260814-2224/bot-7
+ts=2026-08-14T15:33:48.573199Z level=warn message="actor shutdown reached the grace deadline" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 reason=sleep deadline_missed_by_ms=18 core_dispatched_hook_count=1 shutdown_task_count=1 sleep_keep_awake_count=0 sleep_internal_keep_awake_count=1 active_http_request_count=1 websocket_callback_count=0 pending_disconnect_count=0 connection_count=0
+ts=2026-08-14T15:33:48.601001Z level=warn message="graceful cleanup aborted by shutdown grace deadline" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 reason=Sleep
+ts=2026-08-14T15:33:48.614541Z level=error message="serializeState callback returned error" error="dropped_reply: Actor reply channel was dropped without a response."
+ts=2026-08-14T15:33:48.600914Z level=warn message="actor work cancelled by shutdown deadline" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 kind=action reason=shutdown_deadline_elapsed
+ts=2026-08-14T15:33:48.614766Z level=warn message="actor framework action error response" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-6\")" group=actor code=dropped_reply
+ts=2026-08-14T15:33:48.614816Z level=warn message="actor work spawned after teardown; aborting immediately" kind=wait_until
+level=warn msg="http error response" group=actor code=dropped_reply message="An internal error occurred" actorId=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=4 actorKey=sim-20260814-2224/bot-6
+ts=2026-08-14T15:34:03.050613Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.099156Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.099392Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.099496Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.099606Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.099711Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.09998Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.100258Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.100524Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.100672Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.126391Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:34:03.127165Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+  [brain] Hacienda Verde: 9 actions (148.3s)
+  [brain] Sagupaan Stables: 7 actions (180.5s)
+  [brain] Talisay Tari Club: 1 actions (195.3s)
+  [brain] Bulawan Broodfarm: 1 actions (204.1s)
+  [brain] Ilonggo Ironworks: 11 actions (245.0s)
+ts=2026-08-14T15:37:03.508026Z level=warn message="actor framework action error response" actor_id=lvtjavec9pdbzfdn8kouvmw8rkal00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-marco\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:37:03.540411Z level=warn message="actor framework action error response" actor_id=t1kemmj17tw0b6hklvsvzp4zaxal00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-4\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:37:03.540537Z level=warn message="actor framework action error response" actor_id=1o6lmbq4t2ej7frsrhhj0o5y42cl00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-kevin\")" group=rivetkit code=internal_error
+  [brain] Hacienda Verde: 1 actions (227.3s)
+  [brain] Dugo't Dangal Farms: 6 actions (245.5s)
+  [brain] Bulawan Broodfarm: 1 actions (260.8s)
+ts=2026-08-14T15:38:02.348352Z level=warn message="failed to request actor state save" error="not_configured: Actor capability \'lifecycle events\' is not configured."
+ts=2026-08-14T15:38:02.355307Z level=warn message="actor framework action error response" actor_id=5nkaz2ad7uis21pdv9dkpuyga1bl00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-6\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:38:02.3812Z level=warn message="actor framework action error response" actor_id=1o6lmbq4t2ej7frsrhhj0o5y42cl00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-kevin\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:38:02.368199Z level=warn message="actor framework action error response" actor_id=pujemjqia9n92yxbzec4p9papwal00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-7\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:38:02.386184Z level=warn message="actor framework action error response" actor_id=tddpwuq2fubhs7nitfmur9r1gnal00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-15\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:38:02.386404Z level=warn message="actor framework action error response" actor_id=xk928yu259tb0f8nts3x27olyxal00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-5\")" group=rivetkit code=internal_error
+Day 60 (Tuesday): 19 fights, 13 unmatched, 0 claims settled, staking paid 16.01 GP to 20 stakers — 8:22
+ts=2026-08-14T15:38:21.872156Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=5 actorKey=sim-20260814-2224/bot-14
+  [brain] Ilonggo Ironworks: 9 actions (48.6s)
+  [brain] Talisay Tari Club: 9 actions (105.5s)
+  [brain] Sagupaan Stables: 1 actions (116.5s)
+  [brain] Kevin Gamefarm: 1 actions (125.7s)
+  [brain] Kidlat sa Silangan: 1 actions (131.0s)
+  [brain] Lupa Land Holdings: 7 actions (163.3s)
+  [brain] Reno Gamefarm: 9 actions (223.9s)
+  [brain] Cuchillos de Sonora: 7 actions (273.9s)
+ts=2026-08-14T15:43:02.772113Z level=warn message="actor framework action error response" actor_id=lvtjavec9pdbzfdn8kouvmw8rkal00 generation=6 actor_key="Some(\"sim-20260814-2224/bot-marco\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.772358Z level=warn message="actor framework action error response" actor_id=ljwxtd6tkxydtxt41r0cayvapxal00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-2\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.772933Z level=warn message="actor framework action error response" actor_id=d97lk38nu1ssrujqmj2xx4pnjual00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-9\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.773025Z level=warn message="actor framework action error response" actor_id=t1kemmj17tw0b6hklvsvzp4zaxal00 generation=6 actor_key="Some(\"sim-20260814-2224/bot-4\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.773105Z level=warn message="actor framework action error response" actor_id=xczop99lt4u0g8p1oip59jr6dncl00 generation=4 actor_key="Some(\"sim-20260814-2224/bot-10\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.773198Z level=warn message="actor framework action error response" actor_id=pq8jeden293og288447t2cttnual00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-16\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.773407Z level=warn message="actor framework action error response" actor_id=hg3eysxm680ahidkis5qqxq9mobl00 generation=6 actor_key="Some(\"sim-20260814-2224/bot-13\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.773487Z level=warn message="actor framework action error response" actor_id=pymzi7ocecnap0c985dljnibs5bl00 generation=6 actor_key="Some(\"sim-20260814-2224/bot-1\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.875828Z level=warn message="actor framework action error response" actor_id=dtqxxfz1149ansupr00qnn47aoal00 generation=6 actor_key="Some(\"sim-20260814-2224/bot-3\")" group=rivetkit code=internal_error
+ts=2026-08-14T15:43:02.876295Z level=warn message="actor framework action error response" actor_id=p6xoxmsen2ttafxri3h04jo3bjcl00 generation=5 actor_key="Some(\"sim-20260814-2224/bot-12\")" group=rivetkit code=internal_error
+Day 61 (Wednesday): 13 fights, 11 unmatched, 0 claims settled, staking paid 15.98 GP to 20 stakers — 4:53
+ts=2026-08-14T15:43:17.830517Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=6 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=6 actorKey=sim-20260814-2224/bot-14
+  [brain] Cuchillos de Sonora: 8 actions (81.0s)
+  [brain] Tari ng Bayan: 9 actions (92.1s)
+  [brain] Cavite Bloodlines: 7 actions (100.9s)
+  [brain] Hacienda Verde: 1 actions (106.1s)
+  [brain] Marco Gamefarm: 17 actions (127.5s)
+  [brain] Batangas Sprint Club: 10 actions (141.8s)
+  [brain] Sabungero Syndicate: 1 actions (150.4s)
+  [brain] Bulawan Broodfarm: 3 actions (156.0s)
+  [brain] Dugo't Dangal Farms: 6 actions (166.7s)
+  [brain] Pulang Bagwis: 10 actions (178.7s)
+  [brain] Ginto Gaming Club: 9 actions (193.2s)
+  [brain] Talisay Tari Club: 9 actions (204.5s)
+  [brain] Kidlat sa Silangan: 6 actions (212.5s)
+  [brain] Sagupaan Stables: 7 actions (228.3s)
+  [brain] Ilonggo Ironworks: 1 actions (221.6s)
+  [brain] Kevin Gamefarm: 6 actions (233.3s)
+  [brain] Reno Gamefarm: 10 actions (256.1s)
+  [brain] Lupa Land Holdings: 5 actions (269.0s)
+Day 62 (Thursday): 7 fights, 12 unmatched, 0 claims settled, staking paid 15.99 GP to 20 stakers — 4:41
+ts=2026-08-14T15:47:50.243084Z level=warn message="actor http error response" actor_id=p657pi8i8345qdin5jtxb5zbyyal00 generation=7 actor_key="Some(\"sim-20260814-2224/bot-14\")" group=message code=incoming_too_long
+level=warn msg="http error response" group=message code=incoming_too_long message="Incoming message too long" actorId=p657pi8i8345qdin5jtxb5zbyyal00 generation=7 actorKey=sim-20260814-2224/bot-14
+  [brain] Lupa Land Holdings: 1 actions (5.3s)
+  [brain] Ilonggo Ironworks: 12 actions (23.6s)
+  [brain] Marco Gamefarm: 19 actions (57.9s)

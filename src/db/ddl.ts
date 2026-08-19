@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS farms (
   handler TEXT,
   created_day INTEGER NOT NULL DEFAULT 0,
   is_bot INTEGER NOT NULL DEFAULT 0,
+  -- Who decides this barn's day (round 49): 'scripted' = engine/bots.ts,
+  -- 'llm' = an outside decider proposing actions. See schema.ts for the
+  -- ruling on why both are permanent. The CHECK is the guard that keeps a
+  -- typo from silently becoming a third, unhandled kind of bot.
+  brain TEXT NOT NULL DEFAULT 'scripted' CHECK (brain IN ('scripted','llm')),
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
   barn_expansions INTEGER NOT NULL DEFAULT 0
@@ -200,6 +205,27 @@ CREATE TABLE IF NOT EXISTS snapshots (
 CREATE TABLE IF NOT EXISTS sim_timings (
   day_index INTEGER PRIMARY KEY,
   ms INTEGER NOT NULL
+);
+
+-- What each llm barn was told and what it answered (round 50) -- one row per
+-- barn per game-day, brains-on runs only. Telemetry like sim_timings: the
+-- study table for "decision-making vs. context given", skipped by worldhash.
+CREATE TABLE IF NOT EXISTS brain_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_index INTEGER NOT NULL,
+  farm_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  brief_tokens INTEGER NOT NULL,
+  proposed_json TEXT NOT NULL,
+  dropped_json TEXT NOT NULL,
+  decide_ms INTEGER NOT NULL,
+  -- Round 63 (options brief): EV-capture stats, JSON. NULL on legacy-brief
+  -- calls -- and simulate.ts omits the column from the INSERT when absent,
+  -- so pre-round-63 worlds (which lack it) still resume under --keep.
+  offered_json TEXT,
+  -- Round 64: the full offered menu with taken picks joined on (MenuLog,
+  -- JSON) -- the tie-aware EV-capture study table. Same NULL/omit contract.
+  menu_json TEXT
 );
 
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────

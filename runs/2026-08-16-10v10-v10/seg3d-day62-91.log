@@ -1,0 +1,572 @@
+$ bun run scripts/simulate.ts "30" --keep "--seed=1" "--brain=qwen3:30b-a3b" "--llm=bot-7,bot-15,bot-marco,bot-8,bot-16,bot-9,bot-12,bot-13,bot-14,bot-17" --actors "--brief=options" "--db=data/sim-20260816-1706.db" --verbose
+Brain: qwen3:30b-a3b plays 10 stable(s) — bot-7, bot-15, bot-marco, bot-8, bot-16, bot-9, bot-12, bot-13, bot-14, bot-17
+
+  [brain] Cuchillos de Sonora: 7 actions (1.4s)
+  [brain] Hacienda Verde: 3 actions (2.3s)
+  [brain] Marco Gamefarm: 7 actions (3.7s)
+  [brain] Bagong Laban: 5 actions (4.4s)
+  [brain] Pulang Bagwis: 7 actions (5.8s)
+  [brain] Cavite Bloodlines: 10 actions (7.1s)
+  [brain] Talisay Tari Club: 5 actions (9.0s)
+  [brain] Batangas Sprint Club: 4 actions, 2 dropped (10.7s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+  [brain] Sugalan Social Club: 5 actions (12.1s)
+  [brain] Ilonggo Ironworks: 2 actions (13.6s)
+Day 62 (Thursday): 32 fights, 11 unmatched, 0 claims settled, staking paid 935.95 GP to 21 stakers — 14.3s
+  [brain] Sugalan Social Club: 8 actions (2.5s)
+  [brain] Bagong Laban: 10 actions, 6 dropped (5.5s)
+          ✗ 3× pick: #1 already picked
+          ✗ 3× pick: #2 already picked
+  [brain] Hacienda Verde: 8 actions (7.6s)
+  [brain] Marco Gamefarm: 8 actions (10.4s)
+  [brain] Talisay Tari Club: 6 actions (13.7s)
+  [brain] Ilonggo Ironworks: 2 actions, 1 dropped (15.5s)
+          ✗ 1× pick: #1 already picked
+  [brain] Batangas Sprint Club: 2 actions (17.1s)
+  [brain] Pulang Bagwis: 11 actions (20.7s)
+  [brain] Cavite Bloodlines: 7 actions (23.5s)
+  [brain] Cuchillos de Sonora: 5 actions (25.8s)
+Day 63 (Friday): 119 fights, 0 unmatched, 6 claims settled, staking paid 940.62 GP to 21 stakers — HATCH FRIDAY (8 hatched) — 26.5s
+        wk 9 · 2 days in 40.9s · avg 20.44s/day
+  [brain] Cavite Bloodlines: 14 actions (4.6s)
+  [brain] Talisay Tari Club: 5 actions (7.9s)
+  [brain] Bagong Laban: 6 actions (10.7s)
+  [brain] Batangas Sprint Club: 2 actions (11.8s)
+  [brain] Marco Gamefarm: 10 actions (15.4s)
+  [brain] Pulang Bagwis: 9 actions (18.6s)
+  [brain] Sugalan Social Club: 4 actions (20.7s)
+  [brain] Cuchillos de Sonora: 6 actions (23.5s)
+  [brain] Hacienda Verde: 9 actions (26.2s)
+  [brain] Ilonggo Ironworks: 3 actions (28.9s)
+Day 64 (Saturday): 222 fights, 0 unmatched, 10 claims settled, staking paid 1442.02 GP to 21 stakers — 29.9s
+  [brain] Ilonggo Ironworks: 9 actions (2.7s)
+  [brain] Bagong Laban: 6 actions, 3 dropped (6.2s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #4 already picked
+  [brain] Cavite Bloodlines: 10 actions (11.4s)
+  [brain] Pulang Bagwis: 7 actions (15.6s)
+  [brain] Sugalan Social Club: 4 actions (18.0s)
+  [brain] Cuchillos de Sonora: 6 actions (20.8s)
+  [brain] Hacienda Verde: 6 actions (23.8s)
+  [brain] Talisay Tari Club: 8 actions (26.8s)
+  [brain] Batangas Sprint Club: 2 actions (28.5s)
+  [brain] Marco Gamefarm: 7 actions (32.3s)
+Day 65 (Sunday): 231 fights, 0 unmatched, 10 claims settled, staking paid 1294.61 GP to 21 stakers — 33.3s
+  [brain] Cavite Bloodlines: 0 actions (3.0s)
+  [brain] Pulang Bagwis: 7 actions (6.1s)
+  [brain] Cuchillos de Sonora: 7 actions (8.5s)
+  [brain] Batangas Sprint Club: 3 actions (9.9s)
+  [brain] Talisay Tari Club: 5 actions (12.8s)
+  [brain] Hacienda Verde: 5 actions (15.8s)
+  [brain] Marco Gamefarm: 8 actions (19.8s)
+  [brain] Sugalan Social Club: 4 actions, 3 dropped (22.2s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Bagong Laban: 5 actions (25.1s)
+  [brain] Ilonggo Ironworks: 4 actions, 1 dropped (27.8s)
+          ✗ 1× pick: #1 already picked
+Day 66 (Monday): 161 fights, 0 unmatched, 5 claims settled, staking paid 1524.61 GP to 21 stakers — 28.6s
+  [brain] Sugalan Social Club: 3 actions, 4 dropped (3.4s)
+          ✗ 4× pick: #3 already picked
+  [brain] Marco Gamefarm: 7 actions (7.8s)
+  [brain] Talisay Tari Club: 0 actions (10.0s)
+  [brain] Hacienda Verde: 0 actions (12.4s)
+  [brain] Batangas Sprint Club: 2 actions (13.5s)
+  [brain] Pulang Bagwis: 7 actions (16.8s)
+  [brain] Ilonggo Ironworks: 7 actions (19.2s)
+  [brain] Cuchillos de Sonora: 7 actions (22.2s)
+  [brain] Bagong Laban: 6 actions (24.9s)
+  [brain] Cavite Bloodlines: 11 actions (29.1s)
+Day 67 (Tuesday): 170 fights, 0 unmatched, 7 claims settled, staking paid 990.40 GP to 21 stakers — 29.8s
+  [brain] Batangas Sprint Club: 1 actions (1.2s)
+  [brain] Bagong Laban: 6 actions (3.6s)
+  [brain] Talisay Tari Club: 10 actions (6.5s)
+  [brain] Cavite Bloodlines: 11 actions (11.0s)
+  [brain] Cuchillos de Sonora: 7 actions (13.6s)
+  [brain] Hacienda Verde: 6 actions (16.1s)
+  [brain] Sugalan Social Club: 5 actions (18.1s)
+  [brain] Ilonggo Ironworks: 5 actions (20.6s)
+  [brain] Pulang Bagwis: 7 actions (24.5s)
+  [brain] Marco Gamefarm: 10 actions (28.1s)
+Day 68 (Wednesday): 124 fights, 2 unmatched, 6 claims settled, staking paid 978.76 GP to 21 stakers — 28.7s
+  [brain] Pulang Bagwis: 7 actions (3.3s)
+  [brain] Cuchillos de Sonora: 6 actions (6.4s)
+  [brain] Bagong Laban: 5 actions (9.2s)
+  [brain] Ilonggo Ironworks: 4 actions (11.5s)
+  [brain] Batangas Sprint Club: 1 actions (12.7s)
+  [brain] Talisay Tari Club: 4 actions (15.1s)
+  [brain] Hacienda Verde: 5 actions (18.0s)
+  [brain] Sugalan Social Club: 4 actions (20.2s)
+  [brain] Marco Gamefarm: 8 actions (24.9s)
+  [brain] Cavite Bloodlines: 10 actions (30.3s)
+Day 69 (Thursday): 49 fights, 8 unmatched, 2 claims settled, staking paid 1039.22 GP to 21 stakers — 31.0s
+  [brain] Cuchillos de Sonora: 5 actions (2.9s)
+  [brain] Ilonggo Ironworks: 0 actions (5.1s)
+  [brain] Hacienda Verde: 6 actions (8.0s)
+  [brain] Batangas Sprint Club: 1 actions (9.2s)
+  [brain] Talisay Tari Club: 5 actions, 2 dropped (11.5s)
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Marco Gamefarm: 6 actions (15.4s)
+  [brain] Sugalan Social Club: 5 actions (17.4s)
+  [brain] Bagong Laban: 7 actions (20.3s)
+  [brain] Pulang Bagwis: 7 actions (24.3s)
+  [brain] Cavite Bloodlines: 13 actions (30.1s)
+Day 70 (Friday): 118 fights, 1 unmatched, 4 claims settled, staking paid 943.21 GP to 21 stakers — HATCH FRIDAY (8 hatched) — 30.9s
+        wk 10 · 7 days in 3:32 · avg 30.32s/day
+  [brain] Sugalan Social Club: 8 actions (2.5s)
+  [brain] Ilonggo Ironworks: 5 actions (5.9s)
+  [brain] Hacienda Verde: 7 actions (9.2s)
+  [brain] Cuchillos de Sonora: 0 actions (11.8s)
+  [brain] Batangas Sprint Club: 1 actions (13.4s)
+  [brain] Marco Gamefarm: 13 actions (17.2s)
+  [brain] Bagong Laban: 9 actions (20.9s)
+  [brain] Pulang Bagwis: 4 actions (22.8s)
+  [brain] Cavite Bloodlines: 14 actions (28.2s)
+  [brain] Talisay Tari Club: 5 actions (30.9s)
+Day 71 (Saturday): 201 fights, 2 unmatched, 6 claims settled, staking paid 1505.99 GP to 21 stakers — 31.9s
+  [brain] Pulang Bagwis: 14 actions, 2 dropped (3.1s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+  [brain] Bagong Laban: 8 actions (7.3s)
+  [brain] Ilonggo Ironworks: 8 actions (10.5s)
+  [brain] Marco Gamefarm: 10 actions (14.2s)
+  [brain] Talisay Tari Club: 5 actions (18.1s)
+  [brain] Batangas Sprint Club: 1 actions (19.6s)
+  [brain] Cuchillos de Sonora: 9 actions, 12 dropped (24.4s)
+          ✗ 3× pick: #1 already picked
+          ✗ 3× pick: #2 already picked
+          ✗ 3× pick: #3 already picked
+          ✗ 3× pick: #4 already picked
+  [brain] Sugalan Social Club: 5 actions (27.4s)
+  [brain] Cavite Bloodlines: 12 actions (32.3s)
+  [brain] Hacienda Verde: 9 actions (35.6s)
+Day 72 (Sunday): 190 fights, 0 unmatched, 9 claims settled, staking paid 1313.37 GP to 21 stakers — 36.5s
+  [brain] Batangas Sprint Club: 0 actions (1.9s)
+  [brain] Sugalan Social Club: 7 actions (4.1s)
+  [brain] Ilonggo Ironworks: 5 actions (7.2s)
+  [brain] Hacienda Verde: 6 actions (10.7s)
+  [brain] Bagong Laban: 8 actions (14.5s)
+  [brain] Cuchillos de Sonora: 6 actions (17.5s)
+  [brain] Cavite Bloodlines: 10 actions (23.2s)
+  [brain] Pulang Bagwis: 2 actions, 3 dropped (25.7s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Talisay Tari Club: 5 actions (28.5s)
+  [brain] Marco Gamefarm: 9 actions (31.9s)
+Day 73 (Monday): 146 fights, 0 unmatched, 4 claims settled, staking paid 1390.43 GP to 21 stakers — 32.8s
+  [brain] Cavite Bloodlines: 12 actions (5.3s)
+  [brain] Talisay Tari Club: 8 actions (8.6s)
+  [brain] Batangas Sprint Club: 0 actions, 2 dropped (10.5s)
+          ✗ 1× list_stud: unknown bird #555
+          ✗ 1× list_stud: unknown bird #556
+  [brain] Ilonggo Ironworks: 6 actions (13.2s)
+  [brain] Sugalan Social Club: 5 actions (15.7s)
+  [brain] Hacienda Verde: 16 actions (19.7s)
+  [brain] Marco Gamefarm: 6 actions (22.9s)
+  [brain] Bagong Laban: 11 actions (26.8s)
+  [brain] Pulang Bagwis: 7 actions (29.3s)
+  [brain] Cuchillos de Sonora: 6 actions (32.7s)
+Day 74 (Tuesday): 205 fights, 2 unmatched, 10 claims settled, staking paid 1169.20 GP to 21 stakers — 33.4s
+  [brain] Marco Gamefarm: 10 actions (3.4s)
+  [brain] Bagong Laban: 6 actions (7.0s)
+  [brain] Cuchillos de Sonora: 5 actions (9.4s)
+  [brain] Pulang Bagwis: 6 actions, 3 dropped (12.3s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Talisay Tari Club: 2 actions, 3 dropped (14.8s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Cavite Bloodlines: 10 actions (19.3s)
+  [brain] Hacienda Verde: 12 actions (23.7s)
+  [brain] Sugalan Social Club: 5 actions (26.7s)
+  [brain] Batangas Sprint Club: 4 actions (27.8s)
+  [brain] Ilonggo Ironworks: 6 actions (31.2s)
+Day 75 (Wednesday): 183 fights, 1 unmatched, 4 claims settled, staking paid 1010.81 GP to 21 stakers — 31.9s
+  [brain] Batangas Sprint Club: 1 actions (1.4s)
+  [brain] Bagong Laban: 9 actions (4.9s)
+  [brain] Talisay Tari Club: 5 actions (7.3s)
+  [brain] Sugalan Social Club: 0 actions (8.8s)
+  [brain] Pulang Bagwis: 5 actions (11.2s)
+  [brain] Cuchillos de Sonora: 4 actions, 4 dropped (15.5s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+          ✗ 1× pick: #4 already picked
+  [brain] Ilonggo Ironworks: 6 actions (18.5s)
+  [brain] Marco Gamefarm: 6 actions, 2 dropped (22.8s)
+          ✗ 2× pick: #6 already picked
+  [brain] Cavite Bloodlines: 12 actions (26.6s)
+  [brain] Hacienda Verde: 10 actions (30.5s)
+Day 76 (Thursday): 56 fights, 3 unmatched, 1 claims settled, staking paid 1045.39 GP to 21 stakers — 31.2s
+  [brain] Talisay Tari Club: 4 actions (3.2s)
+  [brain] Batangas Sprint Club: 2 actions (4.4s)
+  [brain] Bagong Laban: 8 actions (8.0s)
+  [brain] Cavite Bloodlines: 10 actions (12.9s)
+  [brain] Sugalan Social Club: 5 actions (15.5s)
+  [brain] Ilonggo Ironworks: 4 actions (18.7s)
+  [brain] Cuchillos de Sonora: 7 actions (21.7s)
+  [brain] Pulang Bagwis: 4 actions (23.9s)
+  [brain] Marco Gamefarm: 10 actions (27.6s)
+  [brain] Hacienda Verde: 7 actions (33.3s)
+Day 77 (Friday): 138 fights, 2 unmatched, 5 claims settled, staking paid 969.00 GP to 21 stakers — HATCH FRIDAY (7 hatched) — 34.2s
+        wk 11 · 7 days in 3:52 · avg 33.12s/day
+  [brain] Talisay Tari Club: 3 actions (3.0s)
+  [brain] Hacienda Verde: 11 actions (7.2s)
+  [brain] Cavite Bloodlines: 12 actions (11.3s)
+  [brain] Marco Gamefarm: 10 actions (14.6s)
+  [brain] Batangas Sprint Club: 4 actions (17.7s)
+  [brain] Cuchillos de Sonora: 6 actions (20.6s)
+  [brain] Bagong Laban: 10 actions (24.1s)
+  [brain] Ilonggo Ironworks: 10 actions, 5 dropped (28.3s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+          ✗ 1× pick: #4 already picked
+          ✗ 1× pick: #5 already picked
+  [brain] Sugalan Social Club: 6 actions (30.9s)
+  [brain] Pulang Bagwis: 10 actions (34.5s)
+Day 78 (Saturday): 242 fights, 0 unmatched, 6 claims settled, staking paid 1766.39 GP to 21 stakers — 35.7s
+  [brain] Ilonggo Ironworks: 7 actions (3.8s)
+  [brain] Marco Gamefarm: 13 actions (7.5s)
+  [brain] Talisay Tari Club: 5 actions (10.4s)
+  [brain] Bagong Laban: 8 actions (15.3s)
+  [brain] Cavite Bloodlines: 10 actions (20.7s)
+  [brain] Cuchillos de Sonora: 8 actions (23.6s)
+  [brain] Sugalan Social Club: 3 actions (26.2s)
+  [brain] Batangas Sprint Club: 3 actions (29.3s)
+  [brain] Hacienda Verde: 9 actions (33.3s)
+  [brain] Pulang Bagwis: 7 actions (37.2s)
+Day 79 (Sunday): 243 fights, 2 unmatched, 8 claims settled, staking paid 1381.62 GP to 21 stakers — 38.2s
+  [brain] Bagong Laban: 10 actions (3.8s)
+  [brain] Hacienda Verde: 9 actions, 4 dropped (8.7s)
+          ✗ 2× pick: #5 already picked
+          ✗ 1× pick: #3 already picked
+          ✗ 1× pick: #6 already picked
+  [brain] Ilonggo Ironworks: 2 actions (10.9s)
+  [brain] Cavite Bloodlines: 10 actions (15.9s)
+  [brain] Talisay Tari Club: 4 actions, 3 dropped (19.0s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Sugalan Social Club: 6 actions, 9 dropped (25.0s)
+          ✗ 3× pick: #4 already picked
+          ✗ 2× pick: #1 already picked
+          ✗ 2× pick: #2 already picked
+          ✗ 2× pick: #3 already picked
+  [brain] Batangas Sprint Club: 4 actions (28.1s)
+  [brain] Marco Gamefarm: 9 actions (32.8s)
+  [brain] Pulang Bagwis: 9 actions (38.2s)
+  [brain] Cuchillos de Sonora: 6 actions (41.9s)
+Day 80 (Monday): 226 fights, 3 unmatched, 8 claims settled, staking paid 1245.59 GP to 21 stakers — 42.8s
+  [brain] Pulang Bagwis: 8 actions (4.3s)
+  [brain] Cavite Bloodlines: 9 actions (8.0s)
+  [brain] Sugalan Social Club: 0 actions (10.8s)
+  [brain] Cuchillos de Sonora: 6 actions (14.1s)
+  [brain] Ilonggo Ironworks: 6 actions (17.7s)
+  [brain] Talisay Tari Club: 5 actions (20.4s)
+  [brain] Batangas Sprint Club: 5 actions (23.8s)
+  [brain] Bagong Laban: 9 actions (28.3s)
+  [brain] Marco Gamefarm: 7 actions (32.1s)
+  [brain] Hacienda Verde: 6 actions (36.5s)
+Day 81 (Tuesday): 207 fights, 0 unmatched, 4 claims settled, staking paid 1126.38 GP to 21 stakers — 37.4s
+  [brain] Pulang Bagwis: 7 actions (4.6s)
+  [brain] Sugalan Social Club: 7 actions (7.6s)
+  [brain] Cuchillos de Sonora: 5 actions, 6 dropped (11.4s)
+          ✗ 3× pick: #1 already picked
+          ✗ 3× pick: #2 already picked
+  [brain] Ilonggo Ironworks: 4 actions (15.8s)
+  [brain] Cavite Bloodlines: 11 actions (19.2s)
+  [brain] Bagong Laban: 13 actions (24.0s)
+  [brain] Hacienda Verde: 7 actions (28.4s)
+  [brain] Talisay Tari Club: 9 actions, 2 dropped (31.7s)
+          ✗ 2× pick: #3 already picked
+  [brain] Batangas Sprint Club: 6 actions (35.0s)
+  [brain] Marco Gamefarm: 11 actions (39.1s)
+Day 82 (Wednesday): 171 fights, 1 unmatched, 8 claims settled, staking paid 1102.41 GP to 21 stakers — 40.0s
+  [brain] Talisay Tari Club: 5 actions (3.4s)
+  [brain] Sugalan Social Club: 5 actions (6.5s)
+  [brain] Hacienda Verde: 7 actions (10.4s)
+  [brain] Cavite Bloodlines: 6 actions, 1 dropped (14.7s)
+          ✗ 1× pick: #4 already picked
+  [brain] Batangas Sprint Club: 8 actions (18.5s)
+  [brain] Marco Gamefarm: 7 actions (21.7s)
+  [brain] Cuchillos de Sonora: 6 actions (24.0s)
+  [brain] Ilonggo Ironworks: 9 actions (27.7s)
+  [brain] Bagong Laban: 9 actions (31.7s)
+  [brain] Pulang Bagwis: 9 actions (35.5s)
+Day 83 (Thursday): 69 fights, 5 unmatched, 5 claims settled, staking paid 1033.00 GP to 21 stakers — 36.4s
+  [brain] Cavite Bloodlines: 10 actions (4.1s)
+  [brain] Cuchillos de Sonora: 2 actions (6.3s)
+  [brain] Bagong Laban: 6 actions (10.3s)
+  [brain] Sugalan Social Club: 3 actions (12.7s)
+  [brain] Pulang Bagwis: 7 actions (16.7s)
+  [brain] Ilonggo Ironworks: 5 actions (19.8s)
+  [brain] Batangas Sprint Club: 6 actions (23.6s)
+  [brain] Talisay Tari Club: 4 actions, 3 dropped (26.5s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Marco Gamefarm: 6 actions (30.6s)
+  [brain] Hacienda Verde: 8 actions (34.1s)
+Day 84 (Friday): 142 fights, 2 unmatched, 3 claims settled, staking paid 997.39 GP to 21 stakers — HATCH FRIDAY (8 hatched) — 35.1s
+        wk 12 · 7 days in 4:25 · avg 37.93s/day
+  [brain] Pulang Bagwis: 10 actions (4.1s)
+  [brain] Cavite Bloodlines: 10 actions (7.9s)
+  [brain] Batangas Sprint Club: 0 actions (10.6s)
+  [brain] Hacienda Verde: 9 actions (14.4s)
+  [brain] Sugalan Social Club: 5 actions (17.5s)
+  [brain] Cuchillos de Sonora: 4 actions (20.4s)
+  [brain] Bagong Laban: 9 actions (23.7s)
+  [brain] Ilonggo Ironworks: 5 actions (26.8s)
+  [brain] Talisay Tari Club: 5 actions (29.7s)
+  [brain] Marco Gamefarm: 7 actions (33.1s)
+Day 85 (Saturday): 271 fights, 0 unmatched, 6 claims settled, staking paid 1635.84 GP to 21 stakers — 34.4s
+  [brain] Ilonggo Ironworks: 6 actions (3.4s)
+  [brain] Batangas Sprint Club: 9 actions (7.3s)
+  [brain] Marco Gamefarm: 8 actions (10.9s)
+  [brain] Sugalan Social Club: 4 actions (13.7s)
+  [brain] Talisay Tari Club: 4 actions (16.6s)
+  [brain] Cavite Bloodlines: 9 actions (21.1s)
+  [brain] Cuchillos de Sonora: 6 actions (23.6s)
+  [brain] Hacienda Verde: 8 actions (29.4s)
+  [brain] Pulang Bagwis: 8 actions (33.7s)
+  [brain] Bagong Laban: 7 actions (36.8s)
+Day 86 (Sunday): 271 fights, 0 unmatched, 6 claims settled, staking paid 1376.16 GP to 21 stakers — 37.9s
+  [brain] Cavite Bloodlines: 5 actions (4.7s)
+  [brain] Cuchillos de Sonora: 2 actions (7.0s)
+  [brain] Marco Gamefarm: 8 actions (10.2s)
+  [brain] Talisay Tari Club: 5 actions, 3 dropped (14.5s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+          ✗ 1× pick: #3 already picked
+  [brain] Hacienda Verde: 9 actions (19.0s)
+  [brain] Ilonggo Ironworks: 6 actions (22.0s)
+  [brain] Sugalan Social Club: 5 actions (24.7s)
+  [brain] Bagong Laban: 6 actions, 1 dropped (29.1s)
+          ✗ 1× pick: #2 already picked
+  [brain] Batangas Sprint Club: 6 actions (33.4s)
+  [brain] Pulang Bagwis: 10 actions (37.9s)
+Day 87 (Monday): 186 fights, 0 unmatched, 6 claims settled, staking paid 1314.01 GP to 21 stakers — 38.9s
+  [brain] Sugalan Social Club: 5 actions (2.8s)
+  [brain] Cavite Bloodlines: 0 actions (5.7s)
+  [brain] Pulang Bagwis: 10 actions (10.6s)
+  [brain] Talisay Tari Club: 2 actions (13.8s)
+  [brain] Bagong Laban: 8 actions (16.8s)
+  [brain] Ilonggo Ironworks: 5 actions (20.6s)
+  [brain] Batangas Sprint Club: 5 actions (24.9s)
+  [brain] Cuchillos de Sonora: 1 actions, 6 dropped (28.4s)
+          ✗ 3× pick: #1 already picked
+          ✗ 3× pick: #2 already picked
+  [brain] Hacienda Verde: 8 actions (32.5s)
+  [brain] Marco Gamefarm: 8 actions (36.8s)
+Day 88 (Tuesday): 259 fights, 0 unmatched, 8 claims settled, staking paid 1158.40 GP to 21 stakers — 37.7s
+  [brain] Batangas Sprint Club: 5 actions (4.0s)
+  [brain] Hacienda Verde: 9 actions (8.7s)
+  [brain] Cuchillos de Sonora: 6 actions, 2 dropped (11.2s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+  [brain] Sugalan Social Club: 5 actions (14.1s)
+  [brain] Talisay Tari Club: 0 actions (16.6s)
+  [brain] Pulang Bagwis: 11 actions (21.3s)
+  [brain] Cavite Bloodlines: 17 actions, 1 dropped (25.5s)
+          ✗ 1× pick: #5 already picked
+  [brain] Bagong Laban: 5 actions, 1 dropped (29.2s)
+          ✗ 1× pick: #3 already picked
+  [brain] Ilonggo Ironworks: 6 actions (32.5s)
+  [brain] Marco Gamefarm: 7 actions (37.0s)
+Day 89 (Wednesday): 273 fights, 1 unmatched, 8 claims settled, staking paid 1204.81 GP to 21 stakers — 38.0s
+  [brain] Cavite Bloodlines: 9 actions (4.2s)
+  [brain] Hacienda Verde: 8 actions (8.9s)
+  [brain] Bagong Laban: 5 actions (11.6s)
+  [brain] Pulang Bagwis: 11 actions (16.3s)
+  [brain] Sugalan Social Club: 4 actions (18.6s)
+  [brain] Cuchillos de Sonora: 5 actions, 2 dropped (21.5s)
+          ✗ 1× pick: #1 already picked
+          ✗ 1× pick: #2 already picked
+  [brain] Batangas Sprint Club: 6 actions (24.6s)
+  [brain] Marco Gamefarm: 6 actions (28.0s)
+  [brain] Ilonggo Ironworks: 5 actions (31.1s)
+  [brain] Talisay Tari Club: 8 actions, 1 dropped (33.9s)
+          ✗ 1× pick: #1 already picked
+Day 90 (Thursday): 120 fights, 5 unmatched, 3 claims settled, staking paid 1061.41 GP to 21 stakers — 34.9s
+  [brain] Cavite Bloodlines: 10 actions (4.4s)
+  [brain] Batangas Sprint Club: 6 actions, 2 dropped (8.2s)
+          ✗ 1× pick: #3 already picked
+          ✗ 1× pick: #4 already picked
+  [brain] Talisay Tari Club: 4 actions (11.2s)
+  [brain] Sugalan Social Club: 8 actions (14.2s)
+  [brain] Ilonggo Ironworks: 0 actions (16.7s)
+  [brain] Marco Gamefarm: 8 actions (20.5s)
+  [brain] Pulang Bagwis: 11 actions (26.0s)
+  [brain] Bagong Laban: 6 actions (28.8s)
+  [brain] Cuchillos de Sonora: 4 actions (31.1s)
+  [brain] Hacienda Verde: 0 actions (34.2s)
+Day 91 (Friday): 200 fights, 1 unmatched, 9 claims settled, staking paid 1027.80 GP to 21 stakers — HATCH FRIDAY (7 hatched) — 35.3s
+        wk 13 · 7 days in 4:17 · avg 36.72s/day
+
+TIMING
+  seed + bots      0.0s
+  simulation      16:48   (30 day(s), avg 33.60s/day · honest 8% / tick 92%)
+  brains          16:23   (32.77s/day · 98% of the run, 300 call(s), 0 failed)
+  doctor           2.2s
+  total           16:50
+  slowest days d80 42.8s · d82 40.0s · d87 38.9s
+  per unit     89.14 ms/fight · 121.77 ms/entry
+
+BARN CAREERS (durable actor state — persists across runs)
+  bot-7     90 day(s) played · last day 90 · 421 proposed, 47 dropped, 0 failure(s) · 1580.8s thinking
+  bot-8     90 day(s) played · last day 90 · 490 proposed, 70 dropped, 0 failure(s) · 1530.5s thinking
+  bot-9     90 day(s) played · last day 90 · 617 proposed, 31 dropped, 0 failure(s) · 1420.8s thinking
+  bot-marco  90 day(s) played · last day 90 · 592 proposed, 20 dropped, 0 failure(s) · 1695.0s thinking
+  bot-12    90 day(s) played · last day 90 · 486 proposed, 37 dropped, 0 failure(s) · 1601.0s thinking
+  bot-13    90 day(s) played · last day 90 · 584 proposed, 37 dropped, 0 failure(s) · 1709.4s thinking
+  bot-14    90 day(s) played · last day 90 · 475 proposed, 34 dropped, 0 failure(s) · 1483.8s thinking
+  bot-15    88 day(s) played · last day 90 · 521 proposed, 54 dropped, 1 failure(s) · 1634.3s thinking
+  bot-16    89 day(s) played · last day 90 · 720 proposed, 13 dropped, 0 failure(s) · 1715.2s thinking
+  bot-17    89 day(s) played · last day 90 · 598 proposed, 66 dropped, 1 failure(s) · 1673.7s thinking
+
+PINTAKASI DOCTOR · data/sim-20260816-1706.db
+day 91 · Friday, April 4, 3000 · week 13 · 21 farms · 1169 birds
+
+INVARIANTS
+  PASS  GP conservation            1,681,600.00 GP in world = 1,681,600.00 expected
+  PASS  LT conservation            808,205.83 LT held = 808,205.83 LT ledgered
+  PASS  no negative balances       staker 0.09 · juice 0.02 · 21 wallets clean
+  PASS  pit figures                11306 fights · 11306 mirrored · 0 inversions
+  PASS  purses settle              53 completed crown(s), exact to the cent
+  PASS  no stranded entries        54 resolved championship(s), every entry settled
+  PASS  one card per bird per day  8277 entries across 8277 bird-days · 0 over cap
+  PASS  fight counts match the log 8277 settled entries · 20748 fights claimed · 0 mismatched
+  PASS  scout book matches the log 3477 book lines audited · 0 out of step
+
+CARD HEALTH
+  8277 entries · 8136 fought · 141 unmatched (1.7%) · 787 lobbies
+  weather timing  2024/7748 starred entries ran on the bird's own element day (26.1% vs 20.0% by chance, 1.31×) ✓ entries are being timed
+
+GROUP STAGE
+  fights per settled entry  mean 2.51 of 3 · 8277 settled entries
+  full cards  5023 (60.7%) took all 3 · short 3113 (37.6%) fought 1–2 · 141 (1.7%) never fought
+  groups  2374 dealt · mean 3.49 birds · 44 of one (44 were the lobby's only entry)
+
+LOBBY FILL
+  mean 10.52 birds per lobby · 787 lobbies · 44 held a single bird (5.6%)
+      1 █                        5.6%
+    2-3 █████                    20.5%
+    4-7 █████                    21.6%
+   8-15 ███████                  28.1%
+    16+ ██████                   24.3%
+  same-barn-only lobbies 32 · 75 birds stranded with no cross-barn opponent
+
+WORST LOBBY KEYS
+  juvenile/claimer/b3@90               16 entries, 25.0% unmatched
+  juvenile/claimer/b5@180              32 entries, 25.0% unmatched
+  juvenile/claimer/b4@180              31 entries, 22.6% unmatched
+
+POPULATION
+  eggs 137 · active 452 · retired 580 · 21 farms
+  by age  1:135  2:139  3:113  4:23  5:24  6:13  7:4  8:1
+  supply  hatches 1032 · gacha eggs 230 · covers 771
+  loss    manual 54 · hardcore 525 · age 1
+  barns   0 of 21 at capacity · 5 expansion(s) bought
+
+FIGHT VOLUME
+  wk  0       0  
+  wk  1     815  ████████████
+  wk  2    1310  ███████████████████
+  wk  3     958  ██████████████
+  wk  4     348  █████
+  wk  5     220  ███
+  wk  6     388  ██████
+  wk  7     667  ██████████
+  wk  8     896  █████████████
+  wk  9    1179  █████████████████
+  wk 10    1218  ██████████████████
+  wk 11    1404  █████████████████████
+  wk 12    1637  ████████████████████████
+  wk 13     266  ████  (1 day)
+  trough wk5 (220) = 16.8% of the wk2 peak (1310) — EXPECTED: the age-3 founder flock is culled by the hardcore
+  Majors before the first bred generation reaches fighting age, then volume
+  recovers. Reference: wk3/4/5/6/7 = 1092/397/145/498/871 fights (20 farms, 91 days).
+
+BLOODLINES
+  gen   birds   mean grade     stars   home margin
+  0       398   B+ ( 330.8)    1.87★      7.9
+  1       621   B+ ( 344.6)    2.36★     13.3
+  2       150   B+ ( 358.3)    2.52★     13.4
+  gen 2 vs gen 0  +27.5 mean stat · +0.7★ · +5.5 pts of home margin
+
+FIGHT ECONOMY BY RUNG
+    rung                      fee  entries  share   GP risked   LT minted  LT/100GP
+    juvenile/claimer@90        24      177   2.1%       3,248      466.96     14.38
+    juvenile/maiden            30      233   2.8%       4,860      713.82     14.69
+    juvenile/claimer@180       48      161   1.9%       5,632      900.62     15.99
+    real/claimer@90            48    1,171  14.1%      48,896    7,877.79     16.11
+    real/maiden                60      226   2.7%       9,560    1,578.08     16.51
+    real/nw3                   60      278   3.4%      12,560    2,064.23     16.43
+    juvenile/claimer@270       72      132   1.6%       7,152    1,207.38     16.88
+    real/claimer@180           96      503   6.1%      41,280    7,362.72     17.84
+    real/claimer@270          144      394   4.8%      46,656    8,811.74     18.89
+    juvenile/open             150    2,388  28.9%     307,300   58,628.75     19.08
+    real/open                 300    2,614  31.6%     663,600  140,221.74     21.13
+
+LAND SUPPLY
+  circulating 808,205.83 LT · 803,758.00 staked (99.4%) · 4,447.83 idle
+  minted      831,605.83 LT over 92 day(s) · 9,039.19 LT per day
+    purse_payout    507,000.00 LT   61.0%
+    card_settled    229,833.83 LT   27.6%
+    buy_land         91,010.00 LT   10.9%
+    gacha             3,762.00 LT    0.5%
+  burned      23,400.00 LT (2.8% of issuance) — the sinks
+    stud_listed      17,400.00 LT   74.4%
+    barn_expanded     6,000.00 LT   25.6%
+  valuation   at $0.01/LT (pencilled) the world has issued $8,316 of land against $21,020 of GP faucet — $0.40 of LT per $1 of GP
+  runway      100B-token target reached in 10,000+ year(s) at this population's rate — scales with farms, not with time
+
+REPLAY
+  201/201 sampled fight rows rebuild exactly from their seed
+
+STAKER POOL
+  paid out 100,569.51 GP over 91 day(s) · 0.09 waiting · 803,758.00 LT staked
+  land_purchase 72,808.00 · gacha 14,216.00 · breed 12,336.00 · claim_rake 1,209.60
+
+CHAMPIONSHIPS
+  major     29 run / 1 cancelled · field 19.1 · purse 236,252.22
+            paid 285/554 entrants (51%) · biggest take 2.3% of all purse GP · smallest 120.85 GP
+            entry fees 88,640.00 GP fund 38% of the purse · the rest is juice (gacha + breed fees) · net to the field 147,612.22 GP
+            under the door 60/285 winners (21%) took less purse than their entry fee
+  juvenile  24 run / 0 cancelled · field 18.0 · purse 65,099.76
+            paid 219/431 entrants (51%) · biggest take 5.0% of all purse GP · smallest 44.01 GP
+            entry fees 20,688.00 GP fund 32% of the purse · the rest is juice (gacha + breed fees) · net to the field 44,411.76 GP
+            under the door 5/219 winners (2%) took less purse than their entry fee
+
+MECHANIC ADOPTION            farms of 21
+  claims placed             21  █████████████████████
+  studs listed              11  ███████████░░░░░░░░░░
+  land purchased             2  ██░░░░░░░░░░░░░░░░░░░
+  paid gacha rolls          11  ███████████░░░░░░░░░░
+  gacha bundles bought       2  ██░░░░░░░░░░░░░░░░░░░
+  barn expanded              4  ████░░░░░░░░░░░░░░░░░
+  Major entries             21  █████████████████████
+  juvenile championship     21  █████████████████████
+
+DISCOVERY
+  age 1    carded 1767/7688 at the true best blade (23.0% vs random 20.0%) · 50.0% on or adjacent (random 48.6%) · answer coverage 33.0% · SCOUT 1502/2538 right (59.2% vs random 20.0%), 79.2% on or adjacent · clear home 838/1343 (62.4%, 78.8% adjacent)
+  age 2–3  carded 3485/12211 at the true best blade (28.5% vs random 20.0%) · 56.0% on or adjacent (random 48.9%) · answer coverage 78.5% · SCOUT 4776/9591 right (49.8% vs random 20.0%), 74.8% on or adjacent · clear home 2704/4864 (55.6%, 76.4% adjacent)
+  age 4+   carded 268/849 at the true best blade (31.6% vs random 20.0%) · 60.3% on or adjacent (random 51.7%) · answer coverage 86.3% · SCOUT 325/733 right (44.3% vs random 20.0%), 71.2% on or adjacent · clear home 181/395 (45.8%, 76.2% adjacent)
+  explored  5/5 blades saw an age-1 entry in the discovery year
+  flock shape  median home blade beats its runner-up by 10.9 pts · 53.6% of birds clear the 10-pt bar
+  breeding  731 bot covers · hens carry +54.0 of their own shape (any bird: +71.5) · the sires chosen reinforce it by +53.0 (an unchosen sire: +1.5) · foals land at +56.0
+  broodmare band  72.3% of 256 settled retired hens have ever carried · busiest hen 9 foals
+  ✓ the scout beats chance on mature birds with a home — 45.8% vs 20.0%
+
+0 warnings · 0 invariant failures
+
+Done → /Users/plumeria/Repos/pintakasi-bloodlines/data/sim-20260816-1706.db
+Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the newest sim.

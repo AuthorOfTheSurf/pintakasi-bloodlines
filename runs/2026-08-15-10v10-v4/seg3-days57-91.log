@@ -1,0 +1,583 @@
+$ bun run scripts/simulate.ts "35" --keep "--seed=1" "--brain=qwen3:30b-a3b" "--llm=bot-7,bot-15,bot-marco,bot-9,bot-8,bot-16,bot-14,bot-12,bot-13,bot-17" --actors
+Brain: qwen3:30b-a3b plays 10 stable(s) — bot-7, bot-15, bot-marco, bot-9, bot-8, bot-16, bot-14, bot-12, bot-13, bot-17
+
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"57gc9pgv8060hl0b9pu8o0frmdbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"h4eietf9164oh9rxrip2d70cu5bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"pac7t62ennk0myu1224q9gxik0bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"hki8cvyg6qyxilawke116drv9wcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5rbajbwzr45nrvdc8g5b4trciial00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lnrgdrka78wcbwsn6veah0gmuzbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"xg6lgpviqjsse9efgsaual6cgdbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lzwsml44k2ea5as936qsn7iqk3dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"96ep6s3xuc27dtkkqrrpgxdck1dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5vqcev93j7um3z0lf035qke72ral00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5rbajbwzr45nrvdc8g5b4trciial00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"57gc9pgv8060hl0b9pu8o0frmdbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"h4eietf9164oh9rxrip2d70cu5bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lzwsml44k2ea5as936qsn7iqk3dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"96ep6s3xuc27dtkkqrrpgxdck1dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lnrgdrka78wcbwsn6veah0gmuzbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"pac7t62ennk0myu1224q9gxik0bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"hki8cvyg6qyxilawke116drv9wcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"xg6lgpviqjsse9efgsaual6cgdbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5vqcev93j7um3z0lf035qke72ral00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5rbajbwzr45nrvdc8g5b4trciial00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"57gc9pgv8060hl0b9pu8o0frmdbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lzwsml44k2ea5as936qsn7iqk3dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"96ep6s3xuc27dtkkqrrpgxdck1dl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"pac7t62ennk0myu1224q9gxik0bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"hki8cvyg6qyxilawke116drv9wcl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"lnrgdrka78wcbwsn6veah0gmuzbl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"5vqcev93j7um3z0lf035qke72ral00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"h4eietf9164oh9rxrip2d70cu5bl00\"}"
+level=warn msg="http error response" group=guard code=actor_ready_timeout message="Timed out waiting for actor to become ready. Ensure that the pool selector is accurate and there are envoys available in the namespace you created this actor." metadata="{\"actor_id\":\"xg6lgpviqjsse9efgsaual6cgdbl00\"}"
+[bot-brain] bot-7 proposed nothing: Actor failed to start (h4eietf9164oh9rxrip2d70cu5bl00): "no_envoys"
+[bot-brain] bot-8 proposed nothing: Actor failed to start (96ep6s3xuc27dtkkqrrpgxdck1dl00): "no_envoys"
+[bot-brain] bot-9 proposed nothing: Actor failed to start (5rbajbwzr45nrvdc8g5b4trciial00): "no_envoys"
+[bot-brain] bot-marco proposed nothing: Actor failed to start (pac7t62ennk0myu1224q9gxik0bl00): "no_envoys"
+[bot-brain] bot-12 proposed nothing: Actor failed to start (5vqcev93j7um3z0lf035qke72ral00): "no_envoys"
+[bot-brain] bot-13 proposed nothing: Actor failed to start (hki8cvyg6qyxilawke116drv9wcl00): "no_envoys"
+[bot-brain] bot-14 proposed nothing: Actor failed to start (lzwsml44k2ea5as936qsn7iqk3dl00): "no_envoys"
+[bot-brain] bot-15 proposed nothing: Actor failed to start (57gc9pgv8060hl0b9pu8o0frmdbl00): "no_envoys"
+[bot-brain] bot-16 proposed nothing: Actor failed to start (lnrgdrka78wcbwsn6veah0gmuzbl00): "no_envoys"
+[bot-brain] bot-17 proposed nothing: Actor failed to start (xg6lgpviqjsse9efgsaual6cgdbl00): "no_envoys"
+Day 57 (Saturday): 137 fights, 3 unmatched, 5 claims settled, staking paid 2162.79 GP to 21 stakers — 2:01
+  [brain] Sugalan Social Club: 9 actions (8.4s)
+  [brain] Cavite Bloodlines: 10 actions (12.3s)
+  [brain] Marco Gamefarm: 10 actions (16.4s)
+  [brain] Talisay Tari Club: 14 actions (22.3s)
+  [brain] Ilonggo Ironworks: 14 actions (31.0s)
+  [brain] Pulang Bagwis: 0 actions (32.6s)
+  [brain] Bagong Laban: 0 actions (34.2s)
+  [brain] Cuchillos de Sonora: 0 actions (35.8s)
+  [brain] Batangas Sprint Club: 10 actions (41.5s)
+  [brain] Hacienda Verde: 0 actions (42.8s)
+Day 58 (Sunday): 124 fights, 0 unmatched, 8 claims settled, staking paid 1125.60 GP to 21 stakers — 43.4s
+  [brain] Talisay Tari Club: 0 actions (1.4s)
+  [brain] Marco Gamefarm: 10 actions (4.8s)
+  [brain] Cavite Bloodlines: 1 actions (6.2s)
+  [brain] Bagong Laban: 1 actions (7.5s)
+  [brain] Sugalan Social Club: 9 actions (10.6s)
+  [brain] Ilonggo Ironworks: 14 actions (18.0s)
+  [brain] Pulang Bagwis: 0 actions (19.2s)
+  [brain] Cuchillos de Sonora: 0 actions (20.4s)
+  [brain] Hacienda Verde: 13 actions (24.1s)
+  [brain] Batangas Sprint Club: 12 actions (27.9s)
+Day 59 (Monday): 154 fights, 0 unmatched, 8 claims settled, staking paid 1013.60 GP to 21 stakers — 28.5s
+  [brain] Sugalan Social Club: 1 actions (1.4s)
+  [brain] Ilonggo Ironworks: 2 actions (3.2s)
+  [brain] Talisay Tari Club: 0 actions (4.5s)
+  [brain] Pulang Bagwis: 13 actions (9.4s)
+  [brain] Cavite Bloodlines: 0 actions (10.6s)
+  [brain] Hacienda Verde: 0 actions (11.8s)
+  [brain] Bagong Laban: 2 actions (13.3s)
+  [brain] Batangas Sprint Club: 12 actions (19.7s)
+  [brain] Cuchillos de Sonora: 9 actions (23.9s)
+  [brain] Marco Gamefarm: 10 actions (27.3s)
+Day 60 (Tuesday): 170 fights, 0 unmatched, 7 claims settled, staking paid 1213.81 GP to 21 stakers — 28.0s
+  [brain] Hacienda Verde: 9 actions (4.9s)
+  [brain] Marco Gamefarm: 10 actions (10.0s)
+  [brain] Batangas Sprint Club: 2 actions (11.5s)
+  [brain] Ilonggo Ironworks: 12 actions (18.3s)
+  [brain] Pulang Bagwis: 13 actions (23.2s)
+  [brain] Talisay Tari Club: 0 actions (24.5s)
+  [brain] Cavite Bloodlines: 0 actions (25.6s)
+  [brain] Bagong Laban: 13 actions (30.9s)
+  [brain] Sugalan Social Club: 9 actions (34.2s)
+  [brain] Cuchillos de Sonora: 0 actions (35.6s)
+Day 61 (Wednesday): 99 fights, 0 unmatched, 3 claims settled, staking paid 935.18 GP to 21 stakers — 36.0s
+  [brain] Cavite Bloodlines: 13 actions (4.0s)
+  [brain] Sugalan Social Club: 9 actions (8.8s)
+  [brain] Cuchillos de Sonora: 0 actions (10.0s)
+  [brain] Marco Gamefarm: 11 actions (14.0s)
+  [brain] Hacienda Verde: 0 actions (15.1s)
+  [brain] Bagong Laban: 15 actions (22.6s)
+  [brain] Pulang Bagwis: 13 actions (26.5s)
+  [brain] Talisay Tari Club: 11 actions (32.1s)
+  [brain] Ilonggo Ironworks: 14 actions (37.2s)
+  [brain] Batangas Sprint Club: 0 actions (38.6s)
+Day 62 (Thursday): 59 fights, 0 unmatched, 5 claims settled, staking paid 951.39 GP to 21 stakers — 39.2s
+  [brain] Marco Gamefarm: 0 actions (1.5s)
+  [brain] Hacienda Verde: 12 actions (7.4s)
+  [brain] Bagong Laban: 14 actions (12.8s)
+  [brain] Sugalan Social Club: 0 actions (14.0s)
+  [brain] Talisay Tari Club: 13 actions (20.8s)
+  [brain] Ilonggo Ironworks: 15 actions (28.8s)
+  [brain] Cuchillos de Sonora: 0 actions (30.5s)
+  [brain] Batangas Sprint Club: 0 actions (32.0s)
+  [brain] Pulang Bagwis: 12 actions (37.3s)
+  [brain] Cavite Bloodlines: 11 actions (43.2s)
+Day 63 (Friday): 104 fights, 0 unmatched, 7 claims settled, staking paid 957.61 GP to 21 stakers — HATCH FRIDAY (8 hatched) — 44.2s
+        wk 9 · 7 days in 5:40 · avg 48.62s/day
+  [brain] Pulang Bagwis: 12 actions (4.0s)
+  [brain] Talisay Tari Club: 9 actions (6.8s)
+  [brain] Bagong Laban: 0 actions (8.0s)
+  [brain] Hacienda Verde: 8 actions (12.0s)
+  [brain] Cavite Bloodlines: 0 actions (13.3s)
+  [brain] Cuchillos de Sonora: 6 actions (16.6s)
+  [brain] Ilonggo Ironworks: 12 actions (20.6s)
+  [brain] Sugalan Social Club: 10 actions (23.6s)
+  [brain] Batangas Sprint Club: 11 actions (26.8s)
+  [brain] Marco Gamefarm: 0 actions (27.8s)
+Day 64 (Saturday): 139 fights, 2 unmatched, 8 claims settled, staking paid 1390.40 GP to 21 stakers — 28.7s
+  [brain] Bagong Laban: 12 actions (6.2s)
+  [brain] Pulang Bagwis: 9 actions (10.1s)
+  [brain] Batangas Sprint Club: 8 actions (12.9s)
+  [brain] Ilonggo Ironworks: 0 actions (14.2s)
+  [brain] Cuchillos de Sonora: 0 actions (15.3s)
+  [brain] Talisay Tari Club: 10 actions (18.5s)
+  [brain] Hacienda Verde: 0 actions (19.6s)
+  [brain] Cavite Bloodlines: 2 actions (21.1s)
+  [brain] Sugalan Social Club: 7 actions (24.8s)
+  [brain] Marco Gamefarm: 0 actions (25.8s)
+Day 65 (Sunday): 159 fights, 1 unmatched, 8 claims settled, staking paid 1291.00 GP to 21 stakers — 26.9s
+  [brain] Sugalan Social Club: 0 actions (1.4s)
+  [brain] Hacienda Verde: 7 actions (4.1s)
+  [brain] Talisay Tari Club: 0 actions (5.1s)
+  [brain] Ilonggo Ironworks: 0 actions (6.2s)
+  [brain] Cuchillos de Sonora: 10 actions (9.2s)
+  [brain] Marco Gamefarm: 1 actions (10.3s)
+  [brain] Pulang Bagwis: 16 actions (16.4s)
+  [brain] Bagong Laban: 12 actions (22.2s)
+  [brain] Batangas Sprint Club: 0 actions (23.4s)
+  [brain] Cavite Bloodlines: 0 actions (24.5s)
+Day 66 (Monday): 114 fights, 1 unmatched, 7 claims settled, staking paid 1292.59 GP to 21 stakers — 25.2s
+  [brain] Marco Gamefarm: 2 actions (1.5s)
+  [brain] Ilonggo Ironworks: 0 actions (2.6s)
+  [brain] Sugalan Social Club: 11 actions (5.7s)
+  [brain] Talisay Tari Club: 10 actions (8.6s)
+  [brain] Cuchillos de Sonora: 0 actions (9.8s)
+  [brain] Hacienda Verde: 0 actions (10.9s)
+  [brain] Bagong Laban: 0 actions (12.1s)
+  [brain] Cavite Bloodlines: 11 actions (15.6s)
+  [brain] Batangas Sprint Club: 0 actions (16.8s)
+  [brain] Pulang Bagwis: 2 actions (19.0s)
+Day 67 (Tuesday): 160 fights, 2 unmatched, 9 claims settled, staking paid 995.83 GP to 21 stakers — 19.7s
+  [brain] Cuchillos de Sonora: 15 actions (5.3s)
+  [brain] Ilonggo Ironworks: 10 actions (8.9s)
+  [brain] Pulang Bagwis: 10 actions (12.4s)
+  [brain] Marco Gamefarm: 3 actions (13.7s)
+  [brain] Hacienda Verde: 0 actions (14.7s)
+  [brain] Sugalan Social Club: 8 actions (17.6s)
+  [brain] Batangas Sprint Club: 6 actions (20.9s)
+  [brain] Bagong Laban: 1 actions (22.2s)
+  [brain] Cavite Bloodlines: 0 actions (23.5s)
+  [brain] Talisay Tari Club: 0 actions (24.5s)
+Day 68 (Wednesday): 135 fights, 0 unmatched, 8 claims settled, staking paid 943.39 GP to 21 stakers — 25.1s
+  [brain] Sugalan Social Club: 8 actions (4.9s)
+  [brain] Talisay Tari Club: 2 actions (6.2s)
+  [brain] Cuchillos de Sonora: 10 actions (11.9s)
+  [brain] Bagong Laban: 12 actions (17.9s)
+  [brain] Pulang Bagwis: 10 actions (22.0s)
+  [brain] Marco Gamefarm: 0 actions (23.0s)
+  [brain] Batangas Sprint Club: 2 actions (24.5s)
+  [brain] Cavite Bloodlines: 0 actions (25.7s)
+  [brain] Hacienda Verde: 0 actions (26.9s)
+  [brain] Ilonggo Ironworks: 0 actions (28.1s)
+Day 69 (Thursday): 36 fights, 6 unmatched, 3 claims settled, staking paid 1001.00 GP to 21 stakers — 28.8s
+  [brain] Cuchillos de Sonora: 15 actions (4.7s)
+  [brain] Batangas Sprint Club: 0 actions (5.8s)
+  [brain] Talisay Tari Club: 0 actions (6.8s)
+  [brain] Pulang Bagwis: 0 actions (8.2s)
+  [brain] Marco Gamefarm: 0 actions (9.3s)
+  [brain] Hacienda Verde: 0 actions (10.6s)
+  [brain] Sugalan Social Club: 0 actions (11.8s)
+  [brain] Cavite Bloodlines: 1 actions (13.1s)
+  [brain] Bagong Laban: 0 actions (14.3s)
+  [brain] Ilonggo Ironworks: 0 actions (15.4s)
+Day 70 (Friday): 88 fights, 1 unmatched, 4 claims settled, staking paid 882.80 GP to 21 stakers — HATCH FRIDAY (8 hatched) — 16.1s
+        wk 10 · 7 days in 2:51 · avg 24.36s/day
+  [brain] Bagong Laban: 13 actions (4.2s)
+  [brain] Batangas Sprint Club: 0 actions (5.5s)
+  [brain] Sugalan Social Club: 8 actions (8.8s)
+  [brain] Cuchillos de Sonora: 11 actions (12.9s)
+  [brain] Talisay Tari Club: 0 actions (14.2s)
+  [brain] Cavite Bloodlines: 0 actions (15.5s)
+  [brain] Ilonggo Ironworks: 11 actions (19.4s)
+  [brain] Hacienda Verde: 3 actions (21.0s)
+  [brain] Marco Gamefarm: 9 actions (24.2s)
+  [brain] Pulang Bagwis: 11 actions (28.9s)
+Day 71 (Saturday): 143 fights, 0 unmatched, 5 claims settled, staking paid 1402.81 GP to 21 stakers — 29.7s
+  [brain] Cavite Bloodlines: 12 actions (4.5s)
+  [brain] Talisay Tari Club: 11 actions (8.3s)
+  [brain] Sugalan Social Club: 7 actions (11.1s)
+  [brain] Cuchillos de Sonora: 22 actions (17.5s)
+  [brain] Pulang Bagwis: 16 actions (22.6s)
+  [brain] Ilonggo Ironworks: 10 actions (28.1s)
+  [brain] Marco Gamefarm: 10 actions (31.4s)
+  [brain] Batangas Sprint Club: 7 actions (34.9s)
+  [brain] Hacienda Verde: 8 actions (38.2s)
+  [brain] Bagong Laban: 16 actions (43.4s)
+Day 72 (Sunday): 187 fights, 0 unmatched, 10 claims settled, staking paid 1359.59 GP to 21 stakers — 44.2s
+  [brain] Bagong Laban: 13 actions (4.2s)
+  [brain] Cavite Bloodlines: 12 actions (9.9s)
+  [brain] Marco Gamefarm: 6 actions (12.4s)
+  [brain] Cuchillos de Sonora: 0 actions (14.4s)
+  [brain] Batangas Sprint Club: 0 actions (15.7s)
+  [brain] Ilonggo Ironworks: 11 actions (19.4s)
+  [brain] Hacienda Verde: 0 actions (20.5s)
+  [brain] Pulang Bagwis: 0 actions (21.8s)
+  [brain] Talisay Tari Club: 0 actions (23.1s)
+  [brain] Sugalan Social Club: 0 actions (24.5s)
+Day 73 (Monday): 102 fights, 0 unmatched, 6 claims settled, staking paid 1312.17 GP to 21 stakers — 25.1s
+  [brain] Cavite Bloodlines: 0 actions (1.5s)
+  [brain] Pulang Bagwis: 10 actions (5.3s)
+  [brain] Cuchillos de Sonora: 21 actions (12.6s)
+  [brain] Talisay Tari Club: 10 actions (16.3s)
+  [brain] Marco Gamefarm: 0 actions (17.5s)
+  [brain] Bagong Laban: 2 actions (19.2s)
+  [brain] Batangas Sprint Club: 0 actions (20.5s)
+  [brain] Ilonggo Ironworks: 11 actions (26.6s)
+  [brain] Hacienda Verde: 0 actions (27.7s)
+  [brain] Sugalan Social Club: 12 actions (31.9s)
+Day 74 (Tuesday): 178 fights, 1 unmatched, 8 claims settled, staking paid 1119.43 GP to 21 stakers — 32.5s
+  [brain] Pulang Bagwis: 16 actions (5.2s)
+  [brain] Bagong Laban: 13 actions (10.3s)
+  [brain] Marco Gamefarm: 7 actions (12.9s)
+  [brain] Talisay Tari Club: 0 actions (14.0s)
+  [brain] Cavite Bloodlines: 0 actions (15.3s)
+  [brain] Batangas Sprint Club: 0 actions (16.4s)
+  [brain] Ilonggo Ironworks: 11 actions (22.2s)
+  [brain] Sugalan Social Club: 1 actions (23.4s)
+  [brain] Cuchillos de Sonora: 0 actions (25.4s)
+  [brain] Hacienda Verde: 26 actions (34.2s)
+Day 75 (Wednesday): 151 fights, 0 unmatched, 4 claims settled, staking paid 1002.01 GP to 21 stakers — 34.8s
+  [brain] Pulang Bagwis: 10 actions (4.2s)
+  [brain] Marco Gamefarm: 2 actions (5.5s)
+  [brain] Hacienda Verde: 0 actions (6.5s)
+  [brain] Batangas Sprint Club: 0 actions (7.8s)
+  [brain] Talisay Tari Club: 10 actions (13.2s)
+  [brain] Cavite Bloodlines: 0 actions (14.5s)
+  [brain] Ilonggo Ironworks: 0 actions (15.8s)
+  [brain] Bagong Laban: 0 actions (17.3s)
+  [brain] Cuchillos de Sonora: 2 actions (19.8s)
+  [brain] Sugalan Social Club: 11 actions (23.2s)
+Day 76 (Thursday): 32 fights, 2 unmatched, 2 claims settled, staking paid 1055.17 GP to 21 stakers — 23.8s
+  [brain] Cuchillos de Sonora: 0 actions (2.0s)
+  [brain] Talisay Tari Club: 0 actions (3.2s)
+  [brain] Ilonggo Ironworks: 11 actions (7.5s)
+  [brain] Cavite Bloodlines: 10 actions (10.8s)
+  [brain] Hacienda Verde: 0 actions (11.9s)
+  [brain] Sugalan Social Club: 0 actions (13.3s)
+  [brain] Bagong Laban: 0 actions (15.0s)
+  [brain] Marco Gamefarm: 2 actions (16.6s)
+  [brain] Batangas Sprint Club: 11 actions (21.6s)
+  [brain] Pulang Bagwis: 17 actions (28.3s)
+Day 77 (Friday): 112 fights, 0 unmatched, 5 claims settled, staking paid 924.60 GP to 21 stakers — HATCH FRIDAY (7 hatched) — 29.0s
+        wk 11 · 7 days in 3:39 · avg 31.33s/day
+  [brain] Talisay Tari Club: 0 actions (1.3s)
+  [brain] Sugalan Social Club: 0 actions (2.2s)
+  [brain] Cavite Bloodlines: 0 actions (3.3s)
+  [brain] Pulang Bagwis: 16 actions (11.0s)
+  [brain] Batangas Sprint Club: 0 actions (12.2s)
+  [brain] Marco Gamefarm: 0 actions (13.5s)
+  [brain] Hacienda Verde: 8 actions (17.1s)
+  [brain] Bagong Laban: 13 actions (21.0s)
+  [brain] Cuchillos de Sonora: 0 actions (22.6s)
+  [brain] Ilonggo Ironworks: 12 actions (28.8s)
+Day 78 (Saturday): 144 fights, 0 unmatched, 5 claims settled, staking paid 1553.03 GP to 21 stakers — 29.8s
+  [brain] Pulang Bagwis: 17 actions (5.7s)
+  [brain] Batangas Sprint Club: 0 actions (6.8s)
+  [brain] Cuchillos de Sonora: 12 actions (11.7s)
+  [brain] Bagong Laban: 2 actions (13.6s)
+  [brain] Sugalan Social Club: 10 actions (17.2s)
+  [brain] Marco Gamefarm: 10 actions (20.5s)
+  [brain] Ilonggo Ironworks: 27 actions (32.0s)
+  [brain] Hacienda Verde: 8 actions (35.3s)
+  [brain] Cavite Bloodlines: 0 actions (36.4s)
+  [brain] Talisay Tari Club: 0 actions (37.6s)
+Day 79 (Sunday): 167 fights, 1 unmatched, 7 claims settled, staking paid 1444.58 GP to 21 stakers — 38.5s
+  [brain] Marco Gamefarm: 9 actions (3.1s)
+  [brain] Ilonggo Ironworks: 12 actions (9.4s)
+  [brain] Batangas Sprint Club: 0 actions (10.6s)
+  [brain] Talisay Tari Club: 10 actions (14.1s)
+  [brain] Hacienda Verde: 0 actions (15.1s)
+  [brain] Sugalan Social Club: 10 actions (18.4s)
+  [brain] Cavite Bloodlines: 0 actions (19.6s)
+  [brain] Bagong Laban: 0 actions (20.9s)
+  [brain] Pulang Bagwis: 2 actions (22.9s)
+  [brain] Cuchillos de Sonora: 0 actions (24.4s)
+Day 80 (Monday): 192 fights, 0 unmatched, 7 claims settled, staking paid 1324.82 GP to 21 stakers — 25.2s
+  [brain] Cuchillos de Sonora: 20 actions (6.1s)
+  [brain] Sugalan Social Club: 8 actions (9.4s)
+  [brain] Hacienda Verde: 8 actions (14.3s)
+  [brain] Pulang Bagwis: 12 actions (21.5s)
+  [brain] Marco Gamefarm: 6 actions (23.8s)
+  [brain] Ilonggo Ironworks: 15 actions (28.9s)
+  [brain] Talisay Tari Club: 0 actions (30.3s)
+  [brain] Cavite Bloodlines: 15 actions (34.9s)
+  [brain] Bagong Laban: 13 actions (39.3s)
+  [brain] Batangas Sprint Club: 2 actions (40.9s)
+Day 81 (Tuesday): 157 fights, 2 unmatched, 7 claims settled, staking paid 1181.58 GP to 21 stakers — 41.7s
+  [brain] Batangas Sprint Club: 17 actions (4.7s)
+  [brain] Talisay Tari Club: 11 actions (9.1s)
+  [brain] Marco Gamefarm: 0 actions (10.4s)
+  [brain] Bagong Laban: 13 actions (15.1s)
+  [brain] Cavite Bloodlines: 0 actions (16.8s)
+  [brain] Sugalan Social Club: 0 actions (18.3s)
+  [brain] Cuchillos de Sonora: 0 actions (20.5s)
+  [brain] Ilonggo Ironworks: 14 actions (25.5s)
+  [brain] Hacienda Verde: 10 actions (29.7s)
+  [brain] Pulang Bagwis: 2 actions (32.1s)
+Day 82 (Wednesday): 145 fights, 1 unmatched, 10 claims settled, staking paid 1154.02 GP to 21 stakers — 32.9s
+  [brain] Pulang Bagwis: 16 actions (5.1s)
+  [brain] Sugalan Social Club: 8 actions (9.1s)
+  [brain] Cuchillos de Sonora: 10 actions (14.5s)
+  [brain] Cavite Bloodlines: 1 actions (16.0s)
+  [brain] Batangas Sprint Club: 17 actions (21.3s)
+  [brain] Talisay Tari Club: 11 actions (24.7s)
+  [brain] Bagong Laban: 13 actions (31.5s)
+  [brain] Hacienda Verde: 8 actions (34.8s)
+  [brain] Ilonggo Ironworks: 12 actions (39.5s)
+  [brain] Marco Gamefarm: 2 actions (40.8s)
+Day 83 (Thursday): 62 fights, 0 unmatched, 3 claims settled, staking paid 1009.00 GP to 21 stakers — 41.5s
+  [brain] Pulang Bagwis: 17 actions (5.6s)
+  [brain] Cuchillos de Sonora: 21 actions (15.5s)
+  [brain] Batangas Sprint Club: 0 actions (17.0s)
+  [brain] Sugalan Social Club: 10 actions (22.4s)
+  [brain] Hacienda Verde: 0 actions (23.6s)
+  [brain] Cavite Bloodlines: 0 actions (25.2s)
+  [brain] Talisay Tari Club: 0 actions (26.8s)
+  [brain] Bagong Laban: 13 actions (34.5s)
+  [brain] Marco Gamefarm: 0 actions (36.0s)
+  [brain] Ilonggo Ironworks: 13 actions (40.5s)
+Day 84 (Friday): 120 fights, 1 unmatched, 5 claims settled, staking paid 1015.36 GP to 21 stakers — HATCH FRIDAY (8 hatched) — 41.4s
+        wk 12 · 7 days in 4:11 · avg 35.85s/day
+  [brain] Sugalan Social Club: 10 actions (3.4s)
+  [brain] Bagong Laban: 2 actions (4.8s)
+  [brain] Batangas Sprint Club: 11 actions (11.0s)
+  [brain] Pulang Bagwis: 18 actions (17.4s)
+  [brain] Cavite Bloodlines: 0 actions (18.8s)
+  [brain] Cuchillos de Sonora: 19 actions (29.0s)
+  [brain] Ilonggo Ironworks: 0 actions (30.5s)
+  [brain] Hacienda Verde: 0 actions (31.8s)
+  [brain] Marco Gamefarm: 0 actions (33.0s)
+  [brain] Talisay Tari Club: 1 actions (34.4s)
+Day 85 (Saturday): 199 fights, 0 unmatched, 4 claims settled, staking paid 1530.83 GP to 21 stakers — 35.4s
+  [brain] Batangas Sprint Club: 0 actions (1.5s)
+  [brain] Hacienda Verde: 13 actions (5.5s)
+  [brain] Cavite Bloodlines: 0 actions (6.8s)
+  [brain] Cuchillos de Sonora: 19 actions (13.7s)
+  [brain] Ilonggo Ironworks: 12 actions (18.1s)
+  [brain] Sugalan Social Club: 2 actions (19.5s)
+  [brain] Pulang Bagwis: 18 actions (26.8s)
+  [brain] Talisay Tari Club: 20 actions (33.8s)
+  [brain] Marco Gamefarm: 11 actions (40.0s)
+  [brain] Bagong Laban: 0 actions (41.7s)
+Day 86 (Sunday): 220 fights, 0 unmatched, 4 claims settled, staking paid 1409.99 GP to 21 stakers — 42.6s
+  [brain] Hacienda Verde: 0 actions (1.3s)
+  [brain] Talisay Tari Club: 0 actions (2.4s)
+  [brain] Marco Gamefarm: 0 actions (4.0s)
+  [brain] Ilonggo Ironworks: 0 actions (5.5s)
+  [brain] Batangas Sprint Club: 14 actions (11.2s)
+  [brain] Cavite Bloodlines: 0 actions (12.5s)
+  [brain] Pulang Bagwis: 0 actions (14.6s)
+  [brain] Cuchillos de Sonora: 13 actions (20.9s)
+  [brain] Bagong Laban: 0 actions (22.1s)
+  [brain] Sugalan Social Club: 7 actions (24.8s)
+Day 87 (Monday): 173 fights, 0 unmatched, 5 claims settled, staking paid 1401.01 GP to 21 stakers — 25.7s
+  [brain] Cuchillos de Sonora: 19 actions (7.0s)
+  [brain] Ilonggo Ironworks: 0 actions (8.4s)
+  [brain] Batangas Sprint Club: 0 actions (10.0s)
+  [brain] Talisay Tari Club: 7 actions (13.4s)
+  [brain] Pulang Bagwis: 19 actions (20.3s)
+  [brain] Sugalan Social Club: 0 actions (21.7s)
+  [brain] Hacienda Verde: 8 actions (24.8s)
+  [brain] Marco Gamefarm: 0 actions (25.9s)
+  [brain] Cavite Bloodlines: 8 actions (30.1s)
+  [brain] Bagong Laban: 0 actions (31.5s)
+Day 88 (Tuesday): 211 fights, 0 unmatched, 7 claims settled, staking paid 1204.61 GP to 21 stakers — 32.4s
+  [brain] Pulang Bagwis: 14 actions (8.6s)
+  [brain] Sugalan Social Club: 0 actions (9.8s)
+  [brain] Cuchillos de Sonora: 0 actions (11.9s)
+  [brain] Marco Gamefarm: 2 actions (13.7s)
+  [brain] Cavite Bloodlines: 8 actions (18.7s)
+  [brain] Ilonggo Ironworks: 14 actions (23.3s)
+  [brain] Hacienda Verde: 8 actions (26.6s)
+  [brain] Talisay Tari Club: 10 actions (31.6s)
+  [brain] Bagong Laban: 13 actions (38.8s)
+  [brain] Batangas Sprint Club: 14 actions (46.3s)
+Day 89 (Wednesday): 251 fights, 0 unmatched, 4 claims settled, staking paid 1142.40 GP to 21 stakers — 47.1s
+  [brain] Cuchillos de Sonora: 0 actions (2.5s)
+  [brain] Talisay Tari Club: 0 actions (3.7s)
+  [brain] Marco Gamefarm: 12 actions (8.3s)
+  [brain] Batangas Sprint Club: 14 actions (13.3s)
+  [brain] Ilonggo Ironworks: 0 actions (14.6s)
+  [brain] Pulang Bagwis: 14 actions (20.3s)
+  [brain] Sugalan Social Club: 10 actions (25.7s)
+  [brain] Bagong Laban: 13 actions (30.3s)
+  [brain] Cavite Bloodlines: 10 actions (34.7s)
+  [brain] Hacienda Verde: 8 actions (37.7s)
+Day 90 (Thursday): 98 fights, 3 unmatched, 3 claims settled, staking paid 1109.36 GP to 21 stakers — 38.5s
+  [brain] Cuchillos de Sonora: 19 actions (7.5s)
+  [brain] Talisay Tari Club: 11 actions (13.6s)
+  [brain] Ilonggo Ironworks: 2 actions (15.3s)
+  [brain] Cavite Bloodlines: 2 actions (17.1s)
+  [brain] Bagong Laban: 2 actions (18.9s)
+  [brain] Batangas Sprint Club: 14 actions (23.7s)
+  [brain] Pulang Bagwis: 1 actions (26.2s)
+  [brain] Sugalan Social Club: 0 actions (27.8s)
+  [brain] Hacienda Verde: 7 actions (32.1s)
+  [brain] Marco Gamefarm: 0 actions (33.8s)
+Day 91 (Friday): 175 fights, 0 unmatched, 7 claims settled, staking paid 1011.83 GP to 21 stakers — HATCH FRIDAY (7 hatched) — 34.8s
+        wk 13 · 7 days in 4:16 · avg 36.63s/day
+
+TIMING
+  seed + bots      0.0s
+  simulation      20:38   (35 day(s), avg 35.37s/day · honest 8% / tick 92%)
+  brains          20:13   (34.65s/day · 98% of the run, 350 call(s), 10 failed)
+  doctor           1.9s
+  total           20:40
+  slowest days d57 2:01 · d89 47.1s · d72 44.2s
+  per unit     131.72 ms/fight · 180.32 ms/entry
+
+BARN CAREERS (durable actor state — persists across runs)
+  bot-7     90 day(s) played · last day 90 · 469 proposed, 0 dropped, 0 failure(s) · 1647.6s thinking
+  bot-8     90 day(s) played · last day 90 · 683 proposed, 15 dropped, 0 failure(s) · 1715.9s thinking
+  bot-9     90 day(s) played · last day 90 · 428 proposed, 38 dropped, 0 failure(s) · 1702.2s thinking
+  bot-marco  90 day(s) played · last day 90 · 363 proposed, 31 dropped, 0 failure(s) · 1656.2s thinking
+  bot-12    90 day(s) played · last day 90 · 480 proposed, 24 dropped, 0 failure(s) · 1591.0s thinking
+  bot-13    90 day(s) played · last day 90 · 534 proposed, 13 dropped, 0 failure(s) · 1724.8s thinking
+  bot-14    90 day(s) played · last day 90 · 467 proposed, 5 dropped, 0 failure(s) · 1649.1s thinking
+  bot-15    90 day(s) played · last day 90 · 670 proposed, 15 dropped, 0 failure(s) · 1746.4s thinking
+  bot-16    90 day(s) played · last day 90 · 783 proposed, 44 dropped, 0 failure(s) · 1645.5s thinking
+  bot-17    90 day(s) played · last day 90 · 580 proposed, 30 dropped, 0 failure(s) · 1765.7s thinking
+
+PINTAKASI DOCTOR · data/sim-20260815-1255.db
+day 91 · Friday, April 4, 3000 · week 13 · 21 farms · 1087 birds
+
+INVARIANTS
+  PASS  GP conservation            1,421,600.00 GP in world = 1,421,600.00 expected
+  PASS  LT conservation            819,206.41 LT held = 819,206.41 LT ledgered
+  PASS  no negative balances       staker 0.10 · juice 0.02 · 21 wallets clean
+  PASS  pit figures                9398 fights · 9398 mirrored · 0 inversions
+  PASS  purses settle              53 completed crown(s), exact to the cent
+  PASS  no stranded entries        54 resolved championship(s), every entry settled
+  PASS  one card per bird per day  6865 entries across 6865 bird-days · 0 over cap
+  PASS  fight counts match the log 6865 settled entries · 17268 fights claimed · 0 mismatched
+  PASS  scout book matches the log 2886 book lines audited · 0 out of step
+
+CARD HEALTH
+  6865 entries · 6783 fought · 82 unmatched (1.2%) · 740 lobbies
+  weather timing  1746/6377 starred entries ran on the bird's own element day (27.4% vs 20.0% by chance, 1.37×) ✓ entries are being timed
+
+GROUP STAGE
+  fights per settled entry  mean 2.52 of 3 · 6865 settled entries
+  full cards  4077 (59.4%) took all 3 · short 2706 (39.4%) fought 1–2 · 82 (1.2%) never fought
+  groups  1998 dealt · mean 3.44 birds · 41 of one (41 were the lobby's only entry)
+
+LOBBY FILL
+  mean 9.28 birds per lobby · 740 lobbies · 41 held a single bird (5.5%)
+      1 █                        5.5%
+    2-3 ████                     17.7%
+    4-7 ██████                   24.6%
+   8-15 ████████                 35.0%
+    16+ ████                     17.2%
+  same-barn-only lobbies 13 · 34 birds stranded with no cross-barn opponent
+
+WORST LOBBY KEYS
+  real/maiden/b4                       16 entries, 37.5% unmatched
+  real/maiden/b1                       37 entries, 24.3% unmatched
+  juvenile/claimer/b2@270              19 entries, 21.1% unmatched
+
+POPULATION
+  eggs 144 · active 432 · retired 511 · 21 farms
+  by age  1:145  2:125  3:95  4:23  5:18  6:11  7:8  8:7
+  supply  hatches 943 · gacha eggs 197 · covers 722
+  loss    hardcore 465 · age 46
+  barns   0 of 21 at capacity · 3 expansion(s) bought
+
+FIGHT VOLUME
+  wk  0       0  
+  wk  1     496  █████████
+  wk  2     742  █████████████
+  wk  3     865  ███████████████
+  wk  4     378  ███████
+  wk  5     308  █████
+  wk  6     451  ████████
+  wk  7     720  █████████████
+  wk  8     866  ███████████████
+  wk  9     930  ████████████████
+  wk 10     976  █████████████████
+  wk 11    1073  ███████████████████
+  wk 12    1362  ████████████████████████
+  wk 13     231  ████  (1 day)
+  trough wk5 (308) = 35.6% of the wk3 peak (865) — EXPECTED: the age-3 founder flock is culled by the hardcore
+  Majors before the first bred generation reaches fighting age, then volume
+  recovers. Reference: wk3/4/5/6/7 = 1092/397/145/498/871 fights (20 farms, 91 days).
+
+BLOODLINES
+  gen   birds   mean grade     stars   home margin
+  0       365   B+ ( 331.3)    1.80★      7.7
+  1       549   B+ ( 349.0)    2.27★     13.7
+  2       173   B+ ( 372.6)    2.45★     13.9
+  gen 2 vs gen 0  +41.3 mean stat · +0.6★ · +6.2 pts of home margin
+
+FIGHT ECONOMY BY RUNG
+    rung                      fee  entries  share   GP risked   LT minted  LT/100GP
+    juvenile/claimer@90        24      178   2.6%       3,520      507.64     14.42
+    juvenile/maiden            30      169   2.5%       3,420      501.59     14.67
+    juvenile/claimer@180       48      123   1.8%       4,768      760.05     15.94
+    real/claimer@90            48      563   8.2%      22,400    3,588.54     16.02
+    real/maiden                60      124   1.8%       4,800      786.03     16.38
+    real/nw3                   60      198   2.9%       8,400    1,377.04     16.39
+    juvenile/claimer@270       72      108   1.6%       6,000    1,018.63     16.98
+    real/claimer@180           96      318   4.6%      25,984    4,638.79     17.85
+    real/claimer@270          144      230   3.4%      24,576    4,584.28     18.65
+    juvenile/open             150    1,965  28.6%     249,200   47,455.03     19.04
+    real/open                 300    2,889  42.1%     757,000  160,284.79     21.17
+
+LAND SUPPLY
+  circulating 819,206.41 LT · 818,169.00 staked (99.9%) · 1,037.41 idle
+  minted      838,806.41 LT over 92 day(s) · 9,117.46 LT per day
+    purse_payout    519,000.00 LT   61.9%
+    card_settled    225,502.41 LT   26.9%
+    buy_land         91,000.00 LT   10.8%
+    gacha             3,304.00 LT    0.4%
+  burned      19,600.00 LT (2.3% of issuance) — the sinks
+    stud_listed      16,600.00 LT   84.7%
+    barn_expanded     3,000.00 LT   15.3%
+  valuation   at $0.01/LT (pencilled) the world has issued $8,388 of land against $17,770 of GP faucet — $0.47 of LT per $1 of GP
+  runway      100B-token target reached in 10,000+ year(s) at this population's rate — scales with farms, not with time
+
+REPLAY
+  203/203 sampled fight rows rebuild exactly from their seed
+
+STAKER POOL
+  paid out 98,984.90 GP over 91 day(s) · 0.10 waiting · 818,169.00 LT staked
+  land_purchase 72,800.00 · gacha 13,472.00 · breed 11,552.00 · claim_rake 1,161.00
+
+CHAMPIONSHIPS
+  major     30 run / 0 cancelled · field 16.5 · purse 219,310.32
+            paid 257/495 entrants (52%) · biggest take 2.5% of all purse GP · smallest 127.59 GP
+            entry fees 79,200.00 GP fund 36% of the purse · the rest is juice (gacha + breed fees) · net to the field 140,110.32 GP
+            under the door 27/257 winners (11%) took less purse than their entry fee
+  juvenile  23 run / 1 cancelled · field 14.0 · purse 56,753.66
+            paid 168/322 entrants (52%) · biggest take 5.5% of all purse GP · smallest 44.26 GP
+            entry fees 15,456.00 GP fund 27% of the purse · the rest is juice (gacha + breed fees) · net to the field 41,297.66 GP
+            under the door 2/168 winners (1%) took less purse than their entry fee
+
+MECHANIC ADOPTION            farms of 21
+  claims placed             19  ███████████████████░░
+  studs listed              11  ███████████░░░░░░░░░░
+  land purchased             1  █░░░░░░░░░░░░░░░░░░░░
+  paid gacha rolls          10  ██████████░░░░░░░░░░░
+  gacha bundles bought       1  █░░░░░░░░░░░░░░░░░░░░
+  barn expanded              3  ███░░░░░░░░░░░░░░░░░░
+  Major entries             21  █████████████████████
+  juvenile championship     11  ███████████░░░░░░░░░░
+
+DISCOVERY
+  age 1    carded 1500/6314 at the true best blade (23.8% vs random 20.0%) · 49.9% on or adjacent (random 48.2%) · answer coverage 37.0% · SCOUT 1213/2337 right (51.9% vs random 20.1%), 70.5% on or adjacent · clear home 791/1367 (57.9%, 72.6% adjacent)
+  age 2–3  carded 2673/9493 at the true best blade (28.2% vs random 20.0%) · 55.2% on or adjacent (random 47.9%) · answer coverage 82.2% · SCOUT 3825/7807 right (49.0% vs random 20.0%), 72.8% on or adjacent · clear home 2474/4334 (57.1%, 76.9% adjacent)
+  age 4+   carded 583/1461 at the true best blade (39.9% vs random 20.0%) · 64.2% on or adjacent (random 47.9%) · answer coverage 71.6% · SCOUT 549/1046 right (52.5% vs random 20.0%), 72.2% on or adjacent · clear home 291/506 (57.5%, 74.3% adjacent)
+  explored  5/5 blades saw an age-1 entry in the discovery year
+  flock shape  median home blade beats its runner-up by 11.2 pts · 54.6% of birds clear the 10-pt bar
+  breeding  672 bot covers · hens carry +57.5 of their own shape (any bird: +71.5) · the sires chosen reinforce it by +55.5 (an unchosen sire: +6.5) · foals land at +57.5
+  broodmare band  75.4% of 232 settled retired hens have ever carried · busiest hen 9 foals
+  ✓ the scout beats chance on mature birds with a home — 57.5% vs 20.0%
+
+0 warnings · 0 invariant failures
+
+Done → /Users/plumeria/Repos/pintakasi-bloodlines/data/sim-20260815-1255.db
+Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the newest sim.

@@ -1,0 +1,209 @@
+$ bun run scripts/simulate.ts "2" "--seed=1" "--from=data/snapshots/day48-seed1.db" "--brain=qwen3:30b-a3b" "--llm=19" --actors --personas
+Forked data/snapshots/day48-seed1.db → data/sim-20260814-2353.db
+
+Brain: qwen3:30b-a3b plays 19 stable(s) — bot-1, bot-2, bot-3, bot-4, bot-5, bot-6, bot-7, bot-8, bot-9, bot-10, bot-11, bot-marco, bot-reno, bot-kevin, bot-12, bot-13, bot-14, bot-15, bot-16
+
+Personas set: 19 barn(s) start under their house creed
+
+  [brain] Bulawan Broodfarm: 0 actions (12.3s)
+  [brain] Tari ng Bayan: 3 actions (14.7s)
+  [brain] Marco Gamefarm: 5 actions (17.7s)
+  [brain] Ilonggo Ironworks: 11 actions (22.4s)
+  [brain] Talisay Tari Club: 0 actions (23.4s)
+  [brain] Ginto Gaming Club: 0 actions (24.7s)
+  [brain] Cavite Bloodlines: 0 actions (25.5s)
+  [brain] Kevin Gamefarm: 4 actions (28.3s)
+  [brain] Dugo't Dangal Farms: 3 actions (29.7s)
+  [brain] Sagupaan Stables: 0 actions (30.5s)
+  [brain] Lupa Land Holdings: 0 actions (31.5s)
+  [brain] Sugalan Social Club: 7 actions (34.7s)
+  [brain] Pulang Bagwis: 0 actions (36.6s)
+  [brain] Kidlat sa Silangan: 0 actions (37.6s)
+  [brain] Sabungero Syndicate: 5 actions (40.8s)
+  [brain] Cuchillos de Sonora: 0 actions (42.0s)
+  [brain] Batangas Sprint Club: 0 actions (43.1s)
+  [brain] Hacienda Verde: 0 actions (44.4s)
+  [brain] Reno Gamefarm: 0 actions (45.7s)
+Day 49 (Friday): 0 fights, 4 unmatched, 0 claims settled, staking paid 16.02 GP to 20 stakers — HATCH FRIDAY (8 hatched) — 46.0s
+        wk 7 · 1 days in 46.0s · avg 45.99s/day
+  [brain] Tari ng Bayan: 5 actions (3.0s)
+  [brain] Kevin Gamefarm: 5 actions (5.5s)
+  [brain] Reno Gamefarm: 2 actions (7.8s)
+  [brain] Sugalan Social Club: 0 actions (9.5s)
+  [brain] Cuchillos de Sonora: 7 actions (13.4s)
+  [brain] Ilonggo Ironworks: 13 actions (20.0s)
+  [brain] Sabungero Syndicate: 0 actions (21.3s)
+  [brain] Marco Gamefarm: 13 actions (25.9s)
+  [brain] Bulawan Broodfarm: 1 actions (27.2s)
+  [brain] Talisay Tari Club: 7 actions (31.3s)
+  [brain] Batangas Sprint Club: 0 actions (32.6s)
+  [brain] Hacienda Verde: 7 actions (36.2s)
+  [brain] Dugo't Dangal Farms: 0 actions (37.3s)
+  [brain] Cavite Bloodlines: 0 actions (38.3s)
+  [brain] Lupa Land Holdings: 2 actions (39.8s)
+  [brain] Sagupaan Stables: 10 actions (43.4s)
+  [brain] Kidlat sa Silangan: 8 actions (47.4s)
+  [brain] Pulang Bagwis: 15 actions (53.1s)
+  [brain] Ginto Gaming Club: 0 actions (54.5s)
+Day 50 (Saturday): 17 fights, 9 unmatched, 0 claims settled, staking paid 33.99 GP to 20 stakers — 54.8s
+
+TIMING
+  seed + bots      0.0s
+  simulation       1:43   (2 day(s), avg 51.34s/day · honest 33% / tick 67%)
+  brains           1:40   (50.22s/day · 98% of the run, 38 call(s), 0 failed)
+  doctor           1.1s
+  total            1:44
+  slowest days d50 54.8s · d49 46.0s
+  per unit     21.79 ms/fight · 30.34 ms/entry
+
+BARN CAREERS (durable actor state — persists across runs)
+  bot-1      2 day(s) played · last day 49 · 5 proposed, 0 dropped, 0 failure(s) · 62.1s thinking
+  bot-2      2 day(s) played · last day 49 · 8 proposed, 0 dropped, 0 failure(s) · 17.7s thinking
+  bot-3      2 day(s) played · last day 49 · 1 proposed, 0 dropped, 0 failure(s) · 39.5s thinking
+  bot-4      2 day(s) played · last day 49 · 3 proposed, 0 dropped, 0 failure(s) · 67.0s thinking
+  bot-5      2 day(s) played · last day 49 · 10 proposed, 0 dropped, 0 failure(s) · 73.9s thinking
+  bot-6      2 day(s) played · last day 49 · 8 proposed, 0 dropped, 0 failure(s) · 85.0s thinking
+  bot-7      2 day(s) played · last day 49 · 7 proposed, 0 dropped, 0 failure(s) · 54.7s thinking
+  bot-8      2 day(s) played · last day 49 · 7 proposed, 0 dropped, 0 failure(s) · 55.3s thinking
+  bot-9      2 day(s) played · last day 49 · 0 proposed, 0 dropped, 0 failure(s) · 63.8s thinking
+  bot-10     2 day(s) played · last day 49 · 0 proposed, 0 dropped, 0 failure(s) · 79.2s thinking
+  bot-11     2 day(s) played · last day 49 · 2 proposed, 0 dropped, 0 failure(s) · 71.3s thinking
+  bot-marco   2 day(s) played · last day 49 · 18 proposed, 0 dropped, 0 failure(s) · 43.6s thinking
+  bot-reno   2 day(s) played · last day 49 · 2 proposed, 0 dropped, 0 failure(s) · 53.4s thinking
+  bot-kevin   2 day(s) played · last day 49 · 9 proposed, 0 dropped, 0 failure(s) · 33.8s thinking
+  bot-12     2 day(s) played · last day 49 · 0 proposed, 0 dropped, 0 failure(s) · 75.7s thinking
+  bot-13     2 day(s) played · last day 49 · 7 proposed, 0 dropped, 0 failure(s) · 80.6s thinking
+  bot-14     2 day(s) played · last day 49 · 7 proposed, 0 dropped, 0 failure(s) · 44.2s thinking
+  bot-15     2 day(s) played · last day 49 · 24 proposed, 0 dropped, 0 failure(s) · 42.4s thinking
+  bot-16     2 day(s) played · last day 49 · 15 proposed, 0 dropped, 0 failure(s) · 89.7s thinking
+
+PINTAKASI DOCTOR · data/sim-20260814-2353.db
+day 50 · Saturday, February 22, 3000 · week 7 · 20 farms · 571 birds
+
+INVARIANTS
+  PASS  GP conservation            948,000.00 GP in world = 948,000.00 expected
+  PASS  LT conservation            376,523.70 LT held = 376,523.70 LT ledgered
+  PASS  no negative balances       staker 0.10 · juice 160.00 · 20 wallets clean
+  PASS  pit figures                4712 fights · 4712 mirrored · 0 inversions
+  PASS  purses settle              23 completed crown(s), exact to the cent
+  PASS  no stranded entries        23 resolved championship(s), every entry settled
+  PASS  one card per bird per day  3384 entries across 3384 bird-days · 0 over cap
+  PASS  fight counts match the log 3384 settled entries · 8708 fights claimed · 0 mismatched
+  PASS  scout book matches the log 1310 book lines audited · 0 out of step
+
+CARD HEALTH
+  3384 entries · 3336 fought · 48 unmatched (1.4%) · 346 lobbies
+  weather timing  858/2809 starred entries ran on the bird's own element day (30.5% vs 20.0% by chance, 1.53×) ✓ entries are being timed
+
+GROUP STAGE
+  fights per settled entry  mean 2.57 of 3 · 3384 settled entries
+  full cards  2244 (66.3%) took all 3 · short 1092 (32.3%) fought 1–2 · 48 (1.4%) never fought
+  groups  989 dealt · mean 3.42 birds · 32 of one (32 were the lobby's only entry)
+
+LOBBY FILL
+  mean 9.78 birds per lobby · 346 lobbies · 32 held a single bird (9.2%)
+      1 ██                       9.2%
+    2-3 ███████                  28.9%
+    4-7 █████                    21.7%
+   8-15 ████                     17.1%
+    16+ ██████                   23.1%
+  same-barn-only lobbies 6 · 16 birds stranded with no cross-barn opponent
+
+WORST LOBBY KEYS
+  real/maiden/b4                        9 entries, 33.3% unmatched
+  juvenile/claimer/b2@270               9 entries, 22.2% unmatched
+  real/maiden/b1                       15 entries, 13.3% unmatched
+
+POPULATION
+  eggs 102 · active 252 · retired 217 · 20 farms
+  by age  1:115  2:74  3:19  4:11  5:4  6:8  7:21
+  supply  hatches 469 · gacha eggs 177 · covers 234
+  loss    hardcore 217
+  barns   0 of 20 at capacity · 0 expansion(s) bought
+
+FIGHT VOLUME
+  wk  0       0  
+  wk  1     963  ████████████████████
+  wk  2    1155  ████████████████████████
+  wk  3    1177  ████████████████████████
+  wk  4     657  █████████████
+  wk  5     225  █████
+  wk  6     503  ██████████
+  wk  7      32  █  (2 days)
+  trough wk5 (225) = 19.1% of the wk3 peak (1177)
+  ⚠ fight volume fell below 50% of peak and never came back past 75% — this is NOT the founder cull, which recovers within ~2 weeks
+
+BLOODLINES
+  gen   birds   mean grade     stars   home margin
+  0       337   B+ ( 330.7)    1.76★      7.8
+  1       234   B+ ( 345.5)    1.63★     16.1
+  gen 1 vs gen 0  +14.8 mean stat · -0.1★ · +8.3 pts of home margin
+
+FIGHT ECONOMY BY RUNG
+    rung                      fee  entries  share   GP risked   LT minted  LT/100GP
+    juvenile/claimer@90        24       64   1.9%       1,296      187.78     14.49
+    juvenile/maiden            30      102   3.0%       2,020      297.57     14.73
+    juvenile/claimer@180       48       85   2.5%       3,616      585.08     16.18
+    real/claimer@90            48      335   9.9%      14,176    2,285.24     16.12
+    real/maiden                60       53   1.6%       1,960      319.13     16.28
+    real/nw3                   60      101   3.0%       4,480      736.26     16.43
+    juvenile/claimer@270       72       63   1.9%       3,408      577.02     16.93
+    real/claimer@180           96      195   5.8%      16,704    2,993.31     17.92
+    real/claimer@270          144      180   5.3%      23,424    4,471.48     19.09
+    juvenile/open             150      959  28.3%     123,200   23,529.70     19.10
+    real/open                 300    1,247  36.8%     329,400   69,889.13     21.22
+
+LAND SUPPLY
+  circulating 376,523.70 LT · 376,390.00 staked (100.0%) · 133.70 idle
+  minted      386,823.70 LT over 51 day(s) · 7,584.78 LT per day
+    purse_payout    213,000.00 LT   55.1%
+    card_settled    105,871.70 LT   27.4%
+    buy_land         65,002.00 LT   16.8%
+    gacha             2,950.00 LT    0.8%
+  burned      10,300.00 LT (2.7% of issuance) — the sinks
+    stud_listed      10,300.00 LT  100.0%
+  valuation   at $0.01/LT (pencilled) the world has issued $3,868 of land against $11,850 of GP faucet — $0.33 of LT per $1 of GP
+  runway      100B-token target reached in 10,000+ year(s) at this population's rate — scales with farms, not with time
+
+REPLAY
+  201/201 sampled fight rows rebuild exactly from their seed
+
+STAKER POOL
+  paid out 71,548.90 GP over 50 day(s) · 0.10 waiting · 376,390.00 LT staked
+  land_purchase 52,002.00 · gacha 15,056.00 · breed 3,744.00 · claim_rake 747.00
+
+CHAMPIONSHIPS
+  major     12 run / 0 cancelled · field 19.1 · purse 147,906.88
+            paid 110/229 entrants (48%) · biggest take 5.3% of all purse GP · smallest 151.92 GP
+            entry fees 36,640.00 GP fund 25% of the purse · the rest is juice (gacha + breed fees) · net to the field 111,266.88 GP
+            under the door 16/110 winners (15%) took less purse than their entry fee
+  juvenile  11 run / 0 cancelled · field 13.8 · purse 52,493.12
+            paid 81/152 entrants (53%) · biggest take 10.8% of all purse GP · smallest 85.61 GP
+            entry fees 7,296.00 GP fund 14% of the purse · the rest is juice (gacha + breed fees) · net to the field 45,197.12 GP
+            under the door 0/81 winners (0%) took less purse than their entry fee
+
+MECHANIC ADOPTION            farms of 20
+  claims placed             19  ███████████████████░
+  studs listed              17  █████████████████░░░
+  land purchased             2  ██░░░░░░░░░░░░░░░░░░
+  paid gacha rolls          19  ███████████████████░
+  gacha bundles bought       2  ██░░░░░░░░░░░░░░░░░░
+  barn expanded              0  ░░░░░░░░░░░░░░░░░░░░  ⚠ NOBODY WALKED THROUGH
+  Major entries             19  ███████████████████░
+  juvenile championship     19  ███████████████████░
+  ⚠ 1 door(s) unused: barn expanded
+
+DISCOVERY
+  age 1    carded 628/3196 at the true best blade (19.6% vs random 20.0%) · 47.8% on or adjacent (random 48.9%) · answer coverage 35.5% · SCOUT 446/1135 right (39.3% vs random 20.0%), 67.6% on or adjacent · clear home 205/504 (40.7%, 65.1% adjacent)
+  age 2–3  carded 1142/4767 at the true best blade (24.0% vs random 20.0%) · 53.0% on or adjacent (random 48.6%) · answer coverage 87.0% · SCOUT 1389/4149 right (33.5% vs random 20.0%), 63.2% on or adjacent · clear home 717/1815 (39.5%, 65.3% adjacent)
+  age 4+   carded 201/745 at the true best blade (27.0% vs random 20.0%) · 57.4% on or adjacent (random 48.8%) · answer coverage 98.3% · SCOUT 233/732 right (31.8% vs random 20.0%), 56.4% on or adjacent · clear home 135/353 (38.2%, 65.7% adjacent)
+  explored  5/5 blades saw an age-1 entry in the discovery year
+  flock shape  median home blade beats its runner-up by 10.2 pts · 51.1% of birds clear the 10-pt bar
+  breeding  216 bot covers · hens carry +50.0 of their own shape (any bird: +62.5) · the sires chosen reinforce it by +59.0 (an unchosen sire: +1.5) · foals land at +64.0
+  broodmare band  100.0% of 100 settled retired hens have ever carried · busiest hen 4 foals
+  ✓ the scout beats chance on mature birds with a home — 38.2% vs 20.0%
+
+2 warnings · 0 invariant failures
+
+Done → /Users/plumeria/Repos/pintakasi-bloodlines/data/sim-20260814-2353.db
+Run `bun dev:sim` and open http://localhost:3435/admin — it always shows the newest sim.

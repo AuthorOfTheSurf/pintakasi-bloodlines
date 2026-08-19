@@ -12,8 +12,12 @@
     "simulate": "bun run scripts/simulate.ts",
     "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435",
     "doctor": "bun run scripts/doctor.ts",
+    "worldhash": "bun run scripts/worldhash.ts",
+    "brain-bench": "bun run scripts/brain-bench.ts",
+    "tune": "bun run scripts/tune.ts",
     "balance": "bun run scripts/balance.ts",
-    "test:watch": "bun test --watch"
+    "test:watch": "bun test --watch",
+    "scoreboard": "bun run scripts/scoreboard.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
@@ -24,6 +28,7 @@
     "next": "^16.2.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "rivetkit": "^2.3.10",
     "zod": "^4.3.6"
   },
   "devDependencies": {

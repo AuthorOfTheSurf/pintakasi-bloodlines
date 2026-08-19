@@ -3,6 +3,7 @@ import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
 import { BOT_FARMS, BREEDING_PLAN, CROWN_CHASE, WEATHER_APPETITE, type BotProfile } from "./bot-config";
+import { applyProposals, type BotAction } from "./bot-brain";
 import {
   BREEDING_SHAPES,
   CLAIMER,
@@ -51,7 +52,10 @@ const END_FIRST_ORDER: FightFormat[] = ["b1", "b5", "b2", "b4", "b3"];
 /** What one bot stable did with its day — surfaced on the tick view. */
 export interface BotDayReport {
   farm: string;
-  style: BotProfile["style"];
+  // "llm" joins the house styles in round 49 — a barn decided from outside
+  // has no BotProfile and therefore no house style, and calling it what it
+  // is beats borrowing a personality it does not have.
+  style: BotProfile["style"] | "llm";
   checkedIn: boolean;
   stakedLandCents: number; // bots stake every liquid LT, daily
   paidPulls: number; //  gacha rolls bought at price (round 22)
@@ -136,16 +140,41 @@ export class Bots {
     }
   }
 
-  static playDay(db: DB, discoveryPolicy: DiscoveryPolicy = "current"): BotDayReport[] {
+  /**
+   * `proposals` is the round-49 seam: a map of farmId → the actions an
+   * OUTSIDE decider already chose for that barn, collected before the tick
+   * opened its transaction (see engine/bot-brain.ts for why it cannot be
+   * collected in here). A farm carrying `brain = 'llm'` plays its proposed
+   * day; every other farm plays its scripted one exactly as before.
+   *
+   * ⚠ Omit it and this method is byte-for-byte the function it has always
+   * been. Nothing seeds an llm barn, so tests, `simulate` and `doctor` take
+   * the scripted path and stay replayable.
+   */
+  static playDay(
+    db: DB,
+    discoveryPolicy: DiscoveryPolicy = "current",
+    proposals?: ReadonlyMap<string, BotAction[]>
+  ): BotDayReport[] {
     const botRows = db.select().from(farms).where(eq(farms.isBot, 1)).all();
     if (botRows.length === 0) return [];
     const today = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
 
     const reports: BotDayReport[] = [];
     for (const [i, row] of botRows.entries()) {
+      const rng = mulberry32((today + 1) * 7919 + (i + 1) * 104729);
+      if (row.brain === "llm") {
+        // An llm barn with no proposals sits the day out rather than falling
+        // back to the scripted brain. Silently substituting one decider for
+        // the other would make a broken model look like a working one, which
+        // is the single most expensive thing this file could get wrong — the
+        // whole point of the pair is that the two are TELLING APART.
+        const actions = proposals?.get(row.id);
+        if (actions) reports.push(applyProposals(db, row.id, actions, rng));
+        continue;
+      }
       const profile = BOT_FARMS.find((b) => b.id === row.id);
       if (!profile) continue; // a bot removed from config sits out
-      const rng = mulberry32((today + 1) * 7919 + (i + 1) * 104729);
       reports.push(Bots.playFarm(db, profile, rng, today, discoveryPolicy));
     }
     return reports;
