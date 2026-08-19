@@ -67,7 +67,7 @@ bun run simulate 7 --seed=1 --brain=qwen3:30b-a3b --llm=1 --actors --brief=optio
 
 `qwen3:30b-a3b` ran locally on the author's MacBook Pro M1 Max with 64 GB unified memory. A machine with less memory may need a smaller model. Ask your AI coding agent which Ollama model fits your hardware before downloading one.
 
-No separate Rivet install or service is needed. `bun install` includes the pinned `rivetkit` package; `--actors` starts its local Rivet Engine automatically and keeps Actor state on your machine. `--actors` makes each model-controlled barn a durable Rivet Actor.
+No separate Rivet install or service is needed. `bun install` includes the pinned `rivetkit` package. When you pass `--actors`, it automatically starts the local [Rivet](https://rivet.dev/) Engine daemon, which listens on `127.0.0.1:6420` and keeps Actor state on your machine under `~/.rivetkit/`. Each model-controlled barn runs as a durable Rivet Actor; the Actor calls your local Ollama model to choose that barn's daily actions.
 
 `--llm=1` selects one of the 19 bot barns for model control; the other 18 bots and the seeded dev farm stay scripted. It is the quickest useful experiment. `--llm=10` selects ten bot barns, leaving nine bots plus the seeded dev farm scripted, a 10-versus-10 experiment like the measured runs. Start with fewer days and fewer model barns, then increase either only when the small run is healthy.
 
