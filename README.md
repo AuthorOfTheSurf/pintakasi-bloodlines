@@ -24,7 +24,7 @@ Next.js + TypeScript + Bun · SQLite (Drizzle + better-sqlite3) · `@modelcontex
 
 ```sh
 bun install
-bun run db:seed     # starter flock (includes retired birds so breeding works turn one)
+bun run db:seed     # 8 named age-0 eggs; they hatch next Friday
 bun dev             # http://localhost:3434
 ```
 
@@ -32,7 +32,9 @@ That's the whole setup — there is no migration step. `createDb()` executes the
 
 The database is **per-machine**: `data/*.db` is gitignored, so a clone never carries a world with it and a `git pull` can never overwrite yours. Running `db:seed` twice is safe and does nothing the second time — "Already seeded … delete the file to reseed" is the expected message, not a failure.
 
-To play, point an MCP client at the running server. `.mcp.json` in the repo root already does this for Claude Code — start `bun dev` first, since the endpoint *is* the server.
+To play manually, open the **Stewards' Office** at `/admin` and use **+1 Day** or **+1 Week**. A fresh world starts on Friday; **+1 Week** reaches the following Hatch Friday, when all eight eggs become age-1 chicks. Local development leaves these controls enabled.
+
+To play through an MCP client, `.mcp.json` in the repo root already does this for Claude Code — start `bun dev` first, since the endpoint *is* the server.
 
 **Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get *"Multiple farms exist — pass your farm key"*, which is the server being careful, not broken. Playing as somebody new instead? `register_farm` over MCP hands you a fresh key; put that in the URL.
 
@@ -43,20 +45,42 @@ Tests: `bun test` · Types: `bun run typecheck` · Health of a world: `bun run d
 The ordinary simulation uses scripted barns and needs no model:
 
 ```sh
+# 91 game-days = 13 game-weeks. Roughly 2 minutes on the author's M1 Max.
 bun run simulate 91 --seed=1
 bun dev:sim           # inspect the newest simulation at http://localhost:3435/admin
 ```
 
-The LLM experiment is optional. Install [Ollama](https://ollama.com/), pull a local model, then give one or more barns that model as their decision-maker:
+Use `182` game-days (26 game-weeks, about half a calendar year) when you want to watch the longer population and breeding loop. It is a heavier run, roughly 10 minutes on the author's machine as the population grows:
+
+```sh
+bun run simulate 182 --seed=1
+```
+
+The LLM experiment is optional. Install [Ollama](https://ollama.com/) and pull a local model:
 
 ```sh
 ollama pull qwen3:30b-a3b
 
-# One LLM barn, seven game-days: a practical smoke run.
+# One model-controlled bot barn, seven game-days: a practical smoke run.
 bun run simulate 7 --seed=1 --brain=qwen3:30b-a3b --llm=1 --actors --brief=options
 ```
 
-`--actors` makes each LLM barn a durable Rivet Actor. `--llm=10` runs ten model-controlled barns against ten scripted barns. Full seasons are intentionally slow on a local model; see `BRAINS.md` and `runs/` for the measured experiments and their exact commands.
+`qwen3:30b-a3b` ran locally on the author's MacBook Pro M1 Max with 64 GB unified memory. A machine with less memory may need a smaller model. Ask your AI coding agent which Ollama model fits your hardware before downloading one.
+
+No separate Rivet install or service is needed. `bun install` includes the pinned `rivetkit` package; `--actors` starts its local Rivet Engine automatically and keeps Actor state on your machine. `--actors` makes each model-controlled barn a durable Rivet Actor.
+
+`--llm=1` selects one of the 19 bot barns for model control; the other 18 bots and the seeded dev farm stay scripted. It is the quickest useful experiment. `--llm=10` selects ten bot barns, leaving nine bots plus the seeded dev farm scripted, a 10-versus-10 experiment like the measured runs. Start with fewer days and fewer model barns, then increase either only when the small run is healthy.
+
+## Review a simulation
+
+Each simulation writes a timestamped SQLite world to `data/sim-*.db`. The two fast review paths are:
+
+```sh
+bun run doctor  # diagnoses the newest simulation and fails on broken invariants
+bun dev:sim     # opens that same newest world in the Stewards' Office
+```
+
+An AI coding agent can run the experiment, find the new database, run the doctor, inspect the SQLite tables and `brain_log`, and navigate the local office to explain the result. This is the intended way to handle the otherwise fiddly handoff between terminal output, the database, and the UI. See `BRAINS.md` and `runs/` for measured Actor experiments and their exact commands.
 
 ## Public deployment safety
 
