@@ -1,24 +1,57 @@
 # Pintakasi: Bloodlines
 
-Breed, fight, retire. A digital sabong auto-battler where **careers end in the breeding barn, not the grave** — and hardcore duels (loser force-retired) carry the stakes.
+Breed, fight, retire. The strongest Birds in the game do not exist yet, we get to breed for them.
 
-**Players and agents connect through MCP** at `/api/mcp`; REST exists for scripted tests. Claude Code is the client used during development. There are two web pages, and neither of them plays the game: the **Stewards' Office** at `/admin` (what the operators watch) and **The Pintakasi Handbook** at `/wiki` (the player-facing rules, every number imported live from the engine).
+Currently the game is mainly played and developed as a simulation to get the game balance and design right.
 
-## Source of truth
+**Players and agents connect through MCP** at `/api/mcp`; REST exists for scripted tests. Claude Code (or your favorite coding agent) is recommended as the client used during development and simulation testing.
 
-In this repo, in order: **`src/engine/config.ts`** (every balance knob, with a comment saying what it does in gameplay terms), **`RULINGS.md`** (what changed each round and why — including reversals), **`CLAUDE.md`** / **`AGENTS.md`** (the house rules for working here), and **`PROGRESS.md`** (standing watch items). These are the complete public source of truth.
+Running the app locally serves a UI that shows all of the birds, breeds, fights and so on that occurred. This UI accepts a database parameter, so previous simulations can be viewed too.
+- **Stewards' Office** at `/admin` (all of the game stats, and the nicest game UI available so far)
+- **The Pintakasi Handbook** at `/wiki` (the player-facing rules, numbers get imported from config).
+
+## Useful files
+
+- **`src/engine/config.ts`** (every balance knob, with a comment saying what it does in gameplay terms)
+- **`RULINGS.md`** (what changed each round and why — including reversals)
+- **`CLAUDE.md`** / **`AGENTS.md`** (the house rules for working here)
+- **`PROGRESS.md`** (standing watch items)
 
 ## Stack
 
-Next.js + TypeScript + Bun · SQLite (Drizzle + better-sqlite3) · `@modelcontextprotocol/server` for MCP. Local-first — a SQLite file doesn't persist on Vercel serverless; deploy = later swap to Turso/libSQL.
+Next.js + TypeScript + Bun · SQLite (Drizzle + better-sqlite3) · `@modelcontextprotocol/server` for MCP
+
+Note that SQLite will work fine locally, but on Vercel because that's serverless. Can modify and swap to Turso/libSQL if hosting their becomes desired.
+
+## Quick summary of the game
+- A season is 7 game-days and starts on Friday
+- Friday is "Hatch Day". Pregnant hens produce a 0yo egg. Existing eggs grow into 1yo juvenile chicks. All other birds age +1 year.
+- The goal of the game is to win Golden Pesos (GP) and amass Land Tokens (LT) via battling your birds
+- The most lucrative (+EV) fights in the game are the Pintakasi Finals. This is where most of the prize money is concentrated. Both serious players and casual players should target these seasonal tournaments
+- Birds can fight daily. There is a fight card with 5-10 fight types available per day
+- Birds have six fighting stats: Agility, Sight, Stamina, Gameness, Station, and Condition. These stats are hidden during their careers and only revealed after retirement
+- Birds also have an Element: Earth, Fire, Water, Metal, or Wood and a Star rating from 0-5. Their element can provide a small edge in certain conditions
+- **The best birds in the game do not exist yet, they must be bred for**. Take a strong hen and breed it with a strong rooster to ideally produce a chick that is superior to both
+- There are several fight types: Maiden, Claimer, Open, Hardcore
+- There are also several blade types: B1 to B5. B1 are long-blades, which are the quickest fights and most dependent on Agility and Sight. B5 are short-gaff fights, which are long endurance type fights most dependent on Gameness and Stamina
+- A typical season will involve finding ideal fights for each bird, and breeding your best hens
+- There is also a Gatcha machine that can be pulled 1x per game day for prizes
+- The lucrative Pintakasi Finals are "hardcore"; losing birds get force-retired. Competitive barns are always pushing the ceiling to create newer, better birds
+- Read the `/wiki` page for detailed game rules
 
 ## Layout
 
-- `src/engine/` — the game, pure TS, no HTTP: `GameClock`, `Flock`, `Breeding`, `Lobbies` (the daily card), `Tournaments` (the championships), `Gacha`, `Farms`, plus `fight-sim.ts` (the combat engine itself) and `bots.ts` / `auto-play.ts` (the stables that aren't you). **`config.ts` holds every balance seed** — tuning is a one-line edit.
+- `src/engine/` — the game, pure TS, no HTTP: `GameClock`, `Flock`, `Breeding`, `Lobbies` (the daily card), `Tournaments` (the championships), `Gacha`, `Farms`, plus `fight-sim.ts` (the combat engine itself)
+- `bots.ts` / `auto-play.ts` (scripted bot logic, used for simulations)
+- **`config.ts` holds every balance seed** — tuning often becomes a couple of edits + run a new simulation and compare
 - `src/db/` — Drizzle schema, client, seed script. ⚠ `schema.ts` and `ddl.ts` are **hand-synced**: edit both. `createDb()` runs the DDL on open, so a database bootstraps itself.
-- `src/app/api/` — thin REST routes + `/api/mcp`.
+- `src/app/api/` — thin REST routes
+- `/api/mcp` - MCP server and routes
 - `src/app/wiki/` — the Handbook. **Change a game rule, change the Handbook in the same commit** (see `CLAUDE.md`).
-- `scripts/` — `simulate.ts`, `doctor.ts`, `balance.ts`.
+- `scripts/`
+    - `simulate.ts` (simulation code, the main thing we "play the game with" right now)
+    - `doctor.ts` (checks the game world database and prints out detailed findings, checks invariants (e.g. money printed out of thin air))
+    - `balance.ts` (a suite for tuning the balance of the game. This checks things like stronger birds winning more vs. weaker birds. Used to balance out the fighting stats)
 
 ## Run
 
@@ -28,9 +61,9 @@ bun run db:seed     # 8 named age-0 eggs; they hatch next Friday
 bun dev             # http://localhost:3434
 ```
 
-That's the whole setup — there is no migration step. `createDb()` executes the DDL in `src/db/ddl.ts` when it opens the file, so the schema exists the moment anything touches the database.
+That's the whole setup, there is no migration step. `createDb()` executes the DDL in `src/db/ddl.ts` when it opens the file, so the schema exists the moment anything touches the database.
 
-The database is **per-machine**: `data/*.db` is gitignored, so a clone never carries a world with it and a `git pull` can never overwrite yours. Running `db:seed` twice is safe and does nothing the second time — "Already seeded … delete the file to reseed" is the expected message, not a failure.
+The database is **per-machine**: `data/*.db` is gitignored, so a clone never carries a world with it and a `git pull` can never overwrite yours. Running `db:seed` twice is safe and does nothing the second time — "Already seeded … delete the file to reseed" is the expected message, not a failure. We utilize SQLite, which makes 1x database per simulation easy to achieve and work with. The database simply being a file is great for experimentation purposes
 
 To play manually, open the **Stewards' Office** at `/admin` and use **+1 Day** or **+1 Week**. A fresh world starts on Friday; **+1 Week** reaches the following Hatch Friday, when all eight eggs become age-1 chicks. Local development leaves these controls enabled.
 
@@ -88,23 +121,13 @@ The Stewards' Office is an inspection surface, not an unauthenticated game-contr
 
 The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-development convenience**, not real authentication. Do not reuse it to protect a public or player-facing deployment.
 
-## License
-
-This is a source-available portfolio repository, not open-source software. See [LICENSE](LICENSE): the code and documentation are public for viewing and evaluation, but reuse requires written permission.
-
-## The loop (what "playable" means)
-
-Breed an egg ("Egg of \<mother\>", age 0) → it hatches next **Hatch Friday** as an age-1 chick → fight the **discovery year** as a juvenile → real fights from age 2 → **age 3 the fork opens**: hardcore runs (loser force-retired) and safe retirement unlock on the same birthday → ride the career (cap 9) or retire while ahead → breed the retiree (bloodline restriction: no siblings/parents/grandparents/great-grandparents) → a measurably better bird next Friday.
-
-⚠ **There is no training, and stats are hidden.** A bird's six stats are fixed at birth and stay behind a fog until it retires (round 28) — so the skill is *discovery*, not development: card the bird across the five blades, read its Pit Figures, and work out what it already is. Every rule the player needs is in the Handbook at `/wiki`.
-
 ## Databases — which world is which
 
-One SQLite file = one world. Three kinds exist; never confuse them:
+One SQLite file = one world. Three kinds exist:
 
 | World | File | Who writes it |
 |---|---|---|
-| **Live** (prod) | `data/game.db` on whatever box serves the game (the Zo machine — NOT Vercel; SQLite needs a persistent disk) | The players, via `bun dev` / `next start` |
+| **Live** (prod) | `data/game.db` on whatever box serves the game (a personal server, NOT Vercel; SQLite needs a persistent disk) | The players, via `bun dev` / `next start` |
 | **Simulation** | `data/sim-YYYYMMDD-HHMM.db` — every run gets its OWN timestamped file | `bun run simulate [days]` — seeds a fresh world (day 0, a Friday) and plays N days with the bots (defaults to 112 days, 16 full weeks) |
 | **Tests** | `:memory:` | `bun test` — never touches disk |
 
@@ -117,3 +140,7 @@ One SQLite file = one world. Three kinds exist; never confuse them:
 - `PINTAKASI_DB=<path>` points the server at any world (`latest-sim` = newest sim file); `simulate --db=<path>` retargets the sim.
 - **Wipe guard**: `simulate` refuses to reseed a database containing registered player farms (anyone beyond the seeded dev farm + bots) unless you pass `--force`. `db:seed` never wipes — it only seeds an empty file.
 - All `data/*.db` files are gitignored: a `git pull` can never touch a world. Back up the live world by copying the file (e.g. a nightly `cp data/game.db backups/` cron on the host).
+
+## License
+
+This is a source-available portfolio repository, not open-source software. See [LICENSE](LICENSE): the code and documentation are public for viewing and evaluation, but reuse requires written permission.
