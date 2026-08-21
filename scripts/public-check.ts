@@ -26,7 +26,7 @@ function trackedFiles(): string[] {
 const forbiddenPaths = [
   /(^|\/)\.env(?:\.|$)/i,
   /\.(?:pem|key|p12|pfx)$/i,
-  /(^|\/)(?:credentials?|secrets?)(?:\.|$)/i,
+  /(^|\/)(?:credentials?|secrets?)(?:\.|\/|$)/i,
   /(^|\/)data\/.*\.db(?:-|$)/i,
 ];
 
