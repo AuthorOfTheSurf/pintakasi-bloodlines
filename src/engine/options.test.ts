@@ -17,7 +17,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { BotView } from "./bot-brain";
-import { ECONOMY, JUVENILE_MAJOR, PINTAKASI, type FightFormat } from "./config";
+import { COVERS, ECONOMY, JUVENILE_MAJOR, PINTAKASI, type FightFormat } from "./config";
 import { digestOptions, toActionsFromPicks } from "./decider-ollama";
 import { buildOptions, GP_RESERVE, OPTION_ROWS_PER_BIRD } from "./options";
 
@@ -311,6 +311,22 @@ describe("the rows themselves", () => {
     const mothers = barn.filter((r) => r.action?.do === "breed").map((r) => (r.action as { motherId: string }).motherId);
     expect(mothers).not.toContain(expecting.id);
     expect(mothers).toContain(free.id);
+  });
+
+  test("list_stud rows render only up to what the liquid land covers", () => {
+    // The seat costs STUD_LISTING_LT of liquid land — Breeding.listStud
+    // refuses without it, so a short-of-land row must not render.
+    const roosters = [
+      bird({ status: "retired", sexLabel: "rooster" }),
+      bird({ status: "retired", sexLabel: "rooster" }),
+    ];
+    const listings = (landTokensCents: number) =>
+      buildOptions(viewOf({ flock: roosters, farm: { landTokensCents } })).barn.filter(
+        (r) => r.action?.do === "list_stud"
+      );
+    expect(listings(COVERS.STUD_LISTING_LT - 1)).toHaveLength(0);
+    expect(listings(COVERS.STUD_LISTING_LT)).toHaveLength(1);
+    expect(listings(2 * COVERS.STUD_LISTING_LT)).toHaveLength(2);
   });
 });
 

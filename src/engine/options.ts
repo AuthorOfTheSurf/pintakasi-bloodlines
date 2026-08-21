@@ -34,6 +34,7 @@
  */
 import {
   BARN,
+  COVERS,
   ECONOMY,
   JUVENILE_MAJOR,
   LT_CENTS,
@@ -312,12 +313,16 @@ export function buildOptions(view: BotView): OptionsPlan {
       action: { do: "roll_gacha" },
     });
 
-  // List any unlisted retired rooster (cap 2) — fees for nothing.
-  for (const stud of ownStuds.filter((s) => s.listedStud !== 1).slice(0, 2))
+  // List any unlisted retired rooster (cap 2). The seat costs liquid land
+  // (Breeding.listStud refuses without it), so rows render only up to what
+  // the land actually covers — same legality rule as the fee-gated rows.
+  const listable = Math.min(2, Math.floor(view.farm.landTokensCents / COVERS.STUD_LISTING_LT));
+  for (const stud of ownStuds.filter((s) => s.listedStud !== 1).slice(0, listable))
     barn.push({
       do: `list_stud ${stud.name}`,
+      cost: `${COVERS.STUD_LISTING_LT / LT_CENTS} LT`,
       value: 5,
-      why: "a listed stud earns cover fees and costs nothing to offer",
+      why: "a listed stud earns cover fees for one land payment up front",
       action: { do: "list_stud", birdId: stud.id },
     });
 
