@@ -154,9 +154,18 @@ if (fromArg && (keep || dbArg)) {
   process.exit(1);
 }
 
-const dbPath = path.resolve(
-  dbArg ?? (keep ? latestSimDb() : path.join(process.cwd(), "data", `sim-${stamp()}.db`))
-);
+// The stamp is minute-precision, so two auto-named runs in the same minute
+// (easy when forking snapshots back-to-back) would share a path — and the
+// second would delete the first world's files. Uniquify with a counter
+// suffix; an explicit --db keeps its exact name.
+function freshSimPath(): string {
+  const base = path.join(process.cwd(), "data", `sim-${stamp()}`);
+  let candidate = `${base}.db`;
+  for (let n = 2; existsSync(candidate); n++) candidate = `${base}-${n}.db`;
+  return candidate;
+}
+
+const dbPath = path.resolve(dbArg ?? (keep ? latestSimDb() : freshSimPath()));
 
 if (fromArg) {
   const snapshot = path.resolve(fromArg);
