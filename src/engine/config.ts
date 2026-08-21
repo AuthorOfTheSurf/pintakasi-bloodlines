@@ -1,8 +1,8 @@
 /**
  * ALL balance seeds live here — first-guess values, tune by play.
  * Every value is commented with what it does in gameplay terms.
- * Spec: wiki/projects/pintakasi-mvp.md + pintakasi-fight-formats.md
- * in the zane-knowledge-system repo.
+ * Historical specs informed the early balance model. The current public
+ * source of truth is this file plus RULINGS.md.
  */
 
 // ── Calendar ────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
     "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435",
     "doctor": "bun run scripts/doctor.ts",
     "worldhash": "bun run scripts/worldhash.ts",
+    "public-check": "bun run scripts/public-check.ts",
     "brain-bench": "bun run scripts/brain-bench.ts",
     "tune": "bun run scripts/tune.ts",
     "balance": "bun run scripts/balance.ts",

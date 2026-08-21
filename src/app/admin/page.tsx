@@ -1,6 +1,7 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { TickControls } from "./tick-controls";
+import { publicTicksEnabled } from "@/app/ticks";
 import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, simTimings, tournamentEntries, tournaments } from "@/db/schema";
 import {
   ECONOMY,
@@ -460,6 +461,7 @@ const TYPE_LABELS: Record<string, string> = {
 export default function Admin() {
   const d = db();
   const dbPath = defaultDbPath();
+  const ticksEnabled = publicTicksEnabled();
   // The two offices render identically — this badge is the only loud
   // difference between inspecting a sim and staring at the live world.
   const isSimWorld = path.basename(dbPath).startsWith("sim-");
@@ -1303,7 +1305,11 @@ export default function Admin() {
           </a>{" "}
           <span className="dim">— the rules, the odds, the money</span>
         </p>
-        <TickControls />
+        {ticksEnabled ? (
+          <TickControls />
+        ) : (
+          <p className="dim">Read-only public view — the world clock is operated from the host.</p>
+        )}
       </header>
 
       <section className="cards topline">
