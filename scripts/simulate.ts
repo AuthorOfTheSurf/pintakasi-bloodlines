@@ -26,7 +26,7 @@
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
 import { eq } from "drizzle-orm";
-import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
 import { brainLog, farms, simTimings } from "@/db/schema";
@@ -157,12 +157,25 @@ if (fromArg && (keep || dbArg)) {
 // The stamp is minute-precision, so two auto-named runs in the same minute
 // (easy when forking snapshots back-to-back) would share a path — and the
 // second would delete the first world's files. Uniquify with a counter
-// suffix; an explicit --db keeps its exact name.
+// suffix; an explicit --db keeps its exact name. The name is RESERVED by
+// creating the file exclusively ("wx"), not by peeking with existsSync —
+// two concurrent launches that both saw the name absent would otherwise
+// both claim it, and the wipe below would delete the other run's world.
+// One process wins the create; the loser gets EEXIST and takes the next
+// suffix. SQLite treats the empty reserved file exactly like a new db.
+let reservedFresh = false;
 function freshSimPath(): string {
   const base = path.join(process.cwd(), "data", `sim-${stamp()}`);
-  let candidate = `${base}.db`;
-  for (let n = 2; existsSync(candidate); n++) candidate = `${base}-${n}.db`;
-  return candidate;
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? `${base}.db` : `${base}-${n}.db`;
+    try {
+      writeFileSync(candidate, "", { flag: "wx" });
+      reservedFresh = true;
+      return candidate;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+  }
 }
 
 const dbPath = path.resolve(dbArg ?? (keep ? latestSimDb() : freshSimPath()));
@@ -176,8 +189,11 @@ if (fromArg) {
   // Clear the target's sidecars FIRST. A stale -wal beside the target path
   // is not debris — SQLite will replay it over the fresh copy on open and
   // silently resurrect whatever world it belonged to. (Found the hard way:
-  // a fork "started at day 48" and played somebody else's day 2.)
-  for (const suffix of ["", "-wal", "-shm"]) {
+  // a fork "started at day 48" and played somebody else's day 2.) The base
+  // file stays: it is this run's atomic name reservation, and copyFileSync
+  // overwrites it in place — deleting it first would hand the name back to
+  // any concurrent launch for the length of the gap.
+  for (const suffix of ["-wal", "-shm"]) {
     if (existsSync(dbPath + suffix)) rmSync(dbPath + suffix);
   }
   // The snapshot's own -wal carries any un-checkpointed pages; copying it
@@ -189,7 +205,10 @@ if (fromArg) {
   console.log(`Forked ${path.relative(process.cwd(), snapshot)} → ${path.relative(process.cwd(), dbPath)}\n`);
 }
 
-if (!keep && !fromArg && existsSync(dbPath)) {
+// reservedFresh skips the guard: the path exists only because THIS process
+// just created it as an empty reservation — it holds no world, and opening
+// it to count farms would fail on the missing schema.
+if (!keep && !fromArg && !reservedFresh && existsSync(dbPath)) {
   // The wipe guard: a database holding farms that were REGISTERED (not
   // seeded — the dev farm and the bots don't count) is somebody's world.
   const existing = createDb(dbPath)
