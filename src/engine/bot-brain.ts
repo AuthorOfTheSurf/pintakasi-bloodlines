@@ -391,8 +391,16 @@ const ORDER: BotAction["do"][] = [
   "retire",
   "list_stud",
   "breed",
-  "enter",
+  // Crown BEFORE enter — the order the scripted bots have always used
+  // (chaseCrowns is step 3b, card entries step 4). The guards are
+  // one-directional: Lobbies.enter refuses a crown-registered bird on its
+  // crown day, but Tournaments.enter never checks tonight's card — so
+  // enter-then-crown on crown day slipped both doors and the bird fought
+  // the card AND its championship that night, the exact double-fight
+  // round 31 closed. Crown-first also preserves the backup card: a bird
+  // the committee refuses holds no pending entry, so its enter still lands.
   "crown",
+  "enter",
   "claim",
   "stake",
 ];
