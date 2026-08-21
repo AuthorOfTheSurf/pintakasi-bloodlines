@@ -4,6 +4,7 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { publicTicksEnabled } from "@/app/ticks";
 import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
 import {
@@ -537,13 +538,21 @@ function createServer(farmId: string | null): McpServer {
     async ({ id, name }) => ruled(() => game().flock.rename(id, name))
   );
 
+  // The same production gate the REST tick routes hold: a public deployment
+  // is an inspection surface, and this endpoint is reachable by any MCP
+  // client — the world must not advance through the side door either.
+  const gatedTick = <T>(fn: () => T) =>
+    publicTicksEnabled()
+      ? ruled(fn)
+      : text("⛔ World ticking is disabled on this public deployment.");
+
   server.registerTool(
     "tick_day",
     {
       title: "Advance One Day",
       description: TOOL_DESCRIPTIONS.tick_day,
     },
-    async () => ruled(() => game().tickDay())
+    async () => gatedTick(() => game().tickDay())
   );
 
   server.registerTool(
@@ -552,7 +561,7 @@ function createServer(farmId: string | null): McpServer {
       title: "Advance to Next Hatch Friday",
       description: TOOL_DESCRIPTIONS.tick_week,
     },
-    async () => ruled(() => game().tickWeek())
+    async () => gatedTick(() => game().tickWeek())
   );
 
   server.registerTool(
