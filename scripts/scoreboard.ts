@@ -14,7 +14,7 @@
  *   bun run scoreboard [path/to/sim.db]     (default: newest sim db)
  */
 import { Database } from "bun:sqlite";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { LAND, LT_CENTS } from "@/engine/config";
 
@@ -23,11 +23,22 @@ const dbPath =
   dbArg ??
   (() => {
     const dir = "data";
-    const sims = readdirSync(dir)
-      .filter((f) => f.startsWith("sim-") && f.endsWith(".db"))
-      .sort();
-    if (!sims.length) throw new Error("no sim databases in data/");
-    return path.join(dir, sims[sims.length - 1]!);
+    // "Newest" means simulate's own sim-YYYYMMDD-HHMM stamp, not a bare
+    // lexical sort: hand-named dbs like sim-r44-112-s2.db sort after every
+    // timestamped run and would shadow fresh worlds forever. (mtime is no
+    // better — a bulk copy of data/ rewrites every mtime at once.) The
+    // fixed-width stamp makes lexical order chronological within the
+    // stamped set; mtime is only the fallback when nothing is stamped.
+    const stamped = /^sim-\d{8}-\d{4}(?:-\d+)?\.db$/;
+    const all = readdirSync(dir).filter((f) => f.startsWith("sim-") && f.endsWith(".db"));
+    if (!all.length) throw new Error("no sim databases in data/");
+    const candidates = all.filter((f) => stamped.test(f));
+    const pick = candidates.length
+      ? candidates.sort().at(-1)!
+      : all.sort(
+          (a, b) => statSync(path.join(dir, a)).mtimeMs - statSync(path.join(dir, b)).mtimeMs
+        ).at(-1)!;
+    return path.join(dir, pick);
   })();
 if (!existsSync(dbPath)) {
   console.error(`no database at ${dbPath}`);
