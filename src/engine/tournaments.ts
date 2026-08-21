@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birdForm, birds, farms, gameState, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birdForm, birds, farms, gameState, lobbyEntries, tournamentEntries, tournaments } from "@/db/schema";
 import {
   DAY_NAMES,
   FORMATS,
@@ -277,6 +277,27 @@ export class Tournaments {
           .map((b) => FORMATS[b].label)
           .join(" / ")}`
       );
+
+    // THE CONVERSE OF THE CARD DOOR'S CROWN-DAY GUARD (ruled with Zane,
+    // 2026-08-22). On the crown's own day "the championship IS its card"
+    // (round 18) has to hold in BOTH directions: Lobbies.enter has refused a
+    // registered bird since round 18, but this door never looked back at
+    // tonight's card — so card-first-register-second slipped both guards and
+    // the bird fought the evening card AND the bracket in one night, the
+    // exact double fight round 31 closed on the juvenile side. Registration
+    // on earlier days is untouched, and a bumped or refused bird still has
+    // no pending entry, so the backup card fight survives.
+    if (division === "major" ? Tournaments.isCrownDay(today) : Tournaments.isJuvenileCrownDay(today)) {
+      const carded = this.database
+        .select({ id: lobbyEntries.id })
+        .from(lobbyEntries)
+        .where(and(eq(lobbyEntries.birdId, birdId), eq(lobbyEntries.dayEntered, today)))
+        .all();
+      if (carded.length > 0)
+        throw new Error(
+          `${bird.name} is already on tonight's card — tonight's crown would be a second fight, and it's one card per bird per game-day`
+        );
+    }
 
     // One bird, one championship per week — one body, one crown day.
     const weekTournamentIds = this.database
