@@ -400,7 +400,7 @@ for (let day = 1; day <= days; day++) {
     const weekTotal = performance.now() - weekStart;
     console.log(
       `        wk ${Math.ceil(tick.clock.dayIndex / 7)} · ${weekDays} days in ${fmtSec(weekTotal)} · ` +
-        `avg ${(weekTotal / weekDays / 1000).toFixed(2)}s/day`
+        `avg ${(weekTotal / weekDays / 1000).toFixed(2)}s/day · total ${fmtSec(performance.now() - t0)}`
     );
     weekStart = performance.now();
     weekDays = 0;
@@ -473,4 +473,9 @@ if (useActors) await registry.shutdown();
 // LAST, so the path is still on screen when it fails — a broken world is
 // exactly the one you want to open.
 if (!report.ok) process.exit(1);
-if (useActors) process.exit(0);
+// Exit explicitly on success too. Without this, a plain (no --actors) run
+// finishes its work and then just stands there — something keeps the event
+// loop alive — which forces anyone driving the sim (a human, an agent, CI)
+// to poll the output and guess at doneness. An exit code IS the doneness
+// signal (Zane's ask, 2026-08-22).
+process.exit(0);
