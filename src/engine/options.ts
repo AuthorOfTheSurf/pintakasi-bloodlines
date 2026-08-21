@@ -99,8 +99,16 @@ export function buildOptions(view: BotView): OptionsPlan {
   });
 
   const retired = view.flock.filter((b) => b.status === "retired");
+  // One pregnancy per hen (Breeding.breed's refusal): a gestating egg in the
+  // flock names its mother, and offering her again is a row the engine will
+  // only bounce — the model reads a legal menu, so keep it legal.
+  const pregnant = new Set(
+    view.flock
+      .filter((b) => b.status === "egg" && b.eggStage === "gestating" && b.motherId)
+      .map((b) => b.motherId)
+  );
   const hens = retired
-    .filter((b) => b.sexLabel === "hen")
+    .filter((b) => b.sexLabel === "hen" && !pregnant.has(b.id))
     .sort((a, b) => b.halfStars - a.halfStars);
   const ownStuds = retired
     .filter((b) => b.sexLabel === "rooster")

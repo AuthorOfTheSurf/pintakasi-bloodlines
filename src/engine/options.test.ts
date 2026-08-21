@@ -296,6 +296,22 @@ describe("the rows themselves", () => {
     for (const plan of [noHen, noSpace, noFee])
       expect(plan.barn.some((r) => r.action?.do === "breed")).toBe(false);
   });
+
+  test("a pregnant hen is off the breed menu until her egg lays", () => {
+    // Breeding.breed refuses a second cover while an egg gestates — the row
+    // must not render. A LAID egg frees her the same week (the engine rule).
+    const expecting = bird({ status: "retired", sexLabel: "hen", halfStars: 8 });
+    const free = bird({ status: "retired", sexLabel: "hen", halfStars: 4 });
+    const stud = { id: "s", name: "S", stars: 3, farm: "x" };
+    const gestating = bird({ status: "egg", eggStage: "gestating", motherId: expecting.id });
+    const laid = bird({ status: "egg", eggStage: "laid", motherId: free.id });
+    const { barn } = buildOptions(
+      viewOf({ flock: [expecting, free, gestating, laid], studMarket: [stud] })
+    );
+    const mothers = barn.filter((r) => r.action?.do === "breed").map((r) => (r.action as { motherId: string }).motherId);
+    expect(mothers).not.toContain(expecting.id);
+    expect(mothers).toContain(free.id);
+  });
 });
 
 describe("determinism", () => {
