@@ -34,7 +34,7 @@ import { and, eq, gt, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries } from "@/db/schema";
 import { CROWN_CHASE } from "./bot-config";
-import { ECONOMY, JUVENILE_MAJOR } from "./config";
+import { ECONOMY, JUVENILE_MAJOR, LT_CENTS } from "./config";
 import { canHardcore } from "./lifecycle";
 import type { BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
@@ -471,8 +471,10 @@ export function applyProposals(
           report.landBought += action.tokens;
         break;
       case "stake":
+        // stake() takes whole tokens; the report field is cent-based, as
+        // the name says — bots.ts converts the same way.
         if (quietly(() => void farmsApi.stake(farmId, action.tokens)))
-          report.stakedLandCents += action.tokens;
+          report.stakedLandCents += action.tokens * LT_CENTS;
         break;
       case "unstake":
         quietly(() => void farmsApi.unstake(farmId, action.tokens));
