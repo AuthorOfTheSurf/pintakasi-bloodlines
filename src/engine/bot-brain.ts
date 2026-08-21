@@ -34,7 +34,7 @@ import { and, eq, gt, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries } from "@/db/schema";
 import { CROWN_CHASE } from "./bot-config";
-import { JUVENILE_MAJOR } from "./config";
+import { ECONOMY, JUVENILE_MAJOR } from "./config";
 import { canHardcore } from "./lifecycle";
 import type { BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
@@ -462,7 +462,9 @@ export function applyProposals(
         if (quietly(() => void gacha.roll())) report.paidPulls++;
         break;
       case "buy_bundle":
-        if (quietly(() => void gacha.bundle())) report.paidPulls++;
+        // A bundle is BUNDLE_ROLLS pulls, and the adoption read compares
+        // this count against the scripted bots' — which count every roll.
+        if (quietly(() => void gacha.bundle())) report.paidPulls += ECONOMY.BUNDLE_ROLLS;
         break;
       case "buy_land":
         if (quietly(() => void farmsApi.buyLand(farmId, action.tokens)))
