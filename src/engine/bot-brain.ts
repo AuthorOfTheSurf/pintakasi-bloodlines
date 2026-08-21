@@ -221,6 +221,12 @@ export function buildView(db: DB, farmId: string): BotView {
     claimerBoard: lobbies.board({ classType: "claimer", detail: "field" }),
     scout,
     crowns: (() => {
+      // A bird already seated in this week's crowns is not "eligible" — it
+      // is REGISTERED, and enter() refuses a second declaration. Leaving it
+      // in the list kept the brief's crown rows advertised all week after a
+      // Monday registration, and every pick bounced. Same skip the crown
+      // chasers learned in round 44.
+      const seated = new Tournaments(db, farmId).myPendingBirdsThisWeek();
       // Same facts chaseCrowns reads, through the same indexed query.
       const proven = new Set(
         db
@@ -240,7 +246,11 @@ export function buildView(db: DB, farmId: string): BotView {
         eligibleBirdIds: mine
           .filter(
             (b) =>
-              b.status === "active" && b.named && canHardcore(b.age) && proven.has(b.id)
+              b.status === "active" &&
+              b.named &&
+              canHardcore(b.age) &&
+              proven.has(b.id) &&
+              !seated.has(b.id)
           )
           .map((b) => b.id),
         juvenileFormats: Tournaments.juvenileBladesOfWeek(Tournaments.targetWeek(day)),
@@ -250,7 +260,8 @@ export function buildView(db: DB, farmId: string): BotView {
               b.status === "active" &&
               b.named &&
               b.age === 1 &&
-              b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS
+              b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS &&
+              !seated.has(b.id)
           )
           .map((b) => b.id),
       };
