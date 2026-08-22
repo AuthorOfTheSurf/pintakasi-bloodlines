@@ -6,9 +6,10 @@
  */
 import { BarnLedgerLive } from "./live.ts";
 import { ChatRoom, Moderator } from "./chat.ts";
+import { Cashier } from "./monitor-demo.ts";
 import { testEngine } from "./layer.ts";
 
-export const engine = testEngine(ChatRoom, Moderator, BarnLedgerLive);
+export const engine = testEngine(ChatRoom, Moderator, Cashier, BarnLedgerLive);
 
 // bun loads test files one at a time, so a per-suite refcount would hit
 // zero between files. Dispose exactly once, when the whole process ends.

@@ -82,6 +82,51 @@ const isDeclaredError = (e: unknown): e is { _tag: string; data: any } =>
 const flatten = (e: { _tag: string; data: any }) =>
   Object.assign(new Error(e._tag), { _tag: e._tag, ...(e.data ?? {}) });
 
+// ---------------------------------------------------------------------------
+// The unexpected-error channel ("Part 2"): any failure a handler did NOT
+// declare is caught at the handler boundary, turned into a context-rich
+// report (enough for a coding agent to produce the patch), pushed to every
+// subscribed reporter, and crosses the wire as a single typed
+// `UnexpectedError` — the actor survives and its state draft is discarded.
+// In-process subscription is the v0 stand-in for the real sink (Rivet's
+// pending actor onError hook / a Sentry exporter).
+// ---------------------------------------------------------------------------
+
+export type UnexpectedReport = {
+  reportId: string;
+  actor: string;
+  action: string;
+  payload: unknown;
+  /** Committed state at the moment the handler ran (draft changes excluded). */
+  state: unknown;
+  error: { name: string; message: string; stack?: string };
+  at: number;
+};
+
+const reporters = new Set<(r: UnexpectedReport) => void>();
+
+/** Subscribe to unexpected-error reports; returns an unsubscribe fn. */
+export function onUnexpected(fn: (r: UnexpectedReport) => void): () => void {
+  reporters.add(fn);
+  return () => void reporters.delete(fn);
+}
+
+const UNEXPECTED = "UnexpectedError";
+errorClasses.set(
+  UNEXPECTED,
+  class extends Schema.TaggedErrorClass<any>()(UNEXPECTED, { data: Schema.Any }) {},
+);
+
+export const isUnexpected = (
+  e: unknown,
+): e is Error & {
+  _tag: typeof UNEXPECTED;
+  reportId: string;
+  actor: string;
+  action: string;
+} =>
+  typeof e === "object" && e !== null && (e as any)._tag === UNEXPECTED;
+
 export function actor<
   S extends object,
   Ev extends Record<string, any>,
@@ -170,7 +215,34 @@ export function actor<
             try: () => serialize(async () => {
               const current = await run(state.get.pipe(Effect.orDie));
               const draft = JSON.parse(JSON.stringify(current ?? {})) as S;
-              const result = await config.handle[tag]!(payload?.data, makeCtx(draft, run as any));
+              let result: unknown;
+              try {
+                result = await config.handle[tag]!(payload?.data, makeCtx(draft, run as any));
+              } catch (e) {
+                if (isDeclaredError(e)) throw e;
+                const err = e instanceof Error ? e : new Error(String(e));
+                const report: UnexpectedReport = {
+                  reportId: crypto.randomUUID(),
+                  actor: name,
+                  action: tag,
+                  payload: payload?.data,
+                  state: current,
+                  error: { name: err.name, message: err.message, stack: err.stack },
+                  at: Date.now(),
+                };
+                for (const fn of reporters) {
+                  try { fn(report); } catch { /* a broken reporter must not mask the report */ }
+                }
+                const Cls = errorClasses.get(UNEXPECTED)!;
+                throw new Cls({
+                  data: {
+                    reportId: report.reportId,
+                    actor: name,
+                    action: tag,
+                    message: err.message,
+                  },
+                });
+              }
               await run(state.update(() => draft).pipe(Effect.orDie));
               return result;
             }),
