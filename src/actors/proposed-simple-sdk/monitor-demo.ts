@@ -45,14 +45,4 @@ export function monitor() {
   return { reports, stop };
 }
 
-/** The agent-patchable report block. */
-export function format(r: UnexpectedReport): string {
-  return [
-    `UNEXPECTED ERROR ${r.reportId}`,
-    `actor:   ${r.actor} · action: ${r.action} · at: ${new Date(r.at).toISOString()}`,
-    `error:   ${r.error.name}: ${r.error.message}`,
-    `payload: ${JSON.stringify(r.payload)}`,
-    `state:   ${JSON.stringify(r.state)}`,
-    r.error.stack ?? "(no stack)",
-  ].join("\n");
-}
+export { format } from "./adapters.ts";

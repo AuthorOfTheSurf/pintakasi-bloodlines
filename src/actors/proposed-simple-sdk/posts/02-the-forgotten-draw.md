@@ -61,14 +61,17 @@ This is deliberately everything a coding agent needs to produce the patch: the i
 Reports are pushed to whatever sinks you configure — this is the part that turns "logged somewhere" into "a human finds out":
 
 ```typescript
-// placeholder API — the adapter design
-serve({
-  actors: [Referee],
-  monitor: [sentry({ dsn }), slack({ webhook, channel: "#oncall" })],
-});
+import { watch, stdout, discord } from "@rivetkit/????";
+
+watch(stdout(), discord({ webhookUrl }));
 ```
 
-Adapters compose: Sentry for the paper trail, Slack for the ping, a local web panel during development, stdout as the discouraged default. Today's v0 ships the in-process subscription (`onUnexpected(fn)`) that all of these plug into; the adapters and the panel are the next build.
+Adapters compose: Discord or Slack for the ping, Sentry for the paper trail, stdout as the discouraged default. Built and running today: `stdout()`, `discord()` (a channel webhook), and the **live panel** — `startPanel()` serves a one-page monitor over server-sent events with two views:
+
+- **Actors table**, fed by the activity channel (every handled action emits ok / declared-error / unexpected-error with latency). A per-row watchdog flags an actor **QUIET** when it stops emitting — this is how *silent* failures (wedged, never-woke, unreachable) become visible, the failure class no error channel can ever catch, because nothing throws.
+- **Failure feed**: the report blocks, newest first, live.
+
+Try it: `bun src/actors/proposed-simple-sdk/demo-panel.ts` boots a real engine, opens the panel, and plays rock-paper-scissors until the draw hits.
 
 ## Why this matters for "just get started"
 

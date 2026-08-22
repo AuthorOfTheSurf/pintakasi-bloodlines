@@ -111,6 +111,31 @@ export function onUnexpected(fn: (r: UnexpectedReport) => void): () => void {
   return () => void reporters.delete(fn);
 }
 
+// Activity channel: every handled action emits one event (ok / declared
+// error / unexpected error). A liveness watchdog or live panel consumes
+// these — silent actors become visible by the *absence* of events.
+export type ActivityEvent = {
+  actor: string;
+  action: string;
+  outcome: "ok" | "declared-error" | "unexpected-error";
+  ms: number;
+  at: number;
+};
+
+const activityListeners = new Set<(ev: ActivityEvent) => void>();
+
+/** Subscribe to per-action activity events; returns an unsubscribe fn. */
+export function onActivity(fn: (ev: ActivityEvent) => void): () => void {
+  activityListeners.add(fn);
+  return () => void activityListeners.delete(fn);
+}
+
+const notifyActivity = (ev: ActivityEvent) => {
+  for (const fn of activityListeners) {
+    try { fn(ev); } catch { /* a broken listener must not break the actor */ }
+  }
+};
+
 const UNEXPECTED = "UnexpectedError";
 errorClasses.set(
   UNEXPECTED,
@@ -213,13 +238,19 @@ export function actor<
           const run = Effect.runPromiseWith(actionContext);
           return Effect.tryPromise({
             try: () => serialize(async () => {
+              const t0 = Date.now();
+              const activity = (outcome: ActivityEvent["outcome"]) =>
+                notifyActivity({ actor: name, action: tag, outcome, ms: Date.now() - t0, at: Date.now() });
               const current = await run(state.get.pipe(Effect.orDie));
               const draft = JSON.parse(JSON.stringify(current ?? {})) as S;
               let result: unknown;
               try {
                 result = await config.handle[tag]!(payload?.data, makeCtx(draft, run as any));
               } catch (e) {
-                if (isDeclaredError(e)) throw e;
+                if (isDeclaredError(e)) {
+                  activity("declared-error");
+                  throw e;
+                }
                 const err = e instanceof Error ? e : new Error(String(e));
                 const report: UnexpectedReport = {
                   reportId: crypto.randomUUID(),
@@ -233,6 +264,7 @@ export function actor<
                 for (const fn of reporters) {
                   try { fn(report); } catch { /* a broken reporter must not mask the report */ }
                 }
+                activity("unexpected-error");
                 const Cls = errorClasses.get(UNEXPECTED)!;
                 throw new Cls({
                   data: {
@@ -244,6 +276,7 @@ export function actor<
                 });
               }
               await run(state.update(() => draft).pipe(Effect.orDie));
+              activity("ok");
               return result;
             }),
             catch: (e) => e,
