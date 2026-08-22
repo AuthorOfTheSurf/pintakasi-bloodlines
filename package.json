@@ -21,11 +21,14 @@
     "scoreboard": "bun run scripts/scoreboard.ts"
   },
   "dependencies": {
+    "@effect/platform-node": "4.0.0-beta.66",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
+    "@rivetkit/effect": "2.3.10",
     "ag-grid-community": "^36.0.2",
     "ag-grid-react": "^36.0.2",
     "better-sqlite3": "^12.2.0",
     "drizzle-orm": "^0.45.2",
+    "effect": "4.0.0-beta.66",
     "next": "^16.2.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
