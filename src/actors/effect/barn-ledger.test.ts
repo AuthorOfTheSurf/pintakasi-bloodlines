@@ -5,27 +5,24 @@
  * concurrent burst serializes with a balanced ledger.
  */
 import { afterAll, expect, test } from "bun:test";
-import { Registry } from "@rivetkit/effect";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect } from "effect";
 import { BarnLedger } from "./api.ts";
-import { BarnLedgerLive } from "./live.ts";
+import { engine, release, retain } from "./test-harness.ts";
 
-const TestLayer = Registry.test.pipe(
-  Layer.provideMerge(BarnLedgerLive),
-  Layer.provide(Registry.layer()),
-);
-
-const runtime = ManagedRuntime.make(TestLayer);
-afterAll(() => runtime.dispose());
+retain();
+afterAll(() => release());
 // the first call is local and fast.
 const TIMEOUT = 120_000;
+
+// Durable actors + fixed keys = state bleeding across suite runs; randomize.
+const fresh = (label: string) => `${label}-${crypto.randomUUID()}`;
 
 test(
   "mailbox processes sends in order and asks behind them",
   async () => {
-    await runtime.runPromise(
+    await engine.run(
       Effect.gen(function* () {
-        const barn = (yield* BarnLedger.client).getOrCreate("t-fifo");
+        const barn = (yield* BarnLedger.client).getOrCreate(fresh("t-fifo"));
         yield* barn.Enqueue({
           message: { _tag: "QueueFight", birdId: "b1", entryFee: 40 },
         });
@@ -60,9 +57,9 @@ test(
 test(
   "typed domain errors cross the wire catchTag-able, ledger untouched",
   async () => {
-    await runtime.runPromise(
+    await engine.run(
       Effect.gen(function* () {
-        const barn = (yield* BarnLedger.client).getOrCreate("t-errors");
+        const barn = (yield* BarnLedger.client).getOrCreate(fresh("t-errors"));
         const broke = yield* barn
           .BreedRequest({ henId: "h", roosterId: "r", fee: 5_000 })
           .pipe(
@@ -93,9 +90,9 @@ test(
 test(
   "concurrent sends are serialized: nothing lost, ledger balances",
   async () => {
-    await runtime.runPromise(
+    await engine.run(
       Effect.gen(function* () {
-        const barn = (yield* BarnLedger.client).getOrCreate("t-burst");
+        const barn = (yield* BarnLedger.client).getOrCreate(fresh("t-burst"));
         yield* Effect.forEach(
           Array.from({ length: 20 }, (_, i) => i),
           () =>
