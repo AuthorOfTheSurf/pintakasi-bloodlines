@@ -34,7 +34,7 @@ import { and, eq, gt, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries } from "@/db/schema";
 import { CROWN_CHASE } from "./bot-config";
-import { JUVENILE_MAJOR } from "./config";
+import { ECONOMY, JUVENILE_MAJOR, LT_CENTS } from "./config";
 import { canHardcore } from "./lifecycle";
 import type { BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
@@ -221,6 +221,12 @@ export function buildView(db: DB, farmId: string): BotView {
     claimerBoard: lobbies.board({ classType: "claimer", detail: "field" }),
     scout,
     crowns: (() => {
+      // A bird already seated in this week's crowns is not "eligible" — it
+      // is REGISTERED, and enter() refuses a second declaration. Leaving it
+      // in the list kept the brief's crown rows advertised all week after a
+      // Monday registration, and every pick bounced. Same skip the crown
+      // chasers learned in round 44.
+      const seated = new Tournaments(db, farmId).myPendingBirdsThisWeek();
       // Same facts chaseCrowns reads, through the same indexed query.
       const proven = new Set(
         db
@@ -240,7 +246,11 @@ export function buildView(db: DB, farmId: string): BotView {
         eligibleBirdIds: mine
           .filter(
             (b) =>
-              b.status === "active" && b.named && canHardcore(b.age) && proven.has(b.id)
+              b.status === "active" &&
+              b.named &&
+              canHardcore(b.age) &&
+              proven.has(b.id) &&
+              !seated.has(b.id)
           )
           .map((b) => b.id),
         juvenileFormats: Tournaments.juvenileBladesOfWeek(Tournaments.targetWeek(day)),
@@ -250,7 +260,8 @@ export function buildView(db: DB, farmId: string): BotView {
               b.status === "active" &&
               b.named &&
               b.age === 1 &&
-              b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS
+              b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS &&
+              !seated.has(b.id)
           )
           .map((b) => b.id),
       };
@@ -380,8 +391,16 @@ const ORDER: BotAction["do"][] = [
   "retire",
   "list_stud",
   "breed",
-  "enter",
+  // Crown BEFORE enter — the order the scripted bots have always used
+  // (chaseCrowns is step 3b, card entries step 4). The guards are
+  // one-directional: Lobbies.enter refuses a crown-registered bird on its
+  // crown day, but Tournaments.enter never checks tonight's card — so
+  // enter-then-crown on crown day slipped both doors and the bird fought
+  // the card AND its championship that night, the exact double-fight
+  // round 31 closed. Crown-first also preserves the backup card: a bird
+  // the committee refuses holds no pending entry, so its enter still lands.
   "crown",
+  "enter",
   "claim",
   "stake",
 ];
@@ -462,15 +481,19 @@ export function applyProposals(
         if (quietly(() => void gacha.roll())) report.paidPulls++;
         break;
       case "buy_bundle":
-        if (quietly(() => void gacha.bundle())) report.paidPulls++;
+        // A bundle is BUNDLE_ROLLS pulls, and the adoption read compares
+        // this count against the scripted bots' — which count every roll.
+        if (quietly(() => void gacha.bundle())) report.paidPulls += ECONOMY.BUNDLE_ROLLS;
         break;
       case "buy_land":
         if (quietly(() => void farmsApi.buyLand(farmId, action.tokens)))
           report.landBought += action.tokens;
         break;
       case "stake":
+        // stake() takes whole tokens; the report field is cent-based, as
+        // the name says — bots.ts converts the same way.
         if (quietly(() => void farmsApi.stake(farmId, action.tokens)))
-          report.stakedLandCents += action.tokens;
+          report.stakedLandCents += action.tokens * LT_CENTS;
         break;
       case "unstake":
         quietly(() => void farmsApi.unstake(farmId, action.tokens));

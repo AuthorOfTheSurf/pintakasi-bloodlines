@@ -1,0 +1,9 @@
+# Archived run logs are evidence — sim output captured verbatim, trailing
+# whitespace and all (the doctor's padded columns put it there). This stops
+# trim-on-save editors from rewriting history into whitespace-only diffs.
+# No repo-wide formatting opinions live here on purpose; root left unset so
+# a future top-level config can still take over.
+
+[runs/**]
+trim_trailing_whitespace = false
+insert_final_newline = false

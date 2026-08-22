@@ -26,7 +26,7 @@
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
 import { eq } from "drizzle-orm";
-import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
 import { brainLog, farms, simTimings } from "@/db/schema";
@@ -153,22 +153,75 @@ if (fromArg && (keep || dbArg)) {
   console.error("--from forks a snapshot into a NEW db — it can't combine with --keep or --db.");
   process.exit(1);
 }
+// The snapshot is checked HERE, before a path is reserved below. Validating
+// after reservation left an empty .db behind on every typo'd --from, and an
+// empty file is worse than no file: it is the newest sim db, so `scoreboard`
+// and `bun dev:sim` pick it and fail on the missing schema.
+const snapshot = fromArg ? path.resolve(fromArg) : undefined;
+if (snapshot && !existsSync(snapshot)) {
+  console.error(`--from: no snapshot at ${snapshot}`);
+  process.exit(1);
+}
 
-const dbPath = path.resolve(
-  dbArg ?? (keep ? latestSimDb() : path.join(process.cwd(), "data", `sim-${stamp()}.db`))
-);
-
-if (fromArg) {
-  const snapshot = path.resolve(fromArg);
-  if (!existsSync(snapshot)) {
-    console.error(`--from: no snapshot at ${snapshot}`);
-    process.exit(1);
+// The stamp is minute-precision, so two auto-named runs in the same minute
+// (easy when forking snapshots back-to-back) would share a path — and the
+// second would delete the first world's files. Uniquify with a counter
+// suffix; an explicit --db keeps its exact name. The name is RESERVED by
+// creating the file exclusively ("wx"), not by peeking with existsSync —
+// two concurrent launches that both saw the name absent would otherwise
+// both claim it, and the wipe below would delete the other run's world.
+// One process wins the create; the loser gets EEXIST and takes the next
+// suffix. SQLite treats the empty reserved file exactly like a new db.
+let reservedFresh = false;
+function freshSimPath(): string {
+  const dir = path.join(process.cwd(), "data");
+  // data/ is gitignored, so a clean checkout doesn't have one — createDb makes
+  // it, but the reservation below happens first and would die on ENOENT.
+  mkdirSync(dir, { recursive: true });
+  const base = path.join(dir, `sim-${stamp()}`);
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? `${base}.db` : `${base}-${n}.db`;
+    try {
+      writeFileSync(candidate, "", { flag: "wx" });
+      reservedFresh = true;
+      return candidate;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
   }
+}
+
+const dbPath = path.resolve(dbArg ?? (keep ? latestSimDb() : freshSimPath()));
+
+// …and if the run dies before it ever writes a world — a crash in seeding, a
+// refused wipe, a Ctrl-C — sweep the reservation away again. It is only ever
+// removed while still ZERO BYTES: the moment createDb writes a schema the
+// file is a real world and this becomes a no-op, so there is no path where
+// this deletes anybody's data.
+process.on("exit", () => {
+  if (!reservedFresh) return;
+  try {
+    if (statSync(dbPath).size === 0) rmSync(dbPath);
+  } catch {
+    // already gone, or never created — either way nothing to sweep
+  }
+});
+// A bare SIGINT kills the process WITHOUT running exit handlers, so Ctrl-C
+// during the first second of a run would leave the reservation behind.
+// Re-raising it as an ordinary exit gives the sweep above its chance; 130 is
+// the conventional code for "died on SIGINT" and keeps `!report.ok`-style
+// scripting honest.
+for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(130));
+
+if (snapshot) {
   // Clear the target's sidecars FIRST. A stale -wal beside the target path
   // is not debris — SQLite will replay it over the fresh copy on open and
   // silently resurrect whatever world it belonged to. (Found the hard way:
-  // a fork "started at day 48" and played somebody else's day 2.)
-  for (const suffix of ["", "-wal", "-shm"]) {
+  // a fork "started at day 48" and played somebody else's day 2.) The base
+  // file stays: it is this run's atomic name reservation, and copyFileSync
+  // overwrites it in place — deleting it first would hand the name back to
+  // any concurrent launch for the length of the gap.
+  for (const suffix of ["-wal", "-shm"]) {
     if (existsSync(dbPath + suffix)) rmSync(dbPath + suffix);
   }
   // The snapshot's own -wal carries any un-checkpointed pages; copying it
@@ -180,7 +233,10 @@ if (fromArg) {
   console.log(`Forked ${path.relative(process.cwd(), snapshot)} → ${path.relative(process.cwd(), dbPath)}\n`);
 }
 
-if (!keep && !fromArg && existsSync(dbPath)) {
+// reservedFresh skips the guard: the path exists only because THIS process
+// just created it as an empty reservation — it holds no world, and opening
+// it to count farms would fail on the missing schema.
+if (!keep && !fromArg && !reservedFresh && existsSync(dbPath)) {
   // The wipe guard: a database holding farms that were REGISTERED (not
   // seeded — the dev farm and the bots don't count) is somebody's world.
   const existing = createDb(dbPath)
@@ -391,7 +447,7 @@ for (let day = 1; day <= days; day++) {
     const weekTotal = performance.now() - weekStart;
     console.log(
       `        wk ${Math.ceil(tick.clock.dayIndex / 7)} · ${weekDays} days in ${fmtSec(weekTotal)} · ` +
-        `avg ${(weekTotal / weekDays / 1000).toFixed(2)}s/day`
+        `avg ${(weekTotal / weekDays / 1000).toFixed(2)}s/day · total ${fmtSec(performance.now() - t0)}`
     );
     weekStart = performance.now();
     weekDays = 0;
@@ -464,4 +520,9 @@ if (useActors) await registry.shutdown();
 // LAST, so the path is still on screen when it fails — a broken world is
 // exactly the one you want to open.
 if (!report.ok) process.exit(1);
-if (useActors) process.exit(0);
+// Exit explicitly on success too. Without this, a plain (no --actors) run
+// finishes its work and then just stands there — something keeps the event
+// loop alive — which forces anyone driving the sim (a human, an agent, CI)
+// to poll the output and guess at doneness. An exit code IS the doneness
+// signal (Zane's ask, 2026-08-22).
+process.exit(0);

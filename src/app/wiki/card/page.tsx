@@ -255,7 +255,9 @@ export default function CardPage() {
       <div className="callout tip">
         <b>{DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} is thinner on purpose.</b> That is the Pintakasi
         Majors&apos; crown day, and every bird registered for a Major is barred from the daily card —
-        its crown <em>is</em> its card. With that many birds missing, the adult open class drops to{" "}
+        its crown <em>is</em> its card. The rule holds both ways round: a bird already on{" "}
+        {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s card cannot then register for that night&apos;s
+        crown either. One card per bird per day, whichever door it walks through first. With that many birds missing, the adult open class drops to{" "}
         {CARD.CROWN_DAY_OPEN_BLADES} blades instead of {CARD.real.open}, so the fights that do run
         still fill up. {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s card carries{" "}
         {crownDayCard.length} lobbies rather than {exampleCard.length}.

@@ -952,6 +952,26 @@ describe("the crown-day resolution", () => {
       lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }))
     ).toThrow(/Pintakasi/);
   });
+
+  test("the crown door refuses a bird already on tonight's card — the converse guard", () => {
+    // The test above holds one direction of round 18's "the championship IS
+    // its card"; this one holds the other. Card-first-register-second used
+    // to slip both doors on crown day itself and the bird fought twice in a
+    // night (ruled closed 2026-08-22). Ordinary days stay untouched: either
+    // order is legal all week, which the Monday half of this test pins.
+    const w = world();
+    const lobbies = new Lobbies(w.db, w.devId);
+    const bb = byName(w.db, w.devFlock, "Batong Buhay");
+    const sinag = byName(w.db, w.devFlock, "Sinag");
+    for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3 (Monday)
+    lobbies.enter(sinag.id, onCard(w.db, { mode: "real", classType: "open" }));
+    w.dev.enter(sinag.id, "b1"); // card then crown, same ordinary day — fine
+    for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 6 (Thursday, crown day)
+    // Crown day: an unregistered bird cards freely…
+    lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }));
+    // …but tonight's crown would be its second fight of the night.
+    expect(() => w.dev.enter(bb.id, "b1")).toThrow(/tonight's card/);
+  });
 });
 
 /**

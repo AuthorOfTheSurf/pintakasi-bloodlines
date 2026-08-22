@@ -62,6 +62,12 @@ const res = await fetch("http://localhost:11434/api/chat", {
     ],
   }),
 });
+if (!res.ok) {
+  // A missing model comes back as a clean HTTP 404 with a JSON error — the
+  // old code shrugged past it and printed a table of dashes with exit 0.
+  console.error(`\n  ollama returned ${res.status}: ${await res.text()}`);
+  process.exit(1);
+}
 const body = (await res.json()) as Record<string, number>;
 const ms = (ns?: number) => (ns ? (ns / 1e6).toFixed(0) : "—");
 const rate = (count?: number, ns?: number) =>

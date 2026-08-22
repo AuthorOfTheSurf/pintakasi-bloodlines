@@ -209,7 +209,10 @@ export default function PintakasiPage() {
         There is no test to pass. <strong>Any</strong> bird of yours may declare for a Major, as
         long as it is alive, fighting, has a real name, and is old enough to be allowed to risk its
         career: age {AGE.FORK}+. That age gate is the only hard rule left at the door. A bird that
-        has never won anything can walk up, pay the {fee} GP, and register.
+        has never won anything can walk up, pay the {fee} GP, and register — any day of the week,
+        up to Thursday itself. One timing rule on that last day: a bird already entered on
+        Thursday&apos;s daily card cannot then declare for that night&apos;s crown. Its crown would
+        be a second fight in one night, and it is one card per bird per day in every direction.
       </p>
 
       <h3 id="the-entry-fee">What the {fee} GP buys</h3>

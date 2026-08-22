@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { events, farms } from "@/db/schema";
+import { birds, events, farms } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { applyProposals, brainRng, buildView, collectProposals, type BotAction } from "./bot-brain";
 import { ECONOMY } from "./config";
 import { Bots } from "./bots";
 import { Game } from "./game";
+import { Tournaments } from "./tournaments";
 import { seedWorld } from "./rng";
 
 /**
@@ -107,6 +108,27 @@ describe("collect", () => {
 });
 
 describe("the mail tells a barn only what a player could see", () => {
+  test("a bird seated in this week's crowns leaves the eligible list", () => {
+    const { db } = world();
+    // Manufacture a crown-eligible veteran: hardcore age, proven record.
+    const candidate = db.select().from(birds).where(eq(birds.farmId, "bot-1")).all()
+      .find((b) => b.status === "active")!;
+    db.update(birds)
+      .set({ named: 1, birthWeek: -4, stakesWins: 10 })
+      .where(eq(birds.id, candidate.id))
+      .run();
+
+    const before = buildView(db, "bot-1");
+    expect(before.crowns.eligibleBirdIds).toContain(candidate.id);
+
+    // Register it — the same call the crown verb translates to. From here
+    // enter() would refuse a second declaration, so the mail must stop
+    // calling the bird eligible or the brief re-advertises a dead row all week.
+    new Tournaments(db, "bot-1").enter(candidate.id, before.crowns.weekFormats[0], "major");
+    const after = buildView(db, "bot-1");
+    expect(after.crowns.eligibleBirdIds).not.toContain(candidate.id);
+  });
+
   test("a live bird's six stats stay fogged, even from its owner", () => {
     const { db } = world();
     const view = buildView(db, "bot-1");
