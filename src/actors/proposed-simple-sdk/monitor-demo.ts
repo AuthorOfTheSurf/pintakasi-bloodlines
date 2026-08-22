@@ -35,6 +35,14 @@ export const Referee = actor("Referee", {
     },
 
     Scores: async (_: void, { state }) => state.scores,
+
+    WinRate: async ({ player }: { player: string }, { state }) => {
+      // Second bug: assumes the caller sends "Alice"/"Bob" exactly — a
+      // lowercase "alice" from a client makes the lookup come back empty.
+      const s = (state.scores as Record<string, { wins: number }>)[player]!;
+      const total = state.scores.Alice.wins + state.scores.Bob.wins;
+      return total === 0 ? 0 : s.wins / total;
+    },
   },
 });
 

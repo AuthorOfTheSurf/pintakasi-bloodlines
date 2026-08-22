@@ -6,17 +6,22 @@
  *   bun src/actors/proposed-simple-sdk/demo-panel.ts
  *   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/… bun src/actors/proposed-simple-sdk/demo-panel.ts
  */
-import { discord, stdout, watch } from "./adapters.ts";
+import { alertWith, discordAlert, stdoutAlert } from "./adapters.ts";
 import { ChatRoom, Moderator } from "./chat.ts";
+import { issueTracker } from "./issues.ts";
 import { testEngine } from "./layer.ts";
 import { Referee, type Choice } from "./monitor-demo.ts";
 import { startPanel } from "./panel.ts";
 
+// Issue-level alerting: new issues and regressions ping; recurrences only
+// count. Resolve an issue in the panel, wait for it to recur, and watch
+// the regression come through loud.
+const tracker = issueTracker();
 const webhookUrl = process.env["DISCORD_WEBHOOK_URL"];
-watch(stdout(), ...(webhookUrl ? [discord({ webhookUrl })] : []));
-if (!webhookUrl) console.log("(set DISCORD_WEBHOOK_URL to also push reports to Discord)");
+alertWith(tracker, stdoutAlert(), ...(webhookUrl ? [discordAlert({ webhookUrl })] : []));
+if (!webhookUrl) console.log("(set DISCORD_WEBHOOK_URL to also alert to Discord)");
 
-const panel = startPanel();
+const panel = startPanel({ tracker });
 console.log(`monitor panel: ${panel.url}`);
 
 const engine = testEngine(ChatRoom, Moderator, Referee);
@@ -39,6 +44,15 @@ while (true) {
     await room.SendMessage({ sender: winner, text: `round ${round}: my ${winner === "Alice" ? alice : bob} wins!` });
   } catch {
     // the forgotten draw — already reported through the monitor channel
+  }
+  if (round % 7 === 0) {
+    // A sloppy client sends a lowercase name — the second issue fingerprint.
+    await referee.WinRate({ player: "alice" }).catch(() => {});
+  }
+  if (round % 5 === 0) {
+    // A declared error, for contrast: shows amber in the activity table,
+    // never becomes an issue.
+    await room.SendMessage({ sender: "Mallory", text: "let me in" }).catch(() => {});
   }
   await new Promise((r) => setTimeout(r, 1500));
 }

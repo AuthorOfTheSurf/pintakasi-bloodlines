@@ -6,6 +6,7 @@
  *
  *   const stop = watch(stdout(), discord({ webhookUrl }));
  */
+import type { IssueEvent, IssueTracker } from "./issues.ts";
 import { onUnexpected, type UnexpectedReport } from "./layer.ts";
 
 export type MonitorAdapter = (r: UnexpectedReport) => void | Promise<void>;
@@ -51,30 +52,71 @@ const clip = (s: string, max: number) =>
 const codeBlock = (s: string, max: number) =>
   `\`\`\`\n${clip(s, max - 8)}\n\`\`\``;
 
+const reportEmbed = (r: UnexpectedReport, title: string, color: number) => ({
+  title,
+  color,
+  timestamp: new Date(r.at).toISOString(),
+  fields: [
+    { name: "payload", value: codeBlock(JSON.stringify(r.payload), 1024) },
+    { name: "state", value: codeBlock(JSON.stringify(r.state), 1024) },
+    { name: "stack", value: codeBlock(r.error.stack ?? "(no stack)", 1024) },
+  ],
+});
+
+const postDiscord = async (webhookUrl: string, content: string, embed: unknown) => {
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content, embeds: [embed] }),
+  });
+  if (!res.ok) throw new Error(`discord webhook: HTTP ${res.status}`);
+};
+
 /**
- * Post each report to a Discord channel webhook.
- * Create one under Server Settings → Integrations → Webhooks.
+ * Post EVERY report to a Discord channel webhook — no grouping, floods on
+ * a hot loop. Prefer `alertWith(tracker, discordAlert({webhookUrl}))`.
+ * Create a webhook under Server Settings → Integrations → Webhooks.
  */
 export const discord = ({ webhookUrl }: { webhookUrl: string }): MonitorAdapter =>
-  async (r) => {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        content: `🚨 **UnexpectedError** in \`${r.actor}.${r.action}\` — ${r.error.name}: ${clip(r.error.message, 300)}`,
-        embeds: [
-          {
-            title: `Report ${r.reportId}`,
-            color: 0xe74c3c,
-            timestamp: new Date(r.at).toISOString(),
-            fields: [
-              { name: "payload", value: codeBlock(JSON.stringify(r.payload), 1024) },
-              { name: "state", value: codeBlock(JSON.stringify(r.state), 1024) },
-              { name: "stack", value: codeBlock(r.error.stack ?? "(no stack)", 1024) },
-            ],
-          },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`discord webhook: HTTP ${res.status}`);
-  };
+  (r) =>
+    postDiscord(
+      webhookUrl,
+      `🚨 **UnexpectedError** in \`${r.actor}.${r.action}\` — ${r.error.name}: ${clip(r.error.message, 300)}`,
+      reportEmbed(r, `Report ${r.reportId}`, 0xe74c3c),
+    );
+
+// ---------------------------------------------------------------------------
+// Issue-level alerting (the Sentry policy): new issues and regressions
+// alert; recurrences only count. Plug adapters into an issueTracker.
+// ---------------------------------------------------------------------------
+
+export type IssueAlertAdapter = (ev: IssueEvent) => void | Promise<void>;
+
+/** Alert on new issues and regressions; recurrences stay quiet. */
+export function alertWith(tracker: IssueTracker, ...adapters: IssueAlertAdapter[]): () => void {
+  return tracker.on((ev) => {
+    if (ev.kind === "recurrence") return;
+    for (const adapter of adapters) {
+      Promise.resolve()
+        .then(() => adapter(ev))
+        .catch((e) => console.error(`[monitor] alert adapter failed: ${e}`));
+    }
+  });
+}
+
+export const stdoutAlert = (): IssueAlertAdapter => (ev) => {
+  const head = ev.kind === "regression"
+    ? `REGRESSION — resolved issue is back (${ev.issue.count}× total): ${ev.issue.title}`
+    : `NEW ISSUE: ${ev.issue.title}`;
+  console.error(`${head}\n${format(ev.report)}`);
+};
+
+export const discordAlert = ({ webhookUrl }: { webhookUrl: string }): IssueAlertAdapter =>
+  (ev) =>
+    postDiscord(
+      webhookUrl,
+      ev.kind === "regression"
+        ? `🔥 **REGRESSION** — resolved issue is back (${ev.issue.count}× total): \`${clip(ev.issue.title, 200)}\``
+        : `🆕 **New issue**: \`${clip(ev.issue.title, 200)}\``,
+      reportEmbed(ev.report, `Issue ${clip(ev.issue.fingerprint, 240)}`, ev.kind === "regression" ? 0xff5500 : 0xe74c3c),
+    );
