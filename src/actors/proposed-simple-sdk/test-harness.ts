@@ -4,12 +4,12 @@
  * other's registrations, so all effect actors register here and suites
  * share the runtime via refcount.
  */
-import { BarnLedgerLive } from "./live.ts";
+import { BarnLedgerLive } from "../current-effect-sdk/live.ts";
 import { ChatRoom, Moderator } from "./chat.ts";
-import { Cashier } from "./monitor-demo.ts";
+import { Referee } from "./monitor-demo.ts";
 import { testEngine } from "./layer.ts";
 
-export const engine = testEngine(ChatRoom, Moderator, Cashier, BarnLedgerLive);
+export const engine = testEngine(ChatRoom, Moderator, Referee, BarnLedgerLive);
 
 // bun loads test files one at a time, so a per-suite refcount would hit
 // zero between files. Dispose exactly once, when the whole process ends.

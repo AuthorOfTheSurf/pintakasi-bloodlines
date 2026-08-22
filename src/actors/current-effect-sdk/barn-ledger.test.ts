@@ -7,7 +7,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { BarnLedger } from "./api.ts";
-import { engine, release, retain } from "./test-harness.ts";
+import { engine, release, retain } from "../proposed-simple-sdk/test-harness.ts";
 
 retain();
 afterAll(() => release());
