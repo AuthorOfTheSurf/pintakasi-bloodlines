@@ -11,7 +11,7 @@
  *  - Failure feed (unexpected-error channel): the agent-patchable report
  *    blocks, newest first, streamed live over server-sent events (SSE).
  */
-import type { Issue, IssueTracker } from "./issues.ts";
+import { fingerprintOf, type Issue, type IssueTracker } from "./issues.ts";
 import { onActivity, onUnexpected, type ActivityEvent, type UnexpectedReport } from "./layer.ts";
 
 const MAX_REPORTS = 100;
@@ -33,7 +33,8 @@ export function startPanel({ port = 4949, quietAfterMs = 30_000, tracker }: { po
   const stopReports = onUnexpected((r) => {
     reports.unshift(r);
     if (reports.length > MAX_REPORTS) reports.pop();
-    push("report", r);
+    // The fingerprint rides along so the page can fold duplicates.
+    push("report", { ...r, fingerprint: fingerprintOf(r) });
   });
   const stopIssues = tracker?.on((ev) => push("issue", { ...ev.issue, lastKind: ev.kind }));
 
@@ -54,7 +55,7 @@ export function startPanel({ port = 4949, quietAfterMs = 30_000, tracker }: { po
             // Backlog on connect: liveness snapshot, issues, then reports oldest-first.
             for (const ev of lastActivity.values()) send(`event: activity\ndata: ${JSON.stringify(ev)}\n\n`);
             if (tracker) for (const i of tracker.issues.values()) send(`event: issue\ndata: ${JSON.stringify(issueRow(i))}\n\n`);
-            for (const r of [...reports].reverse()) send(`event: report\ndata: ${JSON.stringify(r)}\n\n`);
+            for (const r of [...reports].reverse()) send(`event: report\ndata: ${JSON.stringify({ ...r, fingerprint: fingerprintOf(r) })}\n\n`);
           },
           cancel() { clients.delete(send); },
         });
@@ -102,6 +103,12 @@ const PAGE = `<!doctype html>
   button { background: #262a31; color: #d6dae0; border: 1px solid #3a404a; border-radius: 4px; padding: .15rem .6rem; cursor: pointer; font: inherit; }
   button:hover { background: #3a404a; }
   #empty { color: #4c525c; }
+  @keyframes tick { 0% { color: #e0b45c; font-weight: bold; } 100% { color: inherit; font-weight: inherit; } }
+  .tick { animation: tick 1.2s ease-out; }
+  details.group { margin: .6rem 0; }
+  details.group > summary { cursor: pointer; color: #e26d6d; padding: .3rem 0; }
+  details.group > summary .n { color: #8b93a1; }
+  details.group .report { margin: .3rem 0 .3rem 1rem; }
 </style>
 <h1>Actors</h1>
 <table><thead><tr><th>actor</th><th>last action</th><th>outcome</th><th>latency</th><th>last seen</th></tr></thead>
@@ -118,13 +125,14 @@ const PAGE = `<!doctype html>
   const QUIET_MS = __QUIET_MS__;
   if (__HAS_ISSUES__) document.getElementById("issues-section").style.display = "";
   const actors = new Map();
-  const issues = new Map();
   const tbody = document.getElementById("actors");
   const issuesBody = document.getElementById("issues");
   const reportsEl = document.getElementById("reports");
   const when = (t) => new Date(t).toLocaleTimeString();
+  // Restart the amber tick animation even if it's still mid-fade.
+  const flash = (el) => { el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick"); };
 
-  function render() {
+  function renderActors() {
     tbody.innerHTML = "";
     for (const [name, ev] of [...actors].sort((a, b) => a[0] < b[0] ? -1 : 1)) {
       const age = Date.now() - ev.at;
@@ -138,42 +146,73 @@ const PAGE = `<!doctype html>
         "<td>" + Math.round(age / 1000) + "s ago</td>";
       tbody.appendChild(row);
     }
-    issuesBody.innerHTML = "";
-    for (const [fp, i] of [...issues].sort((a, b) => b[1].lastSeen - a[1].lastSeen)) {
-      const row = document.createElement("tr");
-      const status = i.lastKind === "regression" ? "<span class=regression>REGRESSION</span>" : "<span class=" + i.status + ">" + i.status + "</span>";
-      row.innerHTML =
-        "<td>" + i.title + "</td>" +
-        "<td>" + status + "</td>" +
-        "<td>" + i.count + "×</td>" +
-        "<td>" + when(i.firstSeen) + "</td>" +
-        "<td>" + when(i.lastSeen) + "</td>" +
-        "<td>" + (i.status === "open" ? "<button data-fp='" + encodeURIComponent(fp) + "'>Resolve</button>" : "") + "</td>";
-      issuesBody.appendChild(row);
-    }
   }
 
-  issuesBody.parentElement.addEventListener("click", (e) => {
-    const fp = e.target?.dataset?.fp;
-    if (fp) fetch("/resolve?fp=" + fp, { method: "POST" });
-  });
+  // Issues: rows built with DOM APIs and updated in place, keyed by
+  // fingerprint. (Fingerprints contain quotes — never inline them in HTML.)
+  const issueRows = new Map();
+  function upsertIssue(i) {
+    let row = issueRows.get(i.fingerprint);
+    if (!row) {
+      row = { tr: document.createElement("tr"), count: 0, cells: {} };
+      for (const key of ["title", "status", "count", "first", "last", "act"]) {
+        row.cells[key] = document.createElement("td");
+        row.tr.appendChild(row.cells[key]);
+      }
+      const btn = document.createElement("button");
+      btn.textContent = "Resolve";
+      btn.addEventListener("click", () => fetch("/resolve?fp=" + encodeURIComponent(i.fingerprint), { method: "POST" }));
+      row.cells.act.appendChild(btn);
+      row.btn = btn;
+      issueRows.set(i.fingerprint, row);
+      issuesBody.prepend(row.tr);
+    }
+    row.cells.title.textContent = i.title;
+    const status = row.cells.status;
+    if (i.lastKind === "regression") { status.textContent = "REGRESSION"; status.className = "regression"; }
+    else { status.textContent = i.status; status.className = i.status; }
+    row.cells.count.textContent = i.count + "\\u00d7";
+    row.cells.first.textContent = when(i.firstSeen);
+    row.cells.last.textContent = when(i.lastSeen);
+    row.btn.style.display = i.status === "open" ? "" : "none";
+    if (i.count !== row.count) { row.count = i.count; flash(row.cells.count); }
+  }
 
-  const es = new EventSource("/events");
-  es.addEventListener("activity", (e) => { const ev = JSON.parse(e.data); actors.set(ev.actor, ev); render(); });
-  es.addEventListener("issue", (e) => { const i = JSON.parse(e.data); issues.set(i.fingerprint, i); render(); });
-  es.addEventListener("report", (e) => {
-    const r = JSON.parse(e.data);
+  // Failure feed: duplicates fold into one <details> group per fingerprint —
+  // summary line carries the count, body holds the latest full report.
+  const reportGroups = new Map();
+  function addReport(r) {
     document.getElementById("empty").style.display = "none";
-    const div = document.createElement("div");
-    div.className = "report";
-    div.textContent =
+    const block = document.createElement("div");
+    block.className = "report";
+    block.textContent =
       "UNEXPECTED ERROR " + r.reportId + "\\n" +
       "actor:   " + r.actor + " · action: " + r.action + " · at: " + new Date(r.at).toISOString() + "\\n" +
       "error:   " + r.error.name + ": " + r.error.message + "\\n" +
       "payload: " + JSON.stringify(r.payload) + "\\n" +
       "state:   " + JSON.stringify(r.state) + "\\n" +
       (r.error.stack || "(no stack)");
-    reportsEl.prepend(div);
-  });
-  setInterval(render, 1000); // keep ages + quiet flags ticking
+    let g = reportGroups.get(r.fingerprint);
+    if (!g) {
+      g = { count: 0, details: document.createElement("details"), label: document.createElement("span"), n: document.createElement("span"), body: document.createElement("div") };
+      g.details.className = "group";
+      const summary = document.createElement("summary");
+      g.n.className = "n";
+      summary.append(g.label, " ", g.n);
+      g.details.append(summary, g.body);
+      reportGroups.set(r.fingerprint, g);
+    }
+    g.count += 1;
+    g.label.textContent = r.actor + "." + r.action + " — " + r.error.name + ": " + r.error.message;
+    g.n.textContent = "\\u00d7" + g.count;
+    g.body.replaceChildren(block); // keep the latest report; the count tells the rest
+    reportsEl.prepend(g.details); // newest group first
+    flash(g.n);
+  }
+
+  const es = new EventSource("/events");
+  es.addEventListener("activity", (e) => { const ev = JSON.parse(e.data); actors.set(ev.actor, ev); renderActors(); });
+  es.addEventListener("issue", (e) => upsertIssue(JSON.parse(e.data)));
+  es.addEventListener("report", (e) => addReport(JSON.parse(e.data)));
+  setInterval(renderActors, 1000); // keep ages + quiet flags ticking
 </script>`;

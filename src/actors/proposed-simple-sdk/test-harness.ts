@@ -6,9 +6,11 @@
  */
 import { BarnLedgerLive } from "../current-effect-sdk/live.ts";
 import { ChatRoom, Moderator } from "./chat.ts";
+import { reapOrphanEngines } from "./engine-hygiene.ts";
 import { Referee } from "./monitor-demo.ts";
 import { testEngine } from "./layer.ts";
 
+reapOrphanEngines(); // a stranded engine from a prior run poisons this one
 export const engine = testEngine(ChatRoom, Moderator, Referee, BarnLedgerLive);
 
 // bun loads test files one at a time, so a per-suite refcount would hit

@@ -8,8 +8,11 @@
  */
 import { alertWith, discordAlert, stdoutAlert } from "./adapters.ts";
 import { ChatRoom, Moderator } from "./chat.ts";
+import { reapOrphanEngines } from "./engine-hygiene.ts";
 import { issueTracker } from "./issues.ts";
 import { testEngine } from "./layer.ts";
+
+reapOrphanEngines();
 import { Referee, type Choice } from "./monitor-demo.ts";
 import { startPanel } from "./panel.ts";
 
@@ -35,6 +38,11 @@ await room.Join({ name: "Bob" });
 const CHOICES: Choice[] = ["rock", "paper", "scissors"];
 const pick = () => CHOICES[Math.floor(Math.random() * CHOICES.length)]!;
 
+// Pacing: one RPS round per tick. Draws land ~1 in 3 ticks, the lowercase
+// WinRate call every 7th, Mallory every 5th. Slow or speed it via env.
+const TICK_MS = Number(process.env["DEMO_TICK_MS"] ?? 4000);
+console.log(`one round every ${TICK_MS}ms (set DEMO_TICK_MS to change)`);
+
 let round = 0;
 while (true) {
   round += 1;
@@ -54,5 +62,5 @@ while (true) {
     // never becomes an issue.
     await room.SendMessage({ sender: "Mallory", text: "let me in" }).catch(() => {});
   }
-  await new Promise((r) => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, TICK_MS));
 }
