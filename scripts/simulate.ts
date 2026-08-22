@@ -26,7 +26,7 @@
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
  */
 import { eq } from "drizzle-orm";
-import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createDb, latestSimDb } from "@/db/client";
 import { brainLog, farms, simTimings } from "@/db/schema";
@@ -153,6 +153,15 @@ if (fromArg && (keep || dbArg)) {
   console.error("--from forks a snapshot into a NEW db — it can't combine with --keep or --db.");
   process.exit(1);
 }
+// The snapshot is checked HERE, before a path is reserved below. Validating
+// after reservation left an empty .db behind on every typo'd --from, and an
+// empty file is worse than no file: it is the newest sim db, so `scoreboard`
+// and `bun dev:sim` pick it and fail on the missing schema.
+const snapshot = fromArg ? path.resolve(fromArg) : undefined;
+if (snapshot && !existsSync(snapshot)) {
+  console.error(`--from: no snapshot at ${snapshot}`);
+  process.exit(1);
+}
 
 // The stamp is minute-precision, so two auto-named runs in the same minute
 // (easy when forking snapshots back-to-back) would share a path — and the
@@ -165,7 +174,11 @@ if (fromArg && (keep || dbArg)) {
 // suffix. SQLite treats the empty reserved file exactly like a new db.
 let reservedFresh = false;
 function freshSimPath(): string {
-  const base = path.join(process.cwd(), "data", `sim-${stamp()}`);
+  const dir = path.join(process.cwd(), "data");
+  // data/ is gitignored, so a clean checkout doesn't have one — createDb makes
+  // it, but the reservation below happens first and would die on ENOENT.
+  mkdirSync(dir, { recursive: true });
+  const base = path.join(dir, `sim-${stamp()}`);
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? `${base}.db` : `${base}-${n}.db`;
     try {
@@ -180,12 +193,27 @@ function freshSimPath(): string {
 
 const dbPath = path.resolve(dbArg ?? (keep ? latestSimDb() : freshSimPath()));
 
-if (fromArg) {
-  const snapshot = path.resolve(fromArg);
-  if (!existsSync(snapshot)) {
-    console.error(`--from: no snapshot at ${snapshot}`);
-    process.exit(1);
+// …and if the run dies before it ever writes a world — a crash in seeding, a
+// refused wipe, a Ctrl-C — sweep the reservation away again. It is only ever
+// removed while still ZERO BYTES: the moment createDb writes a schema the
+// file is a real world and this becomes a no-op, so there is no path where
+// this deletes anybody's data.
+process.on("exit", () => {
+  if (!reservedFresh) return;
+  try {
+    if (statSync(dbPath).size === 0) rmSync(dbPath);
+  } catch {
+    // already gone, or never created — either way nothing to sweep
   }
+});
+// A bare SIGINT kills the process WITHOUT running exit handlers, so Ctrl-C
+// during the first second of a run would leave the reservation behind.
+// Re-raising it as an ordinary exit gives the sweep above its chance; 130 is
+// the conventional code for "died on SIGINT" and keeps `!report.ok`-style
+// scripting honest.
+for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(130));
+
+if (snapshot) {
   // Clear the target's sidecars FIRST. A stale -wal beside the target path
   // is not debris — SQLite will replay it over the fresh copy on open and
   // silently resurrect whatever world it belonged to. (Found the hard way:
