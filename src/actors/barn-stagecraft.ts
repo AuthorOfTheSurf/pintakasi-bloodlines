@@ -7,12 +7,16 @@
  * bend, and what is flatly missing gets recorded here and filed upstream.
  *
  * WHAT BENT IN THE PORT (vs. barn.ts):
- *  - `options: { actionTimeout, noSleep }` — GONE. @rivetkit/effect only
- *    forwards `name`/`icon` to rivetkit, so stagecraft cannot express them
- *    yet. Fine for a smoke; NOT fine for the 19-barn Ollama fleet (wake
- *    stampede + 60s default timeout). Filed as a stagecraft issue.
+ *  - `options: { actionTimeout, noSleep }` — RESTORED in stagecraft 0.3.0.
+ *    They were missing at first (@rivetkit/effect forwards only `name`/`icon`
+ *    to rivetkit and drops the rest in silence), which meant every barn ran
+ *    under the 60s default while awaiting an LLM turn — turns take 40s+ with
+ *    ten bots queued behind one model, so slow ones died with
+ *    `action_timed_out` mid-run. stagecraft now applies them itself
+ *    (stagecraft#19 stays open for the real upstream passthrough).
  *  - Registry `maxIncoming/OutgoingMessageSize` (a barn's 64KB bounce on the flagship run) —
- *    also not expressible. Same issue.
+ *    still not expressible: those are REGISTRY-level, not per-actor, and
+ *    stagecraft's escape hatch only reaches actor options. Same issue.
  *  - Composite key `[world, farmId]` → single string `${world}/${farmId}`
  *    (stagecraft getOrCreate takes one string).
  *  - `throw new UserError(msg)` → a DECLARED error (`fail.TurnFailed`),
@@ -57,6 +61,11 @@ export function setDeciderFactory(f: typeof ollamaDecider) {
 type TurnReply = { actions: BotAction[]; log: BrainCallLog | null };
 
 export const Barn = actor("barn", {
+  // A turn awaits an LLM. The default 60s cap kills a barn mid-thought once
+  // ten of them are queued behind one Ollama; 10 minutes is what barn.ts has
+  // always used. noSleep keeps the fleet awake across a long run instead of
+  // paying a wake stampede every idle 30s.
+  options: { actionTimeout: 600_000, noSleep: true },
   state: {
     farmName: null,
     daysPlayed: 0,

@@ -21,7 +21,7 @@
     "scoreboard": "bun run scripts/scoreboard.ts"
   },
   "dependencies": {
-    "@authorofthesurf/stagecraft": "0.2.0",
+    "@authorofthesurf/stagecraft": "0.3.0",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "ag-grid-community": "^36.0.2",
     "ag-grid-react": "^36.0.2",

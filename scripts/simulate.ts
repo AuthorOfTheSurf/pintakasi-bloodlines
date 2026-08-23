@@ -111,9 +111,10 @@ if (useActors && !brainArg) {
 // raw rivetkit, and the stagecraft live panel serves the whole run at
 // http://localhost:4949: per-barn activity rows, Sentry-style issue grouping,
 // the failure feed. The process STAYS OPEN after the run so the panel can be
-// read; Ctrl-C when done. Production knobs (actionTimeout/noSleep/8MB
-// messages) don't exist on this substrate yet (stagecraft#19) — for the
-// longest fleet runs the raw --actors path is still the safer horse.
+// read; Ctrl-C when done. Per-actor production knobs (actionTimeout/noSleep)
+// arrived in stagecraft 0.3.0 and the barn now sets them, so this path is
+// safe for long fleet runs; the 8MB registry-level message sizes are still
+// out of reach (stagecraft#19).
 const usePanel = args.includes("--panel");
 if (usePanel && !useActors) {
   console.error("--panel needs --actors — the panel watches the barn actors.");
@@ -298,6 +299,9 @@ if (useActors && usePanel) {
   // still owns the port and will keep waking ITS actors — foreign
   // "not_registered" noise at best, stolen registrations at worst.
   reapOrphanEngines();
+  // rivetkit's own default is "warn", but test mode raises it and the info
+  // stream (every actor created / ready) buries the lines worth reading.
+  process.env.RIVET_LOG_LEVEL ??= "warn";
   const tracker = issueTracker();
   const engine = testEngine(Barn);
   scBarn = engine.client(Barn);
