@@ -44,16 +44,16 @@ test(
     const world = fresh("world");
     const decider = stagecraftBarnDecider(engine.client(Barn), world, { model: "fake" });
 
-    const day1 = await decider(fakeView("bot-1", 1));
+    const day1 = await decider(fakeView("scripted-1", 1));
     expect(day1.map((a) => a.do)).toEqual(["check_in", "roll_gacha"]);
-    await decider(fakeView("bot-1", 2));
+    await decider(fakeView("scripted-1", 2));
 
-    const barn = engine.client(Barn).getOrCreate(`${world}/bot-1`);
+    const barn = engine.client(Barn).getOrCreate(`${world}/scripted-1`);
     const career = await barn.career(undefined);
     expect(career.daysPlayed).toBe(2);
     expect(career.lastDay).toBe(2);
     expect(career.proposedActions).toBe(4);
-    expect(career.farmName).toBe("Farm bot-1");
+    expect(career.farmName).toBe("Farm scripted-1");
     expect(decider.stats.calls).toBe(2);
   },
   TIMEOUT,
@@ -63,7 +63,7 @@ test(
   "tune sets standing orders; clearing them works",
   async () => {
     const world = fresh("world");
-    const barn = engine.client(Barn).getOrCreate(`${world}/bot-2`);
+    const barn = engine.client(Barn).getOrCreate(`${world}/scripted-2`);
 
     const tuned = await barn.tune({ strategy: "  buy land every day  " });
     expect(tuned.strategy).toBe("buy land every day");
@@ -80,14 +80,14 @@ test(
     const decider = stagecraftBarnDecider(engine.client(Barn), world, { model: "always-fails" });
 
     try {
-      await decider(fakeView("bot-3", 1));
+      await decider(fakeView("scripted-3", 1));
       throw new Error("should have thrown");
     } catch (e) {
       if (!Barn.is.TurnFailed(e)) throw e;
       expect((e as any).reason).toBe("ollama exploded");
     }
 
-    const barn = engine.client(Barn).getOrCreate(`${world}/bot-3`);
+    const barn = engine.client(Barn).getOrCreate(`${world}/scripted-3`);
     const career = await barn.career(undefined);
     expect(career.failures).toBe(1);
     expect(career.daysPlayed).toBe(0); // the failed draft was discarded

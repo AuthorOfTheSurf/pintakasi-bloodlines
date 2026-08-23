@@ -11,7 +11,7 @@
  *    forwards `name`/`icon` to rivetkit, so stagecraft cannot express them
  *    yet. Fine for a smoke; NOT fine for the 19-barn Ollama fleet (wake
  *    stampede + 60s default timeout). Filed as a stagecraft issue.
- *  - Registry `maxIncoming/OutgoingMessageSize` (bot-14's 64KB bounce) —
+ *  - Registry `maxIncoming/OutgoingMessageSize` (a barn's 64KB bounce on the flagship run) —
  *    also not expressible. Same issue.
  *  - Composite key `[world, farmId]` → single string `${world}/${farmId}`
  *    (stagecraft getOrCreate takes one string).

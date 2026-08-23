@@ -252,7 +252,7 @@ describe("the rows themselves", () => {
     const hen = bird({ status: "retired", sexLabel: "hen", halfStars: 8 });
     const view = viewOf({
       flock: [hen, bird({ age: 4 }), bird({ age: 4 }), bird({ age: 4 }), bird({ age: 4 })],
-      studMarket: [{ id: "stud-m", name: "Cruel Beak", stars: 4.5, farm: "bot-9" }],
+      studMarket: [{ id: "stud-m", name: "Cruel Beak", stars: 4.5, farm: "bot-4" }],
       farm: { freePulls: 2, barn: { count: 99, capacity: 100 } },
       claimerBoard: [
         {

@@ -30,7 +30,7 @@ import { seedWorld } from "./rng";
  * through day 15 the property holds where it is most fragile.
  */
 describe("a seeded world replays whole", () => {
-  const FAST_ROSTER = ["bot-1", "bot-3", "bot-5", "bot-10"];
+  const FAST_ROSTER = ["scripted-1", "scripted-3", "scripted-5", "scripted-7"];
   const DAYS = 15;
 
   function playWorld(seed: number): string[] {

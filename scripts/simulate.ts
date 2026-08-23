@@ -292,7 +292,12 @@ let scDispose: (() => Promise<void>) | null = null;
 if (useActors && usePanel) {
   const { issueTracker, testEngine } = await import("@authorofthesurf/stagecraft");
   const { startPanel } = await import("@authorofthesurf/stagecraft/panel");
+  const { reapOrphanEngines } = await import("@authorofthesurf/stagecraft/testing");
   const { Barn } = await import("@/actors/barn-stagecraft");
+  // A stranded engine from a previous run (or another repo's test suite)
+  // still owns the port and will keep waking ITS actors — foreign
+  // "not_registered" noise at best, stolen registrations at worst.
+  reapOrphanEngines();
   const tracker = issueTracker();
   const engine = testEngine(Barn);
   scBarn = engine.client(Barn);
@@ -302,7 +307,7 @@ if (useActors && usePanel) {
 } else if (useActors) {
   // startAndWait, not start(): start() returns before the envoy has
   // registered with the engine, and a barn mailed in that gap fails with
-  // "no_envoys" — it cost bot-1 two whole game-days to teach us that. The
+  // "no_envoys" — it cost a barn two whole game-days to teach us that. The
   // wait is ~2s once per run.
   await registry.startAndWait();
   rivetClient = createClient<typeof registry>(RIVET_ENDPOINT);
@@ -333,7 +338,12 @@ if (llmArg) {
     .where(eq(farms.isBot, 1))
     .all()
     .map((f) => f.id);
-  const chosen = /^\d+$/.test(llmArg) ? botIds.slice(0, Number(llmArg)) : llmArg.split(",");
+  // A bare count means bot-1..bot-N — after the 2026-08-23 rename the llm
+  // roster IS bot-1..bot-10 and the scripted stables are scripted-*, so the
+  // intuitive reading and the correct one are finally the same thing.
+  const chosen = /^\d+$/.test(llmArg)
+    ? Array.from({ length: Number(llmArg) }, (_, i) => `bot-${i + 1}`)
+    : llmArg.split(",");
   const unknown = chosen.filter((id) => !botIds.includes(id));
   if (unknown.length > 0) {
     console.error(`--llm names farms that are not bot stables: ${unknown.join(", ")}`);
