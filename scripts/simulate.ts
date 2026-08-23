@@ -8,6 +8,7 @@
  *
  *   bun run simulate [days=91] [--keep] [--db=path] [--force] [--seed=N]
  *                    [--brain=<ollama model> --llm=<farm ids|count>] [--actors]
+ *                    [--panel]
  *                    [--brief=legacy|options]
  *
  * --keep   continue the NEWEST sim db (or --db target) instead of seeding new.
@@ -103,6 +104,19 @@ if (llmArg && !brainArg) {
 const useActors = args.includes("--actors");
 if (useActors && !brainArg) {
   console.error("--actors needs --brain and --llm — actors are the llm barns' home.");
+  process.exit(1);
+}
+// --panel (stagecraft#1): same barns, different substrate — the llm barns run
+// on @authorofthesurf/stagecraft (src/actors/barn-stagecraft.ts) instead of
+// raw rivetkit, and the stagecraft live panel serves the whole run at
+// http://localhost:4949: per-barn activity rows, Sentry-style issue grouping,
+// the failure feed. The process STAYS OPEN after the run so the panel can be
+// read; Ctrl-C when done. Production knobs (actionTimeout/noSleep/8MB
+// messages) don't exist on this substrate yet (stagecraft#19) — for the
+// longest fleet runs the raw --actors path is still the safer horse.
+const usePanel = args.includes("--panel");
+if (usePanel && !useActors) {
+  console.error("--panel needs --actors — the panel watches the barn actors.");
   process.exit(1);
 }
 // --personas (round 52, phase 4): each llm barn starts the world with the
@@ -273,7 +287,19 @@ const seedMs = performance.now() - t0;
 // of another are different careers (see src/actors/barn.ts).
 const worldName = path.basename(dbPath, ".db");
 let rivetClient: ReturnType<typeof createClient<typeof registry>> | null = null;
-if (useActors) {
+let scBarn: { getOrCreate: (key: string) => any } | null = null;
+let scDispose: (() => Promise<void>) | null = null;
+if (useActors && usePanel) {
+  const { issueTracker, testEngine } = await import("@authorofthesurf/stagecraft");
+  const { startPanel } = await import("@authorofthesurf/stagecraft/panel");
+  const { Barn } = await import("@/actors/barn-stagecraft");
+  const tracker = issueTracker();
+  const engine = testEngine(Barn);
+  scBarn = engine.client(Barn);
+  scDispose = () => engine.dispose();
+  const panel = startPanel({ tracker, quietAfterMs: 5 * 60_000 });
+  console.log(`Stagecraft panel live: ${panel.url}\n`);
+} else if (useActors) {
   // startAndWait, not start(): start() returns before the envoy has
   // registered with the engine, and a barn mailed in that gap fails with
   // "no_envoys" — it cost bot-1 two whole game-days to teach us that. The
@@ -294,9 +320,11 @@ const sink = (log: BrainCallLog) => dayBrainLogs.push(log);
 const llmCount = llmArg ? (/^\d+$/.test(llmArg) ? Number(llmArg) : llmArg.split(",").length) : 0;
 const brainTimeoutMs = 120_000 + 15_000 * llmCount;
 const decider = brainArg
-  ? rivetClient
-    ? barnDecider(rivetClient, worldName, { model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
-    : ollamaDecider({ model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
+  ? scBarn
+    ? (await import("@/actors/barn-stagecraft")).stagecraftBarnDecider(scBarn, worldName, { model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
+    : rivetClient
+      ? barnDecider(rivetClient, worldName, { model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
+      : ollamaDecider({ model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
   : null;
 if (llmArg) {
   const botIds = db
@@ -317,14 +345,15 @@ if (llmArg) {
   for (const id of chosen) db.update(farms).set({ brain: "llm" }).where(eq(farms.id, id)).run();
   console.log(`Brain: ${brainArg} plays ${chosen.length} stable(s) — ${chosen.join(", ")}\n`);
 
-  if (usePersonas && rivetClient) {
+  if (usePersonas && (rivetClient || scBarn)) {
     const { BOT_FARMS } = await import("@/engine/bot-config");
     const { personaOrders, championshipOrders } = await import("@/actors/personas");
     const orders = personaSet === "championship" ? championshipOrders : personaOrders;
     for (const id of chosen) {
       const profile = BOT_FARMS.find((p) => p.id === id);
       if (!profile) continue;
-      await rivetClient.barn.getOrCreate([worldName, id]).tune(orders(profile));
+      if (scBarn) await scBarn.getOrCreate(`${worldName}/${id}`).tune({ strategy: orders(profile) });
+      else await rivetClient!.barn.getOrCreate([worldName, id]).tune(orders(profile));
     }
     console.log(`Personas set: ${chosen.length} barn(s) start under the ${personaSet} creeds\n`);
   }
@@ -496,11 +525,13 @@ console.log(
 // Read back AFTER the run so the number printed is the durable copy, not a
 // local counter. Run again with --keep and daysPlayed keeps climbing — that
 // continuity across process restarts is the thing phase 2 exists to show.
-if (rivetClient) {
+if (rivetClient || scBarn) {
   const llmFarms = db.select().from(farms).where(eq(farms.brain, "llm")).all();
   console.log("\nBARN CAREERS (durable actor state — persists across runs)");
   for (const f of llmFarms) {
-    const c = await rivetClient.barn.getOrCreate([worldName, f.id]).career();
+    const c = scBarn
+      ? await scBarn.getOrCreate(`${worldName}/${f.id}`).career(undefined)
+      : await rivetClient!.barn.getOrCreate([worldName, f.id]).career();
     console.log(
       `  ${f.id.padEnd(8)} ${String(c.daysPlayed).padStart(3)} day(s) played · last day ${c.lastDay} · ` +
         `${c.proposedActions} proposed, ${c.droppedActions} dropped, ${c.failures} failure(s) · ` +
@@ -515,11 +546,17 @@ console.log(`\nDone → ${dbPath}`);
 console.log(`Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`);
 // The registry holds the process open (the embedded engine is still
 // listening); drain it so the sim exits like a sim.
-if (useActors) await registry.shutdown();
+if (useActors && !usePanel) await registry.shutdown();
 
 // LAST, so the path is still on screen when it fails — a broken world is
 // exactly the one you want to open.
 if (!report.ok) process.exit(1);
+// --panel holds the process open ON PURPOSE: the run is done (the line above
+// said so) but the panel keeps serving what happened. Ctrl-C to leave.
+if (usePanel) {
+  console.log("Panel still live at http://localhost:4949 — Ctrl-C to close.");
+  await new Promise(() => {});
+}
 // Exit explicitly on success too. Without this, a plain (no --actors) run
 // finishes its work and then just stands there — something keeps the event
 // loop alive — which forces anyone driving the sim (a human, an agent, CI)
