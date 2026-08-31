@@ -17,24 +17,32 @@
  */
 import { issueTracker, testEngine } from "@authorofthesurf/stagecraft";
 import { startPanel } from "@authorofthesurf/stagecraft/panel";
-import type { BotAction, BotView } from "@/engine/bot-brain";
+import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
+import type { DeciderStats, OllamaOptions } from "@/engine/decider-ollama";
 import { Barn, setDeciderFactory, stagecraftBarnDecider } from "@/actors/barn-stagecraft";
 
 const FLEET = 10;
 const WORLD = "panel-demo";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-setDeciderFactory((opts: any) => {
-  const stats = { calls: 0, failures: 0, droppedActions: 0, proposedActions: 2, totalMs: 0 };
-  const decide = async (view: BotView): Promise<BotAction[]> => {
+setDeciderFactory((opts: OllamaOptions): BotDecider & { stats: DeciderStats } => {
+  const stats: DeciderStats = {
+    calls: 0,
+    failures: 0,
+    droppedActions: 0,
+    proposedActions: 2,
+    totalMs: 0,
+  };
+  const decide = async (_view: BotView): Promise<BotAction[]> => {
     const thinking = 200 + Math.random() * 1300;
     await sleep(thinking);
     stats.totalMs = thinking;
-    if (opts.model === "chronic-failer" && Math.random() < 0.7)
-      throw new Error("model timed out");            // → declared TurnFailed
+    if (opts.model === "chronic-failer" && Math.random() < 0.7) {
+      throw new Error("model timed out"); // → declared TurnFailed
+    }
     return [{ do: "check_in" }, { do: "roll_gacha" }];
   };
-  return Object.assign(decide, { stats }) as any;
+  return Object.assign(decide, { stats });
 });
 
 const tracker = issueTracker();
@@ -42,10 +50,22 @@ const engine = testEngine(Barn);
 startPanel({ tracker, quietAfterMs: 15_000 });
 console.log("panel: http://localhost:4949");
 
-const modelFor = (i: number) => (i === 7 ? "chronic-failer" : "fake-brain");
+function modelFor(i: number): string {
+  if (i === 7) {
+    return "chronic-failer";
+  }
+  return "fake-brain";
+}
 
-const view = (farmId: string, day: number): BotView =>
-  ({ day, farm: { id: farmId, name: farmId, gp: 100 } }) as unknown as BotView;
+function createView(farmId: string, day: number): BotView {
+  return {
+    day,
+    farm: { id: farmId, name: farmId, gp: 100, isBot: 1, brain: "llm" },
+    flock: [],
+    studMarket: [],
+    claimerBoard: [],
+  } as unknown as BotView;
+}
 
 let day = 1;
 while (true) {
@@ -62,11 +82,11 @@ while (true) {
         await engine
           .client(Barn)
           .getOrCreate(`${WORLD}/${farmId}`)
-          .takeTurn({ view: { day } as any, opts: { model: "fake-brain" } })
+          .takeTurn({ view: { day } as unknown as BotView, opts: { model: "fake-brain" } })
           .catch(() => {});
         return;
       }
-      await decider(view(farmId, day)).catch(() => {}); // failures are the show
+      await decider(createView(farmId, day)).catch(() => {}); // failures are the show
     })
   );
   day++;

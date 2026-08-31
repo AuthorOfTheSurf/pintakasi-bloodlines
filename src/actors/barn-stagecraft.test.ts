@@ -7,30 +7,55 @@
  */
 import { afterAll, expect, test } from "bun:test";
 import { testEngine } from "@authorofthesurf/stagecraft";
-import type { BotAction, BotView } from "@/engine/bot-brain";
-import { Barn, setDeciderFactory, stagecraftBarnDecider } from "./barn-stagecraft";
+import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
+import type { DeciderStats, OllamaOptions } from "@/engine/decider-ollama";
+import {
+  Barn,
+  setDeciderFactory,
+  stagecraftBarnDecider,
+  type TurnFailedPayload,
+} from "./barn-stagecraft";
 
 const TIMEOUT = 120_000;
 
-const fakeView = (farmId: string, day: number): BotView =>
-  ({
+function fakeView(farmId: string, day: number): BotView {
+  return {
     day,
-    farm: { id: farmId, name: `Farm ${farmId}`, gp: 100 },
-  }) as unknown as BotView;
+    farm: { id: farmId, name: `Farm ${farmId}`, gp: 100, isBot: 1, brain: "llm" },
+    flock: [],
+    studMarket: [],
+    claimerBoard: [],
+  } as unknown as BotView;
+}
 
 // The fake thinks instantly and proposes two actions; "spam" in the model
 // name makes it throw, to exercise the failure path.
-setDeciderFactory((opts: any) => {
-  const stats = { calls: 0, failures: 0, droppedActions: 1, proposedActions: 2, totalMs: 5 };
+setDeciderFactory((opts: OllamaOptions): BotDecider & { stats: DeciderStats } => {
+  const stats: DeciderStats = {
+    calls: 0,
+    failures: 0,
+    droppedActions: 1,
+    proposedActions: 2,
+    totalMs: 5,
+  };
   const decide = async (view: BotView): Promise<BotAction[]> => {
-    if (opts.model === "always-fails") throw new Error("ollama exploded");
-    opts.sink?.({
-      farmId: view.farm.id, day: view.day, model: opts.model,
-      briefTokens: 10, proposed: [], dropped: [], ms: 5,
-    });
+    if (opts.model === "always-fails") {
+      throw new Error("ollama exploded");
+    }
+    if (opts.sink) {
+      opts.sink({
+        farmId: view.farm.id,
+        day: view.day,
+        model: opts.model,
+        briefTokens: 10,
+        proposed: [],
+        dropped: [],
+        ms: 5,
+      });
+    }
     return [{ do: "check_in" }, { do: "roll_gacha" }];
   };
-  return Object.assign(decide, { stats }) as any;
+  return Object.assign(decide, { stats });
 });
 
 const engine = testEngine(Barn);
@@ -56,7 +81,7 @@ test(
     expect(career.farmName).toBe("Farm scripted-1");
     expect(decider.stats.calls).toBe(2);
   },
-  TIMEOUT,
+  TIMEOUT
 );
 
 test(
@@ -70,7 +95,7 @@ test(
     const cleared = await barn.tune({ strategy: null });
     expect(cleared.strategy).toBeNull();
   },
-  TIMEOUT,
+  TIMEOUT
 );
 
 test(
@@ -83,8 +108,11 @@ test(
       await decider(fakeView("scripted-3", 1));
       throw new Error("should have thrown");
     } catch (e) {
-      if (!Barn.is.TurnFailed(e)) throw e;
-      expect((e as any).reason).toBe("ollama exploded");
+      if (!Barn.is.TurnFailed(e)) {
+        throw e;
+      }
+      const turnErr = e as TurnFailedPayload;
+      expect(turnErr.reason).toBe("ollama exploded");
     }
 
     const barn = engine.client(Barn).getOrCreate(`${world}/scripted-3`);
@@ -93,5 +121,5 @@ test(
     expect(career.daysPlayed).toBe(0); // the failed draft was discarded
     expect(decider.stats.failures).toBe(1);
   },
-  TIMEOUT,
+  TIMEOUT
 );

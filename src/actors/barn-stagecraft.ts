@@ -60,6 +60,11 @@ export function setDeciderFactory(f: typeof ollamaDecider) {
 
 type TurnReply = { actions: BotAction[]; log: BrainCallLog | null };
 
+export interface TurnFailedPayload {
+  reason: string;
+  ms: number;
+}
+
 export const Barn = actor("barn", {
   // A turn awaits an LLM. The default 60s cap kills a barn mid-thought once
   // ten of them are queued behind one Ollama; 10 minutes is what barn.ts has
@@ -77,7 +82,7 @@ export const Barn = actor("barn", {
     strategy: null,
   } as BarnMemory,
   errors: {
-    TurnFailed: {} as { reason: string; ms: number },
+    TurnFailed: {} as TurnFailedPayload,
   },
   handle: {
     /** One game-day: read the view, think, reply with intentions. */
@@ -86,10 +91,16 @@ export const Barn = actor("barn", {
       { state, fail }
     ): Promise<TurnReply> => {
       let log: BrainCallLog | null = null;
+      let strategyOption: string | undefined = undefined;
+      if (state.strategy) {
+        strategyOption = state.strategy;
+      }
       const decide = deciderFactory({
         ...opts,
-        strategy: state.strategy ?? undefined,
-        sink: (l) => (log = l),
+        strategy: strategyOption,
+        sink: (l) => {
+          log = l;
+        },
       });
       state.farmName = view.farm.name;
       try {
@@ -103,38 +114,54 @@ export const Barn = actor("barn", {
       } catch (err) {
         // Cannot bump failure counters here — a thrown declared error
         // discards the whole draft. The decider calls recordFailure.
+        let reason = String(err);
+        if (err instanceof Error) {
+          reason = err.message;
+        }
         throw fail.TurnFailed({
-          reason: err instanceof Error ? err.message : String(err),
+          reason,
           ms: decide.stats.totalMs,
         });
       }
     },
     /** Failure bookkeeping, split out because throw = draft discarded. */
-    recordFailure: async (
-      { ms }: { ms: number },
-      { state }
-    ): Promise<void> => {
+    recordFailure: async ({ ms }: { ms: number }, { state }): Promise<void> => {
       state.failures++;
       state.thinkingMs += ms;
     },
     /** Set (or clear, with null) the owner's standing orders. */
-    tune: async (
-      { strategy }: { strategy: string | null },
-      { state }
-    ): Promise<BarnMemory> => {
-      state.strategy = strategy && strategy.trim() ? strategy.trim() : null;
+    tune: async ({ strategy }: { strategy: string | null }, { state }): Promise<BarnMemory> => {
+      if (strategy && strategy.trim().length > 0) {
+        state.strategy = strategy.trim();
+      } else {
+        state.strategy = null;
+      }
       return { ...state };
     },
     /** The career so far — durable across runs, which is the demo. */
-    career: async (_: undefined, { state }: Ctx<BarnMemory, {}, {}>): Promise<BarnMemory> => ({
+    career: async (
+      _: undefined,
+      { state }: Ctx<BarnMemory, Record<string, never>, Record<string, never>>
+    ): Promise<BarnMemory> => ({
       ...state,
     }),
   },
 });
 
+export interface StagecraftBarnHandle {
+  takeTurn: (args: { view: BotView; opts: Omit<OllamaOptions, "sink"> }) => Promise<TurnReply>;
+  recordFailure: (args: { ms: number }) => Promise<void>;
+  tune: (args: { strategy: string | null }) => Promise<BarnMemory>;
+  career: (arg: undefined) => Promise<BarnMemory>;
+}
+
+export interface StagecraftBarnClient {
+  getOrCreate: (key: string) => StagecraftBarnHandle;
+}
+
 /** Same-shape client as barn.ts's barnDecider, but over a stagecraft engine. */
 export function stagecraftBarnDecider(
-  client: { getOrCreate: (key: string) => any },
+  client: StagecraftBarnClient,
   world: string,
   opts: OllamaOptions
 ): BotDecider & { stats: DeciderStats } {
@@ -152,7 +179,9 @@ export function stagecraftBarnDecider(
     const { sink, ...wireOpts } = opts;
     try {
       const { actions, log } = (await handle.takeTurn({ view, opts: wireOpts })) as TurnReply;
-      if (log) sink?.(log);
+      if (log && sink) {
+        sink(log);
+      }
       stats.proposedActions += actions.length;
       stats.totalMs += Date.now() - started;
       return actions;
@@ -160,7 +189,12 @@ export function stagecraftBarnDecider(
       stats.failures++;
       stats.totalMs += Date.now() - started;
       if (Barn.is.TurnFailed(err)) {
-        await handle.recordFailure({ ms: (err as any).ms ?? 0 }).catch(() => {});
+        const failurePayload = err as TurnFailedPayload;
+        let failureMs = 0;
+        if (typeof failurePayload.ms === "number") {
+          failureMs = failurePayload.ms;
+        }
+        await handle.recordFailure({ ms: failureMs }).catch(() => {});
       }
       throw err;
     }

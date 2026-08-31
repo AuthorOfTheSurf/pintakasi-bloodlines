@@ -37,9 +37,10 @@ import { playAllHonestDays } from "@/engine/auto-play";
 import { SIMULATION } from "@/engine/config";
 import { cardHealth, diagnose, formatReport } from "@/engine/doctor";
 import { Bots } from "@/engine/bots";
-import { collectProposals } from "@/engine/bot-brain";
-import { ollamaDecider } from "@/engine/decider-ollama";
+import { collectProposals, type BotDecider } from "@/engine/bot-brain";
+import { ollamaDecider, type DeciderStats } from "@/engine/decider-ollama";
 import { barnDecider, registry, RIVET_ENDPOINT } from "@/actors/barn";
+import type { StagecraftBarnClient, BarnMemory } from "@/actors/barn-stagecraft";
 import { createClient } from "rivetkit/client";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
@@ -47,12 +48,19 @@ import { seedWorld } from "@/engine/rng";
 
 const args = process.argv.slice(2);
 const dayArg = args.find((a) => /^\d+$/.test(a));
-// `simulate 0` is a real request: seed a fresh world and play NO days —
-// the manual-play starting point (tick it yourself via the API).
-const days = dayArg === undefined ? SIMULATION.DEFAULT_DAYS : Number(dayArg);
+let days: number = SIMULATION.DEFAULT_DAYS;
+if (dayArg !== undefined) {
+  days = Number(dayArg);
+}
+
 const keep = args.includes("--keep");
 const force = args.includes("--force");
-const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
+let dbArg: string | undefined;
+const dbArgFound = args.find((a) => a.startsWith("--db="));
+if (dbArgFound) {
+  dbArg = dbArgFound.slice(5);
+}
+
 // --seed=N pins the world stream so a run is REPRODUCIBLE (round 35). Without
 // it every run builds a different world, which is right for live play and
 // wrong for measurement: it makes an A/B of two code paths compare two
@@ -60,8 +68,9 @@ const dbArg = args.find((a) => a.startsWith("--db="))?.slice(5);
 // ladder that nothing was accounting for. Use the same seed to A/B a change;
 // use a spread of seeds to find out how big a delta has to be to mean
 // anything at all.
-const seedArg = args.find((a) => a.startsWith("--seed="))?.slice("--seed=".length);
-if (seedArg !== undefined) {
+const seedArgFound = args.find((a) => a.startsWith("--seed="));
+if (seedArgFound !== undefined) {
+  const seedArg = seedArgFound.slice("--seed=".length);
   if (!/^\d+$/.test(seedArg)) {
     console.error(`--seed must be a whole number (got "${seedArg}")`);
     process.exit(1);
@@ -69,12 +78,16 @@ if (seedArg !== undefined) {
   seedWorld(Number(seedArg));
 }
 
-const policyArg = args.find((a) => a.startsWith("--discovery-policy="))?.slice("--discovery-policy=".length);
-if (policyArg && policyArg !== "current" && policyArg !== "end-first") {
-  console.error(`Unknown discovery policy "${policyArg}" — use current or end-first.`);
-  process.exit(1);
+let discoveryPolicy: DiscoveryPolicy = "current";
+const policyArgFound = args.find((a) => a.startsWith("--discovery-policy="));
+if (policyArgFound) {
+  const policyArg = policyArgFound.slice("--discovery-policy=".length);
+  if (policyArg !== "current" && policyArg !== "end-first") {
+    console.error(`Unknown discovery policy "${policyArg}" — use current or end-first.`);
+    process.exit(1);
+  }
+  discoveryPolicy = policyArg as DiscoveryPolicy;
 }
-const discoveryPolicy: DiscoveryPolicy = (policyArg ?? "current") as DiscoveryPolicy;
 
 // ── THE OUTSIDE BRAIN (round 49) ───────────────────────────────────────────
 // --brain=qwen3:14b   run the named local Ollama model as a barn's decider
@@ -84,8 +97,18 @@ const discoveryPolicy: DiscoveryPolicy = (policyArg ?? "current") as DiscoveryPo
 // ordinary reproducible sim, which is the one every balance number and every
 // determinism guarantee rests on — the AI barns are an experiment run beside
 // that baseline, never a replacement for it.
-const brainArg = args.find((a) => a.startsWith("--brain="))?.slice("--brain=".length);
-const llmArg = args.find((a) => a.startsWith("--llm="))?.slice("--llm=".length);
+let brainArg: string | undefined;
+const brainArgFound = args.find((a) => a.startsWith("--brain="));
+if (brainArgFound) {
+  brainArg = brainArgFound.slice("--brain=".length);
+}
+
+let llmArg: string | undefined;
+const llmArgFound = args.find((a) => a.startsWith("--llm="));
+if (llmArgFound) {
+  llmArg = llmArgFound.slice("--llm=".length);
+}
+
 if (brainArg && !llmArg) {
   console.error("--brain needs --llm=<farm ids or a count> — which stables should it play?");
   process.exit(1);
@@ -130,11 +153,14 @@ if (usePanel && !useActors) {
 // assignment. Bare --personas keeps meaning the style creeds.
 const personasArg = args.find((a) => a === "--personas" || a.startsWith("--personas="));
 const usePersonas = Boolean(personasArg);
-const personaSet = personasArg?.startsWith("--personas=")
-  ? personasArg.slice("--personas=".length)
-  : "style";
+let personaSet = "style";
+if (personasArg && personasArg.startsWith("--personas=")) {
+  personaSet = personasArg.slice("--personas=".length);
+}
 if (usePersonas && !["style", "championship"].includes(personaSet)) {
-  console.error(`Unknown persona set "${personaSet}" — use bare --personas or --personas=championship.`);
+  console.error(
+    `Unknown persona set "${personaSet}" — use bare --personas or --personas=championship.`
+  );
   process.exit(1);
 }
 if (usePersonas && !useActors) {
@@ -145,12 +171,18 @@ if (usePersonas && !useActors) {
 // read the OPTIONS brief — every legal move pre-computed into valued rows,
 // the reply collapsed to picks. Default stays the legacy digest that played
 // experiments 1–8, so the A/B is this one flag.
-const briefArg = args.find((a) => a.startsWith("--brief="))?.slice("--brief=".length) ?? "legacy";
-if (!["legacy", "options"].includes(briefArg)) {
-  console.error(`Unknown brief "${briefArg}" — use --brief=legacy (default) or --brief=options.`);
-  process.exit(1);
+let brief: "legacy" | "options" = "legacy";
+const briefArgFound = args.find((a) => a.startsWith("--brief="));
+if (briefArgFound) {
+  const parsedBrief = briefArgFound.slice("--brief=".length);
+  if (!["legacy", "options"].includes(parsedBrief)) {
+    console.error(
+      `Unknown brief "${parsedBrief}" — use --brief=legacy (default) or --brief=options.`
+    );
+    process.exit(1);
+  }
+  brief = parsedBrief as "legacy" | "options";
 }
-const brief = briefArg as "legacy" | "options";
 if (brief === "options" && !brainArg) {
   console.error("--brief=options only means something with --brain/--llm.");
   process.exit(1);
@@ -163,7 +195,11 @@ function stamp(): string {
 }
 
 // --from=<snapshot.db>: fork a saved world instead of seeding or continuing.
-const fromArg = args.find((a) => a.startsWith("--from="))?.slice("--from=".length);
+let fromArg: string | undefined;
+const fromArgFound = args.find((a) => a.startsWith("--from="));
+if (fromArgFound) {
+  fromArg = fromArgFound.slice("--from=".length);
+}
 if (fromArg && (keep || dbArg)) {
   console.error("--from forks a snapshot into a NEW db — it can't combine with --keep or --db.");
   process.exit(1);
@@ -172,10 +208,13 @@ if (fromArg && (keep || dbArg)) {
 // after reservation left an empty .db behind on every typo'd --from, and an
 // empty file is worse than no file: it is the newest sim db, so `scoreboard`
 // and `bun dev:sim` pick it and fail on the missing schema.
-const snapshot = fromArg ? path.resolve(fromArg) : undefined;
-if (snapshot && !existsSync(snapshot)) {
-  console.error(`--from: no snapshot at ${snapshot}`);
-  process.exit(1);
+let snapshot: string | undefined;
+if (fromArg) {
+  snapshot = path.resolve(fromArg);
+  if (!existsSync(snapshot)) {
+    console.error(`--from: no snapshot at ${snapshot}`);
+    process.exit(1);
+  }
 }
 
 // The stamp is minute-precision, so two auto-named runs in the same minute
@@ -195,7 +234,10 @@ function freshSimPath(): string {
   mkdirSync(dir, { recursive: true });
   const base = path.join(dir, `sim-${stamp()}`);
   for (let n = 1; ; n++) {
-    const candidate = n === 1 ? `${base}.db` : `${base}-${n}.db`;
+    let candidate = `${base}.db`;
+    if (n > 1) {
+      candidate = `${base}-${n}.db`;
+    }
     try {
       writeFileSync(candidate, "", { flag: "wx" });
       reservedFresh = true;
@@ -206,7 +248,17 @@ function freshSimPath(): string {
   }
 }
 
-const dbPath = path.resolve(dbArg ?? (keep ? latestSimDb() : freshSimPath()));
+function resolveDbPath(): string {
+  if (dbArg) {
+    return path.resolve(dbArg);
+  }
+  if (keep) {
+    return path.resolve(latestSimDb());
+  }
+  return path.resolve(freshSimPath());
+}
+
+const dbPath = resolveDbPath();
 
 // …and if the run dies before it ever writes a world — a crash in seeding, a
 // refused wipe, a Ctrl-C — sweep the reservation away again. It is only ever
@@ -245,7 +297,9 @@ if (snapshot) {
   for (const suffix of ["-wal", "-shm"]) {
     if (existsSync(snapshot + suffix)) copyFileSync(snapshot + suffix, dbPath + suffix);
   }
-  console.log(`Forked ${path.relative(process.cwd(), snapshot)} → ${path.relative(process.cwd(), dbPath)}\n`);
+  console.log(
+    `Forked ${path.relative(process.cwd(), snapshot)} → ${path.relative(process.cwd(), dbPath)}\n`
+  );
 }
 
 // reservedFresh skips the guard: the path exists only because THIS process
@@ -288,8 +342,7 @@ const seedMs = performance.now() - t0;
 // of another are different careers (see src/actors/barn.ts).
 const worldName = path.basename(dbPath, ".db");
 let rivetClient: ReturnType<typeof createClient<typeof registry>> | null = null;
-let scBarn: { getOrCreate: (key: string) => any } | null = null;
-let scDispose: (() => Promise<void>) | null = null;
+let scBarn: StagecraftBarnClient | null = null;
 if (useActors && usePanel) {
   const { issueTracker, testEngine } = await import("@authorofthesurf/stagecraft");
   const { startPanel } = await import("@authorofthesurf/stagecraft/panel");
@@ -301,11 +354,12 @@ if (useActors && usePanel) {
   reapOrphanEngines();
   // rivetkit's own default is "warn", but test mode raises it and the info
   // stream (every actor created / ready) buries the lines worth reading.
-  process.env.RIVET_LOG_LEVEL ??= "warn";
+  if (!process.env.RIVET_LOG_LEVEL) {
+    process.env.RIVET_LOG_LEVEL = "warn";
+  }
   const tracker = issueTracker();
   const engine = testEngine(Barn);
-  scBarn = engine.client(Barn);
-  scDispose = () => engine.dispose();
+  scBarn = engine.client(Barn) as unknown as StagecraftBarnClient;
   const panel = startPanel({ tracker, quietAfterMs: 5 * 60_000 });
   console.log(`Stagecraft panel live: ${panel.url}\n`);
 } else if (useActors) {
@@ -326,15 +380,38 @@ const sink = (log: BrainCallLog) => dayBrainLogs.push(log);
 // parallel and QUEUES the rest, so the 19th barn's wait is mostly other
 // barns' turns — the first full-fleet day timed out 6 of 19 at the flat
 // 120s. A queue wait is not a hung model; give the tail room.
-const llmCount = llmArg ? (/^\d+$/.test(llmArg) ? Number(llmArg) : llmArg.split(",").length) : 0;
+let llmCount = 0;
+if (llmArg) {
+  if (/^\d+$/.test(llmArg)) {
+    llmCount = Number(llmArg);
+  } else {
+    llmCount = llmArg.split(",").length;
+  }
+}
 const brainTimeoutMs = 120_000 + 15_000 * llmCount;
-const decider = brainArg
-  ? scBarn
-    ? (await import("@/actors/barn-stagecraft")).stagecraftBarnDecider(scBarn, worldName, { model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
-    : rivetClient
-      ? barnDecider(rivetClient, worldName, { model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
-      : ollamaDecider({ model: brainArg, brief, verbose: true, sink, timeoutMs: brainTimeoutMs })
-  : null;
+
+async function createDecider(): Promise<(BotDecider & { stats: DeciderStats }) | null> {
+  if (!brainArg) {
+    return null;
+  }
+  const deciderOpts = {
+    model: brainArg,
+    brief,
+    verbose: true,
+    sink,
+    timeoutMs: brainTimeoutMs,
+  };
+  if (scBarn) {
+    const { stagecraftBarnDecider } = await import("@/actors/barn-stagecraft");
+    return stagecraftBarnDecider(scBarn, worldName, deciderOpts);
+  }
+  if (rivetClient) {
+    return barnDecider(rivetClient, worldName, deciderOpts);
+  }
+  return ollamaDecider(deciderOpts);
+}
+
+const decider = await createDecider();
 if (llmArg) {
   const botIds = db
     .select()
@@ -345,9 +422,13 @@ if (llmArg) {
   // A bare count means bot-1..bot-N — after the 2026-08-23 rename the llm
   // roster IS bot-1..bot-10 and the scripted stables are scripted-*, so the
   // intuitive reading and the correct one are finally the same thing.
-  const chosen = /^\d+$/.test(llmArg)
-    ? Array.from({ length: Number(llmArg) }, (_, i) => `bot-${i + 1}`)
-    : llmArg.split(",");
+  let chosen: string[];
+  if (/^\d+$/.test(llmArg)) {
+    const count = Number(llmArg);
+    chosen = Array.from({ length: count }, (_, i) => `bot-${i + 1}`);
+  } else {
+    chosen = llmArg.split(",");
+  }
   const unknown = chosen.filter((id) => !botIds.includes(id));
   if (unknown.length > 0) {
     console.error(`--llm names farms that are not bot stables: ${unknown.join(", ")}`);
@@ -362,12 +443,18 @@ if (llmArg) {
   if (usePersonas && (rivetClient || scBarn)) {
     const { BOT_FARMS } = await import("@/engine/bot-config");
     const { personaOrders, championshipOrders } = await import("@/actors/personas");
-    const orders = personaSet === "championship" ? championshipOrders : personaOrders;
+    let orders = personaOrders;
+    if (personaSet === "championship") {
+      orders = championshipOrders;
+    }
     for (const id of chosen) {
       const profile = BOT_FARMS.find((p) => p.id === id);
       if (!profile) continue;
-      if (scBarn) await scBarn.getOrCreate(`${worldName}/${id}`).tune({ strategy: orders(profile) });
-      else await rivetClient!.barn.getOrCreate([worldName, id]).tune(orders(profile));
+      if (scBarn) {
+        await scBarn.getOrCreate(`${worldName}/${id}`).tune({ strategy: orders(profile) });
+      } else if (rivetClient) {
+        await rivetClient.barn.getOrCreate([worldName, id]).tune(orders(profile));
+      }
     }
     console.log(`Personas set: ${chosen.length} barn(s) start under the ${personaSet} creeds\n`);
   }
@@ -436,25 +523,23 @@ for (let day = 1; day <= days; day++) {
   const afterBrains = performance.now();
   brainMs += afterBrains - afterHonest;
   for (const log of dayBrainLogs.splice(0)) {
+    const insertData: Record<string, unknown> = {
+      dayIndex: log.day,
+      farmId: log.farmId,
+      model: log.model,
+      briefTokens: log.briefTokens,
+      proposedJson: JSON.stringify(log.proposed),
+      droppedJson: JSON.stringify(log.dropped),
+      decideMs: Math.round(log.ms),
+    };
+    if (log.offered) {
+      insertData.offeredJson = JSON.stringify(log.offered);
+    }
+    if (log.menu) {
+      insertData.menuJson = JSON.stringify(log.menu);
+    }
     db.insert(brainLog)
-      .values({
-        dayIndex: log.day,
-        farmId: log.farmId,
-        model: log.model,
-        briefTokens: log.briefTokens,
-        proposedJson: JSON.stringify(log.proposed),
-        droppedJson: JSON.stringify(log.dropped),
-        decideMs: Math.round(log.ms),
-        // Only present on options-brief calls — and only in the INSERT when
-        // present, so a --keep resume of a pre-round-63 world (whose
-        // brain_log has no offered_json column) keeps working on the
-        // legacy brief.
-        ...(log.offered ? { offeredJson: JSON.stringify(log.offered) } : {}),
-        // Round 64: same contract — a --keep resume of a pre-round-64 world
-        // (no menu_json column) keeps working as long as the column is
-        // absent from the INSERT.
-        ...(log.menu ? { menuJson: JSON.stringify(log.menu) } : {}),
-      })
+      .values(insertData as typeof brainLog.$inferInsert)
       .run();
   }
 
@@ -474,10 +559,14 @@ for (let day = 1; day <= days; day++) {
   const fights = tick.card.reduce((s, l) => s + l.fights.length, 0);
   const unmatched = tick.card.reduce((s, l) => s + l.unmatched.length, 0);
   const claims = tick.card.reduce((s, l) => s + l.claims.length, 0);
+  let hatchFridayInfo = "";
+  if (tick.fridays.length > 0) {
+    hatchFridayInfo = ` — HATCH FRIDAY (${tick.fridays[0].hatched.length} hatched)`;
+  }
   console.log(
     `Day ${tick.clock.dayIndex} (${tick.clock.date.split(",")[0]}): ${fights} fights, ${unmatched} unmatched, ` +
       `${claims} claims settled, staking paid ${tick.staking.paidGp.toFixed(2)} GP to ${tick.staking.stakers} stakers` +
-      (tick.fridays.length ? ` — HATCH FRIDAY (${tick.fridays[0].hatched.length} hatched)` : "") +
+      hatchFridayInfo +
       ` — ${fmtSec(elapsed)}`
   );
 
@@ -509,6 +598,35 @@ const doctorMs = performance.now() - doctorStart;
 const totalFights = report.topline.fights;
 const totalEntries = cardHealth(db).entries;
 const slowest = [...dayMs].sort((a, b) => b.ms - a.ms).slice(0, 3);
+
+let brainTimingLine = "";
+if (brainMs > 1) {
+  let deciderStatsInfo = "";
+  if (decider) {
+    deciderStatsInfo = `, ${decider.stats.calls} call(s), ${decider.stats.failures} failed`;
+  }
+  brainTimingLine =
+    `  brains       ${fmtSec(brainMs).padStart(8)}   (${(brainMs / Math.max(1, days) / 1000).toFixed(2)}s/day · ` +
+    `${Math.round((brainMs / Math.max(1, simMs)) * 100)}% of the run` +
+    deciderStatsInfo +
+    `)\n`;
+}
+
+let slowestDaysLine = "";
+if (slowest.length > 0) {
+  slowestDaysLine = `  slowest days ${slowest.map((d) => `d${d.day} ${fmtSec(d.ms)}`).join(" · ")}\n`;
+}
+
+let perFightStr = "—";
+if (totalFights > 0) {
+  perFightStr = (simMs / totalFights).toFixed(2);
+}
+
+let perEntryStr = "—";
+if (totalEntries > 0) {
+  perEntryStr = (simMs / totalEntries).toFixed(2);
+}
+
 console.log(
   "\nTIMING\n" +
     `  seed + bots  ${fmtSec(seedMs).padStart(8)}\n` +
@@ -516,23 +634,14 @@ console.log(
     `${(simMs / Math.max(1, days) / 1000).toFixed(2)}s/day · honest ` +
     `${Math.round((honestMs / Math.max(1, honestMs + tickMs)) * 100)}% / tick ` +
     `${Math.round((tickMs / Math.max(1, honestMs + tickMs)) * 100)}%)\n` +
-    // The brain line only appears when there was a brain — an ordinary run's
-    // timing block should look exactly as it always has.
-    (brainMs > 1
-      ? `  brains       ${fmtSec(brainMs).padStart(8)}   (${((brainMs / Math.max(1, days)) / 1000).toFixed(2)}s/day · ` +
-        `${Math.round((brainMs / Math.max(1, simMs)) * 100)}% of the run` +
-        (decider ? `, ${decider.stats.calls} call(s), ${decider.stats.failures} failed` : "") +
-        `)\n`
-      : "") +
+    brainTimingLine +
     `  doctor       ${fmtSec(doctorMs).padStart(8)}\n` +
     `  total        ${fmtSec(performance.now() - t0).padStart(8)}\n` +
-    (slowest.length
-      ? `  slowest days ${slowest.map((d) => `d${d.day} ${fmtSec(d.ms)}`).join(" · ")}\n`
-      : "") +
+    slowestDaysLine +
     // ⚠ THE COMPARABLE NUMBERS. Everything above scales with how much work the
     // world happened to generate; these two do not. Compare THESE across runs.
-    `  per unit     ${totalFights > 0 ? (simMs / totalFights).toFixed(2) : "—"} ms/fight · ` +
-    `${totalEntries > 0 ? (simMs / totalEntries).toFixed(2) : "—"} ms/entry`
+    `  per unit     ${perFightStr} ms/fight · ` +
+    `${perEntryStr} ms/entry`
 );
 
 // ── The careers (round 50): what each barn actor remembers about itself ────
@@ -543,9 +652,12 @@ if (rivetClient || scBarn) {
   const llmFarms = db.select().from(farms).where(eq(farms.brain, "llm")).all();
   console.log("\nBARN CAREERS (durable actor state — persists across runs)");
   for (const f of llmFarms) {
-    const c = scBarn
-      ? await scBarn.getOrCreate(`${worldName}/${f.id}`).career(undefined)
-      : await rivetClient!.barn.getOrCreate([worldName, f.id]).career();
+    let c: BarnMemory;
+    if (scBarn) {
+      c = await scBarn.getOrCreate(`${worldName}/${f.id}`).career(undefined);
+    } else {
+      c = (await rivetClient!.barn.getOrCreate([worldName, f.id]).career()) as BarnMemory;
+    }
     console.log(
       `  ${f.id.padEnd(8)} ${String(c.daysPlayed).padStart(3)} day(s) played · last day ${c.lastDay} · ` +
         `${c.proposedActions} proposed, ${c.droppedActions} dropped, ${c.failures} failure(s) · ` +
@@ -557,7 +669,35 @@ if (rivetClient || scBarn) {
 console.log("\n" + formatReport(report));
 
 console.log(`\nDone → ${dbPath}`);
-console.log(`Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`);
+console.log(
+  `Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`
+);
+// The registry holds the process open (the embedded engine is still
+// listening); drain it so the sim exits like a sim.
+if (useActors && !usePanel) await registry.shutdown();
+
+// LAST, so the path is still on screen when it fails — a broken world is
+// exactly the one you want to open.
+if (!report.ok) process.exit(1);
+// --panel holds the process open ON PURPOSE: the run is done (the line above
+// said so) but the panel keeps serving what happened. Ctrl-C to leave.
+if (usePanel) {
+  console.log("Panel still live at http://localhost:4949 — Ctrl-C to close.");
+  await new Promise(() => {});
+}
+// Exit explicitly on success too. Without this, a plain (no --actors) run
+// finishes its work and then just stands there — something keeps the event
+// loop alive — which forces anyone driving the sim (a human, an agent, CI)
+// to poll the output and guess at doneness. An exit code IS the doneness
+// signal (Zane's ask, 2026-08-22).
+process.exit(0);
+
+console.log("\n" + formatReport(report));
+
+console.log(`\nDone → ${dbPath}`);
+console.log(
+  `Run \`bun dev:sim\` and open http://localhost:3435/admin — it always shows the newest sim.`
+);
 // The registry holds the process open (the embedded engine is still
 // listening); drain it so the sim exits like a sim.
 if (useActors && !usePanel) await registry.shutdown();
