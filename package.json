@@ -8,6 +8,9 @@
     "start": "next start -p 3434",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:seed": "bun run src/db/seed.ts",
     "simulate": "bun run scripts/simulate.ts",
     "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435",
@@ -21,6 +24,7 @@
     "scoreboard": "bun run scripts/scoreboard.ts"
   },
   "dependencies": {
+    "@authorofthesurf/stagecraft": "0.3.0",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "ag-grid-community": "^36.0.2",
     "ag-grid-react": "^36.0.2",
@@ -33,10 +37,15 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "^1.3.14",
     "@types/node": "^24",
     "@types/react": "^19",
-    "typescript": "^5"
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "^5",
+    "typescript-eslint": "^8.68.0"
   }
 }

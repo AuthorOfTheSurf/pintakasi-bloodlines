@@ -15,8 +15,8 @@
  * thing the A/B compares them against.
  *
  * Personas are just standing orders (phase 3's `tune`), derived from the
- * same profile the scripted twin uses — so bot-5 scripted and bot-5 llm
- * are the same CHARACTER with different brains, which is what makes a
+ * same profile the scripted twin uses — so the same stable scripted and llm
+ * is the same CHARACTER with different brains, which is what makes a
  * fleet-vs-fleet comparison mean something.
  */
 import type { BotProfile } from "@/engine/bot-config";
@@ -111,16 +111,16 @@ const CHAMPIONSHIP_CREEDS: Record<ChampionshipCreed, string> = {
 
 /** The 10v10 assignment: two barns per creed, fixed so runs are comparable. */
 const CREED_ASSIGNMENT: Record<string, ChampionshipCreed> = {
-  "bot-7": "card-shark",
-  "bot-15": "card-shark",
-  "bot-marco": "bloodline-architect",
-  "bot-9": "bloodline-architect",
-  "bot-8": "claim-scout",
-  "bot-16": "claim-scout",
-  "bot-14": "talent-scout",
-  "bot-12": "talent-scout",
-  "bot-13": "operator",
-  "bot-17": "operator",
+  "bot-1": "card-shark",
+  "bot-2": "card-shark",
+  "bot-3": "bloodline-architect",
+  "bot-4": "bloodline-architect",
+  "bot-5": "claim-scout",
+  "bot-6": "claim-scout",
+  "bot-7": "talent-scout",
+  "bot-8": "talent-scout",
+  "bot-9": "operator",
+  "bot-10": "operator",
 };
 
 /** The llm side of the 10v10, derived from the assignment so they can't drift. */
