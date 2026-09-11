@@ -28,7 +28,7 @@
  *    declared error discards the draft, counters included. Design note for
  *    stagecraft: barn.ts mutates state AND throws; stagecraft cannot.
  */
-import { actor, type Ctx } from "@authorofthesurf/stagecraft";
+import { actor, type testEngine } from "@authorofthesurf/stagecraft";
 import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
 import {
   ollamaDecider,
@@ -65,23 +65,28 @@ export interface TurnFailedPayload {
   ms: number;
 }
 
+const FRESH_BARN: BarnMemory = {
+  farmName: null,
+  daysPlayed: 0,
+  lastDay: -1,
+  proposedActions: 0,
+  droppedActions: 0,
+  failures: 0,
+  thinkingMs: 0,
+  strategy: null,
+};
+
 export const Barn = actor("barn", {
   // A turn awaits an LLM. The default 60s cap kills a barn mid-thought once
   // ten of them are queued behind one Ollama; 10 minutes is what barn.ts has
   // always used. noSleep keeps the fleet awake across a long run instead of
   // paying a wake stampede every idle 30s.
   options: { actionTimeout: 600_000, noSleep: true },
-  state: {
-    farmName: null,
-    daysPlayed: 0,
-    lastDay: -1,
-    proposedActions: 0,
-    droppedActions: 0,
-    failures: 0,
-    thinkingMs: 0,
-    strategy: null,
-  } as BarnMemory,
+  state: FRESH_BARN,
   errors: {
+    // stagecraft reads only the TYPE of an errors entry — the value is never
+    // inspected — so a cast empty object is its idiom for declaring one.
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     TurnFailed: {} as TurnFailedPayload,
   },
   handle: {
@@ -91,13 +96,9 @@ export const Barn = actor("barn", {
       { state, fail }
     ): Promise<TurnReply> => {
       let log: BrainCallLog | null = null;
-      let strategyOption: string | undefined = undefined;
-      if (state.strategy) {
-        strategyOption = state.strategy;
-      }
       const decide = deciderFactory({
         ...opts,
-        strategy: strategyOption,
+        strategy: state.strategy ?? undefined,
         sink: (l) => {
           log = l;
         },
@@ -114,14 +115,8 @@ export const Barn = actor("barn", {
       } catch (err) {
         // Cannot bump failure counters here — a thrown declared error
         // discards the whole draft. The decider calls recordFailure.
-        let reason = String(err);
-        if (err instanceof Error) {
-          reason = err.message;
-        }
-        throw fail.TurnFailed({
-          reason,
-          ms: decide.stats.totalMs,
-        });
+        const reason = err instanceof Error ? err.message : String(err);
+        throw fail.TurnFailed({ reason, ms: decide.stats.totalMs });
       }
     },
     /** Failure bookkeeping, split out because throw = draft discarded. */
@@ -131,33 +126,24 @@ export const Barn = actor("barn", {
     },
     /** Set (or clear, with null) the owner's standing orders. */
     tune: async ({ strategy }: { strategy: string | null }, { state }): Promise<BarnMemory> => {
-      if (strategy && strategy.trim().length > 0) {
-        state.strategy = strategy.trim();
-      } else {
-        state.strategy = null;
-      }
+      state.strategy = strategy?.trim() || null;
       return { ...state };
     },
     /** The career so far — durable across runs, which is the demo. */
-    career: async (
-      _: undefined,
-      { state }: Ctx<BarnMemory, Record<string, never>, Record<string, never>>
-    ): Promise<BarnMemory> => ({
-      ...state,
-    }),
+    career: async (_: undefined, { state }): Promise<BarnMemory> => ({ ...state }),
   },
 });
 
-export interface StagecraftBarnHandle {
-  takeTurn: (args: { view: BotView; opts: Omit<OllamaOptions, "sink"> }) => Promise<TurnReply>;
-  recordFailure: (args: { ms: number }) => Promise<void>;
-  tune: (args: { strategy: string | null }) => Promise<BarnMemory>;
-  career: (arg: undefined) => Promise<BarnMemory>;
+/**
+ * The barn's typed client, DERIVED from the actor rather than restated. A
+ * hand-written copy of the handler signatures compiled only behind an
+ * `as unknown as` cast, which meant it could drift from `Barn` in silence —
+ * this way a changed handler is a type error at every call site.
+ */
+export function barnClient(engine: ReturnType<typeof testEngine>) {
+  return engine.client(Barn);
 }
-
-export interface StagecraftBarnClient {
-  getOrCreate: (key: string) => StagecraftBarnHandle;
-}
+export type StagecraftBarnClient = ReturnType<typeof barnClient>;
 
 /** Same-shape client as barn.ts's barnDecider, but over a stagecraft engine. */
 export function stagecraftBarnDecider(
@@ -178,23 +164,18 @@ export function stagecraftBarnDecider(
     const handle = client.getOrCreate(`${world}/${view.farm.id}`);
     const { sink, ...wireOpts } = opts;
     try {
-      const { actions, log } = (await handle.takeTurn({ view, opts: wireOpts })) as TurnReply;
-      if (log && sink) {
-        sink(log);
-      }
+      const { actions, log } = await handle.takeTurn({ view, opts: wireOpts });
+      if (log) sink?.(log);
       stats.proposedActions += actions.length;
       stats.totalMs += Date.now() - started;
       return actions;
     } catch (err) {
       stats.failures++;
       stats.totalMs += Date.now() - started;
+      // The guard narrows `err` to the declared TurnFailed payload, so `ms`
+      // is typed — no cast needed.
       if (Barn.is.TurnFailed(err)) {
-        const failurePayload = err as TurnFailedPayload;
-        let failureMs = 0;
-        if (typeof failurePayload.ms === "number") {
-          failureMs = failurePayload.ms;
-        }
-        await handle.recordFailure({ ms: failureMs }).catch(() => {});
+        await handle.recordFailure({ ms: err.ms }).catch(() => {});
       }
       throw err;
     }

@@ -19,6 +19,7 @@ import { issueTracker, testEngine } from "@authorofthesurf/stagecraft";
 import { startPanel } from "@authorofthesurf/stagecraft/panel";
 import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
 import type { DeciderStats, OllamaOptions } from "@/engine/decider-ollama";
+import { emptyBotView } from "@/engine/bot-view-fixture";
 import { Barn, setDeciderFactory, stagecraftBarnDecider } from "@/actors/barn-stagecraft";
 
 const FLEET = 10;
@@ -50,22 +51,7 @@ const engine = testEngine(Barn);
 startPanel({ tracker, quietAfterMs: 15_000 });
 console.log("panel: http://localhost:4949");
 
-function modelFor(i: number): string {
-  if (i === 7) {
-    return "chronic-failer";
-  }
-  return "fake-brain";
-}
-
-function createView(farmId: string, day: number): BotView {
-  return {
-    day,
-    farm: { id: farmId, name: farmId, gp: 100, isBot: 1, brain: "llm" },
-    flock: [],
-    studMarket: [],
-    claimerBoard: [],
-  } as unknown as BotView;
-}
+const modelFor = (i: number) => (i === 7 ? "chronic-failer" : "fake-brain");
 
 let day = 1;
 while (true) {
@@ -79,14 +65,17 @@ while (true) {
       // which is exactly what the unexpected channel / issue grouping /
       // failure feed exist to catch. Everyone else fails declared, if at all.
       if (i === 3 && Math.random() < 0.4) {
+        // The one cast in this file is the bug being demonstrated: a view
+        // that claims to be a BotView and isn't.
+        const malformed = { day } as unknown as BotView;
         await engine
           .client(Barn)
           .getOrCreate(`${WORLD}/${farmId}`)
-          .takeTurn({ view: { day } as unknown as BotView, opts: { model: "fake-brain" } })
+          .takeTurn({ view: malformed, opts: { model: "fake-brain" } })
           .catch(() => {});
         return;
       }
-      await decider(createView(farmId, day)).catch(() => {}); // failures are the show
+      await decider(emptyBotView({ id: farmId }, day)).catch(() => {}); // failures are the show
     })
   );
   day++;

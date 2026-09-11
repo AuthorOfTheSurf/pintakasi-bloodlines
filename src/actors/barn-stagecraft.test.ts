@@ -9,24 +9,13 @@ import { afterAll, expect, test } from "bun:test";
 import { testEngine } from "@authorofthesurf/stagecraft";
 import type { BotAction, BotDecider, BotView } from "@/engine/bot-brain";
 import type { DeciderStats, OllamaOptions } from "@/engine/decider-ollama";
-import {
-  Barn,
-  setDeciderFactory,
-  stagecraftBarnDecider,
-  type TurnFailedPayload,
-} from "./barn-stagecraft";
+import { emptyBotView } from "@/engine/bot-view-fixture";
+import { Barn, setDeciderFactory, stagecraftBarnDecider } from "./barn-stagecraft";
 
 const TIMEOUT = 120_000;
 
-function fakeView(farmId: string, day: number): BotView {
-  return {
-    day,
-    farm: { id: farmId, name: `Farm ${farmId}`, gp: 100, isBot: 1, brain: "llm" },
-    flock: [],
-    studMarket: [],
-    claimerBoard: [],
-  } as unknown as BotView;
-}
+const fakeView = (farmId: string, day: number) =>
+  emptyBotView({ id: farmId, name: `Farm ${farmId}` }, day);
 
 // The fake thinks instantly and proposes two actions; "spam" in the model
 // name makes it throw, to exercise the failure path.
@@ -111,8 +100,7 @@ test(
       if (!Barn.is.TurnFailed(e)) {
         throw e;
       }
-      const turnErr = e as TurnFailedPayload;
-      expect(turnErr.reason).toBe("ollama exploded");
+      expect(e.reason).toBe("ollama exploded");
     }
 
     const barn = engine.client(Barn).getOrCreate(`${world}/scripted-3`);

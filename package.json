@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "check": "bun run lint && bun run format:check && bun run typecheck",
     "db:seed": "bun run src/db/seed.ts",
     "simulate": "bun run scripts/simulate.ts",
     "dev:sim": "PINTAKASI_DB=latest-sim PINTAKASI_DIST=.next-sim next dev -p 3435",
@@ -21,7 +22,8 @@
     "tune": "bun run scripts/tune.ts",
     "balance": "bun run scripts/balance.ts",
     "test:watch": "bun test --watch",
-    "scoreboard": "bun run scripts/scoreboard.ts"
+    "scoreboard": "bun run scripts/scoreboard.ts",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@authorofthesurf/stagecraft": "^0.4.1",

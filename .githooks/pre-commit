@@ -1,0 +1,10 @@
+#!/bin/sh
+# Style gate (tracked, installed by `bun install` via the `prepare` script).
+# PR #10 shipped nested ternaries and inline imports through a lint config
+# that ignored most of the repo — so the gate checks the whole tree, and it
+# checks it BEFORE the commit exists rather than after review.
+# Bypass for a genuine emergency with `git commit --no-verify`; CI runs the
+# same checks, so a bypass only moves the failure later.
+set -e
+bun run --silent lint
+bun run --silent format:check
