@@ -149,7 +149,7 @@ export const barn = actor({
 export const registry = setup({
   use: { barn },
   // A morning view grows with the world — roster, card, claim board — and
-  // bot-14's crossed rivetkit's default 64 KB message limit on the flagship
+  // one barn's crossed rivetkit's default 64 KB message limit on the flagship
   // run, bouncing it out of every single day (the retry can't absorb a
   // payload that is the same size every attempt). 8 MB is "never think
   // about this again" territory for a JSON brief.

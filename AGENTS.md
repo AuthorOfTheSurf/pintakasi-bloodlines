@@ -83,6 +83,12 @@ The voice is for someone who has never played: short sentences, roughly a 5th-gr
 
 **Fan out.** A round of work usually splits cleanly into engine / tests / docs / UI. Those touch different files, so run them as concurrent subagents in a single message rather than serially — wall clock becomes the slowest one instead of the sum. Keep the engine change yourself (it's the part that needs the whole picture) and tell each agent explicitly which files are off-limits, because the failure mode is two agents editing `package.json`.
 
+**Code style and control flow rules:**
+- **No ternary operators**: Ternary expressions (`? :`) are banned across the codebase (`no-ternary: "error"` in ESLint). Use standard control flow instead: `if`/`else`, `switch`, guard clauses, and early returns.
+- **No inline dynamic imports in expressions**: Never embed `await import(...)` inside expressions, argument lists, or complex statements. Isolate dynamic imports in dedicated factory functions or initialization blocks.
+- **Type safety over loose assertions**: Avoid `as any` and `as unknown as T` escapes outside of raw engine bridges. Define clear interfaces (e.g. `StagecraftBarnClient`, `TurnFailedPayload`) and test fixture builders.
+- **Linting and formatting**: Keep code formatted and verified with `bun run lint` (ESLint) and `bun run format` (Prettier).
+
 **While agents are running, `git checkout <file>` is a loaded gun.** Uncommitted work is the only copy of a subagent's output, and reverting a file to HEAD destroys it silently — `git status` afterwards just looks tidy. If you need to test against the old version of a file, copy it aside and restore from the copy. (Recovery, if it happens anyway: message the agent that wrote it — it still has the context and can re-apply faster than a re-run.)
 
 **Commits** are autonomous in this repo: one per round of work, title says what changed and why.

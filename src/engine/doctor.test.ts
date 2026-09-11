@@ -43,7 +43,7 @@ import { Game } from "./game";
  * the whale and the landlord are what exercise the gacha-bundle and
  * land-purchase paths the adoption report reads.
  */
-const FAST_ROSTER = ["bot-1", "bot-3", "bot-10", "bot-11"];
+const FAST_ROSTER = ["scripted-1", "scripted-3", "scripted-7", "scripted-8"];
 
 function world(days = 0) {
   const db = createDb(":memory:");

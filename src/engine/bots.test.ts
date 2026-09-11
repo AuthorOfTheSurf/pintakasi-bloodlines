@@ -55,7 +55,7 @@ function world(opts: { only?: string[] } = {}) {
 // statistical property of the full 15-bot roster, not something four bots
 // can reproduce — the full-roster test above already exercises both
 // speculator styles for real, so nothing is lost by leaving them out here.
-const FAST_ROSTER = ["bot-1", "bot-3", "bot-5", "bot-9"];
+const FAST_ROSTER = ["scripted-1", "scripted-3", "scripted-5", "bot-4"];
 
 const totalGp = (db: DB) =>
   db
@@ -641,7 +641,7 @@ describe("how deep a barn breeds in a day", () => {
     // THE REGRESSION, in one number. The old loop bought its best-scoring pair
     // and then `break; // one cover a day is plenty`, so this was 1 for every
     // barn in the game regardless of style, band size or wallet.
-    const { db } = broodBarn("bot-3", BREEDING_PLAN.MAX_COVERS_PER_DAY + 3);
+    const { db } = broodBarn("scripted-3", BREEDING_PLAN.MAX_COVERS_PER_DAY + 3);
     const report = Bots.playDay(db)[0];
     expect(report.bred.length).toBeGreaterThan(1);
     // A band bigger than the day cap is worked to the cap and stops there —
@@ -661,7 +661,7 @@ describe("how deep a barn breeds in a day", () => {
     // second cover of the same hen — the plan skips a hen it already covered
     // rather than spending the attempt and letting the door refuse it.
     const hens = BREEDING_PLAN.MIN_HENS_COVERED - 2;
-    const { db } = broodBarn("bot-3", hens);
+    const { db } = broodBarn("scripted-3", hens);
     const report = Bots.playDay(db)[0];
     expect(report.bred.length).toBe(hens);
     expect(hensCoveredToday(db)).toBe(hens);
@@ -670,7 +670,7 @@ describe("how deep a barn breeds in a day", () => {
   test("a barn with no retired hens breeds nothing and doesn't fall over", () => {
     // Zero hens must be zero covers, not a floor applied to an empty band.
     // Every stable in a fresh world looks like this for its first weeks.
-    const { db } = broodBarn("bot-3", 0);
+    const { db } = broodBarn("scripted-3", 0);
     expect(Bots.playDay(db)[0].bred).toEqual([]);
     expectConserved(db);
   });
@@ -781,7 +781,7 @@ describe("the nightly land sweep", () => {
     // tick's own noise (the bots stake their free gacha token in the morning,
     // long before either of these runs) would drown the one number this is
     // about.
-    const w = world({ only: ["bot-1"] });
+    const w = world({ only: ["scripted-1"] });
     const farmsApi = new Farms(w.db);
     const devId = w.db.select().from(farms).where(eq(farms.isBot, 0)).all()[0].id;
     const botId = w.db.select().from(farms).where(eq(farms.isBot, 1)).all()[0].id;

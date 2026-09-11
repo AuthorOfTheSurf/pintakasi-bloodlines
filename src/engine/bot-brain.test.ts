@@ -28,7 +28,7 @@ import { seedWorld } from "./rng";
  * determinism.test.ts — never leak a pinned stream into another test.
  */
 
-const FAST_ROSTER = ["bot-1", "bot-3", "bot-5"];
+const FAST_ROSTER = ["scripted-1", "scripted-3", "scripted-5"];
 
 /** A world with a few bot stables, ready to tick. */
 function world(): { db: DB; devFarmId: string } {
@@ -92,18 +92,18 @@ describe("collect", () => {
 
   test("one broken brain does not take the world down with it", async () => {
     const { db } = world();
-    db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "bot-1")).run();
-    db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "bot-3")).run();
+    db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "scripted-1")).run();
+    db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "scripted-3")).run();
 
     const proposals = await collectProposals(db, async (view) => {
-      if (view.farm.id === "bot-1") throw new Error("model timed out");
+      if (view.farm.id === "scripted-1") throw new Error("model timed out");
       return [{ do: "check_in" }];
     });
 
     // The healthy barn proposed; the broken one simply is not in the map, and
     // `playDay` sits it out rather than falling back to a scripted day.
-    expect(proposals.has("bot-1")).toBe(false);
-    expect(proposals.get("bot-3")).toEqual([{ do: "check_in" }]);
+    expect(proposals.has("scripted-1")).toBe(false);
+    expect(proposals.get("scripted-3")).toEqual([{ do: "check_in" }]);
   });
 });
 
@@ -111,27 +111,27 @@ describe("the mail tells a barn only what a player could see", () => {
   test("a bird seated in this week's crowns leaves the eligible list", () => {
     const { db } = world();
     // Manufacture a crown-eligible veteran: hardcore age, proven record.
-    const candidate = db.select().from(birds).where(eq(birds.farmId, "bot-1")).all()
+    const candidate = db.select().from(birds).where(eq(birds.farmId, "scripted-1")).all()
       .find((b) => b.status === "active")!;
     db.update(birds)
       .set({ named: 1, birthWeek: -4, stakesWins: 10 })
       .where(eq(birds.id, candidate.id))
       .run();
 
-    const before = buildView(db, "bot-1");
+    const before = buildView(db, "scripted-1");
     expect(before.crowns.eligibleBirdIds).toContain(candidate.id);
 
     // Register it — the same call the crown verb translates to. From here
     // enter() would refuse a second declaration, so the mail must stop
     // calling the bird eligible or the brief re-advertises a dead row all week.
-    new Tournaments(db, "bot-1").enter(candidate.id, before.crowns.weekFormats[0], "major");
-    const after = buildView(db, "bot-1");
+    new Tournaments(db, "scripted-1").enter(candidate.id, before.crowns.weekFormats[0], "major");
+    const after = buildView(db, "scripted-1");
     expect(after.crowns.eligibleBirdIds).not.toContain(candidate.id);
   });
 
   test("a live bird's six stats stay fogged, even from its owner", () => {
     const { db } = world();
-    const view = buildView(db, "bot-1");
+    const view = buildView(db, "scripted-1");
     const live = view.flock.filter((b) => b.status === "active");
     expect(live.length).toBeGreaterThan(0);
     // Round 28 hid live stats from EVERYONE. The view inherits that by being
@@ -142,9 +142,9 @@ describe("the mail tells a barn only what a player could see", () => {
 
   test("the view carries the day, the wallet, the card and a scout read per fighter", () => {
     const { db } = world();
-    const view = buildView(db, "bot-1");
+    const view = buildView(db, "scripted-1");
     expect(view.day).toBe(0);
-    expect(view.farm.id).toBe("bot-1");
+    expect(view.farm.id).toBe("scripted-1");
     expect(view.farm.gp).toBeGreaterThan(0);
     expect(view.card.today.length).toBeGreaterThan(0);
     const live = view.flock.filter((b) => b.status === "active");
@@ -155,9 +155,9 @@ describe("the mail tells a barn only what a player could see", () => {
 describe("apply: the house rules bind an llm barn exactly as they bind a bot", () => {
   test("a legal day is played and reported", () => {
     const { db } = world();
-    const before = db.select().from(farms).where(eq(farms.id, "bot-1")).get()!;
-    const report = applyProposals(db, "bot-1", [{ do: "check_in" }], brainRng(0, 0));
-    const after = db.select().from(farms).where(eq(farms.id, "bot-1")).get()!;
+    const before = db.select().from(farms).where(eq(farms.id, "scripted-1")).get()!;
+    const report = applyProposals(db, "scripted-1", [{ do: "check_in" }], brainRng(0, 0));
+    const after = db.select().from(farms).where(eq(farms.id, "scripted-1")).get()!;
 
     expect(report.style).toBe("llm");
     expect(report.checkedIn).toBe(true);
@@ -166,7 +166,7 @@ describe("apply: the house rules bind an llm barn exactly as they bind a bot", (
 
   test("nonsense is refused without throwing, and without moving money", () => {
     const { db } = world();
-    const before = db.select().from(farms).where(eq(farms.id, "bot-1")).get()!;
+    const before = db.select().from(farms).where(eq(farms.id, "scripted-1")).get()!;
     const nonsense: BotAction[] = [
       { do: "breed", motherId: "no-such-bird", fatherId: "also-fake" },
       { do: "enter", birdId: "ghost", mode: "real", classType: "maiden", format: "b1" },
@@ -176,8 +176,8 @@ describe("apply: the house rules bind an llm barn exactly as they bind a bot", (
       { do: "unstake", tokens: 10_000_000 },
       { do: "expand_barn" },
     ];
-    const report = applyProposals(db, "bot-1", nonsense, brainRng(0, 0));
-    const after = db.select().from(farms).where(eq(farms.id, "bot-1")).get()!;
+    const report = applyProposals(db, "scripted-1", nonsense, brainRng(0, 0));
+    const after = db.select().from(farms).where(eq(farms.id, "scripted-1")).get()!;
 
     expect(report.bred).toEqual([]);
     expect(report.entered).toEqual([]);
@@ -197,7 +197,7 @@ describe("apply: the house rules bind an llm barn exactly as they bind a bot", (
     // rule anyway — what is being pinned here is that the loop is BOUNDED, so
     // a model stuck repeating itself costs one tick and not a world.
     const flood: BotAction[] = Array.from({ length: 500 }, () => ({ do: "check_in" }) as const);
-    const report = applyProposals(db, "bot-1", flood, brainRng(0, 0));
+    const report = applyProposals(db, "scripted-1", flood, brainRng(0, 0));
     expect(report.checkedIn).toBe(true);
   });
 
@@ -209,13 +209,13 @@ describe("apply: the house rules bind an llm barn exactly as they bind a bot", (
     const backward: BotAction[] = [{ do: "roll_gacha" }, { do: "check_in" }];
 
     const a = world();
-    const first = applyProposals(a.db, "bot-1", forward, brainRng(0, 0));
+    const first = applyProposals(a.db, "scripted-1", forward, brainRng(0, 0));
     const b = world();
-    const second = applyProposals(b.db, "bot-1", backward, brainRng(0, 0));
+    const second = applyProposals(b.db, "scripted-1", backward, brainRng(0, 0));
 
     expect(second.checkedIn).toBe(first.checkedIn);
     expect(second.paidPulls).toBe(first.paidPulls);
-    expect(db2gp(b.db, "bot-1")).toBe(db2gp(a.db, "bot-1"));
+    expect(db2gp(b.db, "scripted-1")).toBe(db2gp(a.db, "scripted-1"));
   });
 });
 
@@ -224,11 +224,11 @@ describe("an llm barn plays a real day inside a real tick", () => {
     seedWorld(11);
     try {
       const { db, devFarmId } = world();
-      db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "bot-1")).run();
+      db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "scripted-1")).run();
       const game = new Game(db, devFarmId);
 
       const proposals = new Map<string, BotAction[]>([
-        ["bot-1", [{ do: "check_in" }, { do: "roll_gacha" }]],
+        ["scripted-1", [{ do: "check_in" }, { do: "roll_gacha" }]],
       ]);
       const tick = game.tickDay({ proposals });
 
@@ -246,7 +246,7 @@ describe("an llm barn plays a real day inside a real tick", () => {
     seedWorld(11);
     try {
       const { db, devFarmId } = world();
-      db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "bot-1")).run();
+      db.update(farms).set({ brain: "llm" }).where(eq(farms.id, "scripted-1")).run();
       const game = new Game(db, devFarmId);
       const tick = game.tickDay(); // nobody collected anything
 
@@ -254,7 +254,7 @@ describe("an llm barn plays a real day inside a real tick", () => {
       // model look like a working one — the single most expensive mistake
       // available here, because it would corrupt the very comparison the
       // whole round exists to make.
-      expect(tick.bots.some((b) => b.farm === "bot-1")).toBe(false);
+      expect(tick.bots.some((b) => b.farm === "scripted-1")).toBe(false);
       expect(tick.bots.length).toBe(FAST_ROSTER.length - 1);
     } finally {
       seedWorld(null);

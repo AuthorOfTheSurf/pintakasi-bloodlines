@@ -1,0 +1,9 @@
+.next/
+.next-sim/
+.next-chartcheck/
+.next-ui-check/
+node_modules/
+data/
+runs/
+*.log
+bun.lock
