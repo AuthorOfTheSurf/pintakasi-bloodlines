@@ -10,7 +10,6 @@ import {
   nextExpansionCost,
   ELEMENTS,
   ELEMENT_BEATS,
-  PHASES,
   SCOUT,
   STARS,
   STATS,
@@ -29,7 +28,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Birds & stats — The Pintakasi Handbook",
-  description: "The six hidden stats, the scout report, the letter-grade ladder, elements and stars, and the bird life cycle.",
+  description:
+    "The six hidden stats, the scout report, the letter-grade ladder, elements and stars, and the bird life cycle.",
 };
 
 /** Walks the real scale so the band table can never drift from grades.ts. */
@@ -74,13 +74,13 @@ export default function BirdsPage() {
       <h1>Birds &amp; stats</h1>
       <p className="lede">
         Every bird is six stats, one element, a half-star rating, and an age. The six stats are
-        fixed the day it hatches and never change — but here is the twist: <strong>you cannot see
-        them while the bird can still fight.</strong> The sheet is sealed for the whole career and
-        revealed in full the day the bird retires, however it retires. What you <em>can</em> always
-        see: its <strong>overall grade</strong>, stars, element, carriage, sex, age, record, and
-        every Pit Figure it has ever posted. The grade tells you how strong the bird is; it never
-        tells you what shape it is. Working out what a bird is from how it fights — that discovery
-        is the game.
+        fixed the day it hatches and never change — but here is the twist:{" "}
+        <strong>you cannot see them while the bird can still fight.</strong> The sheet is sealed for
+        the whole career and revealed in full the day the bird retires, however it retires. What you{" "}
+        <em>can</em> always see: its <strong>overall grade</strong>, stars, element, carriage, sex,
+        age, record, and every Pit Figure it has ever posted. The grade tells you how strong the
+        bird is; it never tells you what shape it is. Working out what a bird is from how it fights
+        — that discovery is the game.
       </p>
 
       <h2>The six stats</h2>
@@ -94,9 +94,9 @@ export default function BirdsPage() {
       <p>
         Four stats are <strong>distance stats</strong> — all four join every roll, but each blade
         weighs them differently (that&apos;s the blade&apos;s &ldquo;distance,&rdquo; see{" "}
-        <Link href="/wiki/fighting">Fighting</Link>). Think Start, Speed, Stamina, Finish on a
-        race dial. Two are <strong>anchor stats</strong> — they matter in every fight, at every
-        distance, but never take the wheel by themselves.
+        <Link href="/wiki/fighting">Fighting</Link>). Think Start, Speed, Stamina, Finish on a race
+        dial. Two are <strong>anchor stats</strong> — they matter in every fight, at every distance,
+        but never take the wheel by themselves.
       </p>
       <div className="tablewrap">
         <table>
@@ -112,9 +112,8 @@ export default function BirdsPage() {
               <td>Agility</td>
               <td>Distance — the Start</td>
               <td>
-                The burst off the break. Weighs heaviest on the short blades — B1 leans on it
-                harder than on anything else — and lightest, but never zero, on the deep-water
-                end.
+                The burst off the break. Weighs heaviest on the short blades — B1 leans on it harder
+                than on anything else — and lightest, but never zero, on the deep-water end.
               </td>
             </tr>
             <tr>
@@ -130,11 +129,11 @@ export default function BirdsPage() {
               <td>Distance — the fuel tank</td>
               <td>
                 Sets how many turns the bird fights at full power: {BATTLE.FUEL.BASE_TURNS} turns
-                plus {BATTLE.FUEL.TURNS_PER_STAMINA} per point of stamina. When the tank empties
-                the bird hits the wall — agility and sight drop to{" "}
+                plus {BATTLE.FUEL.TURNS_PER_STAMINA} per point of stamina. When the tank empties the
+                bird hits the wall — agility and sight drop to{" "}
                 {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% for the rest of the fight. It also
-                carries its own weight on every roll, heaviest at B4. A sprint never empties a
-                tank; a marathon is decided by it.
+                carries its own weight on every roll, heaviest at B4. A sprint never empties a tank;
+                a marathon is decided by it.
               </td>
             </tr>
             <tr>
@@ -142,9 +141,9 @@ export default function BirdsPage() {
               <td>Distance — the Finish</td>
               <td>
                 Grit in the deep water — the key stat of B5, and it never hits the wall: heart
-                doesn&apos;t get tired. It also decides whether a badly hurt bird keeps fighting
-                or runs: once per fight, a bird below a quarter of its wind checks its nerve, and
-                low gameness means a real chance it breaks and quits.
+                doesn&apos;t get tired. It also decides whether a badly hurt bird keeps fighting or
+                runs: once per fight, a bird below a quarter of its wind checks its nerve, and low
+                gameness means a real chance it breaks and quits.
               </td>
             </tr>
             <tr>
@@ -170,21 +169,19 @@ export default function BirdsPage() {
         </table>
       </div>
       <div className="callout tip">
-        <b>Reading it in one line.</b> One key stat per blade: B1 agility, B2 sight, B4 stamina,
-        B5 gameness — and B3, the exact middle, weighs all four the same, so the most balanced
-        bird wins there. Station and condition matter everywhere, all the time — see{" "}
+        <b>Reading it in one line.</b> One key stat per blade: B1 agility, B2 sight, B4 stamina, B5
+        gameness — and B3, the exact middle, weighs all four the same, so the most balanced bird
+        wins there. Station and condition matter everywhere, all the time — see{" "}
         <Link href="/wiki/fighting">Fighting</Link> for how the five blades change the mix.
       </div>
 
-      <h2>
-        The 0–{STATS.MAX} scale and letter grades
-      </h2>
+      <h2>The 0–{STATS.MAX} scale and letter grades</h2>
       <p>
         Every stat is stored as a raw number from {STATS.MIN} to {STATS.MAX}. Nobody wants to
-        compare six four-digit numbers at a glance, so a revealed sheet also carries a letter
-        grade — a 100-point band read straight off the raw number. Per-stat grades appear only
-        where the sheet does: on <strong>retired birds</strong> and on <strong>stud cards</strong>,
-        never on a live fighter. A revealed line that says &ldquo;{bands[3]?.grade} {bands[3]?.min}&rdquo;
+        compare six four-digit numbers at a glance, so a revealed sheet also carries a letter grade
+        — a 100-point band read straight off the raw number. Per-stat grades appear only where the
+        sheet does: on <strong>retired birds</strong> and on <strong>stud cards</strong>, never on a
+        live fighter. A revealed line that says &ldquo;{bands[3]?.grade} {bands[3]?.min}&rdquo;
         means the raw stat is {bands[3]?.min}, and {bands[3]?.min} falls in the {bands[3]?.grade}{" "}
         band. The letter is for scanning; the number is for math.
       </p>
@@ -211,19 +208,19 @@ export default function BirdsPage() {
       <p>
         The families run C → B → A → S → {secondTopGrade[0]}, each with a plain and a
         &ldquo;+&rdquo; rung. The top band, {topGrade}, is deliberately out of reach for a starter
-        or gacha bird — it&apos;s where generations of good breeding eventually land, not
-        somewhere a fresh egg shows up. A bird&apos;s <strong>overall grade</strong> is the same
-        lookup run on the average of all six stats: six
-        stats sitting exactly at the starter floor ({STATS.STARTER_MIN} each) average out to an
-        overall {overallGradeOf(STATS.STARTER_MIN * 6)} — so a bird can flash a top grade in one
-        stat and still carry a modest overall grade if the other five are ordinary.
+        or gacha bird — it&apos;s where generations of good breeding eventually land, not somewhere
+        a fresh egg shows up. A bird&apos;s <strong>overall grade</strong> is the same lookup run on
+        the average of all six stats: six stats sitting exactly at the starter floor (
+        {STATS.STARTER_MIN} each) average out to an overall {overallGradeOf(STATS.STARTER_MIN * 6)}{" "}
+        — so a bird can flash a top grade in one stat and still carry a modest overall grade if the
+        other five are ordinary.
       </p>
       <div className="callout tip">
-        <b>The overall grade is always public — even under the fog.</b> It is the one number you
-        can read off a bird on day one, and it is the exception that proves the rule: it tells you{" "}
+        <b>The overall grade is always public — even under the fog.</b> It is the one number you can
+        read off a bird on day one, and it is the exception that proves the rule: it tells you{" "}
         <em>how strong</em> the bird is, never <em>what shape</em> it is. Two birds can both be{" "}
-        {bands[3]?.grade} overall and want opposite ends of the blade ladder — one a sprinter, one
-        a stayer — and the letter cannot tell them apart. So it gives you something to be excited
+        {bands[3]?.grade} overall and want opposite ends of the blade ladder — one a sprinter, one a
+        stayer — and the letter cannot tell them apart. So it gives you something to be excited
         about the day an egg hatches, and something honest to bid on in the claiming ring, without
         answering the question the <Link href="/wiki/card">card</Link> is supposed to answer.
       </div>
@@ -253,14 +250,15 @@ export default function BirdsPage() {
         report acts as if every blade already had {SCOUT.PRIOR_WEIGHT} average fights on the books
         before the real ones are counted. Two reasons. First, one lucky big figure must not type a
         bird — a single loud 80 gets pulled back toward the middle until more fights back it up.
-        Second, a blade the bird has never fought reads as &ldquo;unknown, average&rdquo; —
-        never as &ldquo;bad.&rdquo; No evidence is not bad evidence.
+        Second, a blade the bird has never fought reads as &ldquo;unknown, average&rdquo; — never as
+        &ldquo;bad.&rdquo; No evidence is not bad evidence.
       </p>
       <p>
         The scout also makes one small, public correction before it compares blades. A better bird
         is expected to post a louder figure, so the scout subtracts that expectation using the
         letter grade printed on the old card — {SCOUT.OWN_GRADE_STEP} points per grade, the exact
-        amount a grade is worth. What is left is the part of the number the bird&apos;s <em>blade</em>
+        amount a grade is worth. What is left is the part of the number the bird&apos;s{" "}
+        <em>blade</em>
         earned. The win, the beaten lengths and the blade itself all stay in.
       </p>
       <p>
@@ -288,8 +286,8 @@ export default function BirdsPage() {
         every claim, and every stud fee would be arithmetic — the better spreadsheet would win
         before the birds ever met. Hidden sheets keep a live bird a <em>judgement call</em>:
         claiming one is a bet on your read of its figures, and an average-looking bird stays worth
-        carding because it might be better than its record. The sheet reveals at retirement, so
-        the truth always comes out — just after the career, when it feeds{" "}
+        carding because it might be better than its record. The sheet reveals at retirement, so the
+        truth always comes out — just after the career, when it feeds{" "}
         <Link href="/wiki/breeding">breeding</Link> instead of fight-picking.
       </div>
 
@@ -320,31 +318,30 @@ export default function BirdsPage() {
       <p>
         It&apos;s an edge, not a hard counter — and how big an edge depends entirely on the
         bird&apos;s <strong>stars</strong> (below). At the full {STARS.MAX_HALF_STARS / 2}★, a
-        favorable matchup adds +{BATTLE.ELEMENT_EDGE} to every roll — a huge deal, since a
-        starter bird&apos;s whole stat block is only worth about{" "}
-        {(((STATS.STARTER_MIN + STATS.STARTER_MAX) / 2 / BATTLE.ROLL_DIVISOR)).toFixed(2)} on a
-        roll. At 0★ the wheel does nothing at all. Even at full stars it can&apos;t make a Fire
-        bird unbeatable against Water, because the dice are louder than any bonus and a
-        genuinely better bird outgrows the wheel. On top of this, one element is{" "}
-        <strong>ascendant</strong> each day — the day&apos;s weather — worth half as much as the
-        wheel edge, scaled by the same stars. Both are explained in{" "}
-        <Link href="/wiki/fighting">Fighting</Link>.
+        favorable matchup adds +{BATTLE.ELEMENT_EDGE} to every roll — a huge deal, since a starter
+        bird&apos;s whole stat block is only worth about{" "}
+        {((STATS.STARTER_MIN + STATS.STARTER_MAX) / 2 / BATTLE.ROLL_DIVISOR).toFixed(2)} on a roll.
+        At 0★ the wheel does nothing at all. Even at full stars it can&apos;t make a Fire bird
+        unbeatable against Water, because the dice are louder than any bonus and a genuinely better
+        bird outgrows the wheel. On top of this, one element is <strong>ascendant</strong> each day
+        — the day&apos;s weather — worth half as much as the wheel edge, scaled by the same stars.
+        Both are explained in <Link href="/wiki/fighting">Fighting</Link>.
       </p>
       <p>
         Alongside its element, every bird carries a <strong>star rating</strong> from 0 to{" "}
         {STARS.MAX_HALF_STARS / 2} in half-star steps — shown on its card as, for example,{" "}
-        &ldquo;2.5★ Wood.&rdquo; Stars are the element&apos;s <em>volume knob</em>: every edge
-        the element grants (the wheel, the weather) is multiplied by the bird&apos;s stars out
-        of {STARS.MAX_HALF_STARS / 2}. A 2.5★ bird gets half the edge; a 0★ bird&apos;s element
-        is just a color on the card. Every half-star is a real step. Stars do <em>not</em> add
-        stat points — a 5★ bird with weak stats is a weak bird that punches hard on the right
-        matchup, not a strong bird.
+        &ldquo;2.5★ Wood.&rdquo; Stars are the element&apos;s <em>volume knob</em>: every edge the
+        element grants (the wheel, the weather) is multiplied by the bird&apos;s stars out of{" "}
+        {STARS.MAX_HALF_STARS / 2}. A 2.5★ bird gets half the edge; a 0★ bird&apos;s element is just
+        a color on the card. Every half-star is a real step. Stars do <em>not</em> add stat points —
+        a 5★ bird with weak stats is a weak bird that punches hard on the right matchup, not a
+        strong bird.
       </p>
       <p>
         Stars matter most at the nest. Breeding spreads a chick&apos;s half-stars within{" "}
         {BREEDING.STAR_SPREAD_HALF_STARS} half-stars of the parents&apos; average (see{" "}
-        <Link href="/wiki/breeding">Breeding</Link>), so stacking stars across generations is one
-        of the two real levers a breeder has — the other being the raw stat numbers themselves.
+        <Link href="/wiki/breeding">Breeding</Link>), so stacking stars across generations is one of
+        the two real levers a breeder has — the other being the raw stat numbers themselves.
       </p>
       <div className="callout">
         <b>Starters open low, on purpose.</b> A fresh egg out of the starting flock rolls between{" "}
@@ -352,8 +349,8 @@ export default function BirdsPage() {
         {STARS.MAX_HALF_STARS / 2}★ ceiling. Anything higher comes from one of two doors: a lucky{" "}
         <Link href="/wiki/gacha">gacha</Link> pull (Purple and Gold tokens carry 2★–4★ birds), or
         several generations of breeding stacking half-stars upward. A 4★ bird sitting on the board
-        in week one would make the whole rating meaningless — stars are supposed to be the thing
-        you chase, not something you start with.
+        in week one would make the whole rating meaningless — stars are supposed to be the thing you
+        chase, not something you start with.
       </div>
 
       <h2>Carriage — Ground vs. Air</h2>
@@ -382,14 +379,14 @@ export default function BirdsPage() {
         </table>
       </div>
       <div className="callout warn">
-        <b>Not wired into fights yet.</b> Carriage is tracked, rolled, and inherited, but tonight&apos;s
-        fight engine doesn&apos;t read it — every bout today still runs on stats, element, and
-        stars alone. The intended hook: the sim already runs in phases (see below), and Air is
-        meant to pay early — over the top of a low fighter before anyone&apos;s wind is gone —
-        while Ground pays late, once the flyer is blown and the shuffler grinds it down. That would
-        tie carriage straight to blade choice, since a B1 bout lives almost entirely in the
-        early phase and a B5 bout spends most of its turns in the late one. Until that lands,
-        treat carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s
+        <b>Not wired into fights yet.</b> Carriage is tracked, rolled, and inherited, but
+        tonight&apos;s fight engine doesn&apos;t read it — every bout today still runs on stats,
+        element, and stars alone. The intended hook: the sim already runs in phases (see below), and
+        Air is meant to pay early — over the top of a low fighter before anyone&apos;s wind is gone
+        — while Ground pays late, once the flyer is blown and the shuffler grinds it down. That
+        would tie carriage straight to blade choice, since a B1 bout lives almost entirely in the
+        early phase and a B5 bout spends most of its turns in the late one. Until that lands, treat
+        carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s
         card.
       </div>
 
@@ -435,8 +432,8 @@ export default function BirdsPage() {
         <Link href="/wiki/pintakasi">Pintakasi Majors</Link>, the only <strong>hardcore</strong>{" "}
         fights in the game (where a loss ends a career on the spot), and{" "}
         <strong>manual retirement</strong> (so a farm can pull a good bird out to stud before
-        it&apos;s forced to). At age {AGE.FIGHTING_CAP} a bird
-        force-retires — the natural end of a compressed lifespan, not a punishment.
+        it&apos;s forced to). At age {AGE.FIGHTING_CAP} a bird force-retires — the natural end of a
+        compressed lifespan, not a punishment.
       </p>
       <div className="callout">
         <b>A retired bird&apos;s age freezes.</b> The week it retires becomes its permanent age on
@@ -447,15 +444,16 @@ export default function BirdsPage() {
       <h2>The naming law</h2>
       <p>
         Every bird hatches with an auto-name — the kind you&apos;d see stamped &ldquo;Egg of
-        …&rdquo; on a crate. <strong>A bird cannot enter its first fight while it still wears that
-        name.</strong> Renaming it is free, takes a moment, and is the one thing every card demands
-        before it&apos;ll let a bird in.
+        …&rdquo; on a crate.{" "}
+        <strong>A bird cannot enter its first fight while it still wears that name.</strong>{" "}
+        Renaming it is free, takes a moment, and is the one thing every card demands before
+        it&apos;ll let a bird in.
       </p>
       <p>
-        Think of it as a ritual, not a rule you tripped over. A bird that has never fought hasn&apos;t
-        earned an identity yet — naming it is the farm actually claiming the bird as theirs before
-        sending it out. It also has a practical side: bird names are unique across the whole
-        world, so no arena ever has two birds sharing a name.
+        Think of it as a ritual, not a rule you tripped over. A bird that has never fought
+        hasn&apos;t earned an identity yet — naming it is the farm actually claiming the bird as
+        theirs before sending it out. It also has a practical side: bird names are unique across the
+        whole world, so no arena ever has two birds sharing a name.
       </p>
 
       <h2>No training — stats are fixed at birth</h2>
@@ -465,15 +463,14 @@ export default function BirdsPage() {
         you do after hatching changes a single number.
       </div>
       <p>
-        This is the single most important thing to understand about the game. Pintakasi is not
-        about grinding a bird stronger — it&apos;s about two other skills: <strong>judging</strong>{" "}
-        what a bird is actually good at from its figures and its scout report (the stats
-        themselves stay sealed until retirement — see above), and <strong>placing</strong> it in
-        the right company and the right blade to use that (see{" "}
-        <Link href="/wiki/fighting">Fighting</Link>). When the career ends, the sheet unseals and
-        you finally see how right you were. The only way to raise the ceiling on a bloodline is{" "}
-        <Link href="/wiki/breeding">breeding</Link> a better next generation — patience and
-        pairing, not repetition.
+        This is the single most important thing to understand about the game. Pintakasi is not about
+        grinding a bird stronger — it&apos;s about two other skills: <strong>judging</strong> what a
+        bird is actually good at from its figures and its scout report (the stats themselves stay
+        sealed until retirement — see above), and <strong>placing</strong> it in the right company
+        and the right blade to use that (see <Link href="/wiki/fighting">Fighting</Link>). When the
+        career ends, the sheet unseals and you finally see how right you were. The only way to raise
+        the ceiling on a bloodline is <Link href="/wiki/breeding">breeding</Link> a better next
+        generation — patience and pairing, not repetition.
       </p>
 
       <h2>The barn</h2>
@@ -483,12 +480,12 @@ export default function BirdsPage() {
         refuses new covers, forfeits gacha mystery eggs, and blocks claims — retired brood stock
         keeps its slot forever, so an active breeding operation will get there. The way through is
         to <strong>expand</strong>: each expansion adds {BARN.EXPANSION_SLOTS} slots and is bought
-        with Land Tokens at a price that climbs — the first costs{" "}
-        {nextExpansionCost(0) / LT_CENTS} LT, the second {nextExpansionCost(1) / LT_CENTS}, the
-        third {nextExpansionCost(2) / LT_CENTS}, and so on. The land is spent outright, like a stud
-        seat. See <Link href="/wiki/land">Land</Link> for why that price is real money, and{" "}
-        <Link href="/wiki/breeding">Breeding</Link> and{" "}
-        <Link href="/wiki/gacha">the gacha</Link> for the two ways a barn fills up.
+        with Land Tokens at a price that climbs — the first costs {nextExpansionCost(0) / LT_CENTS}{" "}
+        LT, the second {nextExpansionCost(1) / LT_CENTS}, the third{" "}
+        {nextExpansionCost(2) / LT_CENTS}, and so on. The land is spent outright, like a stud seat.
+        See <Link href="/wiki/land">Land</Link> for why that price is real money, and{" "}
+        <Link href="/wiki/breeding">Breeding</Link> and <Link href="/wiki/gacha">the gacha</Link>{" "}
+        for the two ways a barn fills up.
       </p>
 
       <div className="next">

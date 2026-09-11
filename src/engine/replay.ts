@@ -131,7 +131,9 @@ export function replayFight(db: DB, battleLogId: number): FightReplay | null {
     );
   const archivedWinner = a.result === "win" ? 0 : 1;
   if (sim.winner !== archivedWinner)
-    drift.push(`the replay is won by ${sim.winner === 0 ? birdA.name : birdB.name}, the archive by ${archivedWinner === 0 ? birdA.name : birdB.name}`);
+    drift.push(
+      `the replay is won by ${sim.winner === 0 ? birdA.name : birdB.name}, the archive by ${archivedWinner === 0 ? birdA.name : birdB.name}`
+    );
 
   return {
     playByPlay: sim.playByPlay,

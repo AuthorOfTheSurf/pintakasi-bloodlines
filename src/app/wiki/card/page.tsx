@@ -67,12 +67,7 @@ function dealSizes(n: number): number[] {
 }
 
 /** The example fields the group-stage table walks through. */
-const EXAMPLE_FIELDS = [
-  GROUP.SIZE,
-  GROUP.SIZE * 2 + 1,
-  GROUP.SIZE * 3 + 2,
-  GROUP.SIZE * 7 + 2,
-];
+const EXAMPLE_FIELDS = [GROUP.SIZE, GROUP.SIZE * 2 + 1, GROUP.SIZE * 3 + 2, GROUP.SIZE * 7 + 2];
 
 /**
  * The classes a division actually POSTS, in ladder order — the juvenile card
@@ -150,8 +145,8 @@ export default function CardPage() {
         running tonight. Each line on it is a lobby, named by division, class and blade (plus a tag
         price, for claimers). You enter birds into the lobbies you like; when the day ends, every
         lobby deals its birds into small <strong>groups</strong>, and inside a group everybody
-        fights everybody. One entry buys your bird a whole night — up to{" "}
-        {FIGHTS_PER_GROUP_BIRD} fights, not one.
+        fights everybody. One entry buys your bird a whole night — up to {FIGHTS_PER_GROUP_BIRD}{" "}
+        fights, not one.
       </p>
 
       <h2>Tonight&apos;s card, and tomorrow&apos;s</h2>
@@ -226,41 +221,41 @@ export default function CardPage() {
         The scarcity goes on the <strong>blade</strong> instead — only some of the{" "}
         {FORMAT_NAMES.length} blades run for each class each day. That is the right place for it,
         because the blade is the discovery axis: which distance suits your bird is the most
-        interesting question you have about it. So the choice the card forces on you is
-        &ldquo;wait for its distance, or find out how it handles a different one&rdquo; — never
-        &ldquo;sit out&rdquo;.
+        interesting question you have about it. So the choice the card forces on you is &ldquo;wait
+        for its distance, or find out how it handles a different one&rdquo; — never &ldquo;sit
+        out&rdquo;.
       </p>
       <p>
         The blades are dealt from a shuffled deck rather than drawn at random each day, so no blade
         can vanish for a week on bad luck. Every blade is guaranteed to come around. That matters
-        most for one-year-olds: the discovery year is only{" "}
-        {CALENDAR.DAYS_PER_WEEK} game-days long, and a chick can&apos;t afford to wait out a blade
-        that never shows.
+        most for one-year-olds: the discovery year is only {CALENDAR.DAYS_PER_WEEK} game-days long,
+        and a chick can&apos;t afford to wait out a blade that never shows.
       </p>
       <p>
         Which is why the one-year-olds get the wider deal. The juvenile open class is dealt{" "}
         {CARD.juvenile.open} of the {FORMAT_NAMES.length} blades every single night — as wide a
-        rotation as any class on the card gets. Do the arithmetic
-        and the reason is plain: a discovery year lasts {CALENDAR.DAYS_PER_WEEK} game-days, and no more than{" "}
-        {juvenileGap} days ever pass between two runnings of the same juvenile blade. Every chick
-        gets offered every distance while it is still young enough to try them.
+        rotation as any class on the card gets. Do the arithmetic and the reason is plain: a
+        discovery year lasts {CALENDAR.DAYS_PER_WEEK} game-days, and no more than {juvenileGap} days
+        ever pass between two runnings of the same juvenile blade. Every chick gets offered every
+        distance while it is still young enough to try them.
       </p>
       <p className="dim">
-        It used to be a narrower deal, and the sums didn&apos;t work. A chick could reach its
-        second birthday having never once been offered two of the {FORMAT_NAMES.length} blades —
-        which means it spent the only year it is allowed to experiment in never finding out what it
-        was. That is the whole job of the discovery year, so the juvenile card was widened until
-        the wait fit inside a career.
+        It used to be a narrower deal, and the sums didn&apos;t work. A chick could reach its second
+        birthday having never once been offered two of the {FORMAT_NAMES.length} blades — which
+        means it spent the only year it is allowed to experiment in never finding out what it was.
+        That is the whole job of the discovery year, so the juvenile card was widened until the wait
+        fit inside a career.
       </p>
       <div className="callout tip">
         <b>{DAY_NAMES[PINTAKASI.DAY_OF_WEEK]} is thinner on purpose.</b> That is the Pintakasi
-        Majors&apos; crown day, and every bird registered for a Major is barred from the daily card —
-        its crown <em>is</em> its card. The rule holds both ways round: a bird already on{" "}
+        Majors&apos; crown day, and every bird registered for a Major is barred from the daily card
+        — its crown <em>is</em> its card. The rule holds both ways round: a bird already on{" "}
         {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s card cannot then register for that night&apos;s
-        crown either. One card per bird per day, whichever door it walks through first. With that many birds missing, the adult open class drops to{" "}
-        {CARD.CROWN_DAY_OPEN_BLADES} blades instead of {CARD.real.open}, so the fights that do run
-        still fill up. {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s card carries{" "}
-        {crownDayCard.length} lobbies rather than {exampleCard.length}.
+        crown either. One card per bird per day, whichever door it walks through first. With that
+        many birds missing, the adult open class drops to {CARD.CROWN_DAY_OPEN_BLADES} blades
+        instead of {CARD.real.open}, so the fights that do run still fill up.{" "}
+        {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s card carries {crownDayCard.length} lobbies rather
+        than {exampleCard.length}.
       </div>
 
       <h2>What a lobby is</h2>
@@ -338,9 +333,9 @@ export default function CardPage() {
       </p>
       <div className="callout tip">
         <b>Why {GROUP.SIZE} and not eight.</b> Every extra bird in a group costs everyone else
-        another fight, and it climbs fast: a group of six would be five fights a bird in one night. A
-        group of {GROUP.SIZE} is already a full evening — enough evidence to read a bird by, without
-        a single card deciding its whole career.
+        another fight, and it climbs fast: a group of six would be five fights a bird in one night.
+        A group of {GROUP.SIZE} is already a full evening — enough evidence to read a bird by,
+        without a single card deciding its whole career.
       </div>
 
       <h3>Barn-mates are kept apart</h3>
@@ -404,17 +399,16 @@ export default function CardPage() {
         <b>Every price divides by {FIGHTS_PER_GROUP_BIRD}.</b> That is not an accident. One entry
         buys a group, the group is up to {FIGHTS_PER_GROUP_BIRD} fights, and the stake has to split
         across them without leaving a fraction of a peso behind. So every fee on the ladder is a
-        multiple of {FIGHTS_PER_GROUP_BIRD} — the cheapest night in the game is {cheapestNight} GP and
-        the dearest is {dearestNight} GP, and both divide clean.
+        multiple of {FIGHTS_PER_GROUP_BIRD} — the cheapest night in the game is {cheapestNight} GP
+        and the dearest is {dearestNight} GP, and both divide clean.
       </div>
       <div className="callout warn">
         <b>Land is paid once, on what you actually risked.</b> Not once per fight. When the card
         settles, your bird earns Land Tokens on the total it put up that night — a full card of{" "}
-        {FIGHTS_PER_GROUP_BIRD} grown open fights mints {fmtLt(landForFight(feeFor("real", "open")))}{" "}
-        LT, a short card of {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
-        {fmtLt(
-          landForFight(stakePerFight(feeFor("real", "open")) * (FIGHTS_PER_GROUP_BIRD - 1))
-        )}{" "}
+        {FIGHTS_PER_GROUP_BIRD} grown open fights mints{" "}
+        {fmtLt(landForFight(feeFor("real", "open")))} LT, a short card of{" "}
+        {FIGHTS_PER_GROUP_BIRD - 1} mints{" "}
+        {fmtLt(landForFight(stakePerFight(feeFor("real", "open")) * (FIGHTS_PER_GROUP_BIRD - 1)))}{" "}
         LT. Those decimals are real: land is minted in hundredths of a token, so an award is almost
         never a round number. A bird that drew nobody at all earns none.{" "}
         <strong>Land is for fighting, not queueing.</strong> And because the curve underneath is
@@ -481,9 +475,9 @@ export default function CardPage() {
         judge anybody&apos;s strength. The {LOBBIES.length} classes: {LOBBIES.join(" · ")}.
       </p>
       <p>
-        Each rung has its <strong>own price</strong>, and the harder the company the dearer the night.
-        That is the single most important thing to understand about placing a bird, so it has its own
-        page — <Link href="/wiki/ladder">Fighting up</Link> — and this is just the summary:
+        Each rung has its <strong>own price</strong>, and the harder the company the dearer the
+        night. That is the single most important thing to understand about placing a bird, so it has
+        its own page — <Link href="/wiki/ladder">Fighting up</Link> — and this is just the summary:
       </p>
       <div className="tablewrap">
         <table>
@@ -542,9 +536,9 @@ export default function CardPage() {
       </div>
       <p className="dim">
         Maiden and nw3 cost the same money deliberately. A group stage hands out up to{" "}
-        {FIGHTS_PER_GROUP_BIRD} fights a night, so most birds win their first fight almost at once and
-        spend their real early career in nw3 — pricing the two rungs apart would tax an accident of
-        timing. It is the step up to <em>open</em> that costs, because that is the step where the
+        {FIGHTS_PER_GROUP_BIRD} fights a night, so most birds win their first fight almost at once
+        and spend their real early career in nw3 — pricing the two rungs apart would tax an accident
+        of timing. It is the step up to <em>open</em> that costs, because that is the step where the
         company genuinely changes.
       </p>
       <div className="callout tip">
@@ -562,9 +556,9 @@ export default function CardPage() {
 
       <h2>The discovery-year ladder</h2>
       <p>
-        The juvenile season isn&apos;t one flat division. It runs its own maiden, open (stakes),
-        and claimer classes — the same shape as the grown card, so a bird learns the ladder in the
-        one year its results don&apos;t follow it forever.
+        The juvenile season isn&apos;t one flat division. It runs its own maiden, open (stakes), and
+        claimer classes — the same shape as the grown card, so a bird learns the ladder in the one
+        year its results don&apos;t follow it forever.
       </p>
       <div className="callout tip">
         <b>Which record it reads is the trick.</b> A grown bird&apos;s maiden class reads its{" "}
@@ -599,12 +593,12 @@ export default function CardPage() {
         </table>
       </div>
       <p className="dim">
-        One ladder, two prices, and the split is the interesting part. The <em>tag</em> says what the
-        bird is worth; the <em>entry</em> says what a night costs. A one-year-old that has campaigned
-        has real earnings behind it, so it is worth a grown bird&apos;s price — but the season it
-        earned them in is still half price to run. There used to be a separate, much cheaper juvenile
-        tag ladder, and once juvenile entries cost real money that ladder would have made the
-        discovery year the bargain bin of the game.
+        One ladder, two prices, and the split is the interesting part. The <em>tag</em> says what
+        the bird is worth; the <em>entry</em> says what a night costs. A one-year-old that has
+        campaigned has real earnings behind it, so it is worth a grown bird&apos;s price — but the
+        season it earned them in is still half price to run. There used to be a separate, much
+        cheaper juvenile tag ladder, and once juvenile entries cost real money that ladder would
+        have made the discovery year the bargain bin of the game.
       </p>
       <p className="dim">
         The card posts {CARD.real.claimer} grown claimers a night — always the cheapest rung (
@@ -617,11 +611,11 @@ export default function CardPage() {
       <h2>The pot</h2>
       <p>
         Every fight has its own pot, and it is built from <strong>stakes, not entry fees</strong>.
-        Both birds put up one share of their entry — {stakePerFight(feeFor("real", "open"))} GP each in
-        a grown open fight — so the pot for one fight is two shares, not two entries. Everybody in a
-        lobby paid the same entry fee, because the price belongs to the fight and not to the bird, so
-        the two sides of a pot are always level. Win all {FIGHTS_PER_GROUP_BIRD} and you take{" "}
-        {FIGHTS_PER_GROUP_BIRD} pots.{" "}
+        Both birds put up one share of their entry — {stakePerFight(feeFor("real", "open"))} GP each
+        in a grown open fight — so the pot for one fight is two shares, not two entries. Everybody
+        in a lobby paid the same entry fee, because the price belongs to the fight and not to the
+        bird, so the two sides of a pot are always level. Win all {FIGHTS_PER_GROUP_BIRD} and you
+        take {FIGHTS_PER_GROUP_BIRD} pots.{" "}
         {STAKER_FLOWS.FIGHT_RAKE === 0
           ? "The daily card takes no cut at all: the winner banks the whole pot, and the loser loses exactly its stake — nothing more, nothing less."
           : `The winner takes the pot, less a ${(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}% rake that goes to the farms staking Land Tokens, not to the house.`}{" "}
@@ -666,8 +660,8 @@ export default function CardPage() {
         <p className="dim">
           The plumbing for a fight-pot rake still exists in the settings (currently{" "}
           {(STAKER_FLOWS.FIGHT_RAKE * 100).toFixed(0)}%) so a future season can turn it back on —
-          today it&apos;s off, and the daily card is a pure pot. The claiming tag still pays a
-          rake; see <Link href="/wiki/claiming">Claiming</Link>.
+          today it&apos;s off, and the daily card is a pure pot. The claiming tag still pays a rake;
+          see <Link href="/wiki/claiming">Claiming</Link>.
         </p>
       ) : (
         <p className="dim">
@@ -676,24 +670,27 @@ export default function CardPage() {
         </p>
       )}
       <p className="dim">
-        So a bird that sweeps its group doubles its money: an entry of {feeFor("real", "open")} GP in
-        the grown open comes back as{" "}
-        {stakePerFight(feeFor("real", "open")) * 2 * FIGHTS_PER_GROUP_BIRD} GP, and one that loses all{" "}
-        {FIGHTS_PER_GROUP_BIRD} is out its entry and nothing more. Every fight in between just adds
-        up. That is true at every rung, because the pot is always two stakes — which is exactly why
-        the dearer classes are worth entering with a bird that can win, and exactly why they are
+        So a bird that sweeps its group doubles its money: an entry of {feeFor("real", "open")} GP
+        in the grown open comes back as{" "}
+        {stakePerFight(feeFor("real", "open")) * 2 * FIGHTS_PER_GROUP_BIRD} GP, and one that loses
+        all {FIGHTS_PER_GROUP_BIRD} is out its entry and nothing more. Every fight in between just
+        adds up. That is true at every rung, because the pot is always two stakes — which is exactly
+        why the dearer classes are worth entering with a bird that can win, and exactly why they are
         punishing with one that can&apos;t.
       </p>
       <p className="dim">
-        A night is a small run of results rather than a single coin flip, which is the point: one bad
-        draw no longer decides what you learned about your bird.
+        A night is a small run of results rather than a single coin flip, which is the point: one
+        bad draw no longer decides what you learned about your bird.
       </p>
 
       <h2>The fog</h2>
       <p>
-        The fog has two layers, and they&apos;re the same doctrine: <strong>you don&apos;t get to
-        know who you&apos;re fighting, and you don&apos;t get to know exactly what any live bird
-        is</strong> — not even your own.
+        The fog has two layers, and they&apos;re the same doctrine:{" "}
+        <strong>
+          you don&apos;t get to know who you&apos;re fighting, and you don&apos;t get to know
+          exactly what any live bird is
+        </strong>{" "}
+        — not even your own.
       </p>
       <p>
         The first layer covers <strong>who is entered</strong>. Every lobby on the board shows how
@@ -709,10 +706,10 @@ export default function CardPage() {
         spreadsheet.
       </p>
       <p>
-        The point of both layers is the same: nobody can dodge a strong bird by scouting first,
-        and an average bird stays worth carding instead of getting cherry-picked around. Judging a
-        lobby&apos;s likely strength from the fill count, and a bird&apos;s likely quality from
-        its figures, is the skill.
+        The point of both layers is the same: nobody can dodge a strong bird by scouting first, and
+        an average bird stays worth carding instead of getting cherry-picked around. Judging a
+        lobby&apos;s likely strength from the fill count, and a bird&apos;s likely quality from its
+        figures, is the skill.
       </p>
       <p>
         Claimer lobbies are the deliberate exception: their fields are visible from the moment a
@@ -740,11 +737,11 @@ export default function CardPage() {
         decides who gets a seat at {DAY_NAMES[PINTAKASI.DAY_OF_WEEK]}&apos;s Pintakasi Majors. There
         is no separate points counter to bank any more, and no test to pass: any age-{AGE.FORK}+
         bird may declare for a Major by paying the {PINTAKASI.ENTRY_FEE} GP entry. But the fee buys
-        no seat and the seats are limited, so what a bird has won on the
-        ordinary card is what keeps it in the field. Each fight in the group counts on its own, so a
-        bird that sweeps a full group of {FIGHTS_PER_GROUP_BIRD} climbs that list hard in one night
-        — and every fight goes on its lifetime record too. See{" "}
-        <Link href="/wiki/pintakasi">The Pintakasi</Link> for the seating rules and the full bracket.
+        no seat and the seats are limited, so what a bird has won on the ordinary card is what keeps
+        it in the field. Each fight in the group counts on its own, so a bird that sweeps a full
+        group of {FIGHTS_PER_GROUP_BIRD} climbs that list hard in one night — and every fight goes
+        on its lifetime record too. See <Link href="/wiki/pintakasi">The Pintakasi</Link> for the
+        seating rules and the full bracket.
       </p>
 
       <div className="next">

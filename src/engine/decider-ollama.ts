@@ -364,28 +364,28 @@ const verb = (
  */
 const VERB_BRANCHES = [
   verb(["check_in", "roll_gacha", "buy_bundle", "expand_barn"], {}),
-          verb(["buy_land", "stake", "unstake"], { tokens: { type: "number" } }),
-          verb(["list_stud", "retire"], { bird: { type: "string" } }),
-          verb(["breed"], { mother: { type: "string" }, father: { type: "string" } }),
-          verb(
-            ["enter"],
-            {
-              bird: { type: "string" },
-              classType: { type: "string", enum: ["maiden", "nw3", "open", "claimer"] },
-              format: { type: "string", enum: Object.keys(FORMATS) },
-            },
-            // "juvenile" joined this enum in round 59, closing instrument gap
-            // #5 — exp6's mode law ordered chicks entered with mode:"juvenile"
-            // while THIS enum made the word unrepresentable at generation
-            // time: 125 juvenile proposals in exp6's brain_log, zero of them
-            // able to carry the one field that would have made them legal.
-            // A schema is part of the instrument too.
-            {
-              mode: { type: "string", enum: ["juvenile", "real", "hardcore"] },
-              price: { type: "number" },
-            }
-          ),
-          verb(["claim"], { entryId: { type: "number" } }),
+  verb(["buy_land", "stake", "unstake"], { tokens: { type: "number" } }),
+  verb(["list_stud", "retire"], { bird: { type: "string" } }),
+  verb(["breed"], { mother: { type: "string" }, father: { type: "string" } }),
+  verb(
+    ["enter"],
+    {
+      bird: { type: "string" },
+      classType: { type: "string", enum: ["maiden", "nw3", "open", "claimer"] },
+      format: { type: "string", enum: Object.keys(FORMATS) },
+    },
+    // "juvenile" joined this enum in round 59, closing instrument gap
+    // #5 — exp6's mode law ordered chicks entered with mode:"juvenile"
+    // while THIS enum made the word unrepresentable at generation
+    // time: 125 juvenile proposals in exp6's brain_log, zero of them
+    // able to carry the one field that would have made them legal.
+    // A schema is part of the instrument too.
+    {
+      mode: { type: "string", enum: ["juvenile", "real", "hardcore"] },
+      price: { type: "number" },
+    }
+  ),
+  verb(["claim"], { entryId: { type: "number" } }),
   verb(
     ["crown"],
     {
@@ -461,8 +461,10 @@ export function toActions(
   // clearer prompt, a richer brief, or a bigger model — which is the entire
   // question phase 1 exists to answer.
   const drop = (reason: string) => reasons.push(reason);
-  const real = (handle?: string): string | null =>
-    handle && birds.has(handle) ? birds.get(handle)! : null;
+  const real = (handle?: string): string | null => {
+    if (!handle) return null;
+    return birds.get(handle) ?? null;
+  };
 
   for (const a of raw) {
     switch (a.do) {
@@ -495,7 +497,10 @@ export function toActions(
         const mother = real(a.mother);
         const father = real(a.father);
         if (mother && father) actions.push({ do: "breed", motherId: mother, fatherId: father });
-        else drop(`breed: unknown ${!mother ? `mother ${a.mother ?? "(none)"}` : `father ${a.father ?? "(none)"}`}`);
+        else
+          drop(
+            `breed: unknown ${!mother ? `mother ${a.mother ?? "(none)"}` : `father ${a.father ?? "(none)"}`}`
+          );
         break;
       }
       case "enter": {
@@ -504,7 +509,9 @@ export function toActions(
           actions.push({
             do: "enter",
             birdId: id,
-            mode: (a.mode ?? "real") as BotAction extends { do: "enter"; mode: infer M } ? M : never,
+            mode: (a.mode ?? "real") as BotAction extends { do: "enter"; mode: infer M }
+              ? M
+              : never,
             classType: a.classType as never,
             format: a.format as never,
             ...(typeof a.price === "number" ? { price: a.price } : {}),
@@ -574,7 +581,7 @@ stable-wide moves. Reply with JSON only.
 const optionsResponseSchema = (maps: OptionsMaps) => {
   const birdHandles = [...maps.birdPicks.keys()];
   const letters = [
-    ...new Set(birdHandles.flatMap((h) => [...maps.birdPicks.get(h)!.keys()])),
+    ...new Set(birdHandles.flatMap((h) => [...(maps.birdPicks.get(h)?.keys() ?? [])])),
   ].sort();
   const barnHandles = [...maps.barnPicks.keys()];
   return {
@@ -814,10 +821,12 @@ export function toActionsFromPicks(
     // Tie-aware: rows are sorted by value, so the top pick's value IS the max.
     const byValue = maps.values.get(bird);
     const topValue = byValue?.get(maps.topPick.get(bird) ?? "");
-    if (topValue !== undefined && byValue?.get(letter) === topValue)
-      offered.topValuePicksTaken++;
-    const action = byPick.get(letter)!;
-    if (action === null) offered.rests++; // an explicit rest — legal, counted
+    if (topValue !== undefined && byValue?.get(letter) === topValue) offered.topValuePicksTaken++;
+    const action = byPick.get(letter);
+    // `byPick.has(letter)` was checked above, so undefined is unreachable.
+    if (action === undefined) throw new Error(`pick: ${bird} option ${letter} vanished`);
+    if (action === null)
+      offered.rests++; // an explicit rest — legal, counted
     else actions.push(action);
   }
 
@@ -891,9 +900,11 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
     // else: same transport, same timeout, same stats, same sink. That is
     // what keeps exp9's A/B a one-flag diff.
     const isOptions = opts.brief === "options";
-    const optionsDigest = isOptions ? digestOptions(view) : null;
-    const legacyDigest = isOptions ? null : digest(view);
-    const briefJson = JSON.stringify(isOptions ? optionsDigest!.brief : legacyDigest!.brief);
+    // Exactly one digest is built, tagged so the type knows which one it is.
+    const digested = isOptions
+      ? { kind: "options" as const, d: digestOptions(view) }
+      : { kind: "legacy" as const, d: digest(view) };
+    const briefJson = JSON.stringify(digested.d.brief);
     const started = Date.now();
     stats.calls++;
 
@@ -910,7 +921,8 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
         body: JSON.stringify({
           model: opts.model,
           stream: false,
-          format: isOptions ? optionsResponseSchema(optionsDigest!.maps) : RESPONSE_SCHEMA,
+          format:
+            digested.kind === "options" ? optionsResponseSchema(digested.d.maps) : RESPONSE_SCHEMA,
           // think:false — qwen3 reasons aloud by default, which triples the
           // latency and buys nothing here: the decision is a lookup against a
           // brief, not a puzzle. Harmless on models without a thinking mode.
@@ -952,27 +964,28 @@ export function ollamaDecider(opts: OllamaOptions): BotDecider & { stats: Decide
       let reasons: string[];
       let offered: OfferedStats | undefined;
       let menu: MenuLog | undefined;
-      if (isOptions) {
+      if (digested.kind === "options") {
+        const optionsDigest = digested.d;
         const parsed = OptionsReplySchema.parse(JSON.parse(content));
-        const t = toActionsFromPicks(parsed, optionsDigest!.maps);
-        t.offered.rowsOffered = optionsDigest!.offeredRows;
+        const t = toActionsFromPicks(parsed, optionsDigest.maps);
+        t.offered.rowsOffered = optionsDigest.offeredRows;
         ({ actions, dropped, reasons } = t);
         offered = t.offered;
         // Join the reply onto the offered menu — the archived record shows
         // both halves of the decision: what was on the table, what was taken.
         menu = {
-          birds: optionsDigest!.menu.birds.map((b) => ({
+          birds: optionsDigest.menu.birds.map((b) => ({
             ...b,
             taken: t.taken.birds[b.h] ?? null,
           })),
-          barn: optionsDigest!.menu.barn.map((row) => ({
+          barn: optionsDigest.menu.barn.map((row) => ({
             ...row,
             taken: t.taken.barn.includes(row.pick),
           })),
         };
       } else {
         const parsed = ReplySchema.parse(JSON.parse(content));
-        ({ actions, dropped, reasons } = toActions(parsed.actions, legacyDigest!.birds));
+        ({ actions, dropped, reasons } = toActions(parsed.actions, digested.d.birds));
       }
 
       stats.droppedActions += dropped;

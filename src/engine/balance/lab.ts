@@ -408,7 +408,8 @@ export function withKnob<T>(knob: string, value: number, fn: () => T): T {
   const key = segs.pop() as string;
   let holder: unknown = SWEEP_ROOTS[segs[0]];
   for (const s of segs.slice(1)) {
-    holder = holder && typeof holder === "object" ? (holder as Record<string, unknown>)[s] : undefined;
+    holder =
+      holder && typeof holder === "object" ? (holder as Record<string, unknown>)[s] : undefined;
   }
   const root = holder as Record<string, number> | undefined;
   if (!root || typeof root[key] !== "number") {

@@ -97,14 +97,16 @@ const buffers = new WeakMap<object, EventBuffer>();
 const EVENT_INSERT_CHUNK = 250; // 9 columns × 250 stays well below SQLite's parameter ceiling
 
 export function withBufferedEvents<T>(database: DB, dayIndex: number, fn: () => T): T {
-  if (buffers.has(database))
-    throw new Error("Event buffering cannot be nested for the same world");
+  if (buffers.has(database)) throw new Error("Event buffering cannot be nested for the same world");
   const buffer: EventBuffer = { dayIndex, rows: [] };
   buffers.set(database, buffer);
   try {
     const result = fn();
     for (let i = 0; i < buffer.rows.length; i += EVENT_INSERT_CHUNK)
-      database.insert(events).values(buffer.rows.slice(i, i + EVENT_INSERT_CHUNK)).run();
+      database
+        .insert(events)
+        .values(buffer.rows.slice(i, i + EVENT_INSERT_CHUNK))
+        .run();
     return result;
   } finally {
     // On a throw no rows have been flushed, and Game.tick's outer transaction

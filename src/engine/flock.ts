@@ -1,7 +1,13 @@
 import { count, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, type BirdRow } from "@/db/schema";
-import { barnCapacity, weatherOfDay, type Element, type FightFormat, type StatName } from "./config";
+import {
+  barnCapacity,
+  weatherOfDay,
+  type Element,
+  type FightFormat,
+  type StatName,
+} from "./config";
 import { overallGradeOf, type Grade } from "./grades";
 import { emit } from "./events";
 import { GameClock } from "./game-clock";
@@ -27,9 +33,7 @@ import { ageOf, canManualRetire, isEggAge, mustRetire } from "./lifecycle";
  * gives a fresh hatch something to be excited about on day one, and gives the
  * claiming ring an honest read on a bird whose figures don't exist yet.
  */
-export interface BirdView
-  extends Omit<BirdRow, "sex" | StatName>,
-    Record<StatName, number | null> {
+export interface BirdView extends Omit<BirdRow, "sex" | StatName>, Record<StatName, number | null> {
   overallGrade: Grade; // the six-stat average as a letter — public even under the fog
   // `generation` rides in from BirdRow untouched, and deliberately so (round
   // 30): it is PEDIGREE, not shape. Knowing a chick is the fourth nest down a
@@ -89,6 +93,18 @@ export interface HatchFridayEvents {
   forceRetired: BirdView[]; // birds that hit the fighting cap
 }
 
+/** The sabong layer over male/female — null while the egg keeps its secret. */
+function sexLabelOf(row: BirdRow, isEgg: boolean): BirdView["sexLabel"] {
+  if (isEgg) return null;
+  return row.sex === "male" ? "rooster" : "hen";
+}
+
+/** Where an egg sits on the nest timeline: covered but not yet laid, or laid and waiting. */
+function eggStageOf(row: BirdRow, isEgg: boolean, currentWeek: number): BirdView["eggStage"] {
+  if (!isEgg) return null;
+  return row.birthWeek > currentWeek ? "gestating" : "laid";
+}
+
 export class Flock {
   constructor(
     private database: DB,
@@ -118,10 +134,10 @@ export class Flock {
       ),
       // The 50-50 is decided at breeding, but the surprise belongs to hatch day.
       sex: isEgg ? "hidden" : row.sex,
-      sexLabel: isEgg ? null : row.sex === "male" ? "rooster" : "hen",
+      sexLabel: sexLabelOf(row, isEgg),
       age: isEgg ? Math.max(0, ageOf(row, currentWeek)) : ageOf(row, currentWeek),
       stars: `${row.halfStars / 2}★ ${row.element}`,
-      eggStage: isEgg ? (row.birthWeek > currentWeek ? "gestating" : "laid") : null,
+      eggStage: eggStageOf(row, isEgg, currentWeek),
     };
   }
 
@@ -174,7 +190,10 @@ export class Flock {
     const mean = (of: FormLine[]) =>
       of.length === 0
         ? null
-        : { fights: of.length, avgFigure: Math.round(of.reduce((s, l) => s + l.pitFigure, 0) / of.length) };
+        : {
+            fights: of.length,
+            avgFigure: Math.round(of.reduce((s, l) => s + l.pitFigure, 0) / of.length),
+          };
     return {
       element: bird.element,
       lines,
@@ -207,11 +226,8 @@ export class Flock {
    */
   barnCount(): number {
     return (
-      this.database
-        .select({ n: count() })
-        .from(birds)
-        .where(eq(birds.farmId, this.farmId))
-        .get()?.n ?? 0
+      this.database.select({ n: count() }).from(birds).where(eq(birds.farmId, this.farmId)).get()
+        ?.n ?? 0
     );
   }
 
@@ -282,7 +298,10 @@ export class Flock {
         });
         if (mine)
           events.forceRetired.push(
-            this.view({ ...row, status: "retired", retiredBy: "age", retiredWeek: weekIndex }, weekIndex)
+            this.view(
+              { ...row, status: "retired", retiredBy: "age", retiredWeek: weekIndex },
+              weekIndex
+            )
           );
       }
     }
@@ -297,8 +316,10 @@ export class Flock {
       throw new Error(`${bird.name} is ${bird.age} — retirement unlocks at 3`);
     const week = this.currentWeek();
     // The view is fogged, so the reveal reads from the raw row (round 28).
-    const row = this.database.select().from(birds).where(eq(birds.id, id)).get()!;
-    const total = row.agility + row.sight + row.stamina + row.gameness + row.station + row.condition;
+    const row = this.database.select().from(birds).where(eq(birds.id, id)).get();
+    if (!row) throw new Error(`bird ${id} vanished between byId and its retirement`);
+    const total =
+      row.agility + row.sight + row.stamina + row.gameness + row.station + row.condition;
     this.database
       .update(birds)
       .set({ status: "retired", retiredBy: "manual", retiredWeek: week })

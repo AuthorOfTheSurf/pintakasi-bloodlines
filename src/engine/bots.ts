@@ -2,15 +2,19 @@ import { and, eq, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
-import { BOT_FARMS, BREEDING_PLAN, CROWN_CHASE, WEATHER_APPETITE, type BotProfile } from "./bot-config";
+import {
+  BOT_FARMS,
+  BREEDING_PLAN,
+  CROWN_CHASE,
+  WEATHER_APPETITE,
+  type BotProfile,
+} from "./bot-config";
 import { applyProposals, type BotAction } from "./bot-brain";
 import {
   BREEDING_SHAPES,
-  CLAIMER,
   COVERS,
   DISTANCE_STATS,
   ECONOMY,
-  FORMATS,
   FORMAT_NAMES,
   JUVENILE_MAJOR,
   LAND,
@@ -49,6 +53,30 @@ import { DIVISION_RULES, Tournaments } from "./tournaments";
 export type DiscoveryPolicy = "current" | "end-first";
 const END_FIRST_ORDER: FightFormat[] = ["b1", "b5", "b2", "b4", "b3"];
 
+/**
+ * The live farm row. Every caller holds an id it just seeded or read off the
+ * farms table this tick, so a miss means the world is corrupt — throw loudly
+ * rather than let a bot budget against a missing wallet.
+ */
+function farmRow(db: DB, id: string) {
+  const row = db.select().from(farms).where(eq(farms.id, id)).get();
+  if (!row) throw new Error(`bots: farm ${id} has no row — seeded worlds never lose one`);
+  return row;
+}
+
+/** Today's day index. game_state row 1 is written by seedGame and never deleted. */
+function todayIndex(db: DB): number {
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) throw new Error("bots: game_state row 1 missing — the world was never seeded");
+  return state.dayIndex;
+}
+
+/** A lookup the surrounding code has already guaranteed; `why` names the guarantee. */
+function must<T>(value: T | undefined, why: string): T {
+  if (value === undefined) throw new Error(`bots: ${why}`);
+  return value;
+}
+
 /** What one bot stable did with its day — surfaced on the tick view. */
 export interface BotDayReport {
   farm: string;
@@ -62,7 +90,13 @@ export interface BotDayReport {
   landBought: number; // LT bought with GP — the landlord's daily play (round 23)
   studsListed: number; // retired roosters put up in the breeding barn
   bred: string[]; // egg names — a barn covers every hen it can, not one a day
-  entered: { bird: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }[];
+  entered: {
+    bird: string;
+    mode: FightMode;
+    classType: Lobby;
+    format: FightFormat;
+    price?: number;
+  }[];
   crowns: string[]; // birds registered for this week's championships
   claimsPlaced: number;
   // Birds the day's card had NOTHING for (round 31). The only error surface
@@ -110,8 +144,9 @@ export class Bots {
    * pay for the full roster's worth of DB traffic to prove it (19 stables as of round 43).
    */
   static seed(db: DB, opts: { flock?: "eggs" | "legacy"; only?: string[] } = {}): void {
-    const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
-    const roster = opts.only ? BOT_FARMS.filter((b) => opts.only!.includes(b.id)) : BOT_FARMS;
+    const day = todayIndex(db);
+    const only = opts.only;
+    const roster = only ? BOT_FARMS.filter((b) => only.includes(b.id)) : BOT_FARMS;
     for (const bot of roster) {
       const exists = db.select().from(farms).where(eq(farms.id, bot.id)).get();
       if (exists) continue;
@@ -158,7 +193,7 @@ export class Bots {
   ): BotDayReport[] {
     const botRows = db.select().from(farms).where(eq(farms.isBot, 1)).all();
     if (botRows.length === 0) return [];
-    const today = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    const today = todayIndex(db);
 
     const reports: BotDayReport[] = [];
     for (const [i, row] of botRows.entries()) {
@@ -254,7 +289,7 @@ export class Bots {
       claimsPlaced: 0,
       noCard: 0,
     };
-    const gp = () => db.select().from(farms).where(eq(farms.id, bot.id)).get()!.gp;
+    const gp = () => farmRow(db, bot.id).gp;
     const quietly = (fn: () => void) => {
       try {
         fn();
@@ -269,7 +304,7 @@ export class Bots {
     //    stake it; it may be worth real money someday).
     report.checkedIn = quietly(() => farmsApi.checkIn(bot.id));
     const gacha = new Gacha(db, bot.id, rng);
-    while (db.select().from(farms).where(eq(farms.id, bot.id)).get()!.freePulls > 0) {
+    while (farmRow(db, bot.id).freePulls > 0) {
       if (!quietly(() => gacha.roll())) break;
     }
     // 1a. GROW THE BARN before it chokes (round 43) — and BEFORE any gacha
@@ -290,7 +325,7 @@ export class Bots {
     // worth pulling staked land back out for. Draws NO rng, so a world where
     // nobody hits the headroom plays out identically to one before this existed.
     {
-      const row = db.select().from(farms).where(eq(farms.id, bot.id)).get()!;
+      const row = farmRow(db, bot.id);
       // Headroom of one week's worth of covers: expanding the morning the barn
       // is already full would still lose every cover `quietly` swallowed while
       // the wallet was short — start paying while there is still room to breed.
@@ -304,7 +339,7 @@ export class Bots {
         // is the fighters' currency, but buyLand converts at 80 GP/100 LT and
         // the daily cap covers the first expansion in a single morning. The
         // re-read is deliberate: the unstake above may have already fixed it.
-        const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokensCents;
+        const liquid = farmRow(db, bot.id).landTokensCents;
         const stillShort = nextExpansionCost(row.barnExpansions) - liquid;
         if (stillShort > 0)
           quietly(() => void farmsApi.buyLand(bot.id, Math.ceil(stillShort / LT_CENTS)));
@@ -354,8 +389,7 @@ export class Bots {
       // have gone quiet with nothing on fire.
       const affordable = Math.floor(((gp() - RESERVE) * 100) / LAND.GP_PER_100_TOKENS);
       const want = Math.min(LAND.DAILY_BUY_CAP / LT_CENTS, affordable);
-      if (want > 0 && quietly(() => void farmsApi.buyLand(bot.id, want)))
-        report.landBought = want;
+      if (want > 0 && quietly(() => void farmsApi.buyLand(bot.id, want))) report.landBought = want;
     }
     // 1b. Stand the retired roosters at stud — selling covers is income.
     //     BEFORE staking, since round 23 a stud seat costs 100 LT and a barn
@@ -379,7 +413,7 @@ export class Bots {
       .all()
       .filter((b) => b.status === "retired" && b.sex === "male" && !b.listedStud);
     if (unlisted.length > 0) {
-      const row = db.select().from(farms).where(eq(farms.id, bot.id)).get()!;
+      const row = farmRow(db, bot.id);
       // One seat at a time: a barn with three roosters lists one today and the
       // rest tomorrow, rather than emptying the pool in one morning.
       const short = COVERS.STUD_LISTING_LT - row.landTokensCents;
@@ -400,7 +434,7 @@ export class Bots {
     // and round-22 gacha failure exactly: a door nobody walks through, with no
     // error anywhere. The fractional remainder simply stays liquid until the
     // next day's earnings round it up past a whole token.
-    const liquid = db.select().from(farms).where(eq(farms.id, bot.id)).get()!.landTokensCents;
+    const liquid = farmRow(db, bot.id).landTokensCents;
     const whole = Math.floor(liquid / LT_CENTS);
     if (whole > 0 && quietly(() => farmsApi.stake(bot.id, whole)))
       report.stakedLandCents = whole * LT_CENTS;
@@ -450,8 +484,10 @@ export class Bots {
         .from(birds)
         .where(and(eq(birds.farmId, bot.id), eq(birds.status, "egg")))
         .all()
-        .filter((egg) => egg.motherId && egg.birthWeek > thisWeek)
-        .map((egg) => egg.motherId!)
+        .flatMap((egg) => {
+          if (egg.motherId && egg.birthWeek > thisWeek) return [egg.motherId];
+          return [];
+        })
     );
     const hens = flock
       .all()
@@ -526,7 +562,9 @@ export class Bots {
         let eggName: string | null = null;
         if (quietly(() => (eggName = breeding.breed(pick.henId, pick.studId).egg.name))) {
           covered.add(pick.henId);
-          report.bred.push(eggName!);
+          // `quietly` returning true means the assignment above ran.
+          if (eggName === null) throw new Error("bots: breed succeeded without naming an egg");
+          report.bred.push(eggName);
         }
       }
     }
@@ -591,9 +629,7 @@ export class Bots {
     // tests the CHEAPEST rung posted today — below that the barn genuinely
     // cannot card at all — and the budget is handed to pickOffering, which will
     // not choose a rung the barn can't cover.
-    const cheapest = Math.min(
-      ...cardOfDay(today).map((k) => feeFor(k.mode, k.classType, k.price))
-    );
+    const cheapest = Math.min(...cardOfDay(today).map((k) => feeFor(k.mode, k.classType, k.price)));
     // The roster's scout reports, one query (round 44). Nothing writes
     // battle_log during a barn's day — fights resolve at the tick — so the
     // reports are stable for the whole loop and each bird's is just handed
@@ -603,7 +639,16 @@ export class Bots {
       if (!weatherCardsToday(bird, today, rng, bot.entryRate)) continue;
       const budget = gp() - RESERVE;
       if (budget < cheapest) break;
-      const spec = pickOffering(db, bot, bird, rng, today, discoveryPolicy, budget, reports.get(bird.id));
+      const spec = pickOffering(
+        db,
+        bot,
+        bird,
+        rng,
+        today,
+        discoveryPolicy,
+        budget,
+        reports.get(bird.id)
+      );
       // null = today's card had nothing this bird is eligible for. Counted
       // rather than swallowed: `quietly` hides every other entry failure, so
       // without this number a card that starved a class would look like bots
@@ -696,7 +741,14 @@ export function pickOffering(
   const options = eligible.filter((k) => feeOf(k) <= budget);
   if (options.length === 0) return null;
 
-  const format = bestFormat(db, bird, rng, discoveryPolicy, new Set(options.map((k) => k.format)), report);
+  const format = bestFormat(
+    db,
+    bird,
+    rng,
+    discoveryPolicy,
+    new Set(options.map((k) => k.format)),
+    report
+  );
   const atBlade = options.filter((k) => k.format === format);
 
   // Spend the sell draw UNCONDITIONALLY, before knowing whether a claimer is
@@ -908,9 +960,10 @@ export function foalScore(
  */
 export function scoutScores(db: DB, birdId: string): Record<FightFormat, number> {
   const report = new Lobbies(db, "scout").scoutReport(birdId);
-  return Object.fromEntries(
-    FORMAT_NAMES.map((f) => [f, report.blades[f].score])
-  ) as Record<FightFormat, number>;
+  return Object.fromEntries(FORMAT_NAMES.map((f) => [f, report.blades[f].score])) as Record<
+    FightFormat,
+    number
+  >;
 }
 
 /**
@@ -927,7 +980,10 @@ export function scoutScoresMany(
     birdIds.map((id) => [
       id,
       Object.fromEntries(
-        FORMAT_NAMES.map((f) => [f, reports.get(id)!.blades[f].score])
+        FORMAT_NAMES.map((f) => [
+          f,
+          must(reports.get(id), `no scout report for ${id}`).blades[f].score,
+        ])
       ) as Record<FightFormat, number>,
     ])
   );
@@ -981,7 +1037,11 @@ export function bestFormat(
     // sims keep their later bot decisions on the same random stream.
     const randomTarget = targets[randInt(rng, 0, targets.length - 1)];
     if (discoveryPolicy === "current") return randomTarget;
-    return END_FIRST_ORDER.find((f) => targets.includes(f))!;
+    // `targets` is a non-empty subset of the five blades END_FIRST_ORDER lists.
+    return must(
+      END_FIRST_ORDER.find((f) => targets.includes(f)),
+      "end-first found no target among the five blades"
+    );
   }
   const jitter = () => rng() * SCOUT.JITTER; // imperfect judges — bots misread the margin calls
   const score = (f: FightFormat) => (offCard(f) ? -Infinity : report.blades[f].score + jitter());
@@ -1035,8 +1095,12 @@ export function weatherMatched(bird: BirdView, dayIndex: number): boolean {
  * matchmaker would see the flock in id order all week.
  */
 export function weatherOrder(roster: BirdView[], dayIndex: number): BirdView[] {
-  const tier = (b: BirdView) =>
-    weatherMatched(b, dayIndex) ? 0 : weatherMatched(b, dayIndex + 1) ? 2 : 1;
+  // 0 = matched today, 1 = neutral, 2 = better held for tomorrow's weather.
+  const tier = (b: BirdView): number => {
+    if (weatherMatched(b, dayIndex)) return 0;
+    if (weatherMatched(b, dayIndex + 1)) return 2;
+    return 1;
+  };
   return [0, 1, 2].flatMap((t) => roster.filter((b) => tier(b) === t));
 }
 
@@ -1059,7 +1123,8 @@ export function weatherCardsToday(
   if (weatherMatched(bird, dayIndex))
     return rng() < baseRate + (1 - baseRate) * WEATHER_APPETITE.MATCH_BOOST;
   // Tomorrow is its day — worth waiting a night for, sometimes.
-  if (weatherMatched(bird, dayIndex + 1) && rng() < WEATHER_APPETITE.HOLD_FOR_TOMORROW) return false;
+  if (weatherMatched(bird, dayIndex + 1) && rng() < WEATHER_APPETITE.HOLD_FOR_TOMORROW)
+    return false;
   return rng() < baseRate;
 }
 
@@ -1100,14 +1165,19 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
   // Zero today, so this is a no-op and costs one query a day — kept anyway,
   // because the alternative is the silent outage described above.
   const fee = DIVISION_RULES.juvenile.entryFee;
-  if (fee > 0 && db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp < fee) return entered;
+  if (fee > 0 && farmRow(db, farmId).gp < fee) return entered;
   const qualified = flock
     .all()
     .filter((b) => b.status === "active" && b.named && b.age === 1)
     .filter((b) => b.wins >= JUVENILE_MAJOR.QUALIFYING_WINS);
   // One scout read for the whole field (round 44) — a juvenile field can be
   // thirty birds wide per barn, and this runs every day.
-  const scores = scoutScoresMany(db, qualified.map((b) => b.id));
+  const scores = scoutScoresMany(
+    db,
+    qualified.map((b) => b.id)
+  );
+  const scoreOf = (id: string, blade: FightFormat): number =>
+    must(scores.get(id), "scoutScoresMany scores every bird it is handed")[blade];
 
   // ⚠ EACH BIRD DECLARES FOR ONE CROWN FIRST — round 32 fixed a real bug here.
   //
@@ -1135,7 +1205,7 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
   let pending = tournaments.myPendingBirdsThisWeek();
   const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
   for (const [i, bird] of qualified.entries()) {
-    const s = scores.get(bird.id)!;
+    const s = must(scores.get(bird.id), "scoutScoresMany scores every bird it is handed");
     const top = Math.max(...blades.map((b) => s[b]));
     // A TRUE B3 BIRD READS THE TWO CROWNS DEAD EVEN, and there is no crown at
     // b3 to send it to — Zane: "if it's a true B3 bird, that's a wont-solve
@@ -1143,15 +1213,14 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
     // available." So ties spread round-robin rather than falling to the first
     // blade, which would rebuild the very imbalance this fix removes.
     const tied = blades.filter((b) => s[b] === top);
-    declared.get(tied[i % tied.length])!.push(bird);
+    must(declared.get(tied[i % tied.length]), "declared is keyed by every blade").push(bird);
   }
 
   for (const blade of blades) {
     let sent = 0;
-    for (const bird of declared
-      .get(blade)!
+    for (const bird of must(declared.get(blade), "declared is keyed by every blade")
       .filter((b) => !seated.has(b.id) && !pending.has(b.id)) // both only ever threw — see above
-      .sort((a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade])) {
+      .sort((a, b) => scoreOf(b.id, blade) - scoreOf(a.id, blade))) {
       if (sent >= JUVENILE_MAJOR.MAX_PER_BARN) break;
       try {
         tournaments.enter(bird.id, blade, "juvenile");
@@ -1225,12 +1294,7 @@ export function chaseCrowns(
     db
       .select({ id: birds.id })
       .from(birds)
-      .where(
-        and(
-          eq(birds.farmId, farmId),
-          gte(birds.stakesWins, CROWN_CHASE.CROWN_MIN_REAL_WINS)
-        )
-      )
+      .where(and(eq(birds.farmId, farmId), gte(birds.stakesWins, CROWN_CHASE.CROWN_MIN_REAL_WINS)))
       .all()
       .map((b) => b.id)
   );
@@ -1245,17 +1309,22 @@ export function chaseCrowns(
   // the SCOUT scores (round 28): a Major is hardcore, so the read is the
   // demonstrated form, deterministic — nobody experiments in the ring that
   // retires losers.
-  const scores = scoutScoresMany(db, eligible.map((b) => b.id));
+  const scores = scoutScoresMany(
+    db,
+    eligible.map((b) => b.id)
+  );
+  const scoreOf = (id: string, blade: FightFormat): number =>
+    must(scores.get(id), "scoutScoresMany scores every bird it is handed")[blade];
   const declared = new Map<FightFormat, BirdView[]>(blades.map((b) => [b, []]));
   for (const [i, bird] of eligible.entries()) {
     // Exact ties spread ROUND-ROBIN across the tied crowns. With the fog
     // down (round 28) a barn of unraced veterans reads every blade at the
     // prior — under a first-blade tie-break the whole roster would declare
     // for the same crown and leave the other two brackets short.
-    const s = scores.get(bird.id)!;
+    const s = must(scores.get(bird.id), "scoutScoresMany scores every bird it is handed");
     const top = Math.max(...blades.map((b) => s[b]));
     const tied = blades.filter((b) => s[b] === top);
-    declared.get(tied[i % tied.length])!.push(bird);
+    must(declared.get(tied[i % tied.length]), "declared is keyed by every blade").push(bird);
   }
 
   // ⚠ THIS CHECK HAD NEVER RUN UNTIL ROUND 41. Entry was free from round 22,
@@ -1271,8 +1340,7 @@ export function chaseCrowns(
   // last week's rows stamped at the old price while the bot budgets against
   // the new one.
   const fee = DIVISION_RULES.major.entryFee;
-  const canAfford = () =>
-    db.select().from(farms).where(eq(farms.id, farmId)).get()!.gp >= fee + reserve;
+  const canAfford = () => farmRow(db, farmId).gp >= fee + reserve;
 
   // Birds already holding a seat this week — attempting one only ever throws
   // "already registered", and both passes below used to pay that throw for
@@ -1286,9 +1354,7 @@ export function chaseCrowns(
   let seated = tournaments.myPendingBirdsThisWeek();
   const send = (blade: FightFormat, candidates: BirdView[]): void => {
     let sent = tournaments.myEntriesThisWeek(blade);
-    for (const bird of candidates.sort(
-      (a, b) => scores.get(b.id)![blade] - scores.get(a.id)![blade]
-    )) {
+    for (const bird of candidates.sort((a, b) => scoreOf(b.id, blade) - scoreOf(a.id, blade))) {
       if (sent >= PINTAKASI.MAX_PER_BARN) break;
       if (seated.has(bird.id)) continue;
       if (!canAfford()) return; // this crown is out of reach — try the next one
@@ -1303,14 +1369,15 @@ export function chaseCrowns(
     }
   };
 
-  const chosen = blades.filter((b) => opts.nerve === undefined || rng() < opts.nerve);
+  const chosen = blades.filter((_b) => opts.nerve === undefined || rng() < opts.nerve);
   // ⚠ A BARN THAT RUNS SHORT SKIPS A CROWN, IT DOES NOT GO HOME. `send` used
   // to return false on an empty wallet and both loops below `return entered`
   // on it — which was harmless at a free entry and would be a real bug at 80
   // GP: a barn that couldn't afford its THIRD blade would abandon the two it
   // could. The passes run to the end now, and each entry is priced on its own.
   // Pass 1: specialists into their own blade.
-  for (const blade of chosen) send(blade, [...declared.get(blade)!]);
+  for (const blade of chosen)
+    send(blade, [...must(declared.get(blade), "declared is keyed by every blade")]);
   // Pass 2: anyone still idle fills a crown that's short — up to MAX_PER_BARN
   // per blade. A body in a bracket beats a body in the barn.
   for (const blade of chosen) send(blade, [...eligible]);

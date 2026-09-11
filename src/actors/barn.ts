@@ -53,6 +53,22 @@ interface BarnMemory {
   strategy: string | null;
 }
 
+/**
+ * A brand-new barn's memory. Typed as a declaration rather than asserted
+ * inline so a missing or misspelled field is a compile error, not a cast
+ * that quietly papers over it.
+ */
+const FRESH_BARN: BarnMemory = {
+  farmName: null,
+  daysPlayed: 0,
+  lastDay: -1,
+  proposedActions: 0,
+  droppedActions: 0,
+  failures: 0,
+  thinkingMs: 0,
+  strategy: null,
+};
+
 export const barn = actor({
   options: {
     // A barn-day is an LLM call: ~14s warm, worse cold, and at full fleet
@@ -70,16 +86,7 @@ export const barn = actor({
     // the duration and let the envoy drain retire it.
     noSleep: true,
   },
-  state: {
-    farmName: null,
-    daysPlayed: 0,
-    lastDay: -1,
-    proposedActions: 0,
-    droppedActions: 0,
-    failures: 0,
-    thinkingMs: 0,
-    strategy: null,
-  } as BarnMemory,
+  state: FRESH_BARN,
   actions: {
     /**
      * One game-day: read the view that arrived in the mail, think, reply

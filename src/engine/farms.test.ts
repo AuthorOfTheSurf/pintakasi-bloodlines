@@ -37,13 +37,21 @@ describe("registration", () => {
       farmsApi.register({ name: "bukidnon farms", primaryColor: "red", secondaryColor: "gold" })
     ).toThrow(/already exists/);
     expect(() =>
-      farmsApi.register({ name: "Neon Barn", primaryColor: "chartreuse" as never, secondaryColor: "red" })
+      farmsApi.register({
+        name: "Neon Barn",
+        primaryColor: "chartreuse" as never,
+        secondaryColor: "red",
+      })
     ).toThrow(/must be one of/);
   });
 
   test("farms are isolated: your flock is not my flock", () => {
     const { db, dev, farmsApi } = fresh();
-    const { farm } = farmsApi.register({ name: "Rival", primaryColor: "black", secondaryColor: "red" });
+    const { farm } = farmsApi.register({
+      name: "Rival",
+      primaryColor: "black",
+      secondaryColor: "red",
+    });
     seedStarterFlock(db, farm.id, { seed: 9, shape: "legacy" });
     const mine = new Flock(db, dev.farmId);
     const theirs = new Flock(db, farm.id);

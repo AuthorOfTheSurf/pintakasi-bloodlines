@@ -1,20 +1,28 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birdForm, birds, farms, gameState, lobbyEntries, tournamentEntries, tournaments } from "@/db/schema";
+import {
+  battleLog,
+  birdForm,
+  birds,
+  farms,
+  gameState,
+  lobbyEntries,
+  tournamentEntries,
+  tournaments,
+} from "@/db/schema";
 import {
   DAY_NAMES,
   FORMATS,
   JUVENILE_MAJOR,
   PINTAKASI,
-  landForFight,
   landPotShare,
   weatherOfDay,
-  ECONOMY,
   type Element,
   type FightFormat,
   fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
+import { readFarm, readWorldState } from "./farms";
 import { simulatePair, toCombatant } from "./fight-sim";
 import { Flock } from "./flock";
 import { canHardcore, canJuvenile } from "./lifecycle";
@@ -174,6 +182,47 @@ export function roundName(round: number, totalRounds: number, bracketSize: numbe
   return `Round of ${bracketSize / Math.pow(2, round - 1)}`;
 }
 
+/**
+ * A lookup the surrounding code has already guaranteed — a committee card for
+ * a bird the same call asked to be carded, a row for an entry's own bird. Throws
+ * with the reason instead of letting `undefined` leak into ranking or payout.
+ * Only null/undefined count as missing: a zero fight count is a real value.
+ */
+function must<T>(value: T | null | undefined, why: string): T {
+  if (value === null || value === undefined) throw new Error(why);
+  return value;
+}
+
+/** A bird row by id, for an entry the bracket already holds. Birds are never deleted. */
+function readBird(database: DB, birdId: string) {
+  return must(
+    database.select().from(birds).where(eq(birds.id, birdId)).get(),
+    `bird ${birdId} not found — birds are never deleted`
+  );
+}
+
+/** The fee half of the registration ledger line. */
+function entryFeeNote(fee: number, hardcore: boolean): string {
+  if (fee > 0) return `${fee} GP escrowed`;
+  if (hardcore) return `free to enter — the committee seats on earnings`;
+  return `free to enter`;
+}
+
+/**
+ * The placement bonus on top of advancement: the champion's, the beaten
+ * finalist's (eliminated in the last round), else nothing.
+ */
+function placementBonus(
+  purse: { readonly CHAMPION: number; readonly RUNNER_UP: number },
+  isChampion: boolean,
+  eliminatedIn: number | undefined,
+  totalRounds: number
+): number {
+  if (isChampion) return purse.CHAMPION;
+  if (eliminatedIn !== undefined && totalRounds - eliminatedIn === 0) return purse.RUNNER_UP;
+  return 0;
+}
+
 export class Tournaments {
   private flock: Flock;
 
@@ -185,7 +234,7 @@ export class Tournaments {
   }
 
   private today(): number {
-    return this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    return readWorldState(this.database).dayIndex;
   }
 
   /**
@@ -242,8 +291,10 @@ export class Tournaments {
     const bird = this.flock.byId(birdId);
     if (bird.status !== "active") throw new Error(`${bird.name} is not an active fighter`);
     if (!bird.named)
-      throw new Error(`${bird.name} hasn't been given a real name — name a bird before its first fight`);
-    const birdRow = this.database.select().from(birds).where(eq(birds.id, birdId)).get()!;
+      throw new Error(
+        `${bird.name} hasn't been given a real name — name a bird before its first fight`
+      );
+    const birdRow = readBird(this.database, birdId);
     if (division === "juvenile") {
       // The discovery-year stage: age 1 only, and you ladder your way in on
       // juvenile wins (round 23). Not hardcore — see JUVENILE_MAJOR.
@@ -258,7 +309,9 @@ export class Tournaments {
         );
     } else {
       if (!canHardcore(bird.age))
-        throw new Error(`${bird.name} is ${bird.age} — the Pintakasi is hardcore, which opens at age 3`);
+        throw new Error(
+          `${bird.name} is ${bird.age} — the Pintakasi is hardcore, which opens at age 3`
+        );
       // ROUND 37 — THURSDAY IS OPEN. A qualification-points threshold stood
       // here from round 22: 3 points, banked one per real win on the daily
       // card. It is gone. Age is now the only hard gate on a Major, and the
@@ -287,7 +340,9 @@ export class Tournaments {
     // exact double fight round 31 closed on the juvenile side. Registration
     // on earlier days is untouched, and a bumped or refused bird still has
     // no pending entry, so the backup card fight survives.
-    if (division === "major" ? Tournaments.isCrownDay(today) : Tournaments.isJuvenileCrownDay(today)) {
+    if (
+      division === "major" ? Tournaments.isCrownDay(today) : Tournaments.isJuvenileCrownDay(today)
+    ) {
       const carded = this.database
         .select({ id: lobbyEntries.id })
         .from(lobbyEntries)
@@ -333,7 +388,7 @@ export class Tournaments {
     // says today. Free from round 22 to 40; 80 GP on a Major since round 41,
     // still 0 on the juvenile crown (DIVISION_RULES carries them separately).
     const fee = tournament.entryFee;
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const farm = readFarm(this.database, this.farmId);
     if (fee > 0 && farm.gp < fee)
       throw new Error(`The Pintakasi entry is ${fee} GP (escrowed) — you have ${farm.gp}`);
 
@@ -357,9 +412,17 @@ export class Tournaments {
       if (!memoMap) Tournaments.bumpLine.set(this.database, (memoMap = new Map()));
       const memo = memoMap.get(memoKey);
       if (memo && memo.day === today && memo.version === bookVersion(this.database)) {
-        const myCard = Tournaments.committeeCards(this.database, [birdId]).get(birdId)!;
+        const myCard = must(
+          Tournaments.committeeCards(this.database, [birdId]).get(birdId),
+          "committeeCards cards every bird it is asked about"
+        );
         if (
-          Tournaments.compareRank(myCard, memo.weakestCard, Number.MAX_SAFE_INTEGER, memo.weakestEntryId) >= 0
+          Tournaments.compareRank(
+            myCard,
+            memo.weakestCard,
+            Number.MAX_SAFE_INTEGER,
+            memo.weakestEntryId
+          ) >= 0
         )
           throw new Error(
             `The Selection Committee finds ${bird.name} the weakest in a full field — entry refused`
@@ -370,14 +433,19 @@ export class Tournaments {
         birdId,
       ]);
       const weakest = [...field].sort((a, b) =>
-        Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.id, b.id)
+        Tournaments.compareRank(
+          must(cards.get(a.birdId), "committeeCards cards every bird it is asked about"),
+          must(cards.get(b.birdId), "committeeCards cards every bird it is asked about"),
+          a.id,
+          b.id
+        )
       )[field.length - 1];
       // The newcomer has no entry row yet, so it takes the latest possible
       // registration order — on a dead tie the incumbent keeps the seat.
       if (
         Tournaments.compareRank(
-          cards.get(birdId)!,
-          cards.get(weakest.birdId)!,
+          must(cards.get(birdId), "committeeCards cards every bird it is asked about"),
+          must(cards.get(weakest.birdId), "committeeCards cards every bird it is asked about"),
           Number.MAX_SAFE_INTEGER,
           weakest.id
         ) >= 0
@@ -386,15 +454,18 @@ export class Tournaments {
           day: today,
           version: bookVersion(this.database),
           weakestEntryId: weakest.id,
-          weakestCard: cards.get(weakest.birdId)!,
+          weakestCard: must(
+            cards.get(weakest.birdId),
+            "committeeCards cards every bird it is asked about"
+          ),
         });
         throw new Error(
           `The Selection Committee finds ${bird.name} the weakest in a full field — entry refused`
         );
       }
       // The weakest goes home, refunded, in public.
-      const bumpedFarm = this.database.select().from(farms).where(eq(farms.id, weakest.farmId)).get()!;
-      const bumpedBird = this.database.select().from(birds).where(eq(birds.id, weakest.birdId)).get()!;
+      const bumpedFarm = readFarm(this.database, weakest.farmId);
+      const bumpedBird = readBird(this.database, weakest.birdId);
       this.database
         .update(farms)
         .set({ gp: bumpedFarm.gp + weakest.fee })
@@ -415,8 +486,12 @@ export class Tournaments {
     }
 
     // Re-read: the bump above may have refunded THIS farm (own bird bumped).
-    const wallet = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-    this.database.update(farms).set({ gp: wallet.gp - fee }).where(eq(farms.id, this.farmId)).run();
+    const wallet = readFarm(this.database, this.farmId);
+    this.database
+      .update(farms)
+      .set({ gp: wallet.gp - fee })
+      .where(eq(farms.id, this.farmId))
+      .run();
     const inserted = this.database
       .insert(tournamentEntries)
       .values({ tournamentId: tournament.id, birdId, farmId: this.farmId, fee, dayEntered: today })
@@ -447,11 +522,7 @@ export class Tournaments {
       gpCents: -fee * 100,
       message:
         `registered ${bird.name} for the ${label(tournament.format)} (week ${week}, ` +
-        (fee > 0
-          ? `${fee} GP escrowed`
-          : charter.hardcore
-            ? `free to enter — the committee seats on earnings`
-            : `free to enter`) +
+        entryFeeNote(fee, charter.hardcore) +
         `) — ${risk}`,
     });
     return {
@@ -482,7 +553,9 @@ export class Tournaments {
     return this.database
       .select()
       .from(tournamentEntries)
-      .where(and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending")))
+      .where(
+        and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending"))
+      )
       .all()
       .filter((e) => ids.includes(e.tournamentId)).length;
   }
@@ -511,7 +584,9 @@ export class Tournaments {
       this.database
         .select()
         .from(tournamentEntries)
-        .where(and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending")))
+        .where(
+          and(eq(tournamentEntries.farmId, this.farmId), eq(tournamentEntries.status, "pending"))
+        )
         .all()
         .filter((e) => ids.has(e.tournamentId))
         .map((e) => e.birdId)
@@ -522,14 +597,21 @@ export class Tournaments {
   board(division: Division = "major"): ChampionshipView[] {
     const today = this.today();
     const week = Tournaments.targetWeek(today);
-    const juice = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!
-      .juicePoolCents;
+    const juice = readWorldState(this.database).juicePoolCents;
     return Tournaments.bladesFor(division, week).map((format) => {
       const tournament = this.findOrOpen(week, format, division);
       const field = this.pendingEntries(tournament.id);
-      const cards = Tournaments.committeeCards(this.database, field.map((e) => e.birdId));
+      const cards = Tournaments.committeeCards(
+        this.database,
+        field.map((e) => e.birdId)
+      );
       const ranked = [...field].sort((a, b) =>
-        Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.id, b.id)
+        Tournaments.compareRank(
+          must(cards.get(a.birdId), "committeeCards cards every bird it is asked about"),
+          must(cards.get(b.birdId), "committeeCards cards every bird it is asked about"),
+          a.id,
+          b.id
+        )
       );
       return {
         tournamentId: tournament.id,
@@ -538,12 +620,11 @@ export class Tournaments {
         label: label(format),
         fee: tournament.entryFee,
         field: ranked.map((e, i) => {
-          const bird = this.database.select().from(birds).where(eq(birds.id, e.birdId)).get()!;
-          const farm = this.database.select().from(farms).where(eq(farms.id, e.farmId)).get()!;
+          const bird = readBird(this.database, e.birdId);
+          const farm = readFarm(this.database, e.farmId);
           return { bird: bird.name, farm: farm.name, rank: i + 1, mine: e.farmId === this.farmId };
         }),
-        projectedPurseGp:
-          field.reduce((s, e) => s + e.fee, 0) + Math.floor(juice / 3 / 100), // rough juice share
+        projectedPurseGp: field.reduce((s, e) => s + e.fee, 0) + Math.floor(juice / 3 / 100), // rough juice share
       };
     });
   }
@@ -574,8 +655,9 @@ export class Tournaments {
     // Registrants that died or retired since entering go home refunded.
     for (const t of open) {
       for (const entry of Tournaments.pending(database, t.id)) {
-        const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
-        if (bird.status !== "active") Tournaments.refundEntry(database, entry, bird.name, "no longer stands");
+        const bird = readBird(database, entry.birdId);
+        if (bird.status !== "active")
+          Tournaments.refundEntry(database, entry, bird.name, "no longer stands");
       }
     }
 
@@ -590,7 +672,7 @@ export class Tournaments {
       // moment either number moved.
       if (field.length < DIVISION_RULES[division].minField) {
         for (const entry of field) {
-          const bird = database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+          const bird = readBird(database, entry.birdId);
           Tournaments.refundEntry(database, entry, bird.name, "the field was too small");
         }
         database
@@ -620,7 +702,7 @@ export class Tournaments {
     // (they run last, on Thursday). The Juvenile Championship runs the day
     // before and takes only its ruled slice — JUVENILE_MAJOR.JUICE_SHARE —
     // so the discovery year is funded without gutting the main stage.
-    const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const state = readWorldState(database);
     const divisionPot =
       division === "juvenile"
         ? Math.floor(state.juicePoolCents * JUVENILE_MAJOR.JUICE_SHARE)
@@ -671,9 +753,17 @@ export class Tournaments {
     // Committee seeding: 1 = strongest. Byes fall out of the classic
     // placement naturally — ghost seeds (past the field) pair against the
     // top seeds in round one and simply aren't there.
-    const cards = Tournaments.committeeCards(database, field.map((e) => e.birdId));
+    const cards = Tournaments.committeeCards(
+      database,
+      field.map((e) => e.birdId)
+    );
     const seeded = [...field].sort((a, b) =>
-      Tournaments.compareRank(cards.get(a.birdId)!, cards.get(b.birdId)!, a.id, b.id)
+      Tournaments.compareRank(
+        must(cards.get(a.birdId), "committeeCards cards every bird it is asked about"),
+        must(cards.get(b.birdId), "committeeCards cards every bird it is asked about"),
+        a.id,
+        b.id
+      )
     );
     seeded.forEach((e, i) =>
       database
@@ -689,11 +779,8 @@ export class Tournaments {
     const placement = seedPlacement(bracketSize);
     let alive: (EntryRow | null)[] = placement.map((seat) => seeded[seat - 1] ?? null);
 
-    const nameOf = new Map(
-      field.map((e) => [e.id, database.select().from(birds).where(eq(birds.id, e.birdId)).get()!.name])
-    );
-    const farmNameOf = (farmId: string) =>
-      database.select().from(farms).where(eq(farms.id, farmId)).get()!.name;
+    const nameOf = new Map(field.map((e) => [e.id, readBird(database, e.birdId).name]));
+    const farmNameOf = (farmId: string) => readFarm(database, farmId).name;
 
     const purseRules = DIVISION_RULES[(t.division ?? "major") as Division].purse;
     const rounds: TournamentResolution["rounds"] = [];
@@ -729,36 +816,47 @@ export class Tournaments {
         const b = alive[i + 1];
         if (a && !b) {
           next.push(a);
-          if (round === 1) byes.push(nameOf.get(a.id)!);
+          if (round === 1) byes.push(must(nameOf.get(a.id), "nameOf covers the field"));
           continue;
         }
         if (b && !a) {
           next.push(b);
-          if (round === 1) byes.push(nameOf.get(b.id)!);
+          if (round === 1) byes.push(must(nameOf.get(b.id), "nameOf covers the field"));
           continue;
         }
         if (!a || !b) {
           next.push(null);
           continue;
         }
-        const report = Tournaments.runFight(database, t, a, b, round, roundName, rng, week, weather, dayIndex);
+        const report = Tournaments.runFight(
+          database,
+          t,
+          a,
+          b,
+          round,
+          roundName,
+          rng,
+          week,
+          weather,
+          dayIndex
+        );
         fights.push(report);
         fightsFought.set(a.id, (fightsFought.get(a.id) ?? 0) + 1);
         fightsFought.set(b.id, (fightsFought.get(b.id) ?? 0) + 1);
         const winner = report.winner === nameOf.get(a.id) ? a : b;
         const loser = winner === a ? b : a;
         winWeight.set(
-        winner.id,
-        (winWeight.get(winner.id) ?? 0) + purseRules.ROUND_MULTIPLIER ** (round - 1)
-      );
+          winner.id,
+          (winWeight.get(winner.id) ?? 0) + purseRules.ROUND_MULTIPLIER ** (round - 1)
+        );
         eliminatedIn.set(loser.id, round);
         next.push(winner);
       }
       rounds.push({ name: roundName, fights, byes });
       alive = next;
     }
-    const championEntry = alive[0]!;
-    const championBird = database.select().from(birds).where(eq(birds.id, championEntry.birdId)).get()!;
+    const championEntry = must(alive[0], "a bracket of two or more always crowns a bird");
+    const championBird = readBird(database, championEntry.birdId);
     const championFarm = farmNameOf(championEntry.farmId);
 
     // ── GP: EVERY WIN PAYS (round 40) ────────────────────────────────────────
@@ -796,12 +894,7 @@ export class Tournaments {
       // of that, never instead of it.
       if (weight === 0) continue;
       const advancement = totalWeight > 0 ? (purse.ADVANCEMENT * weight) / totalWeight : 0;
-      const bonus =
-        e.id === championEntry.id
-          ? purse.CHAMPION
-          : round !== undefined && totalRounds - round === 0
-            ? purse.RUNNER_UP
-            : 0;
+      const bonus = placementBonus(purse, e.id === championEntry.id, round, totalRounds);
       shares.set(e.id, {
         share: advancement + bonus,
         stage: Tournaments.stageOf(e.id === championEntry.id, round, totalRounds, bracketSize),
@@ -833,13 +926,23 @@ export class Tournaments {
       if (entryId === championEntry.id) continue; // champion settles last, with the dust
       const exact = Math.floor((purseCents * share) / totalShare);
       const cents = canFloor ? Math.max(1, exact) : exact;
-      const entry = field.find((e) => e.id === entryId)!;
-      Tournaments.payPurse(database, t, entry, cents, stage, nameOf.get(entryId)!, payouts, farmNameOf);
+      const entry = must(
+        field.find((e) => e.id === entryId),
+        "shares are keyed by field entries"
+      );
+      const name = must(nameOf.get(entryId), "nameOf covers the field");
+      Tournaments.payPurse(database, t, entry, cents, stage, name, payouts, farmNameOf);
       paid += cents;
     }
     Tournaments.payPurse(
-      database, t, championEntry, purseCents - paid, "champion",
-      championBird.name, payouts, farmNameOf
+      database,
+      t,
+      championEntry,
+      purseCents - paid,
+      "champion",
+      championBird.name,
+      payouts,
+      farmNameOf
     );
 
     // ── LAND: ONE POT, DIVIDED BY FIGHTS FOUGHT (round 42) ──────────────────
@@ -867,7 +970,14 @@ export class Tournaments {
       if (fights === 0) continue;
       if (e.id === championEntry.id) continue; // settled last, with the dust
       const share = landPotShare(potCents, fighterSlots, fights);
-      Tournaments.payLandPot(database, t, e, share, fights, nameOf.get(e.id)!);
+      Tournaments.payLandPot(
+        database,
+        t,
+        e,
+        share,
+        fights,
+        must(nameOf.get(e.id), "nameOf covers the field")
+      );
       landPaid += share;
     }
     // ⚠ THE CHAMPION IS WHERE THE POT BALANCES, so this guard is the one place the
@@ -883,8 +993,12 @@ export class Tournaments {
     // If MIN_FIELD is ever lowered to 1, come back here first.
     if ((fightsFought.get(championEntry.id) ?? 0) > 0)
       Tournaments.payLandPot(
-        database, t, championEntry, potCents - landPaid,
-        fightsFought.get(championEntry.id)!, championBird.name
+        database,
+        t,
+        championEntry,
+        potCents - landPaid,
+        must(fightsFought.get(championEntry.id), "guarded just above"),
+        championBird.name
       );
 
     database
@@ -936,8 +1050,8 @@ export class Tournaments {
     const divisionRules = DIVISION_RULES[(t.division ?? "major") as Division];
     const hardcore = divisionRules.hardcore;
     const simSeed = randInt(rng, 1, 2 ** 31 - 1);
-    const rowA = database.select().from(birds).where(eq(birds.id, ea.birdId)).get()!;
-    const rowB = database.select().from(birds).where(eq(birds.id, eb.birdId)).get()!;
+    const rowA = readBird(database, ea.birdId);
+    const rowB = readBird(database, eb.birdId);
     const header = `${label(t.format)} · ${roundName}`;
     const sim = simulatePair(
       toCombatant(rowA),
@@ -963,7 +1077,7 @@ export class Tournaments {
     const fightRows: (typeof battleLog.$inferInsert)[] = [];
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
-      const farm = database.select().from(farms).where(eq(farms.id, side.entry.farmId)).get()!;
+      const farm = readFarm(database, side.entry.farmId);
       farmNames.push(farm.name);
       // Records move for bird AND farm (one record, ruled round 15). No GP
       // here — the purse settles at the end; land mints per fight, both sides.
@@ -977,7 +1091,7 @@ export class Tournaments {
       // untestable, and an untestable faucet is exactly how two silent GP burns
       // survived. The pot payout below therefore writes one SIGNED, per-farm row
       // per participant, for the same reason this used to write one per side.
-      const birdRow = database.select().from(birds).where(eq(birds.id, side.row.id)).get()!;
+      const birdRow = readBird(database, side.row.id);
       database
         .update(birds)
         .set(
@@ -1036,48 +1150,59 @@ export class Tournaments {
       // Through recordFight, not a bare insert — the log row and the scout's
       // running book (bird_form) move together or not at all.
       fightRows.push({
-          // ⚠ ROUND 38 — THIS WAS HARDCODED TO PINTAKASI.DAY_OF_WEEK, so every
-          // JUVENILE Championship fight was archived under THURSDAY's date
-          // while it was actually fought on Wednesday. Two harms. The archive
-          // dated a whole division's fights one day late, which any per-day
-          // reading — the office's fights-per-day chart, the doctor, any SQL
-          // anyone writes — silently inherited. And the fight's WEATHER is
-          // `weatherOfDay(dayIndex)` of the REAL day, so a replay rebuilt from
-          // the logged day fought under the wrong element: 2 of 201 sampled
-          // fights failed to reproduce, and every one of them was a juvenile
-          // crown. Found by the round-38 replay check, which is the entire
-          // argument for building it — nothing else in the project compares
-          // the archive against anything.
-          dayIndex,
-          lobbyId: null,
-          tournamentId: t.id,
-          farmId: side.entry.farmId,
-          birdId: side.row.id,
-          mode: hardcore ? "hardcore" : "juvenile",
-          format: t.format,
-          lobby: "open",
-          claimPrice: null,
-          opponentBirdId: other.row.id,
-          opponentFarmId: other.entry.farmId,
-          opponentName: other.row.name,
-          selfGrade: overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition),
-          opponentGrade: overallGradeOf(other.row.agility + other.row.sight + other.row.stamina + other.row.gameness + other.row.station + other.row.condition),
-          // `sides` is built in simulatePair's argument order above, so the
-          // loop index IS the side. This is the only thing that lets a fight be
-          // replayed from its seed — see schema.ts.
-          side: i,
-          result: side.won ? "win" : "loss",
-          pitFigure: side.figure,
-          gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle
-          seed: simSeed,
+        // ⚠ ROUND 38 — THIS WAS HARDCODED TO PINTAKASI.DAY_OF_WEEK, so every
+        // JUVENILE Championship fight was archived under THURSDAY's date
+        // while it was actually fought on Wednesday. Two harms. The archive
+        // dated a whole division's fights one day late, which any per-day
+        // reading — the office's fights-per-day chart, the doctor, any SQL
+        // anyone writes — silently inherited. And the fight's WEATHER is
+        // `weatherOfDay(dayIndex)` of the REAL day, so a replay rebuilt from
+        // the logged day fought under the wrong element: 2 of 201 sampled
+        // fights failed to reproduce, and every one of them was a juvenile
+        // crown. Found by the round-38 replay check, which is the entire
+        // argument for building it — nothing else in the project compares
+        // the archive against anything.
+        dayIndex,
+        lobbyId: null,
+        tournamentId: t.id,
+        farmId: side.entry.farmId,
+        birdId: side.row.id,
+        mode: hardcore ? "hardcore" : "juvenile",
+        format: t.format,
+        lobby: "open",
+        claimPrice: null,
+        opponentBirdId: other.row.id,
+        opponentFarmId: other.entry.farmId,
+        opponentName: other.row.name,
+        selfGrade: overallGradeOf(
+          side.row.agility +
+            side.row.sight +
+            side.row.stamina +
+            side.row.gameness +
+            side.row.station +
+            side.row.condition
+        ),
+        opponentGrade: overallGradeOf(
+          other.row.agility +
+            other.row.sight +
+            other.row.stamina +
+            other.row.gameness +
+            other.row.station +
+            other.row.condition
+        ),
+        // `sides` is built in simulatePair's argument order above, so the
+        // loop index IS the side. This is the only thing that lets a fight be
+        // replayed from its seed — see schema.ts.
+        side: i,
+        result: side.won ? "win" : "loss",
+        pitFigure: side.figure,
+        gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle
+        seed: simSeed,
       });
     }
     recordFightPair(
       database,
-      fightRows as [
-        typeof battleLog.$inferInsert,
-        typeof battleLog.$inferInsert,
-      ]
+      fightRows as [typeof battleLog.$inferInsert, typeof battleLog.$inferInsert]
     );
     const w = sim.winner;
     emit(database, {
@@ -1113,7 +1238,10 @@ export class Tournaments {
    */
   private static bumpLine = new WeakMap<
     object,
-    Map<number, { day: number; version: number; weakestEntryId: number; weakestCard: CommitteeCard }>
+    Map<
+      number,
+      { day: number; version: number; weakestEntryId: number; weakestCard: CommitteeCard }
+    >
   >();
 
   /**
@@ -1155,7 +1283,11 @@ export class Tournaments {
     // all five blades, so the per-blade rows are summed here in JS — integer
     // sums, then the same Math.round division as always.
     const fightSums = new Map<string, { earned: number; figureSum: number; fights: number }>();
-    for (const row of database.select().from(birdForm).where(inArray(birdForm.birdId, birdIds)).all()) {
+    for (const row of database
+      .select()
+      .from(birdForm)
+      .where(inArray(birdForm.birdId, birdIds))
+      .all()) {
       const s = fightSums.get(row.birdId) ?? { earned: 0, figureSum: 0, fights: 0 };
       s.earned += row.earnCents;
       s.figureSum += row.figureSum;
@@ -1163,7 +1295,7 @@ export class Tournaments {
       fightSums.set(row.birdId, s);
     }
     for (const [id, s] of fightSums) {
-      const card = out.get(id)!;
+      const card = must(out.get(id), "out is seeded per requested bird");
       card.earningsCents += s.earned;
       card.avgFigure = s.fights > 0 ? Math.round(s.figureSum / s.fights) : 0;
     }
@@ -1177,14 +1309,14 @@ export class Tournaments {
       .where(inArray(tournamentEntries.birdId, birdIds))
       .groupBy(tournamentEntries.birdId)
       .all())
-      out.get(row.birdId)!.earningsCents += row.purse ?? 0;
+      must(out.get(row.birdId), "out is seeded per requested bird").earningsCents += row.purse ?? 0;
 
     for (const row of database
       .select({ id: birds.id, wins: birds.wins })
       .from(birds)
       .where(inArray(birds.id, birdIds))
       .all())
-      out.get(row.id)!.wins = row.wins;
+      must(out.get(row.id), "out is seeded per requested bird").wins = row.wins;
 
     return out;
   }
@@ -1278,7 +1410,7 @@ export class Tournaments {
     birdName: string
   ): void {
     if (cents <= 0) return;
-    const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+    const farm = readFarm(database, entry.farmId);
     database
       .update(farms)
       .set({ landTokensCents: farm.landTokensCents + cents })
@@ -1315,7 +1447,7 @@ export class Tournaments {
     farmNameOf: (id: string) => string
   ): void {
     if (cents <= 0) return;
-    const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+    const farm = readFarm(database, entry.farmId);
     const total = farm.gpCents + cents;
     database
       .update(farms)
@@ -1341,9 +1473,13 @@ export class Tournaments {
   }
 
   private static refundEntry(database: DB, entry: EntryRow, birdName: string, why: string): void {
-    const farm = database.select().from(farms).where(eq(farms.id, entry.farmId)).get()!;
+    const farm = readFarm(database, entry.farmId);
     if (entry.fee > 0)
-      database.update(farms).set({ gp: farm.gp + entry.fee }).where(eq(farms.id, entry.farmId)).run();
+      database
+        .update(farms)
+        .set({ gp: farm.gp + entry.fee })
+        .where(eq(farms.id, entry.farmId))
+        .run();
     database
       .update(tournamentEntries)
       .set({ status: "refunded" })
@@ -1355,8 +1491,8 @@ export class Tournaments {
       birdId: entry.birdId,
       gpCents: entry.fee * 100,
       // A scratch returns the escrow — 80 GP on a Major since round 41, and
-    // nothing at all on the free juvenile crown, which is why this is guarded
-    // rather than unconditional — say so
+      // nothing at all on the free juvenile crown, which is why this is guarded
+      // rather than unconditional — say so
       // rather than announcing "0 GP home".
       message:
         `${birdName}'s Pintakasi entry withdrawn — ${why}` +
@@ -1369,7 +1505,10 @@ export class Tournaments {
       .select()
       .from(tournamentEntries)
       .where(
-        and(eq(tournamentEntries.tournamentId, tournamentId), eq(tournamentEntries.status, "pending"))
+        and(
+          eq(tournamentEntries.tournamentId, tournamentId),
+          eq(tournamentEntries.status, "pending")
+        )
       )
       .all();
   }
@@ -1409,4 +1548,3 @@ export class Tournaments {
       .get();
   }
 }
-

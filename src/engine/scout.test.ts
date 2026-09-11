@@ -37,5 +37,7 @@ test("the own-grade step is DERIVED from the figure's scale, not fitted to it", 
   // And the correction still has to point the right way: a bird graded above
   // the reference is expected to figure HIGHER, so its read is marked down.
   expect(normalizedScoutFigure(80, "A", "B+")).toBeLessThan(normalizedScoutFigure(80, "B+", "B+"));
-  expect(normalizedScoutFigure(80, "B", "B+")).toBeGreaterThan(normalizedScoutFigure(80, "B+", "B+"));
+  expect(normalizedScoutFigure(80, "B", "B+")).toBeGreaterThan(
+    normalizedScoutFigure(80, "B+", "B+")
+  );
 });

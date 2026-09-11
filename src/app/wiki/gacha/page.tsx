@@ -42,9 +42,9 @@ export default function GachaPage() {
     <>
       <h1>The gacha</h1>
       <p className="lede">
-        The gacha is a roll, a token, and sometimes a mystery egg. It is not the cheap way to fill
-        a barn any more — that job belongs to breeding. Read this page before you spend GP on it,
-        and compare it honestly to what a cover costs (see <Link href="/wiki/breeding">Breeding</Link>).
+        The gacha is a roll, a token, and sometimes a mystery egg. It is not the cheap way to fill a
+        barn any more — that job belongs to breeding. Read this page before you spend GP on it, and
+        compare it honestly to what a cover costs (see <Link href="/wiki/breeding">Breeding</Link>).
       </p>
 
       <h2>What a roll gives you</h2>
@@ -52,9 +52,9 @@ export default function GachaPage() {
         Every single roll, free or paid, always gives you two things: a rarity token, and{" "}
         {/* PER_GACHA_ROLL is in hundredths of a token since round 36 — printing
             it raw would promise 100 Land Tokens a roll. */}
-        {LAND.PER_GACHA_ROLL / LT_CENTS} Land Token. Only the rarest tokens — {eggTokenNames} — also drop a{" "}
-        <strong>mystery egg</strong>: random element, hidden sex, no parents, hatching next Hatch
-        Friday like any other egg.
+        {LAND.PER_GACHA_ROLL / LT_CENTS} Land Token. Only the rarest tokens — {eggTokenNames} — also
+        drop a <strong>mystery egg</strong>: random element, hidden sex, no parents, hatching next
+        Hatch Friday like any other egg.
       </p>
 
       <h2>The odds</h2>
@@ -85,27 +85,28 @@ export default function GachaPage() {
       <p className="dim">
         Those odds are read straight off the drop weights — they can&apos;t drift out of sync with
         this page. {eggTokenNames} together come out to{" "}
-        {(eggChance * 100).toFixed(eggChance * 100 % 1 === 0 ? 0 : 1)}% of all rolls. Blue used to
+        {(eggChance * 100).toFixed((eggChance * 100) % 1 === 0 ? 0 : 1)}% of all rolls. Blue used to
         drop an egg too — round 23 cut it. Blue was the volume tier, and its egg was a sub-starter
-        body nobody actually wanted; cutting it halved the overall egg rate and made the two
-        tokens that still drop one worth actually chasing.
+        body nobody actually wanted; cutting it halved the overall egg rate and made the two tokens
+        that still drop one worth actually chasing.
       </p>
 
       <h2>The price — and no daily cap</h2>
       <p>
         Every farm gets <strong>{ECONOMY.FREE_PULLS_PER_CHECK_IN}</strong> free pull a day from
         checking in — that one spends first, no GP involved. Past that, a single roll costs{" "}
-        <strong>{ECONOMY.GACHA_ROLL_PRICE} GP</strong>, and there is <strong>no daily limit</strong> on
-        how many you can buy. The price is the only limiter now — round 23 repriced the gacha back
-        up specifically so a determined high roller could still buy as many as they want, without
-        the old ceiling doing the job the price is supposed to do.
+        <strong>{ECONOMY.GACHA_ROLL_PRICE} GP</strong>, and there is <strong>no daily limit</strong>{" "}
+        on how many you can buy. The price is the only limiter now — round 23 repriced the gacha
+        back up specifically so a determined high roller could still buy as many as they want,
+        without the old ceiling doing the job the price is supposed to do.
       </p>
       <div className="callout tip">
         <b>The {ECONOMY.BUNDLE_ROLLS}-roll bundle.</b> {ECONOMY.BUNDLE_PRICE} GP buys{" "}
         {ECONOMY.BUNDLE_ROLLS} rolls in one motion — {ECONOMY.BUNDLE_ROLLS - 1} rolls&apos; worth of
-        money, one extra on the house. It&apos;s exactly one day&apos;s check-in drip ({ECONOMY.DAILY_DRIP}{" "}
-        GP), spent all at once instead of trickling out one roll at a time. Free pulls aren&apos;t
-        touched by it — the bundle is a purchase, not a spend of your daily allowance.
+        money, one extra on the house. It&apos;s exactly one day&apos;s check-in drip (
+        {ECONOMY.DAILY_DRIP} GP), spent all at once instead of trickling out one roll at a time.
+        Free pulls aren&apos;t touched by it — the bundle is a purchase, not a spend of your daily
+        allowance.
       </div>
 
       <h2>Where the money goes</h2>
@@ -151,22 +152,22 @@ export default function GachaPage() {
       <p>
         Here&apos;s the number that actually matters if you&apos;re rolling for stars: divide the
         roll price by the chance of an egg. At {ECONOMY.GACHA_ROLL_PRICE} GP a roll and a{" "}
-        {(eggChance * 100).toFixed(eggChance * 100 % 1 === 0 ? 0 : 1)}% combined egg rate, a mystery
-        egg costs about <strong>{costPerEgg.toFixed(0)} GP</strong> on average — against a{" "}
+        {(eggChance * 100).toFixed((eggChance * 100) % 1 === 0 ? 0 : 1)}% combined egg rate, a
+        mystery egg costs about <strong>{costPerEgg.toFixed(0)} GP</strong> on average — against a{" "}
         <strong>{ECONOMY.BREED_FEE} GP</strong> breed cover.
       </p>
       <div className="callout warn">
         <b>The gacha egg is now the dear way in — on purpose.</b> At roughly{" "}
         {eggVsBreedRatio.toFixed(1)}× the price of a cover ({dearerThanBreed.toFixed(0)} GP more, on
-        average), a mystery egg costs more than breeding one, not less. Round 22 had briefly
-        pushed the gacha the other way — it repriced to 16 GP a roll, and it worked so well that
-        gacha out-supplied the breeding barn eight to one. Round 23 walked that back: the gacha
-        isn&apos;t the cheap way to a <strong>body</strong> any more. What it sells now is a shot at{" "}
+        average), a mystery egg costs more than breeding one, not less. Round 22 had briefly pushed
+        the gacha the other way — it repriced to 16 GP a roll, and it worked so well that gacha
+        out-supplied the breeding barn eight to one. Round 23 walked that back: the gacha isn&apos;t
+        the cheap way to a <strong>body</strong> any more. What it sells now is a shot at{" "}
         <strong>stars</strong> — the {eggTokenNames} tiers carry 2★–4★ birds, well above anything a
         starter or an ordinary breeding pair produces in one generation (see{" "}
         <Link href="/wiki/birds">Birds &amp; stats</Link>). Breeding is still how a stable
-        compounds. The gacha is the luxury lane straight into the breeding material that makes
-        that compounding possible.
+        compounds. The gacha is the luxury lane straight into the breeding material that makes that
+        compounding possible.
       </div>
 
       <h2>Gacha birds are capped</h2>
@@ -181,7 +182,9 @@ export default function GachaPage() {
           </thead>
           <tbody>
             {eggTokens.map((token) => {
-              const tier = GACHA_BIRDS[token]!;
+              const tier = GACHA_BIRDS[token];
+              // eggTokens is already filtered to tokens with a tier; this only narrows.
+              if (!tier) return null;
               return (
                 <tr key={token}>
                   <td>{token}</td>
@@ -198,31 +201,31 @@ export default function GachaPage() {
         </table>
       </div>
       <p>
-        Line that up against the starting flock, which rolls stats between{" "}
-        {STATS.STARTER_MIN} and {STATS.STARTER_MAX}: even a Gold pull, the rarest token in the
-        game, only tops out {goldOverStarter} points above a starter&apos;s ceiling. No gacha tier
-        is built to meaningfully outclass the birds you already start with on raw stats — the
-        difference is entirely in the stars. One caveat: these bands are the public odds, not a
-        receipt — a gacha bird&apos;s actual stats are hidden like any other live bird&apos;s, and
-        you won&apos;t see what you rolled until it retires. The stars are visible the moment the
-        egg hatches, which is exactly why stars are the jackpot.
+        Line that up against the starting flock, which rolls stats between {STATS.STARTER_MIN} and{" "}
+        {STATS.STARTER_MAX}: even a Gold pull, the rarest token in the game, only tops out{" "}
+        {goldOverStarter} points above a starter&apos;s ceiling. No gacha tier is built to
+        meaningfully outclass the birds you already start with on raw stats — the difference is
+        entirely in the stars. One caveat: these bands are the public odds, not a receipt — a gacha
+        bird&apos;s actual stats are hidden like any other live bird&apos;s, and you won&apos;t see
+        what you rolled until it retires. The stars are visible the moment the egg hatches, which is
+        exactly why stars are the jackpot.
       </p>
       <div className="callout warn">
         <b>The jackpot is stars, not stats.</b> A Gold egg can carry up to{" "}
         {GACHA_BIRDS.Gold ? GACHA_BIRDS.Gold.halfStars[1] / 2 : 0}★, a Purple up to{" "}
         {GACHA_BIRDS.Purple ? GACHA_BIRDS.Purple.halfStars[1] / 2 : 0}★ — both genuinely useful, but
-        both still roll raw stats in shouting distance of a starter. That rule exists on purpose:
-        if the gacha could hand out a bird that beat generations of careful breeding, breeding
-        would stop mattering. The gacha&apos;s job is a lucky body with good stars to{" "}
-        <em>breed with</em> — not a bird that skips the nest.
+        both still roll raw stats in shouting distance of a starter. That rule exists on purpose: if
+        the gacha could hand out a bird that beat generations of careful breeding, breeding would
+        stop mattering. The gacha&apos;s job is a lucky body with good stars to <em>breed with</em>{" "}
+        — not a bird that skips the nest.
       </div>
 
       <h2>Barn-full behaviour</h2>
       <p>
         A mystery egg needs a slot to hatch into, same as any egg. If your barn is already at
-        capacity when a qualifying token drops, the token itself still counts toward your
-        collection — but the egg is forfeit. Keep room in the barn if you&apos;re planning to roll:
-        a barn starts with {BARN.CAPACITY} slots and can be{" "}
+        capacity when a qualifying token drops, the token itself still counts toward your collection
+        — but the egg is forfeit. Keep room in the barn if you&apos;re planning to roll: a barn
+        starts with {BARN.CAPACITY} slots and can be{" "}
         <Link href="/wiki/land">expanded for Land Tokens</Link>.
       </p>
       <p>

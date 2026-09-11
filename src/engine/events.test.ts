@@ -41,7 +41,11 @@ function world() {
 }
 
 const ofType = (db: ReturnType<typeof createDb>, type: string) =>
-  db.select().from(events).all().filter((e) => e.type === type);
+  db
+    .select()
+    .from(events)
+    .all()
+    .filter((e) => e.type === type);
 
 describe("the unified ledger", () => {
   test("a buffered tick preserves call order and the clock side of every event", () => {
@@ -182,7 +186,11 @@ describe("the unified ledger", () => {
     const w = world();
     // 10 whole tokens in the column's own unit (hundredths, round 36) — stake()
     // takes the whole number and the log line quotes it back the same way.
-    w.db.update(farms).set({ landTokensCents: 10 * LT_CENTS }).where(eq(farms.id, w.devId)).run();
+    w.db
+      .update(farms)
+      .set({ landTokensCents: 10 * LT_CENTS })
+      .where(eq(farms.id, w.devId))
+      .run();
     w.game.farms.stake(w.devId, 10);
     const [stake] = ofType(w.db, "stake");
     expect(stake.message).toContain("staked 10 LT");

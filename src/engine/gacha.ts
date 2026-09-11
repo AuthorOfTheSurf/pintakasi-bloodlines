@@ -20,10 +20,25 @@ import {
   fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
+import { readFarm, readWorldState } from "./farms";
 import { Flock, type BirdView } from "./flock";
 import { uniqueName } from "./naming";
 import { GameClock } from "./game-clock";
 import { freshSeed, mulberry32, randInt, weightedPick, type Rng } from "./rng";
+
+/** The ledger's note on how a roll was paid for — a free pull, cash, or the bundle's blanket price. */
+function howPaid(freePullUsed: boolean, price: number): string {
+  if (freePullUsed) return " (free pull)";
+  if (price > 0) return ` (${price} GP)`;
+  return " (bundle)";
+}
+
+/** The egg half of a roll's ledger line: dropped, forfeit to a full barn, or nothing to say. */
+function eggNews(egg: BirdView | null, barnFull: boolean): string {
+  if (egg) return ` — a mystery egg dropped!`;
+  if (barnFull) return ` — egg forfeit, barn full`;
+  return "";
+}
 
 export interface GachaResult {
   token: GachaToken;
@@ -63,7 +78,7 @@ export class Gacha {
    */
   roll(): GachaResult {
     const today = this.today();
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const farm = readFarm(this.database, this.farmId);
     const freePullUsed = farm.freePulls > 0;
     const price = freePullUsed ? 0 : ECONOMY.GACHA_ROLL_PRICE;
     if (farm.gp < price)
@@ -82,8 +97,7 @@ export class Gacha {
       ...drawn,
       pricePaid: price,
       freePullUsed,
-      freePullsLeft: this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!
-        .freePulls,
+      freePullsLeft: readFarm(this.database, this.farmId).freePulls,
       landTokensCents: LAND.PER_GACHA_ROLL,
       collection: this.collection(),
     };
@@ -101,7 +115,7 @@ export class Gacha {
    */
   bundle(): { rolls: GachaResult[]; pricePaid: number; eggs: number } {
     const today = this.today();
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const farm = readFarm(this.database, this.farmId);
     if (farm.gp < ECONOMY.BUNDLE_PRICE)
       throw new Error(
         `The ${ECONOMY.BUNDLE_ROLLS}-roll bundle costs ${ECONOMY.BUNDLE_PRICE} GP — you have ${farm.gp}`
@@ -127,8 +141,7 @@ export class Gacha {
         ...drawn,
         pricePaid: 0, // the bundle paid, not this roll
         freePullUsed: false,
-        freePullsLeft: this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!
-          .freePulls,
+        freePullsLeft: readFarm(this.database, this.farmId).freePulls,
         landTokensCents: LAND.PER_GACHA_ROLL,
         collection: this.collection(),
       });
@@ -152,7 +165,7 @@ export class Gacha {
   }
 
   private today(): number {
-    return this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    return readWorldState(this.database).dayIndex;
   }
 
   /**
@@ -166,7 +179,7 @@ export class Gacha {
     const cents = price * 100;
     const stakerCents = Math.round(cents * STAKER_FLOWS.GACHA_SHARE);
     const juiceCents = cents - stakerCents;
-    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const state = readWorldState(this.database);
     this.database
       .update(gameState)
       .set({
@@ -192,7 +205,7 @@ export class Gacha {
     freePullUsed: boolean,
     silent = false
   ): { token: GachaToken; egg: BirdView | null; barnFull: boolean } {
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const farm = readFarm(this.database, this.farmId);
     this.database
       .update(farms)
       .set({ landTokensCents: farm.landTokensCents + LAND.PER_GACHA_ROLL })
@@ -200,7 +213,10 @@ export class Gacha {
       .run();
 
     const token = weightedPick(this.rng, GACHA_WEIGHTS);
-    this.database.insert(gachaTokens).values({ farmId: this.farmId, token, rolledDay: today }).run();
+    this.database
+      .insert(gachaTokens)
+      .values({ farmId: this.farmId, token, rolledDay: today })
+      .run();
 
     // The mystery egg — Purple and Gold only since round 23 (Blue's
     // sub-starter body was filling barns the breeding pen should fill).
@@ -263,18 +279,27 @@ export class Gacha {
         // conservation invariant refuses.
         lt: silent ? undefined : LAND.PER_GACHA_ROLL,
         message:
-          `rolled the gacha${freePullUsed ? " (free pull)" : price > 0 ? ` (${price} GP)` : " (bundle)"}` +
+          `rolled the gacha${howPaid(freePullUsed, price)}` +
           ` — ${token} token` +
           (silent ? "" : `, +${fmtLt(LAND.PER_GACHA_ROLL)} LT`) +
-          (egg ? ` — a mystery egg dropped!` : barnFull ? ` — egg forfeit, barn full` : ""),
-        data: { token, price, free: freePullUsed, land: LAND.PER_GACHA_ROLL, egg: egg?.name ?? null },
+          eggNews(egg, barnFull),
+        data: {
+          token,
+          price,
+          free: freePullUsed,
+          land: LAND.PER_GACHA_ROLL,
+          egg: egg?.name ?? null,
+        },
       });
     }
     return { token, egg, barnFull };
   }
 
   collection(): Record<GachaToken, number> {
-    const counts = Object.fromEntries(GACHA_TOKENS.map((t) => [t, 0])) as Record<GachaToken, number>;
+    const counts = Object.fromEntries(GACHA_TOKENS.map((t) => [t, 0])) as Record<
+      GachaToken,
+      number
+    >;
     for (const row of this.database
       .select()
       .from(gachaTokens)

@@ -58,9 +58,7 @@ export interface BladeIntent {
  */
 function parseIntent(notation: string): BladeIntent {
   const parts = notation.split(/\s*(>+)\s*/);
-  const order = parts
-    .filter((_, i) => i % 2 === 0)
-    .map((s) => s.trim().toLowerCase() as StatName);
+  const order = parts.filter((_, i) => i % 2 === 0).map((s) => s.trim().toLowerCase() as StatName);
   const gaps = parts.filter((_, i) => i % 2 === 1).map((s) => s.length);
   for (const s of order) {
     if (!(STAT_NAMES as readonly string[]).includes(s)) {

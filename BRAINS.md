@@ -1,6 +1,6 @@
 # Brains: running the stables on a local model
 
-A running log of what we hit putting language models behind the bot stables, and what it costs in seconds. Companion to `PERFORMANCE.md`, which owns the engine's speed; this file owns the *inference* side and the design findings that came with it.
+A running log of what we hit putting language models behind the bot stables, and what it costs in seconds. Companion to `PERFORMANCE.md`, which owns the engine's speed; this file owns the _inference_ side and the design findings that came with it.
 
 Two rules, same as that file: **numbers come from a run, not from an argument**, and the method is written down beside the number so a later run can be compared to it honestly.
 
@@ -21,21 +21,21 @@ bun run brain-bench --farm=bot-1                                   # where the s
 
 ### A game-day, with and without a brain
 
-| Run | Days | s/day | Notes |
-|---|---|---|---|
-| Scripted only | 92 | **0.90** | 5.11 ms/fight · 7.29 ms/entry |
-| One llm barn | 7 | **13.74** | 18 of 19 stables still scripted |
+| Run           | Days | s/day     | Notes                           |
+| ------------- | ---- | --------- | ------------------------------- |
+| Scripted only | 92   | **0.90**  | 5.11 ms/fight · 7.29 ms/entry   |
+| One llm barn  | 7    | **13.74** | 18 of 19 stables still scripted |
 
 **One barn's brain costs ~12.8 s/day** — about **fourteen times the entire rest of the day's work**, engine, card, championships and all. The engine is not the cost any more and will not be again. Every speed question from here is an inference question.
 
 ### Concurrency: four barns cost twice one barn, not four times
 
-| llm barns | s/day | vs. 1 barn |
-|---|---|---|
-| 1 | 13.74 | — |
-| 4 | **27.91** | **2.0×** for 4× the work |
+| llm barns | s/day     | vs. 1 barn               |
+| --------- | --------- | ------------------------ |
+| 1         | 13.74     | —                        |
+| 4         | **27.91** | **2.0×** for 4× the work |
 
-**Four times the barns for twice the wall clock.** The fan-out in `collectProposals` is real parallelism, not a queue: Ollama batches the concurrent requests, and because a barn-day is ~90% *reading*, and reading batches well on a GPU, the marginal barn is far cheaper than the first.
+**Four times the barns for twice the wall clock.** The fan-out in `collectProposals` is real parallelism, not a queue: Ollama batches the concurrent requests, and because a barn-day is ~90% _reading_, and reading batches well on a GPU, the marginal barn is far cheaper than the first.
 
 Marginal cost per extra barn: **~4.7 s**, against ~13.7 s for the first one. The staggered replies make the batching visible — four calls issued together came back at 4.4 s, 24.7 s, 27.8 s, 30.9 s.
 
@@ -45,11 +45,11 @@ And with brains on, the engine has left the chart entirely: **inference was 98% 
 
 ### Where those seconds go (`bun run brain-bench`)
 
-| Phase | Cold | Warm |
-|---|---|---|
-| Model load | **5,971 ms** | **121 ms** |
+| Phase       | Cold                           | Warm                             |
+| ----------- | ------------------------------ | -------------------------------- |
+| Model load  | **5,971 ms**                   | **121 ms**                       |
 | Prompt eval | 4,550 ms (870 tok, ~191 tok/s) | 5,268 ms (1,086 tok, ~206 tok/s) |
-| Generation | 177 ms (5 tok) | 180 ms (5 tok) |
+| Generation  | 177 ms (5 tok)                 | 180 ms (5 tok)                   |
 
 Two things fall straight out:
 
@@ -58,10 +58,10 @@ Two things fall straight out:
 
 ### What the digest actually saves
 
-| Barn | Birds | Raw `BotView` | Digest | Ratio |
-|---|---|---|---|---|
-| bot-1 (Sabungero Syndicate) | 19 | ~5,900 tok | **692 tok** | 8.5× |
-| bot-14 (Sugalan Social Club) | 100 | ~24,500 tok | **866 tok** | 28.3× |
+| Barn                         | Birds | Raw `BotView` | Digest      | Ratio |
+| ---------------------------- | ----- | ------------- | ----------- | ----- |
+| bot-1 (Sabungero Syndicate)  | 19    | ~5,900 tok    | **692 tok** | 8.5×  |
+| bot-14 (Sugalan Social Club) | 100   | ~24,500 tok   | **866 tok** | 28.3× |
 
 **The view grows with the barn; the digest barely does.** Five times the birds costs 174 more tokens, because `LIMITS` caps each list and the caps are what make the cost of a barn-day independent of how rich the stable got. A world where every stable ends at a hundred birds costs the same to think about as one where they end at twenty.
 
@@ -75,25 +75,25 @@ Phase 1's brain was a function the sim called. Phase 2 moves it into a **Rivet A
 
 **The gate run:** a full game-week, four barns, every decision through actors — days 66–72 of the seed-1 world.
 
-| | Result |
-|---|---|
-| Actor calls | 28, **0 failures** |
-| Doctor | 0 warnings · **0 invariant failures** |
-| Careers | all four barns: 7 days played, read back from durable state |
-| Wall clock | 42.9 s/day (a much richer world than the phase-1 test: 117–289 fights/day) |
-| Actor overhead | ≈ none — 1 barn direct 13.7 s/day (phase 1) vs ~11 s/day through an actor |
+|                | Result                                                                     |
+| -------------- | -------------------------------------------------------------------------- |
+| Actor calls    | 28, **0 failures**                                                         |
+| Doctor         | 0 warnings · **0 invariant failures**                                      |
+| Careers        | all four barns: 7 days played, read back from durable state                |
+| Wall clock     | 42.9 s/day (a much richer world than the phase-1 test: 117–289 fights/day) |
+| Actor overhead | ≈ none — 1 barn direct 13.7 s/day (phase 1) vs ~11 s/day through an actor  |
 
 **What `bun add rivetkit` actually installs.** The entire Rivet Engine — a native Rust binary that self-starts on `127.0.0.1:6420`, keeps its state in `~/.rivetkit/var/engine/db`, and **outlives the process that spawned it** (it is a daemon; `registry.shutdown()` drains your envoy but leaves the engine running). "Self-hosted agent infra" turned out to mean one package install and zero configuration.
 
-**The career is the demo.** A barn actor's state is what the barn knows about *itself* — days played, actions proposed and dropped, seconds spent thinking — never game state, which the world database owns alone. Measured surviving: a sim process restart (2 → 4 days played across two runs), and then a full engine-daemon restart (state reloaded from disk, career continued). The mailbox outlives the mailman, the letters, and the post office being rebuilt.
+**The career is the demo.** A barn actor's state is what the barn knows about _itself_ — days played, actions proposed and dropped, seconds spent thinking — never game state, which the world database owns alone. Measured surviving: a sim process restart (2 → 4 days played across two runs), and then a full engine-daemon restart (state reloaded from disk, career continued). The mailbox outlives the mailman, the letters, and the post office being rebuilt.
 
 ### Field notes, phase 2
 
-1. **`start()` vs `startAndWait()` — the gap wedges actors forever.** `registry.start()` returns before the envoy registers with the engine. An actor whose first message arrives in that gap gets *created* but bound to no pool — and because actor records are durable, it stays unstartable in every later run. Durable state means durable mistakes: in a stateless system a botched create vanishes at restart; here it was faithfully preserved. (Second lesson, same shape: deleting the engine's RocksDB store while a live daemon held it open let the daemon's shutdown flush resurrect the corruption. Kill the process, *then* clear the store.)
-2. **The rebind window: reused actors bounce, fresh ones don't.** An actor created by a previous sim process stays bound to that process's dead envoy for ~30–40s after a new process registers its own. A `takeTurn` sent in that window fails `no_envoys`; the same actor answers fine a minute later. Fresh actors never hit it. The fix is a retry in `barnDecider` — which is also just what mailing a durable correspondent *is*: a bounced letter gets resent; it does not mean the recipient died.
-3. **A long-lived engine daemon degrades.** After several registry generations (sim runs) against one daemon, old actors stopped rebinding at all — three retries over two minutes, nothing. A daemon restart with the *same* persisted store rebound them on the first retry. Recipe for now: restart the engine between sessions if `no_envoys` persists. Worth raising with the Rivet folks — this is serverful-mode wake-after-owner-drain, exercised harder than a dev loop usually would.
+1. **`start()` vs `startAndWait()` — the gap wedges actors forever.** `registry.start()` returns before the envoy registers with the engine. An actor whose first message arrives in that gap gets _created_ but bound to no pool — and because actor records are durable, it stays unstartable in every later run. Durable state means durable mistakes: in a stateless system a botched create vanishes at restart; here it was faithfully preserved. (Second lesson, same shape: deleting the engine's RocksDB store while a live daemon held it open let the daemon's shutdown flush resurrect the corruption. Kill the process, _then_ clear the store.)
+2. **The rebind window: reused actors bounce, fresh ones don't.** An actor created by a previous sim process stays bound to that process's dead envoy for ~30–40s after a new process registers its own. A `takeTurn` sent in that window fails `no_envoys`; the same actor answers fine a minute later. Fresh actors never hit it. The fix is a retry in `barnDecider` — which is also just what mailing a durable correspondent _is_: a bounced letter gets resent; it does not mean the recipient died.
+3. **A long-lived engine daemon degrades.** After several registry generations (sim runs) against one daemon, old actors stopped rebinding at all — three retries over two minutes, nothing. A daemon restart with the _same_ persisted store rebound them on the first retry. Recipe for now: restart the engine between sessions if `no_envoys` persists. Worth raising with the Rivet folks — this is serverful-mode wake-after-owner-drain, exercised harder than a dev loop usually would.
 4. **The decider seam paid for itself.** `--actors` swaps in a different `BotDecider`; `collectProposals`, the engine, and the tests are untouched. Direct-Ollama vs actor-routed differ in exactly one constructor call, so the A/B stays honest by construction — same discipline as the one-line model swap.
-5. **The failure path costs 3× the success path.** A wedged barn burned ~30 s/day (the engine's ready-timeout) to accomplish nothing; a healthy one thinks for ~11 s. Budgets should assume failures are *slower* than successes, not free.
+5. **The failure path costs 3× the success path.** A wedged barn burned ~30 s/day (the engine's ready-timeout) to accomplish nothing; a healthy one thinks for ~11 s. Budgets should assume failures are _slower_ than successes, not free.
 
 ### Snapshots: skip the deterministic runway (Zane's idea)
 
@@ -110,7 +110,7 @@ bun run simulate 7 --from=data/snapshots/day48-seed1.db --brain=qwen3:14b --llm=
 
 ## The 14-day run, and the paper trail (`brain_log`)
 
-The decisions used to print to the terminal and vanish. Now every brains-on run writes a **`brain_log`** row per barn per game-day — brief size, everything proposed, everything dropped with reasons, decide time — so a long run can be *studied*: which decisions followed which context. (Telemetry like `sim_timings`; `worldhash` skips it.)
+The decisions used to print to the terminal and vanish. Now every brains-on run writes a **`brain_log`** row per barn per game-day — brief size, everything proposed, everything dropped with reasons, decide time — so a long run can be _studied_: which decisions followed which context. (Telemetry like `sim_timings`; `worldhash` skips it.)
 
 ```sql
 SELECT day_index, farm_id, brief_tokens, proposed_json FROM brain_log ORDER BY 1;
@@ -118,11 +118,11 @@ SELECT day_index, farm_id, brief_tokens, proposed_json FROM brain_log ORDER BY 1
 
 **The run:** 14 game-days × 4 barns, forked from the day-48 snapshot, all decisions through actors. 56 actor calls, **0 failures** (fresh keys + fresh daemon + the retry — the reliability recipe holds). 8:16 wall clock, 34.7 s/day of it brains. 0 warnings, 0 invariant failures. Aggregates: mean brief **590 tokens**, mean decide **21.8 s**, 258 actions proposed, 22 dropped — every single drop the same known gap (`enter` with no bird; the per-verb `oneOf` schema fix is still untried and is now measurably the #1 quality lever).
 
-**The finding — parity with the scripted bots.** At the day-48 fork the four stables ranked **4, 5, 7, 8** of 19 on GP; after two llm-played weeks they rank **4, 5, 6, 7**, and their GP gains (+10.3k–12.6k) sit inside the scripted pack's range. Unlike phase 1's caveat-laden rank (a rich barn plus one llm week), this is a clean read: identical scripted history for all 19, then 14 days of model play. **A general 14B holding position against purpose-written TS logic at its own game — nobody taught it the meta; it read a 15-line system prompt.** The next honest question is whether it can *gain* ground (strategy, memory, `tune` — phase 3 territory), and `brain_log` is the instrument that will answer it.
+**The finding — parity with the scripted bots.** At the day-48 fork the four stables ranked **4, 5, 7, 8** of 19 on GP; after two llm-played weeks they rank **4, 5, 6, 7**, and their GP gains (+10.3k–12.6k) sit inside the scripted pack's range. Unlike phase 1's caveat-laden rank (a rich barn plus one llm week), this is a clean read: identical scripted history for all 19, then 14 days of model play. **A general 14B holding position against purpose-written TS logic at its own game — nobody taught it the meta; it read a 15-line system prompt.** The next honest question is whether it can _gain_ ground (strategy, memory, `tune` — phase 3 territory), and `brain_log` is the instrument that will answer it.
 
 ## Phase 3: `tune` — reaching into a running world
 
-The barn's durable state grew its first *strategy*: **standing orders**, set by a second action on the actor, folded into the next morning's prompt (after the house rules, marked as outranking them). `bun run tune <farm> "<orders>"` from any terminal, any time — including while a sim is mid-run in another one.
+The barn's durable state grew its first _strategy_: **standing orders**, set by a second action on the actor, folded into the next morning's prompt (after the house rules, marked as outranking them). `bun run tune <farm> "<orders>"` from any terminal, any time — including while a sim is mid-run in another one.
 
 **The live demo, measured.** During an 8-day run, after day 51's turn, from a second process:
 
@@ -132,15 +132,15 @@ bun run tune bot-3 "STOP entering fights entirely. Do not use the enter action a
 
 The world never paused, nothing restarted, and `brain_log` shows the break exactly where the tune landed:
 
-| bot-3's day | 49 | 50 | 51 | ← tune → | 52 | 53 | 54 | 55 |
-|---|---|---|---|---|---|---|---|---|
-| `enter` actions | 3 | 3 | 3 | | **0** | **0** | **0** | **0** |
+| bot-3's day     | 49  | 50  | 51  | ← tune → | 52    | 53    | 54    | 55    |
+| --------------- | --- | --- | --- | -------- | ----- | ----- | ----- | ----- |
+| `enter` actions | 3   | 3   | 3   |          | **0** | **0** | **0** | **0** |
 
-The mid-run call bound on the **first attempt** — the actor was live on the sim's envoy, so no rebind window. (Tuning a *cold* barn after its sim exits is the flaky path — it walks straight into the rebind window and, under an aged daemon, the no-rebind bug. Prefer tuning live worlds; restart the daemon otherwise.)
+The mid-run call bound on the **first attempt** — the actor was live on the sim's envoy, so no rebind window. (Tuning a _cold_ barn after its sim exits is the flaky path — it walks straight into the rebind window and, under an aged daemon, the no-rebind bug. Prefer tuning live worlds; restart the daemon otherwise.)
 
-This is the moment the sim stops being a batch job: nineteen barns with different standing orders are nineteen *different players*, and an operator — or another agent — can coach any of them mid-season without touching the engine.
+This is the moment the sim stops being a batch job: nineteen barns with different standing orders are nineteen _different players_, and an operator — or another agent — can coach any of them mid-season without touching the engine.
 
-**Same run: the per-verb schema paid off in full.** `RESPONSE_SCHEMA` became an `anyOf` with one branch per verb, so "`bird` is required when `do` is `enter`" is finally sayable — that whole failure class became *unrepresentable at generation time* instead of dropped at translation time. The 14-day run dropped 22 of 258 actions, every one a birdless `enter`; this run: **32 calls, 152 proposed, 0 dropped.** The #1 measured quality lever, closed by making the invalid shape impossible to emit.
+**Same run: the per-verb schema paid off in full.** `RESPONSE_SCHEMA` became an `anyOf` with one branch per verb, so "`bird` is required when `do` is `enter`" is finally sayable — that whole failure class became _unrepresentable at generation time_ instead of dropped at translation time. The 14-day run dropped 22 of 258 actions, every one a birdless `enter`; this run: **32 calls, 152 proposed, 0 dropped.** The #1 measured quality lever, closed by making the invalid shape impossible to emit.
 
 ## Phase 4: the full fleet, and the night the world fell over
 
@@ -150,24 +150,24 @@ Phase 4's design splits skill into two loops: the **player** (a local model, in 
 
 The first full-fleet week (qwen3:14b, days 57–63) died at its 30-minute cap on the final day, and taught more by failing than a clean run would have:
 
-1. **The 64 KB letter slot.** bot-14 — a whale sitting on a 100-bird barn — bounced out of *every single day* with `incoming_too_long`. The raw `BotView` crosses the wire to the actor (the digest happens inside, in the decider), and a 100-bird view is ~100 KB against rivetkit's default 64 KB incoming-message limit. This failure is retry-proof: the payload is the same size every attempt. **Fix:** `maxIncomingMessageSize: 8 MB` on the registry. The lesson generalizes: the digest saved *inference* cost, but the un-digested view still had to fit through the actor's front door.
+1. **The 64 KB letter slot.** bot-14 — a whale sitting on a 100-bird barn — bounced out of _every single day_ with `incoming_too_long`. The raw `BotView` crosses the wire to the actor (the digest happens inside, in the decider), and a 100-bird view is ~100 KB against rivetkit's default 64 KB incoming-message limit. This failure is retry-proof: the payload is the same size every attempt. **Fix:** `maxIncomingMessageSize: 8 MB` on the registry. The lesson generalizes: the digest saved _inference_ cost, but the un-digested view still had to fit through the actor's front door.
 2. **The wake stampede.** Barns sleep between game-days; every morning all 19 wake at once on a machine Ollama has already pinned. The engine gives an actor 5 s to answer its wake signal — and on days 59–60 that deadline missed en masse (fleet collapsed to 8/19 answering, all wake-signal or cascading HTTP timeouts, actor generations climbing 4→6 as they thrashed). **Fix:** `noSleep: true` — a barn's whole life is one sim run; the envoy drain retires it — plus "wake signal" in the retry regex for the stragglers.
 
 The run itself became the **baseline arm by accident** (the launch command dropped `--personas`; the actors confirmed "standing orders: none"). Baselines are cheap to acquire when you make them by mistake.
 
 ### qwen3:30b-a3b: the MoE pays out double
 
-| Model | Disk | Warm decode | 19-barn fleet | s/day |
-|---|---|---|---|---|
-| qwen3:14b (dense) | 9.3 GB | 28.0 tok/s | 19/19 after timeout fix | **102.8** |
-| qwen3:30b-a3b (MoE) | 18.6 GB | **63.7 tok/s** | 38 calls, **0 failures** | **51.3** |
+| Model               | Disk    | Warm decode    | 19-barn fleet            | s/day     |
+| ------------------- | ------- | -------------- | ------------------------ | --------- |
+| qwen3:14b (dense)   | 9.3 GB  | 28.0 tok/s     | 19/19 after timeout fix  | **102.8** |
+| qwen3:30b-a3b (MoE) | 18.6 GB | **63.7 tok/s** | 38 calls, **0 failures** | **51.3**  |
 
-Twice the parameters on disk, half the wall clock: a mixture-of-experts model stores 30B weights but activates ~3B per token, so it *reads* like a big model and *streams* like a small one — decode is bandwidth ÷ **active** bytes, not total bytes. Prefill is nearly free warm (KV-cached). A full-fleet 92-day world drops from ~2.6 hours to **~1.3 hours**.
+Twice the parameters on disk, half the wall clock: a mixture-of-experts model stores 30B weights but activates ~3B per token, so it _reads_ like a big model and _streams_ like a small one — decode is bandwidth ÷ **active** bytes, not total bytes. Prefill is nearly free warm (KV-cached). A full-fleet 92-day world drops from ~2.6 hours to **~1.3 hours**.
 
 ### First persona fingerprints (2-day burst, day 49–50)
 
 - The world's only two `buy_land` proposals came from bot-11 and bot-13 — **the two landlords**. bot-13 also staked.
-- bot-14, a whale with 11,405 GP, rolled the gacha. bot-10, a whale with **159 GP**, thought for 25–55 s and returned an empty day — which is the creed ("buy while GP stays above the reserve") being read *correctly enough to abstain*. Orders are goals, and a broke whale honoring its reserve is the goal working.
+- bot-14, a whale with 11,405 GP, rolled the gacha. bot-10, a whale with **159 GP**, thought for 25–55 s and returned an empty day — which is the creed ("buy while GP stays above the reserve") being read _correctly enough to abstain_. Orders are goals, and a broke whale honoring its reserve is the goal working.
 
 ## The 10v10 experiments (round 53–55): coaching, measured three times
 
@@ -175,14 +175,14 @@ Three back-to-back 91-day worlds, 10 scripted vs 10 llm barns
 (qwen3:30b-a3b), coach sessions at days 28/56, full records in `runs/`.
 Each experiment started with everything the previous one taught.
 
-| Measure | Exp1 | Exp2 | Exp3 | Exp4 | Exp5 | Exp6 | Exp7 | Exp8 | Exp9 | Exp10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| llm avg net worth | 61,343 | 69,905 | 70,419 | 65,542 | 53,235 | 50,129 | 54,078 | 50,482 | **99,198** | 96,010 |
-| llm/scripted ratio | 0.48 | 0.58 | 0.59 | 0.52 | 0.43 | 0.40 | 0.44 | 0.38 | **0.85** | 0.82 (replication) |
-| llm crowns | 0 | 6 | 12 — every barn ≥1 | 6 | 7 | 6 | 5 | 3 | **22 (17 from bred birds)** | 9 |
-| llm fights | ~1,700 | ~1,780 | 1,711 | 2,460 | 1,053 | 1,253 | 1,978 | 2,216 | 2,674 | 5,401 |
-| llm juvenile fights | 0 | 0 | 0 | 0 | 0 | 0 | 568 | 969 + the first juvenile CHAMPION | **1,446 + 10 juvenile crowns** | 1,867 |
-| llm bred / end actives | ~0 / low | — | — | — | 87/87† | 57/68 | 46/17 | 252 / 167 | 153 / 46 | 89 / 44 |
+| Measure                | Exp1     | Exp2   | Exp3               | Exp4   | Exp5   | Exp6   | Exp7   | Exp8                              | Exp9                           | Exp10              |
+| ---------------------- | -------- | ------ | ------------------ | ------ | ------ | ------ | ------ | --------------------------------- | ------------------------------ | ------------------ |
+| llm avg net worth      | 61,343   | 69,905 | 70,419             | 65,542 | 53,235 | 50,129 | 54,078 | 50,482                            | **99,198**                     | 96,010             |
+| llm/scripted ratio     | 0.48     | 0.58   | 0.59               | 0.52   | 0.43   | 0.40   | 0.44   | 0.38                              | **0.85**                       | 0.82 (replication) |
+| llm crowns             | 0        | 6      | 12 — every barn ≥1 | 6      | 7      | 6      | 5      | 3                                 | **22 (17 from bred birds)**    | 9                  |
+| llm fights             | ~1,700   | ~1,780 | 1,711              | 2,460  | 1,053  | 1,253  | 1,978  | 2,216                             | 2,674                          | 5,401              |
+| llm juvenile fights    | 0        | 0      | 0                  | 0      | 0      | 0      | 568    | 969 + the first juvenile CHAMPION | **1,446 + 10 juvenile crowns** | 1,867              |
+| llm bred / end actives | ~0 / low | —      | —                  | —      | 87/87† | 57/68  | 46/17  | 252 / 167                         | 153 / 46                       | 89 / 44            |
 
 † exp5 attempt figures; see its postmortem.
 
@@ -318,13 +318,13 @@ day with actor orders intact — durable state doing exactly what it's for.
 
 ### 1. It was never a context-window problem
 
-The digest exists because a `BotView` is "too big to hand a model" — that was the working assumption, and measured, **it is wrong as stated.** 24,500 tokens fits comfortably in this model's window. It is not a *limit* problem, it is a *time* problem: reading it costs two minutes at 200 tok/s.
+The digest exists because a `BotView` is "too big to hand a model" — that was the working assumption, and measured, **it is wrong as stated.** 24,500 tokens fits comfortably in this model's window. It is not a _limit_ problem, it is a _time_ problem: reading it costs two minutes at 200 tok/s.
 
 Worth being precise about, because the two have different fixes. A limit problem is solved by a bigger window or a bigger model. A time problem is solved by sending less — and sending less is cheap, portable, and helps every model including the ones with room to spare.
 
 ### 2. Prompt-eval cost is the thing to optimize, and it is barely started
 
-Everything in `digest()` today is *selection* — take the top 12 fighters, the top 6 hens. Nothing yet is *compression*. Obvious next moves, none of them tried:
+Everything in `digest()` today is _selection_ — take the top 12 fighters, the top 6 hens. Nothing yet is _compression_. Obvious next moves, none of them tried:
 
 - **The brief repeats its own keys.** JSON pays for `"bestBlade"` once per bird; a header-plus-rows table pays once per brief. Probably 30–40% off the fighters block alone.
 - **Most of the brief does not change between days.** Farm identity, barn size, the stud list. If the provider ever caches prompt prefixes, ordering the brief stable-part-first turns most of the read into a cache hit — and the ordering is free to do now, before it pays.
@@ -336,7 +336,7 @@ Given a well-formed brief it proposes 8–10 sensible actions: check in, roll th
 
 What broke it was **an ambiguous namespace, and that was our fault, not its.** Bird handles were `b1, b2, b3…` and the five blade formats in this game are named `b1`–`b5`. The brief handed the model `"format":"b1"` and `"id":"b1"` in the same JSON object.
 
-On an opening-week day when every bird was still an egg and the fighters list was empty, it reached for the only `b` tokens on the page and proposed entering the *formats* as birds. Five dropped actions reading `unknown bird b1` — with a `b1` sitting right there in the prompt.
+On an opening-week day when every bird was still an egg and the fighters list was empty, it reached for the only `b` tokens on the page and proposed entering the _formats_ as birds. Five dropped actions reading `unknown bird b1` — with a `b1` sitting right there in the prompt.
 
 **An identifier invented for a prompt must not share a namespace with one the domain already uses.** Handles are `#1, #2` now. Zero handle errors since.
 
@@ -346,7 +346,7 @@ The same incident says something more general. Asked to act with an empty `fight
 
 ### 5. A schema constrains shape, never sense
 
-Ollama's `format` parameter genuinely works — every reply was valid JSON matching the schema, with no parsing and no retries. But a flat schema cannot say *"`bird` is required when `do` is `enter`"*, so three actions arrived as well-formed `enter`s with no bird at all. A per-verb `oneOf` would close it. **Structured output removes the parsing problem completely and the correctness problem not at all.**
+Ollama's `format` parameter genuinely works — every reply was valid JSON matching the schema, with no parsing and no retries. But a flat schema cannot say _"`bird` is required when `do` is `enter`"_, so three actions arrived as well-formed `enter`s with no bird at all. A per-verb `oneOf` would close it. **Structured output removes the parsing problem completely and the correctness problem not at all.**
 
 ### 6. The database decided the architecture
 
@@ -370,7 +370,7 @@ Actions are sorted into a canonical sequence before being applied. A model that 
 
 ## Open questions
 
-- ✅ **Does concurrency help?** Yes — 4 barns cost 2.0× one barn, not 4×. Measured above. What is *not* measured is where it stops: `OLLAMA_NUM_PARALLEL` has a default ceiling, and somewhere past it the batch turns into a queue and the marginal barn goes back to full price. Finding that knee is the next measurement, and it sets the real cost of a full llm world.
+- ✅ **Does concurrency help?** Yes — 4 barns cost 2.0× one barn, not 4×. Measured above. What is _not_ measured is where it stops: `OLLAMA_NUM_PARALLEL` has a default ceiling, and somewhere past it the batch turns into a queue and the marginal barn goes back to full price. Finding that knee is the next measurement, and it sets the real cost of a full llm world.
 - **How small can the model go?** 14B was chosen to get it working, not because the task needs it. Choosing one action from a typed menu given a brief may well be an 8B task, and 8B halves the read.
 - **Does a bigger model play better, or just slower?** 32B and 70B both fit in 64 GB. Untested.
 - **What does a barn's memory do to the brief?** Nothing carries between days yet. Memory and beliefs are the point of a per-barn actor, and they are also more tokens to read every single day — the first real tension between playing well and playing cheaply.
@@ -382,5 +382,5 @@ Actions are sorted into a canonical sequence before being applied. A model that 
 
 - `bun run brain-bench [--model=] [--farm=] [--db=]` reads the newest sim database, prints raw-vs-digest size, and makes one real call to report Ollama's own load / prompt-eval / generation split. It writes nothing.
 - The sim's `TIMING` block grew a **`brains`** line, reported separately from `tickMs` on purpose: folding inference latency into the engine's ms/fight would make every number in `PERFORMANCE.md` incomparable the day a model arrived.
-- Token counts are `chars / 3.5`, a rule of thumb for dense JSON. Rough, deliberately — the interesting figure is the *ratio*, which survives any reasonable estimate.
+- Token counts are `chars / 3.5`, a rule of thumb for dense JSON. Rough, deliberately — the interesting figure is the _ratio_, which survives any reasonable estimate.
 - Barn size varies enormously by house style (19 birds to 100 in the same world), so quote which farm a measurement came from. `bot-1` is a mid-sized stable and `bot-14` is the largest.

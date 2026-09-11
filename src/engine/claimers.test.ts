@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
 import { birds, claims, farms, gameState } from "@/db/schema";
 import { seedGame, seedStarterFlock } from "@/db/seed-data";
-import { CLAIMER, ECONOMY, ENTRY_FEES, STAKER_FLOWS, feeFor, stakePerFight } from "./config";
+import { CLAIMER, ECONOMY, STAKER_FLOWS, feeFor, stakePerFight } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { Lobbies, type LobbySpec } from "./lobbies";
@@ -68,7 +68,9 @@ describe("carding a claimer", () => {
     expect(() => w.dev.enter(alab.id, { ...spec, price: 123 })).toThrow(/claiming tag/);
     // Round 20: the juvenile door now checks the age first — Alab is 2, so
     // it never reaches the class rule. Kidlat (1) does.
-    expect(() => w.dev.enter(alab.id, { ...spec, mode: "juvenile" as never })).toThrow(/discovery year only/);
+    expect(() => w.dev.enter(alab.id, { ...spec, mode: "juvenile" as never })).toThrow(
+      /discovery year only/
+    );
     // Juveniles CAN card a claimer since round 23 — on their own, cheaper
     // ladder. A grown tag isn't one of their rungs.
     // ⚠ ROUND 42 MERGED THE TWO TAG LADDERS: a juvenile prices on the SAME rungs
@@ -88,7 +90,10 @@ describe("carding a claimer", () => {
     const juvenileFee: number = feeFor("juvenile", "claimer", spec.price!);
     expect(2 * juvenileFee).toBe(feeAt(spec.price!));
     expect(() =>
-      w.dev.enter(byName(w.devFlock, "Kidlat").id, onCard(w.db, { mode: "juvenile", classType: "claimer" }))
+      w.dev.enter(
+        byName(w.devFlock, "Kidlat").id,
+        onCard(w.db, { mode: "juvenile", classType: "claimer" })
+      )
     ).not.toThrow();
     // An open entry takes no claims.
     const open = w.dev.enter(alab.id, onCard(w.db, { mode: "real", classType: "open" }));
@@ -124,7 +129,13 @@ describe("post time (claims settle after the fights)", () => {
     const card = tick.card.find((l) => l.fights.length > 0)!;
     expect(card.fights.length).toBe(1);
     expect(card.claims).toEqual([
-      { bird: "Alab", from: "Bukidnon Farms", to: "Rival Gamefarm", price: TAG, losingClaimsRefunded: 0 },
+      {
+        bird: "Alab",
+        from: "Bukidnon Farms",
+        to: "Rival Gamefarm",
+        price: TAG,
+        losingClaimsRefunded: 0,
+      },
     ]);
     // The bird now lives in the rival barn — with the record it just earned.
     expect(owner(w.db, devAlab.id)).toBe(w.rivalId);
@@ -176,7 +187,8 @@ describe("post time (claims settle after the fights)", () => {
     const TAG = spec.price!;
     const { lobby } = w.dev.enter(devAlab.id, spec, 33);
     w.rival.enter("rival-6", spec); // an opponent, so the fight actually runs
-    const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
+    const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!
+      .stakerPoolCents;
     w.rival.claim(lobby.entries[0].entryId);
     w.game.tickDay();
     const rake = Math.round(TAG * 100 * STAKER_FLOWS.CLAIM_RAKE);

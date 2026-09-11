@@ -28,13 +28,13 @@ loop is finished.
 
 `bun run balance figure figuregrade --runs=4000` after the close-loss change:
 
-| Observation | Result |
-| --- | --- |
-| +100 points to every hidden stat | +29.8 to +39.4 mean figure, depending on blade |
-| B specialist at home vs fixed B+ company | 22.3 |
-| B+ specialist at home | 40.9 |
-| A specialist at home | 59.4 |
-| S+ specialist at home | 110.0 |
+| Observation                              | Result                                         |
+| ---------------------------------------- | ---------------------------------------------- |
+| +100 points to every hidden stat         | +29.8 to +39.4 mean figure, depending on blade |
+| B specialist at home vs fixed B+ company | 22.3                                           |
+| B+ specialist at home                    | 40.9                                           |
+| A specialist at home                     | 59.4                                           |
+| S+ specialist at home                    | 110.0                                          |
 
 The grade table is a controlled target-dummy calibration, not a promise about
 live cards. Live figures also contain company, result, weather, and specialist
@@ -45,15 +45,15 @@ shape.
 All paths are repository-relative and can be inspected with `bun run doctor
 <path>` or served through `bun dev:sim` after selecting the newest file.
 
-| Database | Purpose |
-| --- | --- |
-| `data/sim-20260806-0241.db` | Early population-supply check |
-| `data/sim-20260806-0302.db` | Follow-up population/discovery check |
-| `data/sim-20260806-0313.db` | First 91-day baseline |
-| `data/sim-20260806-season-a.db` through `season-c.db` | Three discovery baseline worlds |
+| Database                                                    | Purpose                                          |
+| ----------------------------------------------------------- | ------------------------------------------------ |
+| `data/sim-20260806-0241.db`                                 | Early population-supply check                    |
+| `data/sim-20260806-0302.db`                                 | Follow-up population/discovery check             |
+| `data/sim-20260806-0313.db`                                 | First 91-day baseline                            |
+| `data/sim-20260806-season-a.db` through `season-c.db`       | Three discovery baseline worlds                  |
 | `data/sim-20260806-end-first-a.db` through `end-first-c.db` | Simulation-only extreme-first exploration trials |
-| `data/sim-20260806-1226.db` | Close-loss Pit Figure validation, 91 days |
-| `data/sim-20260806-1318.db` | Grade-relative scout normalization, 91 days |
+| `data/sim-20260806-1226.db`                                 | Close-loss Pit Figure validation, 91 days        |
+| `data/sim-20260806-1318.db`                                 | Grade-relative scout normalization, 91 days      |
 
 The latest world (`sim-20260806-1318.db`) reached day 91 with 515 birds and
 passed all five Doctor invariants. It recorded 4,648 fights from 5,505 entries;
@@ -61,9 +61,9 @@ passed all five Doctor invariants. It recorded 4,648 fights from 5,505 entries;
 
 ## Discovery: what is proven, and what is not
 
-*Updated after round 29 — the three diagnostic limitations named below have
+_Updated after round 29 — the three diagnostic limitations named below have
 been fixed, and the answer changed once the audit stopped measuring the wrong
-thing.*
+thing._
 
 The original reading here was raw selected-format hits rising 20.7% to 26.2%
 across age buckets, with the caveat that this was **not** proof the scout was
@@ -118,7 +118,7 @@ family (`GHOST_PACE`, `GHOST_FIGURE`, `CLASS_BASE`, `CLASS_DIVISOR`,
   additive fit collapsed 11.9 → 3.5. Home−worst GROWS, 23.8 → 32.0.
 - **Scout accuracy on birds with a real home: 30.5% → 57.5% for mature birds**
   (83.5% on-or-adjacent) against an unmoved 20% baseline, after `SCOUT.
-  OWN_GRADE_STEP` was re-derived (15 → 10) and `OPPONENT_GRADE_STEP` retired
+OWN_GRADE_STEP` was re-derived (15 → 10) and `OPPONENT_GRADE_STEP` retired
   (5 → 0). The scout's constants had been fitted to the figure's OUTPUT, which
   is the same failure round 29 caught — now structurally prevented, because
   `scout.test.ts` pins the derivation.
@@ -273,19 +273,19 @@ juvenile open ran 8.41 birds a lobby against a 7.36 world mean.
 
 **Measured on a fresh 91-day world, 0 warnings and 0 invariant failures:**
 
-| | round 31 | round 32 |
-| --- | --- | --- |
-| broodmare band ever carried | 47% of 154 | **75.9% of 166 settled** |
-| bot covers / hatches | 238 / 501 | **533 / 761** |
-| active / retired birds | 172 / 329 | **341 / 420** |
-| gen 2 vs gen 0 mean stat | +23.4 | **+30.0** |
-| gen 2 vs gen 0 home margin | +3.1 | **+6.9** |
-| mean birds per lobby | 7.36 | **9.94** |
-| unmatched entries | 4.5% | **5.7%** |
-| Majors run / cancelled, field | 29 / 1, 11.0 | **30 / 0, 13.7** |
-| Juvenile Championship field | 10.3 | **14.0** |
-| birds clearing the 10-pt home bar | 53.0% | **57.0%** |
-| clear-home, age 2–3 / age 4+ | 53.4% / 36.3% | **57.9% / 52.7%** |
+|                                   | round 31      | round 32                 |
+| --------------------------------- | ------------- | ------------------------ |
+| broodmare band ever carried       | 47% of 154    | **75.9% of 166 settled** |
+| bot covers / hatches              | 238 / 501     | **533 / 761**            |
+| active / retired birds            | 172 / 329     | **341 / 420**            |
+| gen 2 vs gen 0 mean stat          | +23.4         | **+30.0**                |
+| gen 2 vs gen 0 home margin        | +3.1          | **+6.9**                 |
+| mean birds per lobby              | 7.36          | **9.94**                 |
+| unmatched entries                 | 4.5%          | **5.7%**                 |
+| Majors run / cancelled, field     | 29 / 1, 11.0  | **30 / 0, 13.7**         |
+| Juvenile Championship field       | 10.3          | **14.0**                 |
+| birds clearing the 10-pt home bar | 53.0%         | **57.0%**                |
+| clear-home, age 2–3 / age 4+      | 53.4% / 36.3% | **57.9% / 52.7%**        |
 
 `bun test src` 343 → **357 pass / 0 fail** (17,468 assertions across 25 files),
 `bunx tsc --noEmit` and `bun run build` clean, `bun run balance` unchanged at
@@ -314,12 +314,12 @@ them.
 
 ## Recommended next steps
 
-*Re-ordered after round 32. The group stage stays at item 1 — round 32 raised
+_Re-ordered after round 32. The group stage stays at item 1 — round 32 raised
 the stakes on it rather than lowering them, since unmatched ticked 4.5% → 5.7%
 on a much larger population. Newly placed: Thursday opens up (item 2, scoped
 and approved), +5 bot farms (item 3, a one-liner that needs its own baseline),
 and selection pressure vs. band utilization joins the standing watch at the
-bottom.*
+bottom._
 
 1. **Multi-fight lobbies — the group stage.** The remaining ~5.7% unmatched is
    the odd bird out, which is structural: unbounded lobbies make parity a coin
@@ -390,11 +390,11 @@ bottom.*
     that trades one against the other, and nothing yet locates its peak. Watch
     BOTH columns of the BLOODLINES ladder whenever it or `breedDrive` moves.
 12. **Standing watch: same-barn stranding, now that nothing caps it.** Dropping
-   the capacity dropped the round-17 per-farm seating cap with it (it was
-   `capacity / 2`), and it was not replaced — a barn that floods one key
-   strands its own surplus and is refunded. 25 birds over 91 days, printed
-   every run by LOBBY FILL. If it climbs, it needs a cap that works without a
-   capacity.
+    the capacity dropped the round-17 per-farm seating cap with it (it was
+    `capacity / 2`), and it was not replaced — a barn that floods one key
+    strands its own surplus and is refunded. 25 birds over 91 days, printed
+    every run by LOBBY FILL. If it climbs, it needs a cap that works without a
+    capacity.
 13. **Standing watch: does shape keep accumulating past generation 2?** The
     ladder shows the first two nests compounding — round 32 read gen 2 at
     **+30.0 mean stat points and +6.9 home margin** over gen 0, up from +23.4
@@ -436,6 +436,7 @@ bottom.*
     are not wrong so much as unsupported. Use `bun run simulate --seed=N`: one
     seed to A/B a change honestly, a spread of seeds before believing any
     delta on the ladder.
+
 16. **Watch: Major cancellations went 0 → 3 while fields GREW (13.7 → 17.0).**
     Every fight in a group banks qualification points separately, so a sweep
     is three points in one night and birds qualify roughly three times faster.
@@ -478,8 +479,8 @@ bottom.*
     `retire` events (round 23 old, four rounds of balance judgement made
     against invented deaths). **Neither was findable by inspection and neither
     would ever have failed a test.** The generalisation, which is now three
-    for three with the two silent GP burns: *when money or an asset changes
-    hands, the thing that finds the bug is a two-sided sum, not a reader.* If
+    for three with the two silent GP burns: _when money or an asset changes
+    hands, the thing that finds the bug is a two-sided sum, not a reader._ If
     a future round adds a place land or GP moves, the question to ask is not
     "is this right" but "what sum would notice if it weren't".
 21. **A doctor line that reads fiction is worse than a missing one.** The
@@ -527,7 +528,7 @@ bottom.*
 27. **A change that makes one number better can close a door somewhere else,
     and only the adoption block will say so.** Round 40's overnight stake sweep
     took idle land 6.7% → 0.5%, and in the same stroke took **studs listed 19
-    of 20 → 4**: a stud seat needs 100 LT *liquid*, the bots' day was ordered to
+    of 20 → 4**: a stud seat needs 100 LT _liquid_, the bots' day was ordered to
     list before staking so they would have it, and the sweep meant they now
     woke up with nothing. Every invariant passed. Every test passed. `quietly`
     ate twenty refusals a day. **The only thing in the whole project that knew

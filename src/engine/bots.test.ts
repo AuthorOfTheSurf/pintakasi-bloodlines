@@ -126,9 +126,19 @@ describe("a bot day", () => {
     const w = world();
     for (let d = 0; d < 14; d++) w.game.tickDay();
     const element = new Map(
-      w.db.select().from(birds).all().map((b) => [b.id, b.element as Element])
+      w.db
+        .select()
+        .from(birds)
+        .all()
+        .map((b) => [b.id, b.element as Element])
     );
-    const dayOf = new Map(w.db.select().from(lobbies).all().map((l) => [l.id, l.dayOpened]));
+    const dayOf = new Map(
+      w.db
+        .select()
+        .from(lobbies)
+        .all()
+        .map((l) => [l.id, l.dayOpened])
+    );
     const entries = w.db.select().from(lobbyEntries).all();
     const timed = entries.filter(
       (e) => element.get(e.birdId) === weatherOfDay(dayOf.get(e.lobbyId)!)
@@ -185,10 +195,20 @@ describe("the scout's blade pick", () => {
     for (let i = 0; i < SCOUT.MIN_READS; i++) {
       // recordFight, not a bare insert — the scout reads the running book now.
       recordFight(w.db, {
-        dayIndex: i, lobbyId: 1, farmId: bird.farmId, birdId: bird.id,
-        mode: "real", format: "b1", opponentBirdId: "ghost", opponentFarmId: "house",
-        opponentName: "Sparring Ghost", side: 0, result: "loss", pitFigure: 50,
-        gpDeltaCents: 0, seed: i,
+        dayIndex: i,
+        lobbyId: 1,
+        farmId: bird.farmId,
+        birdId: bird.id,
+        mode: "real",
+        format: "b1",
+        opponentBirdId: "ghost",
+        opponentFarmId: "house",
+        opponentName: "Sparring Ghost",
+        side: 0,
+        result: "loss",
+        pitFigure: 50,
+        gpDeltaCents: 0,
+        seed: i,
       });
     }
     const explore = () => 0;
@@ -241,8 +261,11 @@ describe("the ladder courage (a bot that declines its own protection)", () => {
     // the most to decline. Unraced, so the scout has no blade opinion either.
     const row = makeBird(w.db, { wins: 0, stakesWins: 0 });
     const bird = new Flock(w.db, w.devId).byId(row.id);
-    const feeOf = (spec: { mode: "juvenile" | "real"; classType: "open" | "maiden" | "nw3" | "claimer"; price?: number }) =>
-      feeFor(spec.mode, spec.classType, spec.price);
+    const feeOf = (spec: {
+      mode: "juvenile" | "real";
+      classType: "open" | "maiden" | "nw3" | "claimer";
+      price?: number;
+    }) => feeFor(spec.mode, spec.classType, spec.price);
 
     // PAIRED BY SEED, which is what makes this a clean read on the knob alone.
     // `pickOffering` spends its rng draws unconditionally and in a fixed order
@@ -300,7 +323,9 @@ describe("the ladder courage (a bot that declines its own protection)", () => {
       const atBlade = cardOfDay(0).filter((k) => k.format === spec.format);
       const chosen = feeFor(spec.mode, spec.classType, spec.price);
       const skipped = atBlade.filter(
-        (k) => k.classType !== "claimer" && k.mode === spec.mode &&
+        (k) =>
+          k.classType !== "claimer" &&
+          k.mode === spec.mode &&
           feeFor(k.mode, k.classType, k.price) > ENTRY_FEES.real.maiden &&
           feeFor(k.mode, k.classType, k.price) < chosen
       );
@@ -448,8 +473,13 @@ describe("the breeding plan", () => {
       age: 4,
       career: { wins: 0, losses: 0 },
       sheet: {
-        agility: 350, sight: 350, stamina: 350, gameness: 350,
-        station: 350, condition: 350, ...sheet,
+        agility: 350,
+        sight: 350,
+        stamina: 350,
+        gameness: 350,
+        station: 350,
+        condition: 350,
+        ...sheet,
       },
       overallGrade: "B+",
       price: 160,
@@ -509,9 +539,7 @@ describe("the breeding plan", () => {
     }
     // Deliberately UNEVEN (see BotProfile.housePair) — an equal split would
     // make every shape equally cheap forever, and scarcity is a price signal.
-    const counts = BREEDING_SHAPES.map(
-      (_, i) => BOT_FARMS.filter((b) => b.housePair === i).length
-    );
+    const counts = BREEDING_SHAPES.map((_, i) => BOT_FARMS.filter((b) => b.housePair === i).length);
     expect(Math.min(...counts)).toBeGreaterThan(0);
   });
 
@@ -526,9 +554,9 @@ describe("the breeding plan", () => {
     // …and the separation it reports is the same arithmetic foalScore prices
     // on, so BREEDING_PLAN.OWN_SHAPE_MIN is a like-for-like bar: (600+600)/2
     // minus (300+300)/2.
-    expect(
-      bestShape({ agility: 600, sight: 600, stamina: 300, gameness: 300 }).separation
-    ).toBe(300);
+    expect(bestShape({ agility: 600, sight: 600, stamina: 300, gameness: 300 }).separation).toBe(
+      300
+    );
   });
 
   test("a fogged sheet reads as flat, never as NaN", () => {
@@ -706,8 +734,12 @@ describe("how deep a barn breeds in a day", () => {
     // A band wide enough that the SHARE binds rather than the band itself —
     // otherwise both barns just cover every hen they own and prove nothing.
     const band = BREEDING_PLAN.MAX_COVERS_PER_DAY + 3;
-    const eager = BOT_FARMS.filter((b) => !b.landAppetite).sort((a, b) => b.breedDrive - a.breedDrive)[0];
-    const idle = BOT_FARMS.filter((b) => !b.landAppetite).sort((a, b) => a.breedDrive - b.breedDrive)[0];
+    const eager = BOT_FARMS.filter((b) => !b.landAppetite).sort(
+      (a, b) => b.breedDrive - a.breedDrive
+    )[0];
+    const idle = BOT_FARMS.filter((b) => !b.landAppetite).sort(
+      (a, b) => a.breedDrive - b.breedDrive
+    )[0];
     expect(eager.breedDrive).toBeGreaterThan(idle.breedDrive * 4); // genuinely different styles
 
     const covered = (bot: (typeof BOT_FARMS)[number]) => {
@@ -798,7 +830,9 @@ describe("the nightly land sweep", () => {
     // were not staked when the pool paid out, so they earn nothing from it.
     expect(paid.stakers).toBe(1);
     const devAfter = w.db.select().from(farms).where(eq(farms.id, devId)).get()!;
-    expect(devAfter.gp * 100 + devAfter.gpCents).toBe(devBefore.gp * 100 + devBefore.gpCents + 10_000);
+    expect(devAfter.gp * 100 + devAfter.gpCents).toBe(
+      devBefore.gp * 100 + devBefore.gpCents + 10_000
+    );
     // Had the sweep gone first, the bot's fresh 90 tokens would have taken 9/10
     // of that pool off the barn that had held its land all day.
     expect(w.db.select().from(farms).where(eq(farms.id, botId)).get()!.stakedLandCents).toBe(0);
@@ -829,9 +863,9 @@ describe("the nightly land sweep", () => {
     expect(allLand(w.db)).toBe(before.total);
     // GP is not involved at all, and the world-level LT proof still closes.
     expectConserved(w.db);
-    expect(diagnose(w.db, ":memory:").invariants.find((i) => i.name === "LT conservation")!.passed).toBe(
-      true
-    );
+    expect(
+      diagnose(w.db, ":memory:").invariants.find((i) => i.name === "LT conservation")!.passed
+    ).toBe(true);
   });
 
   test("a human barn is never swept — its land is its own business", () => {

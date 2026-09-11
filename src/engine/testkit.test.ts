@@ -132,7 +132,11 @@ describe("expectConserved()", () => {
   test("and it actually FAILS on a burn — absolute, not a delta", () => {
     const w = world();
     const victim = w.db.select().from(farms).all()[0];
-    w.db.update(farms).set({ gp: victim.gp - 1 }).where(eq(farms.id, victim.id)).run();
+    w.db
+      .update(farms)
+      .set({ gp: victim.gp - 1 })
+      .where(eq(farms.id, victim.id))
+      .run();
     // The bug the four old helpers could miss: a before/after comparison
     // passes when both sides fall together.
     expect(() => expectConserved(w.db)).toThrow();

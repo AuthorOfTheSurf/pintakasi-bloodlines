@@ -12,7 +12,12 @@ import { mulberry32 } from "./rng";
 function freshGame(seed = 42) {
   const db = createDb(":memory:");
   const fid = seedGame(db, { flock: "legacy" }).farmId;
-  return { db, farmId: fid, breeding: new Breeding(db, fid, mulberry32(seed)), flock: new Flock(db, fid) };
+  return {
+    db,
+    farmId: fid,
+    breeding: new Breeding(db, fid, mulberry32(seed)),
+    flock: new Flock(db, fid),
+  };
 }
 
 // Seed ids: starter-1 Tandang Pula (retired rooster), starter-2 Dalisay
@@ -33,7 +38,12 @@ describe("breed", () => {
     // stud owner — and the pieces sum back to the fee, to the cent. (History:
     // 4/78/78 at round 21's 2.5% staker, 8/76/76 from round 22, this shape
     // since round 45 — the PFL ruling in config's BREED_SPLIT comment.)
-    expect(split).toEqual({ feeGp: 160, stakerPoolCents: 1600, juicePoolCents: 8000, studOwnerCents: 6400 });
+    expect(split).toEqual({
+      feeGp: 160,
+      stakerPoolCents: 1600,
+      juicePoolCents: 8000,
+      studOwnerCents: 6400,
+    });
     expect(split.stakerPoolCents + split.juicePoolCents + split.studOwnerCents).toBe(16000);
     // Own stud: the 64.00 stud share flows straight back — net cost 96 GP.
     const farm = db.select().from(farms).where(eq(farms.id, "farm-1")).get()!;
@@ -45,7 +55,7 @@ describe("breed", () => {
   });
 
   test("child stats stay in bounds and near the parent average", () => {
-    const { db, breeding, flock } = freshGame();
+    const { db, breeding } = freshGame();
     const { egg } = breeding.breed("starter-2", "starter-1");
     // The fog (round 28): the egg's VIEW hides its stats — genetics are
     // asserted against the raw rows, which is also how the engine breeds.
@@ -53,7 +63,14 @@ describe("breed", () => {
     const mother = db.select().from(birds).where(eq(birds.id, "starter-2")).get()!;
     const father = db.select().from(birds).where(eq(birds.id, "starter-1")).get()!;
     expect(egg.agility).toBeNull(); // the view is dark until retirement
-    for (const stat of ["agility", "sight", "stamina", "gameness", "station", "condition"] as const) {
+    for (const stat of [
+      "agility",
+      "sight",
+      "stamina",
+      "gameness",
+      "station",
+      "condition",
+    ] as const) {
       expect(eggRow[stat]).toBeGreaterThanOrEqual(STATS.MIN);
       expect(eggRow[stat]).toBeLessThanOrEqual(STATS.MAX);
       // within variance + max mutation swing of the parent average
@@ -162,10 +179,25 @@ describe("the breeding barn (breeding PvP)", () => {
       w.db
         .insert(birds)
         .values({
-          id, farmId: rivalId, name: id, sex, status: "retired",
-          agility: 600, sight: 600, stamina: 600, gameness: 600, station: 600, condition: 600,
-          element: "Wood", halfStars: 6, birthWeek: -6, birthDay: -42,
-          retiredBy: "manual", retiredWeek: -1, motherId: null, fatherId: null,
+          id,
+          farmId: rivalId,
+          name: id,
+          sex,
+          status: "retired",
+          agility: 600,
+          sight: 600,
+          stamina: 600,
+          gameness: 600,
+          station: 600,
+          condition: 600,
+          element: "Wood",
+          halfStars: 6,
+          birthWeek: -6,
+          birthDay: -42,
+          retiredBy: "manual",
+          retiredWeek: -1,
+          motherId: null,
+          fatherId: null,
         })
         .run();
     }
@@ -203,7 +235,11 @@ describe("the breeding barn (breeding PvP)", () => {
     expect(studs.find((s) => s.name === "rival-stud")!.coversLeft).toBe(COVERS.PER_WEEK);
     // Kin exclusion is NAMED, not hidden: breed a daughter, browse with her.
     w.breeding.breed("starter-2", "starter-1");
-    const egg = w.db.select().from(birds).all().find((b) => b.name === "Egg of Dalisay")!;
+    const egg = w.db
+      .select()
+      .from(birds)
+      .all()
+      .find((b) => b.name === "Egg of Dalisay")!;
     w.db.update(birds).set({ status: "retired", sex: "female" }).where(eq(birds.id, egg.id)).run();
     const view = w.breeding.browseStuds(egg.id);
     const kinExcluded = view.excluded.find((e) => e.name === "Tandang Pula");
@@ -220,10 +256,25 @@ describe("the breeding barn (breeding PvP)", () => {
       w.db
         .insert(birds)
         .values({
-          id, farmId, name: id, sex: "female", status: "retired",
-          agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
-          element: "Fire", halfStars: 4, birthWeek: -5, birthDay: -35,
-          retiredBy: "manual", retiredWeek: 0, motherId: null, fatherId: null,
+          id,
+          farmId,
+          name: id,
+          sex: "female",
+          status: "retired",
+          agility: 500,
+          sight: 500,
+          stamina: 500,
+          gameness: 500,
+          station: 500,
+          condition: 500,
+          element: "Fire",
+          halfStars: 4,
+          birthWeek: -5,
+          birthDay: -35,
+          retiredBy: "manual",
+          retiredWeek: 0,
+          motherId: null,
+          fatherId: null,
         })
         .run();
     // Owner slots: the rival's own hens cover up to the reserve, the next refuses.
@@ -241,7 +292,9 @@ describe("the breeding barn (breeding PvP)", () => {
     expect(() => w.breeding.breed("starter-2", "rival-stud")).toThrow(/covered out/);
     // The barn now shows it as excluded — demand overflows to other studs.
     const { studs, excluded } = w.breeding.browseStuds("starter-2");
-    expect(excluded.some((e) => e.name === "rival-stud" && /covered out/.test(e.reason))).toBe(true);
+    expect(excluded.some((e) => e.name === "rival-stud" && /covered out/.test(e.reason))).toBe(
+      true
+    );
     expect(studs.some((s) => s.name === "Tandang Pula")).toBe(true);
   });
 });
@@ -262,7 +315,12 @@ describe("bloodline restriction", () => {
         name: id,
         sex,
         status: "retired",
-        agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
+        agility: 500,
+        sight: 500,
+        stamina: 500,
+        gameness: 500,
+        station: 500,
+        condition: 500,
         element: "Fire",
         halfStars: 4,
         birthWeek: -5,
@@ -317,7 +375,14 @@ describe("the stud sheet (round 28 — retirement is the reveal)", () => {
     expect(studs.length).toBeGreaterThan(0); // both retired dev roosters stand
     for (const stud of studs) {
       const row = db.select().from(birds).where(eq(birds.id, stud.birdId)).get()!;
-      for (const stat of ["agility", "sight", "stamina", "gameness", "station", "condition"] as const) {
+      for (const stat of [
+        "agility",
+        "sight",
+        "stamina",
+        "gameness",
+        "station",
+        "condition",
+      ] as const) {
         expect(typeof stud.sheet[stat]).toBe("number");
         expect(stud.sheet[stat]).toBe(row[stat]); // the TRUE numbers, not a view through fog
       }
@@ -337,7 +402,12 @@ describe("lineage", () => {
         name: "Kid",
         sex: "female",
         status: "egg",
-        agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
+        agility: 500,
+        sight: 500,
+        stamina: 500,
+        gameness: 500,
+        station: 500,
+        condition: 500,
         element: "Water",
         halfStars: 4,
         birthWeek: 0,

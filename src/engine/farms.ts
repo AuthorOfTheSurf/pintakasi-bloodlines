@@ -32,13 +32,34 @@ export interface FarmView {
 }
 
 /**
+ * Row 1 of `game_state` — the world's one clock-and-pools singleton. Seeding
+ * writes it and nothing ever deletes it, so a miss means the database is not
+ * a world at all; throwing says so instead of limping on with `undefined`.
+ */
+export function readWorldState(database: DB) {
+  const state = database.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) throw new Error("game_state row 1 missing — the world was never seeded");
+  return state;
+}
+
+/**
+ * A farm the caller already holds a live id for (its own seat, an entry's
+ * owner, a stud's barn). Farms are never deleted, so a miss is a broken world.
+ */
+export function readFarm(database: DB, farmId: string): FarmRow {
+  const farm = database.select().from(farms).where(eq(farms.id, farmId)).get();
+  if (!farm) throw new Error(`farm ${farmId} not found — farms are never deleted`);
+  return farm;
+}
+
+/**
  * Credit a farm in centi-GP, exactly — cents roll into whole GP. This is
  * the only doorway for fractional money (stud shares, staking payouts);
  * everything else in the game stays whole-GP.
  */
 export function creditCents(database: DB, farmId: string, cents: number): void {
   if (cents <= 0) return;
-  const farm = database.select().from(farms).where(eq(farms.id, farmId)).get()!;
+  const farm = readFarm(database, farmId);
   const total = farm.gpCents + cents;
   database
     .update(farms)
@@ -65,7 +86,7 @@ export function payStakers(
   farmId: string | null = null
 ): void {
   if (cents <= 0) return;
-  const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  const state = readWorldState(database);
   database
     .update(gameState)
     .set({ stakerPoolCents: state.stakerPoolCents + cents })
@@ -96,7 +117,7 @@ export class Farms {
   constructor(private database: DB) {}
 
   private today(): number {
-    return this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    return readWorldState(this.database).dayIndex;
   }
 
   register(input: RegisterInput): { farm: FarmView; apiKey: string } {
@@ -174,8 +195,12 @@ export class Farms {
    * Buy Land Tokens with GP: 80 GP per 100 LT ($0.01/LT), capped per
    * game-day. One-way — land is never sellable back.
    */
-  buyLand(farmId: string, amount: number): { farm: FarmView; bought: number; gpPaid: number; capLeftToday: number } {
-    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Buy a whole, positive number of Land Tokens");
+  buyLand(
+    farmId: string,
+    amount: number
+  ): { farm: FarmView; bought: number; gpPaid: number; capLeftToday: number } {
+    if (!Number.isInteger(amount) || amount <= 0)
+      throw new Error("Buy a whole, positive number of Land Tokens");
     const farm = this.rowById(farmId);
     const today = this.today();
     // ⚠ THE PUBLIC API IS WHOLE TOKENS; THE COLUMN IS HUNDREDTHS (round 36).
@@ -240,7 +265,8 @@ export class Farms {
    * day; it is NEVER sellable either way.
    */
   stake(farmId: string, amount: number): { farm: FarmView; staked: number } {
-    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Stake a whole, positive number of Land Tokens");
+    if (!Number.isInteger(amount) || amount <= 0)
+      throw new Error("Stake a whole, positive number of Land Tokens");
     const farm = this.rowById(farmId);
     // Whole tokens in, hundredths stored — see buyLand's note.
     const cents = amount * LT_CENTS;
@@ -250,7 +276,10 @@ export class Farms {
       );
     this.database
       .update(farms)
-      .set({ landTokensCents: farm.landTokensCents - cents, stakedLandCents: farm.stakedLandCents + cents })
+      .set({
+        landTokensCents: farm.landTokensCents - cents,
+        stakedLandCents: farm.stakedLandCents + cents,
+      })
       .where(eq(farms.id, farmId))
       .run();
     emit(this.database, {
@@ -271,7 +300,12 @@ export class Farms {
    * conservation proof can see the burn. An unlogged burn here would fail
    * `checkLandConservation` on the first expansion anyone bought.
    */
-  expandBarn(farmId: string): { farm: FarmView; expansions: number; capacity: number; landSpent: number } {
+  expandBarn(farmId: string): {
+    farm: FarmView;
+    expansions: number;
+    capacity: number;
+    landSpent: number;
+  } {
     const farm = this.rowById(farmId);
     const cost = nextExpansionCost(farm.barnExpansions);
     if (farm.landTokensCents < cost)
@@ -303,14 +337,20 @@ export class Farms {
 
   /** Unstake freely — the land comes home liquid (still never sellable). */
   unstake(farmId: string, amount: number): { farm: FarmView; unstaked: number } {
-    if (!Number.isInteger(amount) || amount <= 0) throw new Error("Unstake a whole, positive number of Land Tokens");
+    if (!Number.isInteger(amount) || amount <= 0)
+      throw new Error("Unstake a whole, positive number of Land Tokens");
     const farm = this.rowById(farmId);
     const cents = amount * LT_CENTS;
     if (farm.stakedLandCents < cents)
-      throw new Error(`${farm.name} has ${fmtLt(farm.stakedLandCents)} LT staked — cannot unstake ${amount}`);
+      throw new Error(
+        `${farm.name} has ${fmtLt(farm.stakedLandCents)} LT staked — cannot unstake ${amount}`
+      );
     this.database
       .update(farms)
-      .set({ landTokensCents: farm.landTokensCents + cents, stakedLandCents: farm.stakedLandCents - cents })
+      .set({
+        landTokensCents: farm.landTokensCents + cents,
+        stakedLandCents: farm.stakedLandCents - cents,
+      })
       .where(eq(farms.id, farmId))
       .run();
     emit(this.database, {
@@ -328,9 +368,13 @@ export class Farms {
    * → the whole pool carries.
    */
   static distributeStaking(database: DB): { paidGp: number; stakers: number } {
-    const state = database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const state = readWorldState(database);
     const pool = state.stakerPoolCents;
-    const stakers = database.select().from(farms).all().filter((f) => f.stakedLandCents > 0);
+    const stakers = database
+      .select()
+      .from(farms)
+      .all()
+      .filter((f) => f.stakedLandCents > 0);
     const totalStaked = stakers.reduce((s, f) => s + f.stakedLandCents, 0);
     if (pool <= 0 || totalStaked === 0) return { paidGp: 0, stakers: 0 };
 

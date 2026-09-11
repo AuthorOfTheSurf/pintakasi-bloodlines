@@ -6,7 +6,6 @@ import {
   birds,
   claims,
   farms,
-  gameState,
   lobbies,
   lobbyEntries,
   tournamentEntries,
@@ -16,7 +15,6 @@ import {
 import {
   CADENCE,
   CLAIMER,
-  ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
   feeFor,
   FORMATS,
@@ -38,7 +36,7 @@ import {
   fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
-import { payStakers } from "./farms";
+import { payStakers, readFarm, readWorldState } from "./farms";
 import { overallGradeOf } from "./grades";
 import { recordFightPair } from "./scout";
 import { simulatePair, toCombatant } from "./fight-sim";
@@ -257,6 +255,24 @@ interface SettleLedger {
   dirtyBirds: Set<string>;
 }
 
+/**
+ * A lookup the surrounding code has already guaranteed — an id taken from the
+ * same pass's own rows, a cache seeded from the whole table. Throws with the
+ * reason instead of letting `undefined` leak into the settle-up arithmetic.
+ * Only null/undefined count as missing: a zero fight count is a real value.
+ */
+function must<T>(value: T | null | undefined, why: string): T {
+  if (value === null || value === undefined) throw new Error(why);
+  return value;
+}
+
+/** Which crown, if any, runs today — the Majors' day first, then the juveniles'. */
+function crownDivisionOf(day: number): "major" | "juvenile" | null {
+  if (Tournaments.isCrownDay(day)) return "major";
+  if (Tournaments.isJuvenileCrownDay(day)) return "juvenile";
+  return null;
+}
+
 /** One lobby going off at the tick — a public event. */
 export interface LobbyResolution {
   lobbyId: number;
@@ -330,7 +346,7 @@ export class Lobbies {
   }
 
   private today(): number {
-    return this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+    return readWorldState(this.database).dayIndex;
   }
 
   /** Enter a bird on tonight's card. Binding — no cancellation. */
@@ -376,11 +392,7 @@ export class Lobbies {
     //     day before — was blocked from the daily card for nothing.
     // The division lives on `tournaments`, not on the entry, which is why the
     // original query could not tell the two apart without this join.
-    const crownDivision = Tournaments.isCrownDay(today)
-      ? "major"
-      : Tournaments.isJuvenileCrownDay(today)
-        ? "juvenile"
-        : null;
+    const crownDivision = crownDivisionOf(today);
     if (crownDivision !== null) {
       const registered = this.database
         .select({ id: tournamentEntries.id })
@@ -395,13 +407,20 @@ export class Lobbies {
         )
         .all();
       if (registered.length > 0)
-        throw new Error(`${bird.name} is registered for the Pintakasi — tonight's crown is its card`);
+        throw new Error(
+          `${bird.name} is registered for the Pintakasi — tonight's crown is its card`
+        );
     }
 
     const fee = feeFor(spec.mode, spec.classType, spec.price);
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-    if (farm.gp < fee) throw new Error(`The ${spec.mode} entry costs ${fee} GP (escrowed) — you have ${farm.gp}`);
-    this.database.update(farms).set({ gp: farm.gp - fee }).where(eq(farms.id, this.farmId)).run();
+    const farm = readFarm(this.database, this.farmId);
+    if (farm.gp < fee)
+      throw new Error(`The ${spec.mode} entry costs ${fee} GP (escrowed) — you have ${farm.gp}`);
+    this.database
+      .update(farms)
+      .set({ gp: farm.gp - fee })
+      .where(eq(farms.id, this.farmId))
+      .run();
 
     const lobby = this.findOrOpenLobby(spec, today, seed);
     const inserted = this.database
@@ -482,7 +501,12 @@ export class Lobbies {
       for (const row of this.database
         .select({ lobbyId: lobbyEntries.lobbyId, filled: count() })
         .from(lobbyEntries)
-        .where(inArray(lobbyEntries.lobbyId, liveRows.map((l) => l.id)))
+        .where(
+          inArray(
+            lobbyEntries.lobbyId,
+            liveRows.map((l) => l.id)
+          )
+        )
         .groupBy(lobbyEntries.lobbyId)
         .all())
         fillByLobby.set(row.lobbyId, row.filled);
@@ -527,9 +551,17 @@ export class Lobbies {
    * and settles when the card goes off at the day tick.
    */
   claim(entryId: number): { entryId: number; escrowed: number; note: string } {
-    const entry = this.database.select().from(lobbyEntries).where(eq(lobbyEntries.id, entryId)).get();
-    if (!entry || entry.status !== "pending") throw new Error(`No open entry #${entryId} on the board`);
-    const lobby = this.database.select().from(lobbies).where(eq(lobbies.id, entry.lobbyId)).get()!;
+    const entry = this.database
+      .select()
+      .from(lobbyEntries)
+      .where(eq(lobbyEntries.id, entryId))
+      .get();
+    if (!entry || entry.status !== "pending")
+      throw new Error(`No open entry #${entryId} on the board`);
+    const lobby = must(
+      this.database.select().from(lobbies).where(eq(lobbies.id, entry.lobbyId)).get(),
+      `entry #${entryId} points at missing lobby ${entry.lobbyId}`
+    );
     if (lobby.classType !== "claimer") throw new Error("Only claimer entries take claims");
     if (entry.farmId === this.farmId) throw new Error("You cannot claim your own bird");
     const existing = this.database
@@ -542,15 +574,23 @@ export class Lobbies {
     if (this.flock.barnCount() >= cap)
       throw new Error(`The barn is full (${cap}) — expand it for Land Tokens`);
 
-    const price = lobby.price!;
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
-    if (farm.gp < price) throw new Error(`The claiming tag is ${price} GP (escrowed) — you have ${farm.gp}`);
-    this.database.update(farms).set({ gp: farm.gp - price }).where(eq(farms.id, this.farmId)).run();
+    const price = must(lobby.price, `claimer lobby ${lobby.id} has no tag price`);
+    const farm = readFarm(this.database, this.farmId);
+    if (farm.gp < price)
+      throw new Error(`The claiming tag is ${price} GP (escrowed) — you have ${farm.gp}`);
+    this.database
+      .update(farms)
+      .set({ gp: farm.gp - price })
+      .where(eq(farms.id, this.farmId))
+      .run();
     this.database
       .insert(claims)
       .values({ entryId, farmId: this.farmId, price, dayPlaced: this.today() })
       .run();
-    const target = this.database.select().from(birds).where(eq(birds.id, entry.birdId)).get()!;
+    const target = must(
+      this.database.select().from(birds).where(eq(birds.id, entry.birdId)).get(),
+      `entry #${entryId} points at missing bird ${entry.birdId}`
+    );
     emit(this.database, {
       type: "claim",
       farmId: this.farmId,
@@ -577,7 +617,11 @@ export class Lobbies {
    */
   formatRecords(birdId: string): Partial<Record<FightFormat, FormatRecord>> {
     const out: Partial<Record<FightFormat, FormatRecord>> = {};
-    for (const row of this.database.select().from(birdForm).where(eq(birdForm.birdId, birdId)).all())
+    for (const row of this.database
+      .select()
+      .from(birdForm)
+      .where(eq(birdForm.birdId, birdId))
+      .all())
       out[row.format] = {
         fights: row.fights,
         wins: row.wins,
@@ -621,7 +665,9 @@ export class Lobbies {
    * exactly as scoutReport would say.
    */
   scoutReports(birdIds: string[]): Map<string, ScoutReport> {
-    const rowsByBird = new Map<string, (typeof birdForm.$inferSelect)[]>(birdIds.map((id) => [id, []]));
+    const rowsByBird = new Map<string, (typeof birdForm.$inferSelect)[]>(
+      birdIds.map((id) => [id, []])
+    );
     // Chunked under SQLite's bound-parameter ceiling, like the pedigree
     // prefetch in breeding.ts.
     for (let i = 0; i < birdIds.length; i += 500)
@@ -630,14 +676,16 @@ export class Lobbies {
         .from(birdForm)
         .where(inArray(birdForm.birdId, birdIds.slice(i, i + 500)))
         .all())
-        rowsByBird.get(row.birdId)!.push(row);
-    return new Map(birdIds.map((id) => [id, Lobbies.buildScoutReport(rowsByBird.get(id)!)]));
+        must(rowsByBird.get(row.birdId), "the IN list returned a bird nobody asked for").push(row);
+    return new Map(
+      birdIds.map((id) => [id, Lobbies.buildScoutReport(must(rowsByBird.get(id), "seeded above"))])
+    );
   }
 
   /** The arithmetic shared by scoutReport and scoutReports — see scoutReport. */
   private static buildScoutReport(rows: (typeof birdForm.$inferSelect)[]): ScoutReport {
     const book = new Map(rows.map((r) => [r.format, r]));
-    const blades = {} as Record<FightFormat, ScoutBlade>;
+    const built: Partial<Record<FightFormat, ScoutBlade>> = {};
     let totalFights = 0;
     for (const f of FORMAT_NAMES) {
       const row = book.get(f);
@@ -654,8 +702,10 @@ export class Lobbies {
       const score =
         ((row?.normSum ?? 0) + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
         (rec.fights + SCOUT.PRIOR_WEIGHT);
-      blades[f] = { ...rec, score: Math.round(score * 10) / 10 };
+      built[f] = { ...rec, score: Math.round(score * 10) / 10 };
     }
+    // The loop wrote every FORMAT_NAMES key, so the Partial is whole.
+    const blades = built as Record<FightFormat, ScoutBlade>;
     // Ties break in dial order (FORMAT_NAMES) — stable, and it means a
     // fresh bird "prefers" the sprint only in the sense that somebody has
     // to be first alphabetically.
@@ -693,7 +743,9 @@ export class Lobbies {
       .where(and(eq(lobbyEntries.birdId, birdId), eq(lobbyEntries.dayEntered, today)))
       .all().length;
     if (carded >= CADENCE.ENTRIES_PER_BIRD_PER_DAY)
-      throw new Error(`${name} is already on tonight's card — entries are binding until the day turns`);
+      throw new Error(
+        `${name} is already on tonight's card — entries are binding until the day turns`
+      );
     // A bracket fight also spends the day. Tournament rows are the ones with
     // no lobbyId (see Tournaments.runFight); lobby rows are already counted
     // above, by their entry, so counting them here again would double.
@@ -750,12 +802,16 @@ export class Lobbies {
    */
   static complete(database: DB): LobbyResolution[] {
     const events: LobbyResolution[] = [];
-    const week = Math.floor(
-      database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex / 7
-    );
+    const week = Math.floor(readWorldState(database).dayIndex / 7);
     // The farm half of the settle-up ledger spans the whole pass — ~20 rows,
     // and every lobby's fights, refunds and claims touch the same barns.
-    const farmCache = new Map(database.select().from(farms).all().map((f) => [f.id, f]));
+    const farmCache = new Map(
+      database
+        .select()
+        .from(farms)
+        .all()
+        .map((f) => [f.id, f])
+    );
     const dirtyFarms = new Set<string>();
 
     for (const lobby of database.select().from(lobbies).where(eq(lobbies.status, "closed")).all()) {
@@ -781,7 +837,12 @@ export class Lobbies {
           )
           .all())
           birdCache.set(row.id, row);
-      const ledger: SettleLedger = { farms: farmCache, dirtyFarms, birds: birdCache, dirtyBirds: new Set() };
+      const ledger: SettleLedger = {
+        farms: farmCache,
+        dirtyFarms,
+        birds: birdCache,
+        dirtyBirds: new Set(),
+      };
 
       const label = labelOf(lobby);
       const event: LobbyResolution = {
@@ -815,10 +876,22 @@ export class Lobbies {
             if (a.farmId === b.farmId) continue; // matchmaking never pairs barn-mates
             const stake = stakePerFight(a.fee);
             event.fights.push(
-              Lobbies.runFight(database, lobby, a, b, label, rng, week, weather, stake, groupNo, ledger)
+              Lobbies.runFight(
+                database,
+                lobby,
+                a,
+                b,
+                label,
+                rng,
+                week,
+                weather,
+                stake,
+                groupNo,
+                ledger
+              )
             );
-            taken.set(a.id, taken.get(a.id)! + 1);
-            taken.set(b.id, taken.get(b.id)! + 1);
+            taken.set(a.id, must(taken.get(a.id), "taken is seeded per entry") + 1);
+            taken.set(b.id, must(taken.get(b.id), "taken is seeded per entry") + 1);
           }
         }
       }
@@ -830,11 +903,14 @@ export class Lobbies {
       // whose group was short gets the difference back and a smaller award.
       const settledEntryIds = new Map<string, number[]>();
       for (const entry of entries) {
-        const fights = taken.get(entry.id)!;
+        const fights = must(taken.get(entry.id), "taken is seeded per entry");
         const staked = stakePerFight(entry.fee) * fights;
         const refunded = entry.fee - staked;
         const land = fights > 0 ? landForFight(staked) : 0;
-        const farm = farmCache.get(entry.farmId)!;
+        const farm = must(
+          farmCache.get(entry.farmId),
+          `entry farm ${entry.farmId} not in farm cache`
+        );
         farm.gp += refunded;
         farm.landTokensCents += land;
         dirtyFarms.add(farm.id);
@@ -843,8 +919,18 @@ export class Lobbies {
         const sameSettlement = settledEntryIds.get(settleKey) ?? [];
         sameSettlement.push(entry.id);
         settledEntryIds.set(settleKey, sameSettlement);
-        const bird = birdCache.get(entry.birdId)!;
-        event.settlements.push({ farm: farm.name, bird: bird.name, fights, staked, refunded, land });
+        const bird = must(
+          birdCache.get(entry.birdId),
+          `entry bird ${entry.birdId} not in bird cache`
+        );
+        event.settlements.push({
+          farm: farm.name,
+          bird: bird.name,
+          fights,
+          staked,
+          refunded,
+          land,
+        });
         if (fights === 0) {
           emit(database, {
             type: "refund",
@@ -906,7 +992,13 @@ export class Lobbies {
             Lobbies.refundClaims(database, entry, "the bird drew no opponent", ledger);
             continue;
           }
-          const settled = Lobbies.settleClaims(database, entry, lobby.price!, rng, ledger);
+          const settled = Lobbies.settleClaims(
+            database,
+            entry,
+            must(lobby.price, `claimer lobby ${lobby.id} has no tag price`),
+            rng,
+            ledger
+          );
           if (settled) event.claims.push(settled);
         }
       }
@@ -914,7 +1006,7 @@ export class Lobbies {
       // The lobby's bird rows flush here; the shared farm rows flush once,
       // after the last lobby, below.
       for (const id of ledger.dirtyBirds) {
-        const b = birdCache.get(id)!;
+        const b = must(birdCache.get(id), `dirty bird ${id} not in bird cache`);
         database
           .update(birds)
           .set({ wins: b.wins, losses: b.losses, stakesWins: b.stakesWins, farmId: b.farmId })
@@ -927,10 +1019,16 @@ export class Lobbies {
     }
 
     for (const id of dirtyFarms) {
-      const f = farmCache.get(id)!;
+      const f = must(farmCache.get(id), `dirty farm ${id} not in farm cache`);
       database
         .update(farms)
-        .set({ gp: f.gp, gpCents: f.gpCents, wins: f.wins, losses: f.losses, landTokensCents: f.landTokensCents })
+        .set({
+          gp: f.gp,
+          gpCents: f.gpCents,
+          wins: f.wins,
+          losses: f.losses,
+          landTokensCents: f.landTokensCents,
+        })
         .where(eq(farms.id, id))
         .run();
     }
@@ -1049,8 +1147,8 @@ export class Lobbies {
     // Off the ledger, not the database (round 47): a bird's second fight of
     // the night sees its first fight's record because the cached row is the
     // one the first fight incremented — exactly what the re-SELECT used to see.
-    const rowA = ledger.birds.get(ea.birdId)!;
-    const rowB = ledger.birds.get(eb.birdId)!;
+    const rowA = must(ledger.birds.get(ea.birdId), `bird ${ea.birdId} not on the ledger`);
+    const rowB = must(ledger.birds.get(eb.birdId), `bird ${eb.birdId} not on the ledger`);
     const sim = simulatePair(
       toCombatant(rowA),
       toCombatant(rowB),
@@ -1081,7 +1179,10 @@ export class Lobbies {
 
     for (const [i, side] of sides.entries()) {
       const other = sides[1 - i];
-      const farm = ledger.farms.get(side.entry.farmId)!;
+      const farm = must(
+        ledger.farms.get(side.entry.farmId),
+        `farm ${side.entry.farmId} not on the ledger`
+      );
       farmNames.push(farm.name);
       // Escrow settle: winner takes this fight's pooled pot (own stake back +
       // the other side's), the loser's stake is what fed it. Land does NOT
@@ -1120,40 +1221,51 @@ export class Lobbies {
       // Through recordFight, not a bare insert — the log row and the scout's
       // running book (bird_form) move together or not at all.
       fightRows.push({
-          dayIndex: lobby.dayOpened, // the fight belongs to the day it was carded
-          lobbyId: lobby.id,
-          farmId: side.entry.farmId,
-          birdId: side.row.id,
-          mode: lobby.mode,
-          format: lobby.format,
-          lobby: lobby.classType,
-          claimPrice: lobby.price,
-          opponentBirdId: other.row.id,
-          opponentFarmId: other.entry.farmId,
-          opponentName: other.row.name,
-          selfGrade: overallGradeOf(side.row.agility + side.row.sight + side.row.stamina + side.row.gameness + side.row.station + side.row.condition),
-          opponentGrade: overallGradeOf(other.row.agility + other.row.sight + other.row.stamina + other.row.gameness + other.row.station + other.row.condition),
-          // `sides` is built in simulatePair's argument order above, so the
-          // loop index IS the side. This is the only thing that lets a fight be
-          // replayed from its seed — see schema.ts.
-          side: i,
-          result: side.won ? "win" : "loss",
-          pitFigure: side.figure,
-          // Net to the bird's barn, in cents: the winner keeps the other
-          // side's stake less the rake; the loser drops its own. Round 34: the
-          // stake, not the entry fee — one fight is a third of the night.
-          gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
-          seed: simSeed,
+        dayIndex: lobby.dayOpened, // the fight belongs to the day it was carded
+        lobbyId: lobby.id,
+        farmId: side.entry.farmId,
+        birdId: side.row.id,
+        mode: lobby.mode,
+        format: lobby.format,
+        lobby: lobby.classType,
+        claimPrice: lobby.price,
+        opponentBirdId: other.row.id,
+        opponentFarmId: other.entry.farmId,
+        opponentName: other.row.name,
+        selfGrade: overallGradeOf(
+          side.row.agility +
+            side.row.sight +
+            side.row.stamina +
+            side.row.gameness +
+            side.row.station +
+            side.row.condition
+        ),
+        opponentGrade: overallGradeOf(
+          other.row.agility +
+            other.row.sight +
+            other.row.stamina +
+            other.row.gameness +
+            other.row.station +
+            other.row.condition
+        ),
+        // `sides` is built in simulatePair's argument order above, so the
+        // loop index IS the side. This is the only thing that lets a fight be
+        // replayed from its seed — see schema.ts.
+        side: i,
+        result: side.won ? "win" : "loss",
+        pitFigure: side.figure,
+        // Net to the bird's barn, in cents: the winner keeps the other
+        // side's stake less the rake; the loser drops its own. Round 34: the
+        // stake, not the entry fee — one fight is a third of the night.
+        gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
+        seed: simSeed,
       });
       // The entry's status and fight count are set once, at settle-up in
       // `complete` — a bird may be in the middle of its group here.
     }
     const logIds = recordFightPair(
       database,
-      fightRows as [
-        typeof battleLog.$inferInsert,
-        typeof battleLog.$inferInsert,
-      ]
+      fightRows as [typeof battleLog.$inferInsert, typeof battleLog.$inferInsert]
     );
 
     const winnerSide = sides[sim.winner];
@@ -1169,7 +1281,13 @@ export class Lobbies {
         (rakeCents > 0 ? ` (${fmtGp(rakeCents)} to stakers)` : "") +
         ` · group ${groupNo + 1}` +
         (forcedRetirements.length ? ` · ${forcedRetirements.join(", ")} force-retired` : ""),
-      data: { lobbyId: lobby.id, battleLogIds: logIds, figures: sim.figures, pot: stake * 2, groupNo },
+      data: {
+        lobbyId: lobby.id,
+        battleLogIds: logIds,
+        figures: sim.figures,
+        pot: stake * 2,
+        groupNo,
+      },
     });
     return {
       battleLogIds: [logIds[0], logIds[1]],
@@ -1194,7 +1312,7 @@ export class Lobbies {
    */
   private static creditLedger(ledger: SettleLedger, farmId: string, cents: number): void {
     if (cents <= 0) return;
-    const farm = ledger.farms.get(farmId)!;
+    const farm = must(ledger.farms.get(farmId), `farm ${farmId} not on the ledger`);
     const total = farm.gpCents + cents;
     farm.gp += Math.floor(total / 100);
     farm.gpCents = total % 100;
@@ -1217,9 +1335,9 @@ export class Lobbies {
       .where(and(eq(claims.entryId, entry.id), eq(claims.status, "pending")))
       .all();
     if (standing.length === 0) return;
-    const bird = ledger.birds.get(entry.birdId)!;
+    const bird = must(ledger.birds.get(entry.birdId), `bird ${entry.birdId} not on the ledger`);
     for (const c of standing) {
-      const claimant = ledger.farms.get(c.farmId)!;
+      const claimant = must(ledger.farms.get(c.farmId), `claimant ${c.farmId} not on the ledger`);
       claimant.gp += c.price;
       ledger.dirtyFarms.add(c.farmId);
       database.update(claims).set({ status: "refunded" }).where(eq(claims.id, c.id)).run();
@@ -1247,13 +1365,13 @@ export class Lobbies {
       .all();
     if (entryClaims.length === 0) return null;
 
-    const preBird = ledger.birds.get(entry.birdId)!;
+    const preBird = must(ledger.birds.get(entry.birdId), `bird ${entry.birdId} not on the ledger`);
     const winner = entryClaims[randInt(rng, 0, entryClaims.length - 1)];
     for (const c of entryClaims) {
       if (c.id === winner.id) {
         database.update(claims).set({ status: "won" }).where(eq(claims.id, c.id)).run();
       } else {
-        const claimant = ledger.farms.get(c.farmId)!;
+        const claimant = must(ledger.farms.get(c.farmId), `claimant ${c.farmId} not on the ledger`);
         claimant.gp += c.price;
         ledger.dirtyFarms.add(c.farmId);
         database.update(claims).set({ status: "refunded" }).where(eq(claims.id, c.id)).run();
@@ -1269,13 +1387,13 @@ export class Lobbies {
     // The tag settles 98/2 (round 22): the selling barn banks the tag less
     // the staker rake. Same rule is reserved for the marketplace when it's
     // built — see STAKER_FLOWS.MARKET_RAKE.
-    const owner = ledger.farms.get(entry.farmId)!;
+    const owner = must(ledger.farms.get(entry.farmId), `farm ${entry.farmId} not on the ledger`);
     const tagCents = price * 100;
     const tagRakeCents = Math.round(tagCents * STAKER_FLOWS.CLAIM_RAKE);
     Lobbies.creditLedger(ledger, entry.farmId, tagCents - tagRakeCents);
     payStakers(database, tagRakeCents, "claim_rake", `${preBird.name}'s ${price} GP tag`);
     // The transfer itself — on the ledger; the flush writes the new barn.
-    const bird = ledger.birds.get(entry.birdId)!;
+    const bird = must(ledger.birds.get(entry.birdId), `bird ${entry.birdId} not on the ledger`);
     bird.farmId = winner.farmId;
     ledger.dirtyBirds.add(bird.id);
     database
@@ -1284,7 +1402,7 @@ export class Lobbies {
       .where(eq(lobbyEntries.id, entry.id))
       .run();
 
-    const to = ledger.farms.get(winner.farmId)!;
+    const to = must(ledger.farms.get(winner.farmId), `claimant ${winner.farmId} not on the ledger`);
     emit(database, {
       type: "claim_won",
       farmId: winner.farmId,
@@ -1374,7 +1492,10 @@ export class Lobbies {
    * a different view; it is the same view with the part nobody asked for omitted.
    */
   private viewLobby(lobbyId: number, detail: BoardDetail = "full"): LobbyView {
-    const lobby = this.database.select().from(lobbies).where(eq(lobbies.id, lobbyId)).get()!;
+    const lobby = must(
+      this.database.select().from(lobbies).where(eq(lobbies.id, lobbyId)).get(),
+      `lobby ${lobbyId} not found`
+    );
     const entries = this.database
       .select()
       .from(lobbyEntries)
@@ -1470,7 +1591,10 @@ export class Lobbies {
     records = true
   ): EntryCard {
     const bird = lookup.flockFor(entry.farmId).byId(entry.birdId);
-    const farm = lookup.farms.get(entry.farmId)!;
+    const farm = must(
+      lookup.farms.get(entry.farmId),
+      `farm ${entry.farmId} not in the board lookup`
+    );
     const view: EntryCard = {
       entryId: entry.id,
       farm: {
@@ -1510,8 +1634,8 @@ export class Lobbies {
             e.farmId !== entry.farmId
         )
         .map((e) => ({
-          bird: lookup.birdName.get(e.birdId)!,
-          farm: lookup.farms.get(e.farmId)!.name,
+          bird: must(lookup.birdName.get(e.birdId), `bird ${e.birdId} not in the board lookup`),
+          farm: must(lookup.farms.get(e.farmId), `farm ${e.farmId} not in the board lookup`).name,
         }));
     }
     return view;
@@ -1586,4 +1710,3 @@ export function entryRefusal(
   }
   return null;
 }
-

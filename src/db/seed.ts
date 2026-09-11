@@ -8,7 +8,9 @@ const db = createDb();
 const existing = db.select().from(gameState).all();
 if (existing.length > 0) {
   Bots.seed(db); // idempotent — adds any bot stables missing from an older db
-  console.log(`Already seeded (${defaultDbPath()}) — bot stables ensured. Delete the file to reseed.`);
+  console.log(
+    `Already seeded (${defaultDbPath()}) — bot stables ensured. Delete the file to reseed.`
+  );
   process.exit(0);
 }
 seedGame(db);

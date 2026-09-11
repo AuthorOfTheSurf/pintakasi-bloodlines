@@ -84,12 +84,7 @@ function purseStages(
     // How many rounds from the final the bird went out: 1 = semifinal.
     const fromFinal = rounds - 1 - wins;
     rows.push({
-      label:
-        fromFinal === 1
-          ? "Lost the semifinal"
-          : fromFinal === 2
-            ? "Lost the quarterfinal"
-            : `Lost in the round of ${2 ** (fromFinal + 1)}`,
+      label: exitLabel(fromFinal),
       birds: bracketSize / 2 ** (wins + 1),
       wins,
       share: share(wins, "none"),
@@ -104,8 +99,27 @@ function classicSeedPairs(bracketSize: number): string {
   while (placement.length < bracketSize)
     placement = placement.flatMap((s) => [s, placement.length * 2 + 1 - s]);
   const pairs: string[] = [];
-  for (let i = 0; i < placement.length; i += 2) pairs.push(`${placement[i]} vs. ${placement[i + 1]}`);
+  for (let i = 0; i < placement.length; i += 2)
+    pairs.push(`${placement[i]} vs. ${placement[i + 1]}`);
   return pairs.join(", ");
+}
+
+/**
+ * The row label for a bird that fought `mine` times in a full bracket whose
+ * longest run is `most` fights. The top row is two birds at once, so each
+ * table words it its own way.
+ */
+function fightsLabel(mine: number, most: number, topLabel: string): string {
+  if (mine === 1) return "Lost its first fight";
+  if (mine === most) return topLabel;
+  return `Won ${mine - 1}, then lost`;
+}
+
+/** Where a bird went out, counted back from the final: 1 = semifinal. */
+function exitLabel(fromFinal: number): string {
+  if (fromFinal === 1) return "Lost the semifinal";
+  if (fromFinal === 2) return "Lost the quarterfinal";
+  return `Lost in the round of ${2 ** (fromFinal + 1)}`;
 }
 
 export default function PintakasiPage() {
@@ -172,12 +186,12 @@ export default function PintakasiPage() {
         are the Juvenile Championship&apos;s fixed blades, the day before.
       </p>
       <p>
-        Three crowns for three kinds of bird. Nothing rewards a bird built to be good at
-        everything. A blade favors different stats — a {FORMATS.b1.label} bird lives on the
-        opening break, a {FORMATS[PINTAKASI.BLADES[2]].label} bird on outlasting a long fight, and
-        the middle blade weighs everything a bird is at once — and the Pintakasi is built to find
-        and crown the bird that mastered ONE of those, not the bird that&apos;s merely fine at all
-        of them. Read <Link href="/wiki/fighting">Fighting</Link> for how the blades differ.
+        Three crowns for three kinds of bird. Nothing rewards a bird built to be good at everything.
+        A blade favors different stats — a {FORMATS.b1.label} bird lives on the opening break, a{" "}
+        {FORMATS[PINTAKASI.BLADES[2]].label} bird on outlasting a long fight, and the middle blade
+        weighs everything a bird is at once — and the Pintakasi is built to find and crown the bird
+        that mastered ONE of those, not the bird that&apos;s merely fine at all of them. Read{" "}
+        <Link href="/wiki/fighting">Fighting</Link> for how the blades differ.
       </p>
       <div className="tablewrap">
         <table>
@@ -209,26 +223,25 @@ export default function PintakasiPage() {
         There is no test to pass. <strong>Any</strong> bird of yours may declare for a Major, as
         long as it is alive, fighting, has a real name, and is old enough to be allowed to risk its
         career: age {AGE.FORK}+. That age gate is the only hard rule left at the door. A bird that
-        has never won anything can walk up, pay the {fee} GP, and register — any day of the week,
-        up to Thursday itself. One timing rule on that last day: a bird already entered on
+        has never won anything can walk up, pay the {fee} GP, and register — any day of the week, up
+        to Thursday itself. One timing rule on that last day: a bird already entered on
         Thursday&apos;s daily card cannot then declare for that night&apos;s crown. Its crown would
         be a second fight in one night, and it is one card per bird per day in every direction.
       </p>
 
       <h3 id="the-entry-fee">What the {fee} GP buys</h3>
       <p>
-        Entry costs <strong>{fee} GP</strong>. Put that next to the daily card, where the classes are
-        priced (see <Link href="/wiki/ladder">Fighting up</Link>): it is{" "}
+        Entry costs <strong>{fee} GP</strong>. Put that next to the daily card, where the classes
+        are priced (see <Link href="/wiki/ladder">Fighting up</Link>): it is{" "}
         {(fee / feeFor("real", "maiden")).toFixed(1)}× a grown maiden night, and about{" "}
         {((fee / dailyOpenFee) * 100).toFixed(0)}% of a grown open night at {dailyOpenFee} GP — the
         dearest fight the ordinary card runs. Against the other anchor in the game, the{" "}
-        {ECONOMY.BREED_FEE} GP it costs to <Link href="/wiki/breeding">breed a bird</Link>, a crown is{" "}
-        {(fee / ECONOMY.BREED_FEE).toFixed(1)}× — so standing in one is priced like making a new
-        animal, which is a fair way to feel the decision.
-        The fee is <em>not</em> a gate — it does not decide who stands, and it buys no advantage in
-        the bracket. It buys one thing: <strong>the purse gets bigger</strong>. Every peso paid at
-        the door is added to the money the same bracket pays out that day. Nothing is skimmed off
-        it.
+        {ECONOMY.BREED_FEE} GP it costs to <Link href="/wiki/breeding">breed a bird</Link>, a crown
+        is {(fee / ECONOMY.BREED_FEE).toFixed(1)}× — so standing in one is priced like making a new
+        animal, which is a fair way to feel the decision. The fee is <em>not</em> a gate — it does
+        not decide who stands, and it buys no advantage in the bracket. It buys one thing:{" "}
+        <strong>the purse gets bigger</strong>. Every peso paid at the door is added to the money
+        the same bracket pays out that day. Nothing is skimmed off it.
       </p>
       <div className="callout tip">
         <b>Why a price at all, when it was free for a long time?</b> The purse used to come only
@@ -246,33 +259,33 @@ export default function PintakasiPage() {
         <Link href="/wiki/money">Golden Pesos</Link> for how escrow works.
       </p>
       <div className="callout warn">
-        <b>Registering is not the same as standing.</b> Every crown has only{" "}
-        {PINTAKASI.MAX_BRACKET} seats. Once they are full, the <strong>Selection Committee</strong>{" "}
-        decides who keeps one — and it can refuse you at the door, or bump you out later in the
-        week when a better bird declares. Your entry is only safe on Thursday, when the bracket
-        actually runs.
+        <b>Registering is not the same as standing.</b> Every crown has only {PINTAKASI.MAX_BRACKET}{" "}
+        seats. Once they are full, the <strong>Selection Committee</strong> decides who keeps one —
+        and it can refuse you at the door, or bump you out later in the week when a better bird
+        declares. Your entry is only safe on Thursday, when the bracket actually runs.
       </div>
       <p>
-        So a crown is not a line you cross. It is a <strong>seat you have to be good enough to
-        hold</strong>. Where your bird sits in the seating list is not a secret number: it is what
-        the bird has <strong>earned in its career</strong> — all the GP it has ever taken home from
-        the pit. See <Link href="#the-selection-committee">the Selection Committee</Link>, below.
+        So a crown is not a line you cross. It is a{" "}
+        <strong>seat you have to be good enough to hold</strong>. Where your bird sits in the
+        seating list is not a secret number: it is what the bird has{" "}
+        <strong>earned in its career</strong> — all the GP it has ever taken home from the pit. See{" "}
+        <Link href="#the-selection-committee">the Selection Committee</Link>, below.
       </p>
       <div className="callout tip">
         <b>Why an open door instead of a threshold.</b> A Major used to demand a fixed number of
         &ldquo;qualification points&rdquo;, banked one per win on the daily card. That gate is gone,
         for two reasons. It was <em>binary</em>: one point short and your bird was nothing, one
-        point over and the 40th-best bird in the world stood on exactly the same footing as the
-        4th. And it counted a number you could not see anywhere else in the game. A ranking is
-        better on both counts. It is continuous — every peso a bird has ever won moves it up the
-        list — and it is <em>visible</em>, because career earnings are printed on the bird&apos;s
-        own card. You always know roughly where you stand.
+        point over and the 40th-best bird in the world stood on exactly the same footing as the 4th.
+        And it counted a number you could not see anywhere else in the game. A ranking is better on
+        both counts. It is continuous — every peso a bird has ever won moves it up the list — and it
+        is <em>visible</em>, because career earnings are printed on the bird&apos;s own card. You
+        always know roughly where you stand.
       </div>
       <p className="dim">
         The practical effect: on a quiet week, a young bird with nothing on its record really can
         get a seat. On a busy week it will be bumped by birds with real money behind them. That is
-        what an open Thursday is supposed to feel like — the door is never locked, but the room
-        only holds so many.
+        what an open Thursday is supposed to feel like — the door is never locked, but the room only
+        holds so many.
       </p>
       <p className="dim">
         One entry on the daily card is a group of up to {FIGHTS_PER_GROUP_BIRD} fights (see{" "}
@@ -286,10 +299,10 @@ export default function PintakasiPage() {
         <b>Every loss in a Major ends a career.</b> This is the only place in the game a hardcore
         fight happens — the ordinary daily card has none. Win or go home, permanently. A bird that
         falls in round one is done fighting for life. It keeps its stats and its bloodline, its
-        hidden sheet reveals on the spot (a hardcore loss counts as a retirement), and it can
-        still <Link href="/wiki/breeding">breed</Link> — but it will never fight again. Don&apos;t
-        enter a bird here unless you mean it. (The Juvenile Championship, below, is the one
-        exception in the whole game — it does <em>not</em> force-retire.)
+        hidden sheet reveals on the spot (a hardcore loss counts as a retirement), and it can still{" "}
+        <Link href="/wiki/breeding">breed</Link> — but it will never fight again. Don&apos;t enter a
+        bird here unless you mean it. (The Juvenile Championship, below, is the one exception in the
+        whole game — it does <em>not</em> force-retire.)
       </div>
 
       <h2 id="the-selection-committee">The Selection Committee</h2>
@@ -335,10 +348,11 @@ export default function PintakasiPage() {
       <h2>The bracket</h2>
       <p>
         The bracket scales to whoever is still seated on the day: the next power of two at or above
-        the field size, up to a hard ceiling of {PINTAKASI.MAX_BRACKET}. If the field doesn&apos;t fill
-        every seat, the empty seats become <strong>byes</strong>, and byes go to the top seeds — the
-        birds the Committee ranked highest skip round one clean. Below {PINTAKASI.MIN_FIELD} entrants
-        and there isn&apos;t a fight worth having, so the whole championship is cancelled instead.
+        the field size, up to a hard ceiling of {PINTAKASI.MAX_BRACKET}. If the field doesn&apos;t
+        fill every seat, the empty seats become <strong>byes</strong>, and byes go to the top seeds
+        — the birds the Committee ranked highest skip round one clean. Below {PINTAKASI.MIN_FIELD}{" "}
+        entrants and there isn&apos;t a fight worth having, so the whole championship is cancelled
+        instead.
       </p>
       <p>
         Seeding is classic tournament pairing: the top seed meets the bottom seed, the next pair
@@ -431,17 +445,16 @@ export default function PintakasiPage() {
         {fee} GP now — softening the step was no longer enough on its own, because the step was
         already soft. So the advancement slice was widened to {pct(PINTAKASI.PURSE.ADVANCEMENT)},
         taking money off the trophy and handing it to the birds that won a fight. The rule being
-        protected is the same one every time: <strong>every win clears the door</strong>. The champion
-        still takes far more than anybody else — it just takes a little less than it used to, so that
-        all {majorPurseBracket / 2} birds who won a first-round fight go home ahead.
+        protected is the same one every time: <strong>every win clears the door</strong>. The
+        champion still takes far more than anybody else — it just takes a little less than it used
+        to, so that all {majorPurseBracket / 2} birds who won a first-round fight go home ahead.
       </div>
       <p className="dim">
         Fair warning about the arithmetic: this is a <em>share</em> of one pot, so a bigger field
-        means thinner slices. That is exactly why the bracket is capped at{" "}
-        {PINTAKASI.MAX_BRACKET} seats — at the old 64-seat cap, a full field split the advancement
-        pool among twice as many winners and no achievable purse could keep a single win ahead of
-        the {fee} GP door. The cap is what keeps &ldquo;every win clears the door&rdquo; true on
-        the busiest week.
+        means thinner slices. That is exactly why the bracket is capped at {PINTAKASI.MAX_BRACKET}{" "}
+        seats — at the old 64-seat cap, a full field split the advancement pool among twice as many
+        winners and no achievable purse could keep a single win ahead of the {fee} GP door. The cap
+        is what keeps &ldquo;every win clears the door&rdquo; true on the busiest week.
       </p>
       <div className="callout tip">
         <b>Why it works this way.</b> The purse used to be a table of finishing places: champion,
@@ -489,18 +502,18 @@ export default function PintakasiPage() {
         Read the last column like this. A share is a slice of a pot whose size changes every week,
         so &ldquo;how much GP do I win?&rdquo; has no fixed answer — but &ldquo;how big does the pot
         have to be before this finish pays back my {fee} GP?&rdquo; does. Win one fight and go out,
-        and you are ahead as soon as the purse is over {breakEven(majorStages[majorStages.length - 1].share)}{" "}
-        GP. Lift the trophy and you needed only {breakEven(majorStages[0].share)} GP in the pot to
-        break even, which every real crown clears many times over. Check{" "}
-        <strong>tonight&apos;s projected purse</strong> on the championship board before you decide
-        a fee is worth it.
+        and you are ahead as soon as the purse is over{" "}
+        {breakEven(majorStages[majorStages.length - 1].share)} GP. Lift the trophy and you needed
+        only {breakEven(majorStages[0].share)} GP in the pot to break even, which every real crown
+        clears many times over. Check <strong>tonight&apos;s projected purse</strong> on the
+        championship board before you decide a fee is worth it.
       </p>
       <p className="dim">
         A bird that never won a fight is paid nothing — not because there is a rule against it, but
         because there is nothing to pay it <em>for</em>. Its share is zero wins&apos; worth of the
         advancement money and no bonus. The shares that <em>are</em> earned then stretch to fill the
-        purse, so nothing is ever held back — a small bracket simply pays its few winners more
-        each. Rounding dust always lands with the champion.
+        purse, so nothing is ever held back — a small bracket simply pays its few winners more each.
+        Rounding dust always lands with the champion.
       </p>
       <div className="callout warn">
         <b>A bye is not a win.</b> If the field is short, the top seeds skip round one. That skipped
@@ -515,10 +528,10 @@ export default function PintakasiPage() {
       <h2>The land</h2>
       <p>
         The purse follows the wins. Land follows the <strong>fights</strong>. Each crown has a{" "}
-        <strong>fixed pot</strong> of <Link href="/wiki/land">Land Tokens (LT)</Link> — a Major&apos;s
-        is {wholeLt(PINTAKASI.LAND_POT)} LT — and the pot is divided evenly across every fight
-        actually fought in the bracket. Your bird&apos;s share is its own fights over all of them.
-        Nothing about winning enters into it.
+        <strong>fixed pot</strong> of <Link href="/wiki/land">Land Tokens (LT)</Link> — a
+        Major&apos;s is {wholeLt(PINTAKASI.LAND_POT)} LT — and the pot is divided evenly across
+        every fight actually fought in the bracket. Your bird&apos;s share is its own fights over
+        all of them. Nothing about winning enters into it.
       </p>
       <p>Three things fall out of that, and they are all worth knowing before you enter:</p>
       <ul>
@@ -553,13 +566,7 @@ export default function PintakasiPage() {
             {majorLand.map((r) => (
               <tr key={r.mine}>
                 <td className="num">{r.mine}</td>
-                <td>
-                  {r.mine === 1
-                    ? "Lost its first fight"
-                    : r.mine === majorLand.length
-                      ? "The champion, and the runner-up"
-                      : `Won ${r.mine - 1}, then lost`}
-                </td>
+                <td>{fightsLabel(r.mine, majorLand.length, "The champion, and the runner-up")}</td>
                 {/* Pot shares are hundredths like every land figure since round
                     36 — format, never print raw. */}
                 <td className="num">{fmtLt(r.cents)} LT</td>
@@ -570,34 +577,34 @@ export default function PintakasiPage() {
       </div>
       <p className="dim">
         For scale: a grown bird that fights its whole group on the dearest night the daily card runs
-        — the open, at {dailyOpenFee} GP — earns {fmtLt(dailyOpenLand)} LT. Losing your first fight at
-        a Major pays {fmtLt(majorLand[0].cents)} LT, or about{" "}
-        {(majorLand[0].cents / dailyOpenLand).toFixed(1)}× that. So a first-round hardcore death still
-        banks real land, which is the game&apos;s way of saying the risk was real — but the deep run
-        is the one that pays, and that is new.
+        — the open, at {dailyOpenFee} GP — earns {fmtLt(dailyOpenLand)} LT. Losing your first fight
+        at a Major pays {fmtLt(majorLand[0].cents)} LT, or about{" "}
+        {(majorLand[0].cents / dailyOpenLand).toFixed(1)}× that. So a first-round hardcore death
+        still banks real land, which is the game&apos;s way of saying the risk was real — but the
+        deep run is the one that pays, and that is new.
       </p>
       <div className="callout tip">
         <b>An empty-looking crown is a good crown to enter.</b> Take the same{" "}
-        {wholeLt(PINTAKASI.LAND_POT)} LT pot and a field of only {thinBracket} birds. The bracket runs{" "}
-        {thinBracket - 1} fights instead of {majorPurseBracket - 1}, so one fight is worth{" "}
-        {fmtLt(thinLand[0].cents)} LT — against {fmtLt(majorLand[0].cents)} LT in the full field. Same
-        pot, fewer ways to split it.
+        {wholeLt(PINTAKASI.LAND_POT)} LT pot and a field of only {thinBracket} birds. The bracket
+        runs {thinBracket - 1} fights instead of {majorPurseBracket - 1}, so one fight is worth{" "}
+        {fmtLt(thinLand[0].cents)} LT — against {fmtLt(majorLand[0].cents)} LT in the full field.
+        Same pot, fewer ways to split it.
       </div>
       <p className="dim">
-        This used to work the other way round, and it is worth saying so plainly because the old rule
-        was memorable. Crowns paid land per fight on their own separate curve <em>and</em> handed
-        every eliminated bird a consolation grant that grew the <em>earlier</em> it fell — so the
-        first bird out could bank more land than the champion. Two scales that had never been priced
-        against each other. One pot cannot invert like that: it is a single number, divided by
-        counting. The consolation is gone; a fought round is the whole reward.
+        This used to work the other way round, and it is worth saying so plainly because the old
+        rule was memorable. Crowns paid land per fight on their own separate curve <em>and</em>{" "}
+        handed every eliminated bird a consolation grant that grew the <em>earlier</em> it fell — so
+        the first bird out could bank more land than the champion. Two scales that had never been
+        priced against each other. One pot cannot invert like that: it is a single number, divided
+        by counting. The consolation is gone; a fought round is the whole reward.
       </p>
 
       <h2>How many birds</h2>
       <p>
-        One barn may enter up to <strong>{PINTAKASI.MAX_PER_BARN} birds</strong> in a single
-        Major — a deep barn can load one blade with specialists instead of spreading thin. But
-        it&apos;s one Major per bird per week: a bird registered for one blade this week can not
-        also stand in another blade&apos;s bracket the same week.
+        One barn may enter up to <strong>{PINTAKASI.MAX_PER_BARN} birds</strong> in a single Major —
+        a deep barn can load one blade with specialists instead of spreading thin. But it&apos;s one
+        Major per bird per week: a bird registered for one blade this week can not also stand in
+        another blade&apos;s bracket the same week.
       </p>
 
       <h2>The field is public</h2>
@@ -643,9 +650,9 @@ export default function PintakasiPage() {
         This stage <em>does</em> keep a hard gate, and it is the only one left in the game: a
         juvenile bird needs <strong>{JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins</strong> (see{" "}
         <Link href="/wiki/card">The card</Link> for the discovery-year ladder) before it may stand.
-        One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN}{" "}
-        birds per blade, in a bracket capped at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s
-        ceiling, sized for a stage about discovery, not the biggest purse in the game.
+        One barn may enter up to {JUVENILE_MAJOR.MAX_PER_BARN} birds per blade, in a bracket capped
+        at {JUVENILE_MAJOR.MAX_BRACKET} — half a Major&apos;s ceiling, sized for a stage about
+        discovery, not the biggest purse in the game.
       </p>
       <p className="dim">
         Why does the junior stage gate when the senior one doesn&apos;t? Because a one-year-old has
@@ -677,9 +684,9 @@ export default function PintakasiPage() {
 
       <h3>Which of the two crowns?</h3>
       <p>
-        The same rule the Majors use applies here: <strong>one championship per bird per week</strong>.
-        Both juvenile crowns run on the same day, so entering one spends the other. Your chick has
-        to declare.
+        The same rule the Majors use applies here:{" "}
+        <strong>one championship per bird per week</strong>. Both juvenile crowns run on the same
+        day, so entering one spends the other. Your chick has to declare.
       </p>
       <p>
         Nothing steers you toward one blade or the other — a chick that has its{" "}
@@ -699,9 +706,9 @@ export default function PintakasiPage() {
       <div className="callout warn">
         <b>The only championship in the game that isn&apos;t hardcore.</b> Every Major force-retires
         its losers. This one can&apos;t: the discovery year exists to find out what a bird actually
-        is, and ending careers at age one would strangle the very population the Majors are
-        supposed to inherit later. A juvenile crown costs a bird nothing beyond the{" "}
-        {juvenileFee} GP at the door — win or lose, it goes home able to keep climbing the ladder.
+        is, and ending careers at age one would strangle the very population the Majors are supposed
+        to inherit later. A juvenile crown costs a bird nothing beyond the {juvenileFee} GP at the
+        door — win or lose, it goes home able to keep climbing the ladder.
       </div>
       <p>
         Its purse comes out of the same juice pool the Majors draw from — a fixed{" "}

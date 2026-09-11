@@ -72,7 +72,14 @@ export type BotAction =
   | { do: "retire"; birdId: string }
   | { do: "list_stud"; birdId: string }
   | { do: "breed"; motherId: string; fatherId: string }
-  | { do: "enter"; birdId: string; mode: FightMode; classType: Lobby; format: FightFormat; price?: number }
+  | {
+      do: "enter";
+      birdId: string;
+      mode: FightMode;
+      classType: Lobby;
+      format: FightFormat;
+      price?: number;
+    }
   | { do: "claim"; entryId: number }
   | { do: "crown"; birdId: string; format: FightFormat; division?: Division };
 
@@ -191,7 +198,9 @@ export type BotDecider = (view: BotView) => Promise<BotAction[]>;
  * `BotView`.
  */
 export function buildView(db: DB, farmId: string): BotView {
-  const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) throw new Error("buildView: game_state row 1 missing — the world was never seeded");
+  const day = state.dayIndex;
   const farmsApi = new Farms(db);
   const flock = new Flock(db, farmId);
   const lobbies = new Lobbies(db, farmId);
@@ -233,10 +242,7 @@ export function buildView(db: DB, farmId: string): BotView {
           .select({ id: birds.id })
           .from(birds)
           .where(
-            and(
-              eq(birds.farmId, farmId),
-              gte(birds.stakesWins, CROWN_CHASE.CROWN_MIN_REAL_WINS)
-            )
+            and(eq(birds.farmId, farmId), gte(birds.stakesWins, CROWN_CHASE.CROWN_MIN_REAL_WINS))
           )
           .all()
           .map((b) => b.id)

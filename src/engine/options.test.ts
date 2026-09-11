@@ -70,7 +70,12 @@ const viewOf = (over: Record<string, unknown> = {}): BotView => {
     board: [],
     claimerBoard: [],
     scout: {},
-    crowns: { weekFormats: [], eligibleBirdIds: [], juvenileFormats: [], juvenileEligibleBirdIds: [] },
+    crowns: {
+      weekFormats: [],
+      eligibleBirdIds: [],
+      juvenileFormats: [],
+      juvenileEligibleBirdIds: [],
+    },
     studMarket: [],
     ledger: { cardNetGp: 0, crownFeesGp: 0, crownWinningsGp: 0 },
     ...rest,
@@ -215,7 +220,12 @@ describe("the rows themselves", () => {
     expect(juvi.value).toBe(9);
     expect(juvi.hardcore).toBeUndefined();
     expect(juvi.fee).toBe(JUVENILE_MAJOR.ENTRY_FEE);
-    expect(juvi.action).toEqual({ do: "crown", birdId: chick.id, format: "b2", division: "juvenile" });
+    expect(juvi.action).toEqual({
+      do: "crown",
+      birdId: chick.id,
+      format: "b2",
+      division: "juvenile",
+    });
 
     const major = rowOf(champ.id, "crown major")!;
     expect(major.hardcore).toBe(true);
@@ -244,7 +254,9 @@ describe("the rows themselves", () => {
     // …and a roster at fighting-strength minimum never offers it.
     const thin = buildOptions(viewOf({ flock: [loserHen, chick] }));
     expect(
-      thin.birds.find((b) => b.birdId === loserHen.id)!.options.some((o) => o.action?.do === "retire")
+      thin.birds
+        .find((b) => b.birdId === loserHen.id)!
+        .options.some((o) => o.action?.do === "retire")
     ).toBe(false);
   });
 
@@ -261,7 +273,12 @@ describe("the rows themselves", () => {
             {
               entryId: 7,
               mine: false,
-              bird: { name: "Thunderclap", age: 3, stars: "3.5★ Water", career: { wins: 4, losses: 1 } },
+              bird: {
+                name: "Thunderclap",
+                age: 3,
+                stars: "3.5★ Water",
+                career: { wins: 4, losses: 1 },
+              },
             },
           ],
         },
@@ -308,7 +325,9 @@ describe("the rows themselves", () => {
     const { barn } = buildOptions(
       viewOf({ flock: [expecting, free, gestating, laid], studMarket: [stud] })
     );
-    const mothers = barn.filter((r) => r.action?.do === "breed").map((r) => (r.action as { motherId: string }).motherId);
+    const mothers = barn
+      .filter((r) => r.action?.do === "breed")
+      .map((r) => (r.action as { motherId: string }).motherId);
     expect(mothers).not.toContain(expecting.id);
     expect(mothers).toContain(free.id);
   });
@@ -336,7 +355,12 @@ describe("determinism", () => {
       nextBird = 100; // pin ids so the two views are truly identical
       const chick = bird({ age: 1, wins: 2 });
       return viewOf({
-        flock: [chick, bird({ age: 4, losses: 3 }), bird({ age: 8, stakesWins: 4 }), bird({ status: "retired", sexLabel: "hen" })],
+        flock: [
+          chick,
+          bird({ age: 4, losses: 3 }),
+          bird({ age: 8, stakesWins: 4 }),
+          bird({ status: "retired", sexLabel: "hen" }),
+        ],
         scout: { [chick.id]: scoutOf("b2", 3) },
         crowns: {
           weekFormats: ["b1"],
@@ -416,7 +440,9 @@ describe("translation: a pick is a lookup, never an interpretation", () => {
   test("rest is a legal pick that produces no action and counts", () => {
     const { view } = translationView();
     const { maps } = digestOptions(view);
-    const restPick = [...maps.birdPicks.get("#1")!.entries()].find(([, action]) => action === null)![0];
+    const restPick = [...maps.birdPicks.get("#1")!.entries()].find(
+      ([, action]) => action === null
+    )![0];
     const out = toActionsFromPicks(
       { picks: [{ bird: "#1", pick: restPick }], barnPicks: [], offMenu: [] },
       maps

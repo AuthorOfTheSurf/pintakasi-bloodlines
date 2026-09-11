@@ -14,11 +14,9 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies } from "./lobbies";
-import { CLAIMER, ECONOMY, LT_CENTS, barnCapacity, nextExpansionCost } from "./config";
-import { canHardcore } from "./lifecycle";
+import { LT_CENTS, barnCapacity, nextExpansionCost } from "./config";
 import { drawStarterNames } from "./naming";
-import { mulberry32, randInt } from "./rng";
-import { Tournaments } from "./tournaments";
+import { mulberry32 } from "./rng";
 
 /**
  * The honest day a player-owned stable plays when nobody is at the keyboard.
@@ -84,7 +82,8 @@ export function playHonestDay(
       if (short > 0) quietly(() => void farmsApi.unstake(farmId, Math.ceil(short / LT_CENTS)));
       // …and buys the rest with GP if the land bank can't cover it — same
       // rich-but-landless fallback as the bots (see bots.ts step 1b2).
-      const stillShort = nextExpansionCost(row.barnExpansions) - farmsApi.rowById(farmId).landTokensCents;
+      const stillShort =
+        nextExpansionCost(row.barnExpansions) - farmsApi.rowById(farmId).landTokensCents;
       if (stillShort > 0)
         quietly(() => void farmsApi.buyLand(farmId, Math.ceil(stillShort / LT_CENTS)));
       farmsApi.expandBarn(farmId);
@@ -125,7 +124,9 @@ export function playHonestDay(
   // an honest stable down to its last 80 GP now that it isn't. The crowns run
   // BEFORE the daily card below, so an unreserved barn would buy championship
   // seats with the money it needed to card its ordinary birds.
-  quietly(() => void chaseCrowns(db, farmId, day, mulberry32(1300 + day), { reserve: AUTO_RESERVE }));
+  quietly(
+    () => void chaseCrowns(db, farmId, day, mulberry32(1300 + day), { reserve: AUTO_RESERVE })
+  );
   // …and the discovery-year stage on Wednesday (round 23).
   quietly(() => void chaseJuvenileCrowns(db, farmId, day));
 
@@ -166,11 +167,19 @@ export function playHonestDay(
     // it, `lobbies.enter` throws and `quietly` swallows the failure, so a stable
     // that ran short would silently stop carding with nothing reporting why.
     const budget = farmsApi.rowById(farmId).gp - AUTO_RESERVE;
-    const spec = pickOffering(db, AUTO_PLAY_STYLE, bird, cardRng, day, discoveryPolicy, budget, reports.get(bird.id));
+    const spec = pickOffering(
+      db,
+      AUTO_PLAY_STYLE,
+      bird,
+      cardRng,
+      day,
+      discoveryPolicy,
+      budget,
+      reports.get(bird.id)
+    );
     if (spec === null) continue; // nothing on tonight's card this bird can enter
     quietly(() => lobbies.enter(bird.id, spec));
   }
-
 }
 
 /**
@@ -248,4 +257,9 @@ export function shopAllClaimers(db: DB): void {
   for (const farm of ownedFarms(db)) shopClaimers(db, farm.id);
 }
 
-const ownedFarms = (db: DB) => db.select().from(farms).all().filter((f) => f.isBot === 0);
+const ownedFarms = (db: DB) =>
+  db
+    .select()
+    .from(farms)
+    .all()
+    .filter((f) => f.isBot === 0);

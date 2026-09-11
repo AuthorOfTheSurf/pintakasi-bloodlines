@@ -41,10 +41,16 @@ const briefJson = JSON.stringify(brief);
 
 console.log(`\n  world: ${dbArg ?? latestSimDb()}`);
 console.log(`  farm:  ${farmId} · day ${view.day}\n`);
-console.log(`  RAW VIEW    ${rawJson.length.toLocaleString().padStart(9)} chars  ≈ ${tokens(rawJson).toLocaleString().padStart(7)} tokens`);
-console.log(`  DIGEST      ${briefJson.length.toLocaleString().padStart(9)} chars  ≈ ${tokens(briefJson).toLocaleString().padStart(7)} tokens`);
+console.log(
+  `  RAW VIEW    ${rawJson.length.toLocaleString().padStart(9)} chars  ≈ ${tokens(rawJson).toLocaleString().padStart(7)} tokens`
+);
+console.log(
+  `  DIGEST      ${briefJson.length.toLocaleString().padStart(9)} chars  ≈ ${tokens(briefJson).toLocaleString().padStart(7)} tokens`
+);
 console.log(`  ratio       ${(rawJson.length / briefJson.length).toFixed(1)}× smaller\n`);
-console.log(`  view parts: flock ${view.flock.length} birds · board ${view.board.length} lobbies · claimer ${view.claimerBoard.length} · scout ${Object.keys(view.scout).length}`);
+console.log(
+  `  view parts: flock ${view.flock.length} birds · board ${view.board.length} lobbies · claimer ${view.claimerBoard.length} · scout ${Object.keys(view.scout).length}`
+);
 
 // ── Where the seconds go ───────────────────────────────────────────────────
 console.log(`\n  calling ${model} …`);
@@ -57,7 +63,7 @@ const res = await fetch("http://localhost:11434/api/chat", {
     think: false,
     options: { temperature: 0.7, num_predict: 700 },
     messages: [
-      { role: "system", content: "Reply with JSON only: {\"actions\":[]}" },
+      { role: "system", content: 'Reply with JSON only: {"actions":[]}' },
       { role: "user", content: briefJson },
     ],
   }),

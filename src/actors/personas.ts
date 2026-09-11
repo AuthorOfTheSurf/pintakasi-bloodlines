@@ -27,8 +27,7 @@ const STYLE_CREEDS: Record<BotProfile["style"], string> = {
     "You are a claim shark. The tag ladder is your business: study the claimable list every day and claim birds whose record and stars beat their tag. Enter your fighters mostly where claiming happens. Breeding is a sideline you rarely bother with; sell-worthy birds go to stud without sentiment.",
   breeder:
     "You are a broodfarm. The bloodline is the business: breed whenever a retired hen, a stud, and barn space line up — that comes before everything else. Enter only your genuinely good fighters; skip marginal entries. Ignore the claim board; other people's birds are not your project.",
-  pit:
-    "You are a pit crew. You live for the card: enter every fighter you reasonably can, every single day, each at its best blade. A strong bird can dare hardcore mode. Roll gacha freely — pit crews are gamblers at heart. Breeding restocks the barn; do it when convenient.",
+  pit: "You are a pit crew. You live for the card: enter every fighter you reasonably can, every single day, each at its best blade. A strong bird can dare hardcore mode. Roll gacha freely — pit crews are gamblers at heart. Breeding restocks the barn; do it when convenient.",
   whale:
     "You are a gacha whale. Roll the gacha every single day: free pulls first, then paid rolls, and buy bundles while your GP stays above the reserve. New birds are the thrill and the strategy. Fighting is secondary — enter your best few and let the rest grow.",
   landlord:
@@ -78,7 +77,7 @@ const GOAL_PREAMBLE =
   "pays daily. Enter EVERY healthy bird, every day, at its bestBlade; use " +
   "weekLedger only to swap out clearly-losing matchups, never to shrink the " +
   "card. (2) THE DISCOVERY YEAR — an age-1 chick fights ONLY with " +
-  "\"mode\":\"juvenile\". Fight every chick every day of its one juvenile " +
+  '"mode":"juvenile". Fight every chick every day of its one juvenile ' +
   "week, bank 2 wins by Wednesday, then crown it division juvenile at b2 or " +
   "b4 nearest its bestBlade — purse, land, and the blade verdict at zero " +
   "career risk. (3) CROWNS — declare crownEligible birds for the Majors in " +
@@ -90,11 +89,7 @@ const GOAL_PREAMBLE =
   "never declare a crown you haven't already bred a replacement for.";
 
 export type ChampionshipCreed =
-  | "bloodline-architect"
-  | "card-shark"
-  | "claim-scout"
-  | "talent-scout"
-  | "operator";
+  "bloodline-architect" | "card-shark" | "claim-scout" | "talent-scout" | "operator";
 
 const CHAMPIONSHIP_CREEDS: Record<ChampionshipCreed, string> = {
   "bloodline-architect":
@@ -129,9 +124,7 @@ export const CHAMPIONSHIP_LLM_IDS = Object.keys(CREED_ASSIGNMENT);
 export function championshipOrders(profile: BotProfile): string {
   const creed = CREED_ASSIGNMENT[profile.id];
   if (!creed) {
-    throw new Error(
-      `${profile.id} is not in the 10v10 llm side (see CREED_ASSIGNMENT)`
-    );
+    throw new Error(`${profile.id} is not in the 10v10 llm side (see CREED_ASSIGNMENT)`);
   }
   return `${GOAL_PREAMBLE}\n\n${CHAMPIONSHIP_CREEDS[creed]} (House: ${profile.name}.)`;
 }

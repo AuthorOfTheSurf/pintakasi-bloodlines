@@ -18,38 +18,48 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { LAND, LT_CENTS } from "@/engine/config";
 
+/** Last element of a list already proven non-empty — says so if it isn't. */
+function last(xs: string[]): string {
+  const x = xs.at(-1);
+  if (x === undefined) throw new Error("no sim databases in data/");
+  return x;
+}
+
+function newestSimDb(): string {
+  const dir = "data";
+  // "Newest" means simulate's own sim-YYYYMMDD-HHMM stamp, not a bare
+  // lexical sort: hand-named dbs like sim-r44-112-s2.db sort after every
+  // timestamped run and would shadow fresh worlds forever. (mtime is no
+  // better — a bulk copy of data/ rewrites every mtime at once.) Within
+  // the stamped set, sort on (timestamp, collision suffix) explicitly:
+  // lexically, sim-…-0156-2.db lands BEFORE sim-…-0156.db ("-" < "."), so
+  // a plain sort would pick the older base run of a same-minute pair.
+  // mtime is only the fallback when nothing is stamped.
+  const stamped = /^sim-(\d{8}-\d{4})(?:-(\d+))?\.db$/;
+  const all = readdirSync(dir).filter((f) => f.startsWith("sim-") && f.endsWith(".db"));
+  if (!all.length) throw new Error("no sim databases in data/");
+  const candidates = all.filter((f) => stamped.test(f));
+  const key = (f: string): [string, number] => {
+    const m = stamped.exec(f);
+    // Only ever called on names that already passed stamped.test().
+    if (!m) throw new Error(`not a stamped sim db: ${f}`);
+    return [m[1], m[2] ? Number(m[2]) : 0];
+  };
+  const byStamp = (a: string, b: string): number => {
+    const [ta, na] = key(a);
+    const [tb, nb] = key(b);
+    if (ta === tb) return na - nb;
+    return ta < tb ? -1 : 1;
+  };
+  if (candidates.length) return path.join(dir, last(candidates.sort(byStamp)));
+  const pick = last(
+    all.sort((a, b) => statSync(path.join(dir, a)).mtimeMs - statSync(path.join(dir, b)).mtimeMs)
+  );
+  return path.join(dir, pick);
+}
+
 const dbArg = process.argv[2];
-const dbPath =
-  dbArg ??
-  (() => {
-    const dir = "data";
-    // "Newest" means simulate's own sim-YYYYMMDD-HHMM stamp, not a bare
-    // lexical sort: hand-named dbs like sim-r44-112-s2.db sort after every
-    // timestamped run and would shadow fresh worlds forever. (mtime is no
-    // better — a bulk copy of data/ rewrites every mtime at once.) Within
-    // the stamped set, sort on (timestamp, collision suffix) explicitly:
-    // lexically, sim-…-0156-2.db lands BEFORE sim-…-0156.db ("-" < "."), so
-    // a plain sort would pick the older base run of a same-minute pair.
-    // mtime is only the fallback when nothing is stamped.
-    const stamped = /^sim-(\d{8}-\d{4})(?:-(\d+))?\.db$/;
-    const all = readdirSync(dir).filter((f) => f.startsWith("sim-") && f.endsWith(".db"));
-    if (!all.length) throw new Error("no sim databases in data/");
-    const candidates = all.filter((f) => stamped.test(f));
-    const key = (f: string): [string, number] => {
-      const m = stamped.exec(f)!;
-      return [m[1], m[2] ? Number(m[2]) : 0];
-    };
-    const pick = candidates.length
-      ? candidates.sort((a, b) => {
-          const [ta, na] = key(a);
-          const [tb, nb] = key(b);
-          return ta === tb ? na - nb : ta < tb ? -1 : 1;
-        }).at(-1)!
-      : all.sort(
-          (a, b) => statSync(path.join(dir, a)).mtimeMs - statSync(path.join(dir, b)).mtimeMs
-        ).at(-1)!;
-    return path.join(dir, pick);
-  })();
+const dbPath = dbArg ?? newestSimDb();
 if (!existsSync(dbPath)) {
   console.error(`no database at ${dbPath}`);
   process.exit(1);

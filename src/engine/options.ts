@@ -88,6 +88,55 @@ export interface OptionsPlan {
 
 const clamp9 = (n: number): number => Math.max(0, Math.min(9, Math.round(n)));
 
+/** A Major's value: a free shot outranks the proven blade, which outranks off-blade. */
+function majorValue(freeShot: boolean, atBest: boolean): number {
+  if (freeShot) return 9;
+  if (atBest) return 8;
+  return 6;
+}
+
+function majorWhy(freeShot: boolean, atBest: boolean, format: string): string {
+  if (freeShot)
+    return "age-8 veteran: forced retirement at 9 makes the hardcore risk free — biggest purse in the game";
+  if (atBest) return "the game's biggest purse, at its proven blade";
+  return `Major offered at ${format}, not its proven blade — a crown off-blade is a donation`;
+}
+
+/** Discovery bonus for a yearling: the fewer figures on it, the more a cheap card is worth. */
+function discoveryBonus(age: number, fights: number): number {
+  if (age !== 1) return 0;
+  if (fights >= 5) return 0;
+  if (fights >= 3) return 1;
+  return 2;
+}
+
+/** How badly the shed needs a hen: empty is urgent, one is thin, two or more is fine. */
+function shedNeedFor(isHen: boolean, henCount: number): number {
+  if (!isHen) return 0;
+  if (henCount === 0) return 4;
+  if (henCount < 2) return 2;
+  return 0;
+}
+
+/** A rooster always has a stud seat worth filling; the first one is worth more. */
+function studNeedFor(isHen: boolean, studCount: number): number {
+  if (isHen) return 0;
+  if (studCount === 0) return 2;
+  return 1;
+}
+
+function loserScore(wins: number, losses: number): number {
+  if (losses > wins) return 3;
+  if (losses === wins) return 1;
+  return 0;
+}
+
+function retireWhy(isHen: boolean, henCount: number, wins: number, losses: number): string {
+  if (!isHen) return "a retired rooster stands at stud and earns fees";
+  if (henCount === 0) return "the shed is EMPTY — no hen, no eggs, no next season";
+  return `${wins}-${losses} record; a retired hen breeds weekly`;
+}
+
 export function buildOptions(view: BotView): OptionsPlan {
   const gp = view.farm.gp;
   const spendable = gp - GP_RESERVE;
@@ -164,13 +213,9 @@ export function buildOptions(view: BotView): OptionsPlan {
         candidates.push({
           do: `crown major ${slot.format}`,
           fee: PINTAKASI.ENTRY_FEE,
-          value: freeShot ? 9 : slot.atBest ? 8 : 6,
+          value: majorValue(freeShot, slot.atBest),
           hardcore: true,
-          why: freeShot
-            ? "age-8 veteran: forced retirement at 9 makes the hardcore risk free — biggest purse in the game"
-            : slot.atBest
-              ? "the game's biggest purse, at its proven blade"
-              : `Major offered at ${slot.format}, not its proven blade — a crown off-blade is a donation`,
+          why: majorWhy(freeShot, slot.atBest, slot.format),
           action: { do: "crown", birdId: b.id, format: slot.format, division: "major" },
         });
       }
@@ -182,8 +227,8 @@ export function buildOptions(view: BotView): OptionsPlan {
       const fee = feeFor(key.mode, key.classType, key.price ?? undefined);
       if (fee > spendable) continue;
       const atBest = key.format === bestBlade;
-      const discovery = b.age === 1 ? (fights >= 5 ? 0 : fights >= 3 ? 1 : 2) : 0;
-      const softness = key.classType === "maiden" ? 1 : key.classType === "claimer" ? 1 : 0;
+      const discovery = discoveryBonus(b.age, fights);
+      const softness = key.classType === "maiden" || key.classType === "claimer" ? 1 : 0;
       const sharpRead = b.age === 1 && key.classType === "open" ? 1 : 0;
       const value = clamp9(3 + (atBest ? 2 : 0) + discovery + softness + sharpRead);
       const label =
@@ -216,19 +261,15 @@ export function buildOptions(view: BotView): OptionsPlan {
     // Never on a roster already at fighting-strength minimum.
     if (canHardcore(b.age) && active.length > 3) {
       const isHen = b.sexLabel === "hen";
-      const shedNeed = isHen ? (hens.length === 0 ? 4 : hens.length < 2 ? 2 : 0) : 0;
-      const studNeed = !isHen ? (ownStuds.length === 0 ? 2 : 1) : 0;
-      const loser = b.losses > b.wins ? 3 : b.losses === b.wins ? 1 : 0;
+      const shedNeed = shedNeedFor(isHen, hens.length);
+      const studNeed = studNeedFor(isHen, ownStuds.length);
+      const loser = loserScore(b.wins, b.losses);
       const value = clamp9(1 + shedNeed + studNeed + loser);
       if (value >= 3)
         candidates.push({
           do: "retire to the breeding shed",
           value,
-          why: isHen
-            ? hens.length === 0
-              ? "the shed is EMPTY — no hen, no eggs, no next season"
-              : `${b.wins}-${b.losses} record; a retired hen breeds weekly`
-            : "a retired rooster stands at stud and earns fees",
+          why: retireWhy(isHen, hens.length, b.wins, b.losses),
           action: { do: "retire", birdId: b.id },
         });
     }
@@ -258,7 +299,12 @@ export function buildOptions(view: BotView): OptionsPlan {
   // first (no cross-farm fee narrative needed), then the market's best.
   if (hens.length > 0 && barnSpace > 0 && ECONOMY.BREED_FEE <= spendable) {
     const sires: { id: string; name: string; label: string; halfStars: number }[] = [
-      ...ownStuds.map((s) => ({ id: s.id, name: s.name, label: "your stud", halfStars: s.halfStars })),
+      ...ownStuds.map((s) => ({
+        id: s.id,
+        name: s.name,
+        label: "your stud",
+        halfStars: s.halfStars,
+      })),
       ...view.studMarket.map((s) => ({
         id: s.id,
         name: s.name,
@@ -266,7 +312,7 @@ export function buildOptions(view: BotView): OptionsPlan {
         halfStars: s.stars * 2,
       })),
     ].sort((a, b) => b.halfStars - a.halfStars);
-    const pairs: [typeof hens[number], (typeof sires)[number]][] = [];
+    const pairs: [(typeof hens)[number], (typeof sires)[number]][] = [];
     for (const hen of hens.slice(0, 2))
       for (const sire of sires.slice(0, 2)) {
         if (pairs.length >= BREED_PAIRINGS_OFFERED) break;
@@ -330,9 +376,7 @@ export function buildOptions(view: BotView): OptionsPlan {
   // but the rows fire whenever the board is visible at collect time.
   const claimCandidates = view.claimerBoard
     .flatMap((lobby) =>
-      lobby.entries
-        .filter((e) => !e.mine)
-        .map((e) => ({ entry: e, tag: lobby.price ?? 0 }))
+      lobby.entries.filter((e) => !e.mine).map((e) => ({ entry: e, tag: lobby.price ?? 0 }))
     )
     .filter(({ tag }) => tag > 0 && tag <= spendable)
     .map(({ entry, tag }) => {

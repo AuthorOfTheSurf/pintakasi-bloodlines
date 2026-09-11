@@ -47,6 +47,30 @@ import {
 } from "./snapshots";
 
 /**
+ * game_state row 1 is written by seedGame and never deleted, so a world
+ * without it is not one the doctor can examine — say so instead of crashing
+ * on a property read.
+ */
+function stateRow(db: DB) {
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) throw new Error("doctor: game_state row 1 missing — not a seeded world");
+  return state;
+}
+
+/** Discovery-audit age bucket: 0 = age 0–1, 1 = age 2–3, 2 = age 4+. */
+function ageBucket(age: number): number {
+  if (age <= 1) return 0;
+  if (age <= 3) return 1;
+  return 2;
+}
+
+/** A lookup the surrounding code has already guaranteed; `why` names the guarantee. */
+function must<T>(value: T | undefined, why: string): T {
+  if (value === undefined) throw new Error(`doctor: ${why}`);
+  return value;
+}
+
+/**
  * THE DOCTOR (round 24) — one command that answers "is this world healthy?"
  *
  * Built because verification was a browser and ad-hoc SQL: `simulate` printed
@@ -244,7 +268,10 @@ const gp = (cents: number) => (cents / 100).toLocaleString("en-US", { minimumFra
  * and 500 renders "5" invites the reader to mistake a scale change for a value.
  */
 const lt = (cents: number) =>
-  (cents / LT_CENTS).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  (cents / LT_CENTS).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 const pct = (n: number, d: number) => (d === 0 ? "0.0%" : `${((n / d) * 100).toFixed(1)}%`);
 /** Signed so a baseline of ~0 and a selected +68 read as different things at a glance. */
 const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}`;
@@ -257,7 +284,10 @@ const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}`;
  * the per-day drift series to read (see the note at the series itself for why
  * it does NOT try to name a single guilty day).
  */
-function checkConservation(db: DB): { invariant: Invariant; series?: { day: number; drift: number }[] } {
+function checkConservation(db: DB): {
+  invariant: Invariant;
+  series?: { day: number; drift: number }[];
+} {
   const actual = gpInWorldCents(db);
   const expected = gpFromFaucetsCents(db);
   if (actual === expected)
@@ -275,8 +305,10 @@ function checkConservation(db: DB): { invariant: Invariant; series?: { day: numb
     const sumOf = (type: string) =>
       upTo.filter((e) => e.type === type).reduce((s, e) => s + (e.gpCents ?? 0), 0);
     const genesis = upTo
-      .filter((e) => e.type === "pool_accrual" && e.data)
-      .map((e) => JSON.parse(e.data!) as { juicePoolCents?: number; source?: string })
+      .flatMap((e) => {
+        if (e.type !== "pool_accrual" || !e.data) return [];
+        return [JSON.parse(e.data) as { juicePoolCents?: number; source?: string }];
+      })
       .filter((d) => d.source === "genesis")
       .reduce((s, d) => s + (d.juicePoolCents ?? 0), 0);
     return sumOf("farm_registered") + sumOf("check_in") + genesis;
@@ -287,7 +319,11 @@ function checkConservation(db: DB): { invariant: Invariant; series?: { day: numb
   // drift legitimately swings by thousands on a crown day when purses settle
   // across the boundary. A bisect that confidently names the wrong day is
   // worse than none — so this hands over the series and lets a human read it.
-  const rows = db.select().from(snapshots).all().sort((a, b) => a.dayIndex - b.dayIndex);
+  const rows = db
+    .select()
+    .from(snapshots)
+    .all()
+    .sort((a, b) => a.dayIndex - b.dayIndex);
   const series = rows.map((r) => ({
     day: r.dayIndex,
     drift: (JSON.parse(r.data) as Topline).gpCents - faucetsThrough(r.dayIndex),
@@ -300,8 +336,7 @@ function checkConservation(db: DB): { invariant: Invariant; series?: { day: numb
     const stuck = series.find(
       (s, i) => s.drift === settled && series.slice(i).every((t) => t.drift === settled)
     );
-    if (stuck)
-      offenders.push(`the books settle at this discrepancy from day ${stuck.day} onward`);
+    if (stuck) offenders.push(`the books settle at this discrepancy from day ${stuck.day} onward`);
     offenders.push(`daily drift series available with --json (${series.length} snapshots)`);
   }
 
@@ -321,7 +356,7 @@ function checkConservation(db: DB): { invariant: Invariant; series?: { day: numb
 
 /** Nothing may go negative, and cents must stay inside a whole GP. */
 function checkNoNegatives(db: DB): Invariant {
-  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  const state = stateRow(db);
   const allFarms = db.select().from(farms).all();
   const offenders: string[] = [];
   if (state.stakerPoolCents < 0) offenders.push(`staker pool ${gp(state.stakerPoolCents)}`);
@@ -393,7 +428,11 @@ function checkNoInversions(db: DB): Invariant {
 /** A resolved championship pays out its purse exactly — dust and all. */
 function checkPursesSettle(db: DB): Invariant {
   // Only completed crowns: a cancelled one never sets purseCents at all.
-  const done = db.select().from(tournaments).all().filter((t) => t.status === "completed");
+  const done = db
+    .select()
+    .from(tournaments)
+    .all()
+    .filter((t) => t.status === "completed");
   const entries = db.select().from(tournamentEntries).all();
   // Grouped once (round 43): this used to re-filter every tournament entry in the
   // world per completed crown, which is O(crowns × entries) for a sum SQLite-shaped
@@ -461,7 +500,10 @@ function checkNoStrandedEscrow(db: DB): Invariant {
         : `${stranded.length} entr(ies) still pending on a resolved crown — ${gp(held)} GP unreachable`,
     offenders: stranded
       .slice(0, DOCTOR.OFFENDER_SAMPLE)
-      .map((e) => `entry #${e.id} on crown #${e.tournamentId} (${e.status}) holds ${gp(e.fee * 100)} GP`),
+      .map(
+        (e) =>
+          `entry #${e.id} on crown #${e.tournamentId} (${e.status}) holds ${gp(e.fee * 100)} GP`
+      ),
   };
 }
 
@@ -574,17 +616,37 @@ function checkFightCounts(db: DB): Invariant {
  * catching missed rows (whole figures), not litigating the last ulp.
  */
 function checkScoutBook(db: DB): Invariant {
-  type Sums = { fights: number; wins: number; losses: number; figureSum: number; bestFigure: number; normSum: number; earnCents: number };
+  type Sums = {
+    fights: number;
+    wins: number;
+    losses: number;
+    figureSum: number;
+    bestFigure: number;
+    normSum: number;
+    earnCents: number;
+  };
   const derived = new Map<string, Sums>();
   for (const row of db.select().from(battleLog).all()) {
     const k = `${row.birdId}|${row.format}`;
-    const s = derived.get(k) ?? { fights: 0, wins: 0, losses: 0, figureSum: 0, bestFigure: 0, normSum: 0, earnCents: 0 };
+    const s = derived.get(k) ?? {
+      fights: 0,
+      wins: 0,
+      losses: 0,
+      figureSum: 0,
+      bestFigure: 0,
+      normSum: 0,
+      earnCents: 0,
+    };
     s.fights += 1;
     if (row.result === "win") s.wins += 1;
     else s.losses += 1;
     s.figureSum += row.pitFigure;
     s.bestFigure = Math.max(s.bestFigure, row.pitFigure);
-    s.normSum += normalizedScoutFigure(row.pitFigure, row.selfGrade as Grade, row.opponentGrade as Grade);
+    s.normSum += normalizedScoutFigure(
+      row.pitFigure,
+      row.selfGrade as Grade,
+      row.opponentGrade as Grade
+    );
     s.earnCents += Math.max(0, row.gpDeltaCents);
     derived.set(k, s);
   }
@@ -758,8 +820,7 @@ export function cardHealth(db: DB): {
 export function groupStage(db: DB): HealthSection {
   const entries = db.select().from(lobbyEntries).all();
   const settled = entries.filter((e) => e.status !== "pending");
-  if (settled.length === 0)
-    return { title: "GROUP STAGE", lines: ["no cards have gone off yet"] };
+  if (settled.length === 0) return { title: "GROUP STAGE", lines: ["no cards have gone off yet"] };
 
   const full = settled.filter((e) => e.fights === FIGHTS_PER_GROUP_BIRD).length;
   const short = settled.filter((e) => e.fights > 0 && e.fights < FIGHTS_PER_GROUP_BIRD).length;
@@ -774,18 +835,31 @@ export function groupStage(db: DB): HealthSection {
   const lobbySize = new Map<number, number>();
   for (const e of entries) {
     if (e.groupNo === null) continue;
-    groupSize.set(`${e.lobbyId}|${e.groupNo}`, (groupSize.get(`${e.lobbyId}|${e.groupNo}`) ?? 0) + 1);
+    groupSize.set(
+      `${e.lobbyId}|${e.groupNo}`,
+      (groupSize.get(`${e.lobbyId}|${e.groupNo}`) ?? 0) + 1
+    );
     lobbySize.set(e.lobbyId, (lobbySize.get(e.lobbyId) ?? 0) + 1);
   }
   const sizes = [...groupSize.entries()];
-  const meanGroup = sizes.length
-    ? sizes.reduce((s, [, n]) => s + n, 0) / sizes.length
-    : 0;
+  const meanGroup = sizes.length ? sizes.reduce((s, [, n]) => s + n, 0) / sizes.length : 0;
   const ones = sizes.filter(([, n]) => n === 1);
   const loneEntries = ones.filter(([k]) => lobbySize.get(Number(k.split("|")[0])) === 1).length;
   const bugs = ones.length - loneEntries;
 
   const fullShare = full / settled.length;
+  // A levelling bug outranks a thin card: it means dealGroups itself is wrong.
+  const groupWarning = (): string | undefined => {
+    if (bugs > 0)
+      return `${bugs} group(s) of one were dealt out of a lobby that had company — dealGroups is not levelling`;
+    if (fullShare < DOCTOR.FULL_CARD_WARN)
+      return (
+        `only ${pct(full, settled.length)} of settled entries got a full ${FIGHTS_PER_GROUP_BIRD}-fight card ` +
+        `(mean ${meanFights.toFixed(2)}) — either the lobbies are too thin to fill a group, ` +
+        `or barn-mates are colliding inside them`
+      );
+    return undefined;
+  };
   return {
     title: "GROUP STAGE",
     lines: [
@@ -799,14 +873,7 @@ export function groupStage(db: DB): HealthSection {
         (bugs > 0 ? `, ⚠ ${bugs} LEVELLING BUG${bugs === 1 ? "" : "S"}` : "") +
         ")",
     ],
-    warn:
-      bugs > 0
-        ? `${bugs} group(s) of one were dealt out of a lobby that had company — dealGroups is not levelling`
-        : fullShare < DOCTOR.FULL_CARD_WARN
-          ? `only ${pct(full, settled.length)} of settled entries got a full ${FIGHTS_PER_GROUP_BIRD}-fight card ` +
-            `(mean ${meanFights.toFixed(2)}) — either the lobbies are too thin to fill a group, ` +
-            `or barn-mates are colliding inside them`
-          : undefined,
+    warn: groupWarning(),
   };
 }
 
@@ -843,9 +910,19 @@ export function weatherTiming(db: DB): {
   ratio: number;
 } {
   const starred = new Map(
-    db.select().from(birds).all().map((b) => [b.id, b.halfStars > 0 ? b.element : null])
+    db
+      .select()
+      .from(birds)
+      .all()
+      .map((b) => [b.id, b.halfStars > 0 ? b.element : null])
   );
-  const dayOf = new Map(db.select().from(lobbies).all().map((l) => [l.id, l.dayOpened]));
+  const dayOf = new Map(
+    db
+      .select()
+      .from(lobbies)
+      .all()
+      .map((l) => [l.id, l.dayOpened])
+  );
   let entries = 0;
   let matched = 0;
   for (const e of db.select().from(lobbyEntries).all()) {
@@ -921,7 +998,9 @@ function lobbyFill(db: DB): HealthSection {
   if (sizes.length === 0) return { title: "LOBBY FILL", lines: ["no lobbies yet"] };
   const mean = sizes.reduce((a, b) => a + b, 0) / sizes.length;
   const singletons = sizes.filter((n) => n === 1).length;
-  const sameBarn = [...byLobby.entries()].filter(([id, f]) => f.size === 1 && (size.get(id) ?? 0) > 1);
+  const sameBarn = [...byLobby.entries()].filter(
+    ([id, f]) => f.size === 1 && (size.get(id) ?? 0) > 1
+  );
   const stranded = sameBarn.reduce((n, [id]) => n + (size.get(id) ?? 0), 0);
   // A histogram in buckets — the shape matters as much as the mean, because a
   // healthy card is a stack of deep lobbies and not a long tail of thin ones.
@@ -962,10 +1041,7 @@ function fragmentation(db: DB): HealthSection {
   // quadratic; keying the lobbies once and walking the entries once makes it
   // linear in both.
   const keyOf = new Map<number, string>(
-    all.map((l) => [
-      l.id,
-      `${l.mode}/${l.classType}/${l.format}${l.price ? `@${l.price}` : ""}`,
-    ])
+    all.map((l) => [l.id, `${l.mode}/${l.classType}/${l.format}${l.price ? `@${l.price}` : ""}`])
   );
   const byKey = new Map<string, { entries: number; unmatched: number }>();
   // Seeded from the lobbies rather than the entries so a posted key that drew
@@ -975,7 +1051,7 @@ function fragmentation(db: DB): HealthSection {
   for (const e of entries) {
     const k = keyOf.get(e.lobbyId);
     if (k === undefined) continue;
-    const acc = byKey.get(k)!;
+    const acc = must(byKey.get(k), "every lobby key was seeded into byKey above");
     acc.entries++;
     if (e.status === "unmatched") acc.unmatched++;
   }
@@ -1024,8 +1100,9 @@ function population(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
     (e) => e.type === "gacha" && e.data && (JSON.parse(e.data) as { egg?: string | null }).egg
   ).length;
   const retiredBy = new Map<string, number>();
-  for (const e of ev.filter((e) => e.type === "retire" && e.data)) {
-    const by = (JSON.parse(e.data!) as { by?: string }).by ?? "manual";
+  for (const e of ev) {
+    if (e.type !== "retire" || !e.data) continue;
+    const by = (JSON.parse(e.data) as { by?: string }).by ?? "manual";
     retiredBy.set(by, (retiredBy.get(by) ?? 0) + 1);
   }
   const supply = count("hatch") + gachaEggs;
@@ -1061,7 +1138,10 @@ function population(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
     lines: [
       `eggs ${topline.eggs} · active ${topline.active} · retired ${topline.retired} · ${topline.farms} farms`,
       "by age  " +
-        [...ages.entries()].sort((a, b) => a[0] - b[0]).map(([a, n]) => `${a}:${n}`).join("  "),
+        [...ages.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([a, n]) => `${a}:${n}`)
+          .join("  "),
       `supply  hatches ${count("hatch")} · gacha eggs ${gachaEggs} · covers ${count("breed")}`,
       "loss    " +
         ([...retiredBy.entries()].map(([by, n]) => `${by} ${n}`).join(" · ") || "none yet"),
@@ -1123,7 +1203,8 @@ export function fightVolume(series: { day: number; fights: number }[]): HealthSe
   const max = Math.max(1, ...weeks.map(([, v]) => v.fights));
   const lines = weeks.map(([w, v]) => {
     const bar = "█".repeat(Math.max(v.fights > 0 ? 1 : 0, Math.round((v.fights / max) * 24)));
-    const partial = v.days < CALENDAR.DAYS_PER_WEEK ? `  (${v.days} day${v.days === 1 ? "" : "s"})` : "";
+    const partial =
+      v.days < CALENDAR.DAYS_PER_WEEK ? `  (${v.days} day${v.days === 1 ? "" : "s"})` : "";
     return `wk ${String(w).padStart(2)}  ${String(v.fights).padStart(6)}  ${bar}${partial}`;
   });
 
@@ -1154,8 +1235,7 @@ export function fightVolume(series: { day: number; fights: number }[]): HealthSe
   const troughWeek = complete[minIdx][0];
   const peakWeek = complete[vols.indexOf(peak)][0];
   const recovered = Math.max(0, ...vols.slice(minIdx + 1)) >= DOCTOR.TROUGH_RECOVERY * peak;
-  const shape =
-    `trough wk${troughWeek} (${vols[minIdx]}) = ${pct(vols[minIdx], peak)} of the wk${peakWeek} peak (${peak})`;
+  const shape = `trough wk${troughWeek} (${vols[minIdx]}) = ${pct(vols[minIdx], peak)} of the wk${peakWeek} peak (${peak})`;
   if (recovered)
     return {
       title: "FIGHT VOLUME",
@@ -1218,9 +1298,7 @@ export function generationLadder(db: DB): GenerationRow[] {
     const gen = b.generation;
     let bucket = byGen.get(gen);
     if (!bucket) byGen.set(gen, (bucket = { stat: [], stars: [], margins: [] }));
-    bucket.stat.push(
-      (b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition) / 6
-    );
+    bucket.stat.push((b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition) / 6);
     bucket.stars.push(b.halfStars);
     bucket.margins.push(homeBlade(b).margin);
   }
@@ -1314,7 +1392,13 @@ function generations(db: DB): HealthSection {
  * ladder, only one a human should look at after moving a fee.
  */
 function fightEconomy(db: DB): HealthSection {
-  const byLobby = new Map(db.select().from(lobbies).all().map((l) => [l.id, l]));
+  const byLobby = new Map(
+    db
+      .select()
+      .from(lobbies)
+      .all()
+      .map((l) => [l.id, l])
+  );
   type Rung = { entries: number; risked: number; land: number; fights: number };
   const rungs = new Map<string, Rung>();
   const feeOfKey = new Map<string, number>();
@@ -1502,8 +1586,7 @@ function faucetRatio(ev: EventRow[], mintedCents: number, days: number): string[
  */
 function replayHealth(db: DB): HealthSection {
   const r = replayFidelity(db, DOCTOR.REPLAY_SAMPLE);
-  if (r.checked === 0)
-    return { title: "REPLAY", lines: ["no fights in the archive yet"] };
+  if (r.checked === 0) return { title: "REPLAY", lines: ["no fights in the archive yet"] };
   const clean = r.checked - r.drifted;
   return {
     title: "REPLAY",
@@ -1534,7 +1617,7 @@ function stakerInflows(db: DB, ev: EventRow[]): HealthSection {
     bySource.set(src, (bySource.get(src) ?? 0) + d.stakerPoolCents);
   }
   const book = stakingBook(db);
-  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  const state = stateRow(db);
   return {
     title: "STAKER POOL",
     lines: [
@@ -1589,8 +1672,7 @@ function championships(db: DB): HealthSection {
     if (paidField.length > 0) {
       const paid = paidField.filter((e) => e.gpWonCents > 0);
       const takes = paid.map((e) => e.gpWonCents).sort((a, b) => b - a);
-      const share = (n: number) =>
-        `${((n / takes.reduce((s, c) => s + c, 0)) * 100).toFixed(1)}%`;
+      const share = (n: number) => `${((n / takes.reduce((s, c) => s + c, 0)) * 100).toFixed(1)}%`;
       lines.push(
         `${" ".repeat(10)}paid ${paid.length}/${paidField.length} entrants ` +
           `(${((paid.length / paidField.length) * 100).toFixed(0)}%) · ` +
@@ -1652,7 +1734,13 @@ function championships(db: DB): HealthSection {
 function adoption(db: DB, ev: EventRow[]): HealthSection {
   const allFarms = db.select().from(farms).all();
   const tEntries = db.select().from(tournamentEntries).all();
-  const tById = new Map(db.select().from(tournaments).all().map((t) => [t.id, t]));
+  const tById = new Map(
+    db
+      .select()
+      .from(tournaments)
+      .all()
+      .map((t) => [t.id, t])
+  );
   // ⚠ ONE PASS OVER `events`, NOT ONE PER DOOR (round 43). `farmsWhere` walked the
   // whole table each time it was called, so three event-backed doors meant three
   // full traversals — plus a JSON.parse of every gacha row on the bundle door.
@@ -1690,7 +1778,16 @@ function adoption(db: DB, ev: EventRow[]): HealthSection {
     );
 
   const doors: [string, Set<string>][] = [
-    ["claims placed", new Set(db.select().from(claims).all().map((c) => c.farmId))],
+    [
+      "claims placed",
+      new Set(
+        db
+          .select()
+          .from(claims)
+          .all()
+          .map((c) => c.farmId)
+      ),
+    ],
     ["studs listed", studFarms],
     ["land purchased", landFarms],
     ["paid gacha rolls", paidRollFarms],
@@ -1884,9 +1981,18 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
   }
 
   const emptyBucket = () => ({
-    entries: 0, hits: 0, randomHits: 0, nearHits: 0, randomNearHits: 0,
-    covered: 0, scoutHits: 0, scoutNearHits: 0, scoutRandomHits: 0,
-    clearCovered: 0, clearScoutHits: 0, clearScoutNearHits: 0,
+    entries: 0,
+    hits: 0,
+    randomHits: 0,
+    nearHits: 0,
+    randomNearHits: 0,
+    covered: 0,
+    scoutHits: 0,
+    scoutNearHits: 0,
+    scoutRandomHits: 0,
+    clearCovered: 0,
+    clearScoutHits: 0,
+    clearScoutNearHits: 0,
   });
   const buckets = [
     { label: "age 1  ", ...emptyBucket() },
@@ -1898,7 +2004,11 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
   // leak future figures into an earlier decision, exactly the hindsight this
   // audit exists to prevent.
   const history = new Map<string, Record<FightFormat, { fights: number; figureTotal: number }>>();
-  const rows = db.select().from(battleLog).all().sort((a, b) => a.dayIndex - b.dayIndex || a.id - b.id);
+  const rows = db
+    .select()
+    .from(battleLog)
+    .all()
+    .sort((a, b) => a.dayIndex - b.dayIndex || a.id - b.id);
   for (const r of rows) {
     const bird = birdById.get(r.birdId);
     if (!bird) continue; // a bird deleted out from under its history
@@ -1906,10 +2016,12 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
     // the 4+ bucket otherwise. Same derivation as ageOf (week - birthWeek),
     // but pinned to the fight's own day instead of the current clock.
     const age = Math.max(0, GameClock.weekOf(r.dayIndex) - bird.birthWeek);
-    const bucket = buckets[age <= 1 ? 0 : age <= 3 ? 1 : 2];
-    const best = bestOf.get(bird.id)!;
+    const bucket = buckets[ageBucket(age)];
+    const best = must(bestOf.get(bird.id), "bestOf covers every bird in birdById");
     const withinOne = (format: FightFormat) =>
-      [...best].some((home) => Math.abs(FORMAT_NAMES.indexOf(format) - FORMAT_NAMES.indexOf(home)) <= 1);
+      [...best].some(
+        (home) => Math.abs(FORMAT_NAMES.indexOf(format) - FORMAT_NAMES.indexOf(home)) <= 1
+      );
 
     // Only a DAILY CARD is a blade decision. A tournament bout's format is
     // fixed by the bracket the barn already entered — round two of a Major is
@@ -1927,9 +2039,12 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
       if (age <= 1) explored.add(r.format);
     }
 
-    const records = history.get(bird.id) ?? Object.fromEntries(
-      FORMAT_NAMES.map((f) => [f, { fights: 0, figureTotal: 0 }])
-    ) as Record<FightFormat, { fights: number; figureTotal: number }>;
+    const records =
+      history.get(bird.id) ??
+      (Object.fromEntries(FORMAT_NAMES.map((f) => [f, { fights: 0, figureTotal: 0 }])) as Record<
+        FightFormat,
+        { fights: number; figureTotal: number }
+      >);
     const covered = [...best].some((f) => records[f].fights >= SCOUT.MIN_READS);
     if (isDecision && covered) {
       bucket.covered++;
@@ -1937,10 +2052,13 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
       const score = (f: FightFormat) => {
         const rec = records[f];
         const average = rec.fights === 0 ? 0 : rec.figureTotal / rec.fights;
-        return Math.round(
-          ((average * rec.fights + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
-            (rec.fights + SCOUT.PRIOR_WEIGHT)) * 10
-        ) / 10;
+        return (
+          Math.round(
+            ((average * rec.fights + SCOUT.PRIOR_FIGURE * SCOUT.PRIOR_WEIGHT) /
+              (rec.fights + SCOUT.PRIOR_WEIGHT)) *
+              10
+          ) / 10
+        );
       };
       const scoutBest = FORMAT_NAMES.reduce((bestFormat, f) =>
         score(f) > score(bestFormat) ? f : bestFormat
@@ -1949,7 +2067,10 @@ export function bladeDiscovery(db: DB): BladeDiscovery {
       const near = withinOne(scoutBest);
       if (hit) bucket.scoutHits++;
       if (near) bucket.scoutNearHits++;
-      if (marginOf.get(bird.id)! >= DOCTOR.DISCOVERY_HOME_MARGIN) {
+      if (
+        must(marginOf.get(bird.id), "marginOf covers every bird in birdById") >=
+        DOCTOR.DISCOVERY_HOME_MARGIN
+      ) {
         bucket.clearCovered++;
         if (hit) bucket.clearScoutHits++;
         if (near) bucket.clearScoutNearHits++;
@@ -2032,9 +2153,7 @@ export function breedingSelection(db: DB): BreedingSelection | null {
   for (const b of rows) {
     if (b.motherId) foalsPerDam.set(b.motherId, (foalsPerDam.get(b.motherId) ?? 0) + 1);
   }
-  const week = GameClock.weekOf(
-    db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex
-  );
+  const week = GameClock.weekOf(stateRow(db).dayIndex);
   const band = rows.filter(
     (b) =>
       b.status === "retired" &&
@@ -2061,12 +2180,18 @@ function discovery(d: BladeDiscovery): HealthSection {
       : `${b.label}  carded ${b.hits}/${b.entries} at the true best blade (${pct(b.hits, b.entries)} vs random ${pct(b.randomHits, b.entries)})` +
         ` · ${pct(b.nearHits, b.entries)} on or adjacent (random ${pct(b.randomNearHits, b.entries)})` +
         ` · answer coverage ${pct(b.covered, b.entries)}` +
-        ` · SCOUT ${b.covered === 0 ? "n/a" : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)} vs random ${pct(b.scoutRandomHits, b.covered)})` +
-          `, ${pct(b.scoutNearHits, b.covered)} on or adjacent` +
-          `${b.clearCovered === 0 ? "" : ` · clear home ${b.clearScoutHits}/${b.clearCovered} (${pct(b.clearScoutHits, b.clearCovered)}, ${pct(b.clearScoutNearHits, b.clearCovered)} adjacent)`}`}`
+        ` · SCOUT ${
+          b.covered === 0
+            ? "n/a"
+            : `${b.scoutHits}/${b.covered} right (${pct(b.scoutHits, b.covered)} vs random ${pct(b.scoutRandomHits, b.covered)})` +
+              `, ${pct(b.scoutNearHits, b.covered)} on or adjacent` +
+              `${b.clearCovered === 0 ? "" : ` · clear home ${b.clearScoutHits}/${b.clearCovered} (${pct(b.clearScoutHits, b.clearCovered)}, ${pct(b.clearScoutNearHits, b.clearCovered)} adjacent)`}`
+        }`
   );
   const blades = FORMAT_NAMES.length;
-  lines.push(`explored  ${d.explored.length}/${blades} blades saw an age-1 entry in the discovery year`);
+  lines.push(
+    `explored  ${d.explored.length}/${blades} blades saw an age-1 entry in the discovery year`
+  );
   // The answer key's own difficulty. A flock bred flat has nothing to find.
   lines.push(
     `flock shape  median home blade beats its runner-up by ${d.medianHomeMargin.toFixed(1)} pts · ` +
@@ -2249,7 +2374,7 @@ export function formatReport(r: DoctorReport, opts: { quiet?: boolean } = {}): s
     for (const o of i.offenders ?? []) out.push(`        ${o}`);
   }
 
-  const warnings = r.health.filter((h) => h.warn).map((h) => h.warn!);
+  const warnings = r.health.flatMap((h) => (h.warn ? [h.warn] : []));
   if (!opts.quiet) {
     for (const section of r.health) {
       out.push("");

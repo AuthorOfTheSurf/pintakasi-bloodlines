@@ -2,7 +2,19 @@ import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
 import { TickControls } from "./tick-controls";
 import { publicTicksEnabled } from "@/app/ticks";
-import { battleLog, birds, claims, events, farms, gachaTokens, gameState, lobbies, lobbyEntries, simTimings, tournamentEntries, tournaments } from "@/db/schema";
+import {
+  battleLog,
+  birds,
+  claims,
+  events,
+  farms,
+  gameState,
+  lobbies,
+  lobbyEntries,
+  simTimings,
+  tournamentEntries,
+  tournaments,
+} from "@/db/schema";
 import {
   ECONOMY,
   FIGHTS_PER_GROUP_BIRD,
@@ -32,7 +44,13 @@ import { baselineBefore, computeTopline, stakingBook, type Topline } from "@/eng
 import { cardHealth } from "@/engine/doctor";
 import { DIVISION_RULES, roundName, seedPlacement, type Division } from "@/engine/tournaments";
 import { ElementSprite, GpIcon, LtIcon } from "./sprites";
-import { CHART_CSS, ChartStrip, SERIES_COLORS, type DayChartProps, type StackedDayChartProps } from "./charts";
+import {
+  CHART_CSS,
+  ChartStrip,
+  SERIES_COLORS,
+  type DayChartProps,
+  type StackedDayChartProps,
+} from "./charts";
 import {
   AdminTabs,
   type BirdFightRowUI,
@@ -90,6 +108,85 @@ function ltFmt(cents: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * Events of one type that actually carry a payload — the same filter the
+ * charts always applied, but as a type guard, so `data` arrives as a string
+ * instead of needing a `!` at every JSON.parse.
+ */
+function eventsWithData<T extends { type: string; data: string | null }>(
+  rows: T[],
+  type: string
+): (T & { data: string })[] {
+  return rows.filter((e): e is T & { data: string } => e.type === type && Boolean(e.data));
+}
+
+/** An egg keeps its sex sealed; everything hatched is a rooster or a hen. */
+function sexLabel(inShell: boolean, sex: string): string {
+  if (inShell) return "?";
+  return sex === "male" ? "rooster" : "hen";
+}
+
+/** The flock grid's Status column. */
+function statusLabel(
+  inShell: boolean,
+  b: { status: string; listedStud: number; retiredBy: string | null }
+): string {
+  if (inShell) return "Egg"; // the hen is pregnant; the bird is an egg (round 20)
+  if (b.listedStud) return "Studding"; // a rooster registered in the breed barn (ruled round 15)
+  return `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}`;
+}
+
+/** Where a breeding's offspring is: still carried, laid and waiting, or out. */
+function eggStage(status: string, birthWeek: number, week: number): string {
+  if (status !== "egg") return "hatched";
+  return birthWeek > week ? "pregnant" : "in the nest";
+}
+
+/** What a pending entry on the card has drawn so far — the reveal, once the lobby closes. */
+function PendingDraw({
+  group,
+  drew,
+}: {
+  group: number | null;
+  drew: { bird: string; farm: string }[] | null;
+}) {
+  if (drew === null) {
+    // Still OPEN: the groups aren't dealt until close,
+    // so there is no draw to reveal yet.
+    return "on the card, awaiting the draw";
+  }
+  if (drew.length === 0) {
+    // CLOSED and alone in the room — the empty list is
+    // the answer, not a missing one.
+    return <>group {(group ?? 0) + 1}: drew nobody, refunds at post</>;
+  }
+  return (
+    <>
+      group {(group ?? 0) + 1}, drew {drew.map((o) => `${o.bird} (${o.farm})`).join(" · ")}
+    </>
+  );
+}
+
+/** A championship box's one-line state: filling, called off, or the tree's totals. */
+function crownFill(t: {
+  status: string;
+  pending: number;
+  bracketSize: number | null;
+  purseCents: number | null;
+  landPotCents: number;
+}): string {
+  if (t.status === "open") return `${t.pending} registered`;
+  if (t.status === "cancelled") return "cancelled";
+  return `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP · land pot ${ltFmt(t.landPotCents)} LT`;
+}
+
+/** A topline delta's magnitude in its own unit: GP cents, land hundredths, or a bare count. */
+function deltaFmt(magnitude: number, opts: { cents?: boolean; lt?: boolean }): string {
+  if (opts.cents) return gpFmt(magnitude);
+  if (opts.lt) return ltFmt(magnitude);
+  return magnitude.toLocaleString();
 }
 
 /**
@@ -210,8 +307,9 @@ function buildBracket(
   // (birdId, opponentBirdId) pair is enough to find the log row unambiguously,
   // no round bookkeeping in battle_log required.
   const figureOf = (birdId: string, oppId: string): number | null =>
-    log.find((r) => r.tournamentId === tournamentId && r.birdId === birdId && r.opponentBirdId === oppId)
-      ?.pitFigure ?? null;
+    log.find(
+      (r) => r.tournamentId === tournamentId && r.birdId === birdId && r.opponentBirdId === oppId
+    )?.pitFigure ?? null;
   // No `round` argument any more (round 42): the only thing that ever needed
   // one was the cumulative crown-land total, and land no longer accrues round
   // by round. `showAwards` alone says whether this is the bird's settle-up card.
@@ -252,10 +350,20 @@ function buildBracket(
       const a = alive[i];
       const b = alive[i + 1];
       if (a && !b) {
-        matches.push({ isBye: true, a: fighter(a, true, null), b: null, onPath: a.birdId === championBirdId });
+        matches.push({
+          isBye: true,
+          a: fighter(a, true, null),
+          b: null,
+          onPath: a.birdId === championBirdId,
+        });
         next.push(a);
       } else if (b && !a) {
-        matches.push({ isBye: true, a: fighter(b, true, null), b: null, onPath: b.birdId === championBirdId });
+        matches.push({
+          isBye: true,
+          a: fighter(b, true, null),
+          b: null,
+          onPath: b.birdId === championBirdId,
+        });
         next.push(b);
       } else if (a && b) {
         // Whichever side exits on THIS round is the loser — the champion
@@ -266,8 +374,18 @@ function buildBracket(
           isBye: false,
           // Awards settle at the participant's final matchup: the loser
           // exits here, while the champion receives theirs after the final.
-          a: fighter(a, winner === a, figureOf(a.birdId, b.birdId), winner !== a || round === totalRounds),
-          b: fighter(b, winner === b, figureOf(b.birdId, a.birdId), winner !== b || round === totalRounds),
+          a: fighter(
+            a,
+            winner === a,
+            figureOf(a.birdId, b.birdId),
+            winner !== a || round === totalRounds
+          ),
+          b: fighter(
+            b,
+            winner === b,
+            figureOf(b.birdId, a.birdId),
+            winner !== b || round === totalRounds
+          ),
           onPath: winner.birdId === championBirdId,
         });
         next.push(winner);
@@ -307,13 +425,7 @@ const BRACKET_COL_WIDTH = "clamp(250px, 22vw, 320px)";
  * grid (see BRACKET_ROW_UNIT above) — no client JS, so this has to be a
  * server component throughout, same as the rest of the Stewards' Office.
  */
-function Bracket({
-  rounds,
-  bracketSize,
-}: {
-  rounds: BracketRound[];
-  bracketSize: number;
-}) {
+function Bracket({ rounds, bracketSize }: { rounds: BracketRound[]; bracketSize: number }) {
   // WHAT THIS SIDE TOOK HOME AT SETTLE-UP — purse GP and its cut of the land
   // pot, together, on the bird's last card only. Round 41 showed land on every
   // card because every crown fight minted some; round 42's single pot settles
@@ -325,11 +437,18 @@ function Bracket({
   const awards = (f: Pick<BracketFighter, "gpWonCents" | "landCents" | "landFights">) =>
     f.gpWonCents > 0 || f.landCents > 0 ? (
       <span className="bawards">
-        {f.gpWonCents > 0 && <><GpIcon size={11} /> +{gpFmt(f.gpWonCents)}</>}
+        {f.gpWonCents > 0 && (
+          <>
+            <GpIcon size={11} /> +{gpFmt(f.gpWonCents)}
+          </>
+        )}
         {f.landCents > 0 && (
           <>
             <LtIcon size={11} /> +{ltFmt(f.landCents)}
-            <span className="bfights" title={`${f.landFights} fights fought — the land pot divides by fights`}>
+            <span
+              className="bfights"
+              title={`${f.landFights} fights fought — the land pot divides by fights`}
+            >
               ×{f.landFights}
             </span>
           </>
@@ -345,10 +464,14 @@ function Bracket({
     <div className={`bfighter ${f.won ? "won" : "lost"}`}>
       <div className="btop">
         <span className="bidentity">
-          <b className="grade" style={{ color: gradeColor(f.grade) }}>{f.grade}</b>{" "}
+          <b className="grade" style={{ color: gradeColor(f.grade) }}>
+            {f.grade}
+          </b>{" "}
           <span className="bname">{f.bird}</span>
           {crown && " 🏆"}{" "}
-          <span className="belement"><ElementSprite element={f.element} size={12} /> {f.stars}★</span>
+          <span className="belement">
+            <ElementSprite element={f.element} size={12} /> {f.stars}★
+          </span>
         </span>
         {f.figure !== null && <span className="bfig">PF {f.figure}</span>}
       </div>
@@ -362,9 +485,12 @@ function Bracket({
           has drawn out is the ordinary case, and hiding it would make every
           bracket look profitable. */}
       <div className="bmeta bcareer">
-        <span className="brec">{f.wins}–{f.losses}</span>
+        <span className="brec">
+          {f.wins}–{f.losses}
+        </span>
         <span className={`bnet${f.netCents < 0 ? " neg" : ""}`}>
-          <GpIcon size={11} /> {f.netCents < 0 ? "−" : "+"}{gpFmt(Math.abs(f.netCents))}
+          <GpIcon size={11} /> {f.netCents < 0 ? "−" : "+"}
+          {gpFmt(Math.abs(f.netCents))}
         </span>
       </div>
     </div>
@@ -384,7 +510,10 @@ function Bracket({
       </div>
       <div
         className="bracket-grid"
-        style={{ gridTemplateColumns: colTemplate, gridTemplateRows: `repeat(${bracketSize}, ${BRACKET_ROW_UNIT})` }}
+        style={{
+          gridTemplateColumns: colTemplate,
+          gridTemplateRows: `repeat(${bracketSize}, ${BRACKET_ROW_UNIT})`,
+        }}
       >
         {rounds.map((r, ri) => {
           const round = ri + 1;
@@ -404,10 +533,12 @@ function Bracket({
                   degenerate bye case, where the unopposed side is still the
                   champion. */}
               <Fighter f={m.a} crown={isFinal && m.a.won} />
-              {m.isBye ? (
+              {/* A bye is exactly a match with no b side (see where the
+                  matches are built), so testing b narrows it too. */}
+              {m.b === null ? (
                 <div className="bfighter bye">— bye —</div>
               ) : (
-                <Fighter f={m.b!} crown={isFinal && m.b!.won} />
+                <Fighter f={m.b} crown={isFinal && m.b.won} />
               )}
             </div>
           ));
@@ -481,11 +612,8 @@ export default function Admin() {
   const allBirds = d.select().from(birds).all();
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
   const log = d.select().from(battleLog).all();
-  const rolls = d.select().from(gachaTokens).all().length;
   const allEntries = d.select().from(lobbyEntries).all();
-  const pendingEntries = allEntries.filter((e) => e.status === "pending");
   const allClaims = d.select().from(claims).all();
-  const pendingClaims = allClaims.filter((c) => c.status === "pending");
   const allEvents = d.select().from(events).all();
   // Wall-clock ms per simulated day — written by scripts/simulate.ts only, so
   // this is empty (and its chart absent) on a live world.
@@ -530,12 +658,13 @@ export default function Admin() {
     // A snapshot written before this field existed parses to undefined, and
     // undefined arithmetic renders as NaN in the badge.
     if (!Number.isFinite(diff) || diff === 0) return null;
-    const shown = opts.cents
-      ? gpFmt(Math.abs(diff))
-      : opts.lt
-        ? ltFmt(Math.abs(diff))
-        : Math.abs(diff).toLocaleString();
-    return <span className={`diff ${diff > 0 ? "up" : "down"}`}>{diff > 0 ? "+" : "−"}{shown}</span>;
+    const shown = deltaFmt(Math.abs(diff), opts);
+    return (
+      <span className={`diff ${diff > 0 ? "up" : "down"}`}>
+        {diff > 0 ? "+" : "−"}
+        {shown}
+      </span>
+    );
   };
 
   // ── The card (round 17) — the most recent day's schedule, lobby by lobby ──
@@ -569,12 +698,17 @@ export default function Admin() {
           loserFarm: fname(w.opponentFarmId),
           loserFarmP: fcolors(w.opponentFarmId).P,
           loserFarmS: fcolors(w.opponentFarmId).S,
-          figures: [w.pitFigure, log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0] as const,
+          figures: [
+            w.pitFigure,
+            log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0,
+          ] as const,
         }));
       // Bouts filed by room, rooms in dealt order. A group with no bouts at
       // all can exist — two barn-mates alone together — and it is worth
       // showing empty, because a silent gap in the numbering reads as a bug.
-      const groupNos = [...new Set(entries.map((e) => e.groupNo).filter((g): g is number => g !== null))].sort((a, b) => a - b);
+      const groupNos = [
+        ...new Set(entries.map((e) => e.groupNo).filter((g): g is number => g !== null)),
+      ].sort((a, b) => a - b);
       const groups = groupNos.map((n) => ({
         no: n,
         size: entries.filter((e) => e.groupNo === n).length,
@@ -805,7 +939,9 @@ export default function Admin() {
   const claimsPerDay = perDay(allClaims.map((c) => ({ day: c.dayPlaced, amount: 1 })));
   const claimSpend = running(
     perDay(
-      allClaims.filter((c) => c.status === "won").map((c) => ({ day: c.dayPlaced, amount: c.price }))
+      allClaims
+        .filter((c) => c.status === "won")
+        .map((c) => ({ day: c.dayPlaced, amount: c.price }))
     )
   );
 
@@ -816,21 +952,19 @@ export default function Admin() {
   // Note the sources genuinely differ per pool: land purchases and the claim
   // rake feed ONLY the stakers, the genesis seed fed ONLY the juice — a
   // shared source list would draw four permanent zero-layers.
-  const accrualRows = allEvents
-    .filter((e) => e.type === "pool_accrual" && e.data)
-    .map((e) => {
-      const d = JSON.parse(e.data!) as {
-        stakerPoolCents?: number;
-        juicePoolCents?: number;
-        source?: string;
-      };
-      return {
-        day: e.dayIndex,
-        source: (d.source ?? "breed").replace("_", " "),
-        staker: (d.stakerPoolCents ?? 0) / 100,
-        juice: (d.juicePoolCents ?? 0) / 100,
-      };
-    });
+  const accrualRows = eventsWithData(allEvents, "pool_accrual").map((e) => {
+    const d = JSON.parse(e.data) as {
+      stakerPoolCents?: number;
+      juicePoolCents?: number;
+      source?: string;
+    };
+    return {
+      day: e.dayIndex,
+      source: (d.source ?? "breed").replace("_", " "),
+      staker: (d.stakerPoolCents ?? 0) / 100,
+      juice: (d.juicePoolCents ?? 0) / 100,
+    };
+  });
   const poolSeries = (field: "staker" | "juice") => {
     const totals = new Map<string, number>();
     for (const r of accrualRows) totals.set(r.source, (totals.get(r.source) ?? 0) + r[field]);
@@ -842,7 +976,9 @@ export default function Admin() {
         label: source,
         color: SERIES_COLORS[i % SERIES_COLORS.length],
         values: perDay(
-          accrualRows.filter((r) => r.source === source).map((r) => ({ day: r.day, amount: r[field] }))
+          accrualRows
+            .filter((r) => r.source === source)
+            .map((r) => ({ day: r.day, amount: r[field] }))
         ),
       }));
   };
@@ -1051,36 +1187,32 @@ export default function Admin() {
     const total = b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition;
     const stat = (v: number) => (retired ? v : null);
     return {
-    // The join key for the fight-history panel — never shown as a column,
-    // only matched against BirdFightRowUI.birdId.
-    id: b.id,
-    name: b.name,
-    grade: overallGradeOf(total),
-    farm: fname(b.farmId),
-    farmP: fcolors(b.farmId).P ?? "",
-    farmS: fcolors(b.farmId).S ?? "",
-    sex: inShell ? "?" : b.sex === "male" ? "rooster" : "hen",
-    baseCoat: b.baseCoat,
-    trimColor: b.trimColor,
-    age: Math.max(0, ageOf(b, week)),
-    stars: b.halfStars / 2,
-    element: b.element,
-    agility: stat(b.agility),
-    sight: stat(b.sight),
-    stamina: stat(b.stamina),
-    gameness: stat(b.gameness),
-    station: stat(b.station),
-    condition: stat(b.condition),
-    total,
-    status: inShell
-      ? "Egg" // the hen is pregnant; the bird is an egg (round 20)
-      : b.listedStud
-        ? "Studding" // a rooster registered in the breed barn (ruled round 15)
-        : `${b.status}${b.retiredBy ? ` (${b.retiredBy})` : ""}`,
-    wins: b.wins,
-    losses: b.losses,
-    netGp: (netGpCents.get(b.id) ?? 0) / 100,
-    netLt: netLt.get(b.id) ?? 0,
+      // The join key for the fight-history panel — never shown as a column,
+      // only matched against BirdFightRowUI.birdId.
+      id: b.id,
+      name: b.name,
+      grade: overallGradeOf(total),
+      farm: fname(b.farmId),
+      farmP: fcolors(b.farmId).P ?? "",
+      farmS: fcolors(b.farmId).S ?? "",
+      sex: sexLabel(inShell, b.sex),
+      baseCoat: b.baseCoat,
+      trimColor: b.trimColor,
+      age: Math.max(0, ageOf(b, week)),
+      stars: b.halfStars / 2,
+      element: b.element,
+      agility: stat(b.agility),
+      sight: stat(b.sight),
+      stamina: stat(b.stamina),
+      gameness: stat(b.gameness),
+      station: stat(b.station),
+      condition: stat(b.condition),
+      total,
+      status: statusLabel(inShell, b),
+      wins: b.wins,
+      losses: b.losses,
+      netGp: (netGpCents.get(b.id) ?? 0) / 100,
+      netLt: netLt.get(b.id) ?? 0,
     };
   });
 
@@ -1106,7 +1238,9 @@ export default function Admin() {
   );
   const birdFights: BirdFightRowUI[] = log.slice(-BIRD_FIGHT_LIMIT).map((r) => {
     const loserId = r.result === "win" ? r.opponentBirdId : r.birdId;
-    const tournament = r.tournamentId ? allTournaments.find((t) => t.id === r.tournamentId) : undefined;
+    const tournament = r.tournamentId
+      ? allTournaments.find((t) => t.id === r.tournamentId)
+      : undefined;
     const round = r.tournamentId ? eliminatedRound.get(`${r.tournamentId}|${loserId}`) : null;
     return {
       // Carried so the pane can ask the server to replay this exact fight.
@@ -1128,9 +1262,8 @@ export default function Admin() {
       figure: r.pitFigure,
       // Null rather than 0 when the mirror is missing — a Pit Figure of zero
       // is a legal (terrible) fight, and inventing one would read as a rout.
-      opponentFigure: figureByPair.get(
-        `${r.lobbyId}|${r.tournamentId}|${r.opponentBirdId}|${r.birdId}`
-      ) ?? null,
+      opponentFigure:
+        figureByPair.get(`${r.lobbyId}|${r.tournamentId}|${r.opponentBirdId}|${r.birdId}`) ?? null,
       // The signed net for THIS bird, rake already deducted by the engine.
       // Pintakasi rows carry 0 — the purse settles on the tournament entry,
       // not per fight (see the netGpCents pass above).
@@ -1146,7 +1279,9 @@ export default function Admin() {
       seq: i,
       conceived: b.birthDay,
       egg: b.name,
-      eggGrade: overallGradeOf(b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition),
+      eggGrade: overallGradeOf(
+        b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition
+      ),
       hen: (b.motherId && birdById.get(b.motherId)?.name) || b.motherId || "?",
       henGrade: b.motherId ? birdCard(b.motherId).grade : overallGradeOf(0),
       rooster: father?.name ?? b.fatherId ?? "?",
@@ -1157,34 +1292,32 @@ export default function Admin() {
       nestFarm: fname(b.farmId),
       nestFarmP: fcolors(b.farmId).P ?? "",
       nestFarmS: fcolors(b.farmId).S ?? "",
-      stage: b.status === "egg" ? (b.birthWeek > week ? "pregnant" : "in the nest") : "hatched",
+      stage: eggStage(b.status, b.birthWeek, week),
       fee: split.feeGp,
       studShare: split.studOwnerCents / 100,
     };
   });
 
-  const gachaRows: GachaRowUI[] = allEvents
-    .filter((e) => e.type === "gacha" && e.data)
-    .map((e, i) => {
-      const data = JSON.parse(e.data!) as {
-        token: string;
-        price: number;
-        free: boolean;
-        land: number;
-        egg: string | null;
-      };
-      return {
-        seq: i,
-        day: e.dayIndex,
-        farm: fname(e.farmId),
-        farmP: fcolors(e.farmId).P ?? "",
-        farmS: fcolors(e.farmId).S ?? "",
-        token: data.token,
-        cost: data.free ? "free" : `${data.price} GP`,
-        lt: data.land,
-        egg: data.egg ?? "",
-      };
-    });
+  const gachaRows: GachaRowUI[] = eventsWithData(allEvents, "gacha").map((e, i) => {
+    const data = JSON.parse(e.data) as {
+      token: string;
+      price: number;
+      free: boolean;
+      land: number;
+      egg: string | null;
+    };
+    return {
+      seq: i,
+      day: e.dayIndex,
+      farm: fname(e.farmId),
+      farmP: fcolors(e.farmId).P ?? "",
+      farmS: fcolors(e.farmId).S ?? "",
+      token: data.token,
+      cost: data.free ? "free" : `${data.price} GP`,
+      lt: data.land,
+      egg: data.egg ?? "",
+    };
+  });
 
   const gpRows: GpRowUI[] = [];
   for (const e of allEvents) {
@@ -1195,9 +1328,19 @@ export default function Admin() {
       farmS: fcolors(e.farmId).S,
     };
     if (e.type === "farm_registered") {
-      gpRows.push({ seq: gpRows.length, ...base, flow: "starting purse", amount: (e.gpCents ?? ECONOMY.STARTING_GP * 100) / 100 });
+      gpRows.push({
+        seq: gpRows.length,
+        ...base,
+        flow: "starting purse",
+        amount: (e.gpCents ?? ECONOMY.STARTING_GP * 100) / 100,
+      });
     } else if (e.type === "check_in") {
-      gpRows.push({ seq: gpRows.length, ...base, flow: "daily drip", amount: (e.gpCents ?? 0) / 100 });
+      gpRows.push({
+        seq: gpRows.length,
+        ...base,
+        flow: "daily drip",
+        amount: (e.gpCents ?? 0) / 100,
+      });
     } else if (e.type === "pool_accrual" && e.data) {
       const pools = JSON.parse(e.data) as {
         stakerPoolCents: number;
@@ -1206,11 +1349,26 @@ export default function Admin() {
       };
       const cut = SOURCE_LABELS[pools.source ?? ""] ?? "breed cut";
       if (pools.stakerPoolCents > 0)
-        gpRows.push({ seq: gpRows.length, ...base, flow: `→ staker pool (${cut})`, amount: pools.stakerPoolCents / 100 });
+        gpRows.push({
+          seq: gpRows.length,
+          ...base,
+          flow: `→ staker pool (${cut})`,
+          amount: pools.stakerPoolCents / 100,
+        });
       if (pools.juicePoolCents > 0)
-        gpRows.push({ seq: gpRows.length, ...base, flow: `→ juice pool (${cut})`, amount: pools.juicePoolCents / 100 });
+        gpRows.push({
+          seq: gpRows.length,
+          ...base,
+          flow: `→ juice pool (${cut})`,
+          amount: pools.juicePoolCents / 100,
+        });
     } else if (e.type === "staking_payout") {
-      gpRows.push({ seq: gpRows.length, ...base, flow: "staking yield paid", amount: (e.gpCents ?? 0) / 100 });
+      gpRows.push({
+        seq: gpRows.length,
+        ...base,
+        flow: "staking yield paid",
+        amount: (e.gpCents ?? 0) / 100,
+      });
     }
   }
 
@@ -1376,7 +1534,9 @@ export default function Admin() {
             <GpIcon size={22} /> {gpFmt(now.juiceCents)} GP {delta("juiceCents", { cents: true })}
           </div>
           <div className="label">juice pool (fight schedule)</div>
-          <div className="sub">breed cuts + paid gacha — the Pintakasi spends it every Thursday</div>
+          <div className="sub">
+            breed cuts + paid gacha — the Pintakasi spends it every Thursday
+          </div>
         </div>
         <div className="card">
           <div className="big">
@@ -1410,9 +1570,9 @@ export default function Admin() {
             <h2>
               Staking{" "}
               <span className="cardsum">
-                staked land earns a slice of every GP that changes hands — 2% of each
-                fight pot and claim tag, 10% of gacha spend, 5% of every breed fee, and
-                the whole price of any Land Token bought — paid pro-rata at each day tick
+                staked land earns a slice of every GP that changes hands — 2% of each fight pot and
+                claim tag, 10% of gacha spend, 5% of every breed fee, and the whole price of any
+                Land Token bought — paid pro-rata at each day tick
               </span>
             </h2>
             <div className="cards stakecards">
@@ -1527,46 +1687,59 @@ export default function Admin() {
                           </span>
                         </div>
                         <div className="card-bouts">
-                      {g.bouts.map((b, i) => (
-                        <div className="card-bout" key={i}>
-                          <div className="card-fighter winner">
-                            <div className="card-birdline">
-                              <span className="card-bird">
-                                <span className="grade" style={{ color: gradeColor(b.winner.grade) }}>
-                                  {b.winner.grade}
-                                </span>{" "}
-                                {b.winner.name} <ElementSprite element={b.winner.element} size={12} /> {b.winner.stars}★
-                              </span>
-                              <span className="card-figure">PF {b.figures[0]}</span>
+                          {g.bouts.map((b, i) => (
+                            <div className="card-bout" key={i}>
+                              <div className="card-fighter winner">
+                                <div className="card-birdline">
+                                  <span className="card-bird">
+                                    <span
+                                      className="grade"
+                                      style={{ color: gradeColor(b.winner.grade) }}
+                                    >
+                                      {b.winner.grade}
+                                    </span>{" "}
+                                    {b.winner.name}{" "}
+                                    <ElementSprite element={b.winner.element} size={12} />{" "}
+                                    {b.winner.stars}★
+                                  </span>
+                                  <span className="card-figure">PF {b.figures[0]}</span>
+                                </div>
+                                <div className="card-farm">
+                                  <span
+                                    className="dot"
+                                    style={{
+                                      background: b.winnerFarmP,
+                                      borderColor: b.winnerFarmS,
+                                    }}
+                                  />
+                                  {b.winnerFarm}
+                                </div>
+                              </div>
+                              <div className="card-fighter loser">
+                                <div className="card-birdline">
+                                  <span className="card-bird">
+                                    <span
+                                      className="grade"
+                                      style={{ color: gradeColor(b.loser.grade) }}
+                                    >
+                                      {b.loser.grade}
+                                    </span>{" "}
+                                    {b.loser.name}{" "}
+                                    <ElementSprite element={b.loser.element} size={12} />{" "}
+                                    {b.loser.stars}★
+                                  </span>
+                                  <span className="card-figure">PF {b.figures[1]}</span>
+                                </div>
+                                <div className="card-farm">
+                                  <span
+                                    className="dot"
+                                    style={{ background: b.loserFarmP, borderColor: b.loserFarmS }}
+                                  />
+                                  {b.loserFarm}
+                                </div>
+                              </div>
                             </div>
-                            <div className="card-farm">
-                              <span
-                                className="dot"
-                                style={{ background: b.winnerFarmP, borderColor: b.winnerFarmS }}
-                              />
-                              {b.winnerFarm}
-                            </div>
-                          </div>
-                          <div className="card-fighter loser">
-                            <div className="card-birdline">
-                              <span className="card-bird">
-                                <span className="grade" style={{ color: gradeColor(b.loser.grade) }}>
-                                  {b.loser.grade}
-                                </span>{" "}
-                                {b.loser.name} <ElementSprite element={b.loser.element} size={12} /> {b.loser.stars}★
-                              </span>
-                              <span className="card-figure">PF {b.figures[1]}</span>
-                            </div>
-                            <div className="card-farm">
-                              <span
-                                className="dot"
-                                style={{ background: b.loserFarmP, borderColor: b.loserFarmS }}
-                              />
-                              {b.loserFarm}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -1587,21 +1760,7 @@ export default function Admin() {
                     ))}
                     {l.pending.map((p, i) => (
                       <div className="bout pending" key={i}>
-                        … {p.bird} ({p.farm}) —{" "}
-                        {p.drew === null ? (
-                          // Still OPEN: the groups aren't dealt until close,
-                          // so there is no draw to reveal yet.
-                          "on the card, awaiting the draw"
-                        ) : p.drew.length === 0 ? (
-                          // CLOSED and alone in the room — the empty list is
-                          // the answer, not a missing one.
-                          <>group {(p.group ?? 0) + 1}: drew nobody, refunds at post</>
-                        ) : (
-                          <>
-                            group {(p.group ?? 0) + 1}, drew{" "}
-                            {p.drew.map((o) => `${o.bird} (${o.farm})`).join(" · ")}
-                          </>
-                        )}
+                        … {p.bird} ({p.farm}) — <PendingDraw group={p.group} drew={p.drew} />
                       </div>
                     ))}
                   </div>
@@ -1613,7 +1772,9 @@ export default function Admin() {
         pintakasiCount={pintakasiBoxes.filter((t) => t.weekIndex === pintakasiWeek).length}
         pintakasi={
           pintakasiWeek === null ? (
-            <p className="cardsum">No championship has been run yet — the crowns go off Thursdays.</p>
+            <p className="cardsum">
+              No championship has been run yet — the crowns go off Thursdays.
+            </p>
           ) : (
             <section className="cardday">
               <h2>
@@ -1635,13 +1796,7 @@ export default function Admin() {
                       <span className={`division-tag ${t.division}`}>
                         {DIVISION_RULES[t.division].hardcore ? "MAJOR" : "JUVENILE"}
                       </span>
-                      <span className="fill">
-                        {t.status === "open"
-                          ? `${t.pending} registered`
-                          : t.status === "cancelled"
-                            ? "cancelled"
-                            : `bracket of ${t.bracketSize} · purse ${gpFmt(t.purseCents ?? 0)} GP · land pot ${ltFmt(t.landPotCents)} LT`}
-                      </span>
+                      <span className="fill">{crownFill(t)}</span>
                     </div>
                     {t.status === "completed" && t.bracketSize && t.hasChampion && (
                       <Bracket rounds={t.rounds} bracketSize={t.bracketSize} />

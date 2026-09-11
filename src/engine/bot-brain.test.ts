@@ -43,7 +43,10 @@ const ledger = (db: DB): string[] =>
     .select()
     .from(events)
     .all()
-    .map((e) => `${e.dayIndex}|${e.type}|${e.farmId ?? ""}|${e.gpCents ?? ""}|${e.lt ?? ""}|${e.message}`);
+    .map(
+      (e) =>
+        `${e.dayIndex}|${e.type}|${e.farmId ?? ""}|${e.gpCents ?? ""}|${e.lt ?? ""}|${e.message}`
+    );
 
 describe("the seam is inert until somebody uses it", () => {
   test("no llm barn: the ledger is identical with and without the proposals argument", () => {
@@ -111,7 +114,11 @@ describe("the mail tells a barn only what a player could see", () => {
   test("a bird seated in this week's crowns leaves the eligible list", () => {
     const { db } = world();
     // Manufacture a crown-eligible veteran: hardcore age, proven record.
-    const candidate = db.select().from(birds).where(eq(birds.farmId, "scripted-1")).all()
+    const candidate = db
+      .select()
+      .from(birds)
+      .where(eq(birds.farmId, "scripted-1"))
+      .all()
       .find((b) => b.status === "active")!;
     db.update(birds)
       .set({ named: 1, birthWeek: -4, stakesWins: 10 })

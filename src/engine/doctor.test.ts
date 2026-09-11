@@ -95,7 +95,11 @@ describe("…and on a broken one", () => {
     // Exactly the shape of the round-22 `buyLand` bug: money leaves a wallet
     // and is routed nowhere.
     const victim = w.db.select().from(farms).all()[0];
-    w.db.update(farms).set({ gp: victim.gp - 5 }).where(eq(farms.id, victim.id)).run();
+    w.db
+      .update(farms)
+      .set({ gp: victim.gp - 5 })
+      .where(eq(farms.id, victim.id))
+      .run();
 
     const invariant = check(w.db, "GP conservation");
     expect(invariant.passed).toBe(false);
@@ -114,7 +118,11 @@ describe("…and on a broken one", () => {
   test("printed GP is caught too, not just missing GP", () => {
     const w = world(1);
     const victim = w.db.select().from(farms).all()[0];
-    w.db.update(farms).set({ gp: victim.gp + 12 }).where(eq(farms.id, victim.id)).run();
+    w.db
+      .update(farms)
+      .set({ gp: victim.gp + 12 })
+      .where(eq(farms.id, victim.id))
+      .run();
     expect(check(w.db, "GP conservation").detail).toContain("PRINTED");
   });
 
@@ -172,7 +180,11 @@ describe("…and on a broken one", () => {
 
   test("an unmirrored fight row is caught by the same check", () => {
     const w = world(4);
-    const loss = w.db.select().from(battleLog).all().find((r) => r.result === "loss")!;
+    const loss = w.db
+      .select()
+      .from(battleLog)
+      .all()
+      .find((r) => r.result === "loss")!;
     w.db.delete(battleLog).where(eq(battleLog.id, loss.id)).run();
     expect(check(w.db, "pit figures").offenders!.join(" ")).toContain("no mirrored loss");
   });
@@ -180,7 +192,11 @@ describe("…and on a broken one", () => {
   test("a purse that doesn't settle is caught", () => {
     // Far enough for a crown day (Thursday, day 6) to have resolved.
     const w = world(8);
-    const paid = w.db.select().from(tournamentEntries).all().find((e) => e.gpWonCents > 0);
+    const paid = w.db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .find((e) => e.gpWonCents > 0);
     if (!paid) return; // no crown ran in this window — nothing to corrupt
     w.db
       .update(tournamentEntries)
@@ -314,7 +330,11 @@ describe("…and on a broken one", () => {
   test("a failing report says FAIL — the exit-code contract", () => {
     const w = world(1);
     const victim = w.db.select().from(farms).all()[0];
-    w.db.update(farms).set({ gp: victim.gp - 1 }).where(eq(farms.id, victim.id)).run();
+    w.db
+      .update(farms)
+      .set({ gp: victim.gp - 1 })
+      .where(eq(farms.id, victim.id))
+      .run();
     const report = diagnose(w.db, ":memory:");
     expect(report.ok).toBe(false);
     expect(formatReport(report)).toContain("FAIL");
@@ -417,7 +437,12 @@ describe("the bloodlines section", () => {
     for (let i = 0; i < 12; i++)
       makeBird(w.db, {
         generation: 1,
-        agility: 900, sight: 300, stamina: 300, gameness: 300, station: 900, condition: 900,
+        agility: 900,
+        sight: 300,
+        stamina: 300,
+        gameness: 300,
+        station: 900,
+        condition: 900,
         halfStars: 6,
       });
     const [gen0, gen1] = generationLadder(w.db);
@@ -432,7 +457,7 @@ describe("the bloodlines section", () => {
     expect(lines[2]).toContain("S  ( 600.0)");
     expect(lines[2]).toContain("3.00★");
     // The verdict line: signed deltas against the founders, all three positive.
-    expect(lines[3]).toMatch(/^gen 1 vs gen 0  \+/);
+    expect(lines[3]).toMatch(/^gen 1 vs gen 0 {2}\+/);
     expect(section(w.db).warn).toBeUndefined();
   });
 
@@ -441,7 +466,12 @@ describe("the bloodlines section", () => {
     for (let i = 0; i < 12; i++)
       makeBird(w.db, {
         generation: 1,
-        agility: 100, sight: 100, stamina: 100, gameness: 100, station: 100, condition: 100,
+        agility: 100,
+        sight: 100,
+        stamina: 100,
+        gameness: 100,
+        station: 100,
+        condition: 100,
       });
     const s = section(w.db);
     expect(s.warn).toContain("running sideways");
@@ -583,30 +613,29 @@ describe("the discovery section", () => {
     opts: { figure?: number; tournament?: boolean } = {}
   ) {
     recordFight(db, {
-        dayIndex: 0,
-        // Exactly one of these is set, per the schema. A tournament row is
-        // evidence but NOT a blade decision — the bracket picked the format.
-        lobbyId: opts.tournament ? null : 1,
-        tournamentId: opts.tournament ? 1 : null,
-        farmId: bird.farmId,
-        birdId: bird.id,
-        mode: "real",
-        format,
-        opponentBirdId: "ghost",
-        opponentFarmId: "house",
-        opponentName: "Sparring Ghost",
-        // A half-fight against nobody: the scout reads one row at a time, so
-        // there is no sibling and the side is arbitrary.
-        side: 0,
-        result: "loss",
-        pitFigure: opts.figure ?? 50,
-        gpDeltaCents: 0,
-        seed: 1,
+      dayIndex: 0,
+      // Exactly one of these is set, per the schema. A tournament row is
+      // evidence but NOT a blade decision — the bracket picked the format.
+      lobbyId: opts.tournament ? null : 1,
+      tournamentId: opts.tournament ? 1 : null,
+      farmId: bird.farmId,
+      birdId: bird.id,
+      mode: "real",
+      format,
+      opponentBirdId: "ghost",
+      opponentFarmId: "house",
+      opponentName: "Sparring Ghost",
+      // A half-fight against nobody: the scout reads one row at a time, so
+      // there is no sibling and the side is arbitrary.
+      side: 0,
+      result: "loss",
+      pitFigure: opts.figure ?? 50,
+      gpDeltaCents: 0,
+      seed: 1,
     });
   }
 
-  const section = (db: DB) =>
-    diagnose(db, ":memory:").health.find((h) => h.title === "DISCOVERY")!;
+  const section = (db: DB) => diagnose(db, ":memory:").health.find((h) => h.title === "DISCOVERY")!;
 
   /**
    * Round 29 re-pointed the verdict. It used to grade RAW selected-format

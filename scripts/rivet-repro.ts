@@ -55,7 +55,7 @@ for (const key of keys) {
       console.log(`  key=${key} attempt=${attempt} OK n=${n} ms=${Date.now() - t0}`);
       break;
     } catch (err) {
-      const msg = String(err).split("\n")[0]!.slice(0, 120);
+      const msg = String(err).split("\n")[0].slice(0, 120);
       console.log(`  key=${key} attempt=${attempt} FAIL ms=${Date.now() - t0} err=${msg}`);
       if (attempt < attempts) await new Promise((r) => setTimeout(r, 10_000));
     }

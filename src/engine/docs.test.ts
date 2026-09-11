@@ -788,7 +788,11 @@ describe("The two WHY comments this round's audit flagged stay fixed", () => {
     // split — computed here through splitBreedFee, so changing the shares
     // without updating the prose beside them fails this test.
     const live = splitBreedFee(ECONOMY.BREED_FEE);
-    const [staker, juice, owner] = [live.stakerPoolCents, live.juicePoolCents, live.studOwnerCents].map(fmtGp);
+    const [staker, juice, owner] = [
+      live.stakerPoolCents,
+      live.juicePoolCents,
+      live.studOwnerCents,
+    ].map(fmtGp);
     expect(src).toMatch(new RegExp(`${staker}[\\s\\S]{0,200}${juice}[\\s\\S]{0,200}${owner}`));
   });
 
@@ -821,7 +825,8 @@ describe("the purse's closed form matches the rule it describes", () => {
    */
   const byHand = (bracketSize: number, wins: number, m: number) => {
     let total = 0;
-    for (let r = 1; r <= Math.log2(bracketSize); r++) total += (bracketSize / 2 ** r) * m ** (r - 1);
+    for (let r = 1; r <= Math.log2(bracketSize); r++)
+      total += (bracketSize / 2 ** r) * m ** (r - 1);
     let mine = 0;
     for (let r = 1; r <= wins; r++) mine += m ** (r - 1);
     return mine / total;

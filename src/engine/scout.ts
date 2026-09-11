@@ -10,9 +10,17 @@ import { SCOUT } from "./config";
  * this removes only the coarse, publicly visible grade/company expectation.
  * B+ is the reference because it is the standard-card middle.
  */
-export function normalizedScoutFigure(figure: number, selfGrade: Grade, opponentGrade: Grade): number {
+export function normalizedScoutFigure(
+  figure: number,
+  selfGrade: Grade,
+  opponentGrade: Grade
+): number {
   const step = (grade: Grade) => GRADES.indexOf(grade) - GRADES.indexOf(SCOUT.REFERENCE_GRADE);
-  return figure - step(selfGrade) * SCOUT.OWN_GRADE_STEP - step(opponentGrade) * SCOUT.OPPONENT_GRADE_STEP;
+  return (
+    figure -
+    step(selfGrade) * SCOUT.OWN_GRADE_STEP -
+    step(opponentGrade) * SCOUT.OPPONENT_GRADE_STEP
+  );
 }
 
 /**
@@ -107,8 +115,7 @@ export function recordFightPair(
 ): [number, number] {
   if (rows[0].birdId === rows[1].birdId)
     throw new Error("A fight pair must contain two different birds");
-  if (rows[0].side === rows[1].side)
-    throw new Error("A fight pair must contain side 0 and side 1");
+  if (rows[0].side === rows[1].side) throw new Error("A fight pair must contain side 0 and side 1");
   bumpBookVersion(db);
   bumpBookVersion(db);
   const inserted = db

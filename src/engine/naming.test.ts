@@ -18,10 +18,18 @@ describe("world-unique bird names", () => {
     seedGame(db);
     const farms = new Farms(db);
     for (let i = 1; i <= 6; i++) {
-      const { farm } = farms.register({ name: `Farm ${i}`, primaryColor: "blue", secondaryColor: "white" });
+      const { farm } = farms.register({
+        name: `Farm ${i}`,
+        primaryColor: "blue",
+        secondaryColor: "white",
+      });
       seedStarterFlock(db, farm.id, { seed: 100 + i, idPrefix: `f${i}` });
     }
-    const names = db.select({ name: birds.name }).from(birds).all().map((r) => r.name);
+    const names = db
+      .select({ name: birds.name })
+      .from(birds)
+      .all()
+      .map((r) => r.name);
     expect(names.length).toBe(7 * BARN.STARTER_EGGS);
     expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(names.length);
   });

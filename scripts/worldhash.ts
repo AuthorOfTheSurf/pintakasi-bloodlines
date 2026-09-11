@@ -107,8 +107,12 @@ for (const entry of entries) {
     console.error(`--exclude wants table.column pairs (got "${entry}")`);
     process.exit(2);
   }
-  if (!excluded.has(table)) excluded.set(table, new Set());
-  excluded.get(table)!.add(column);
+  let columns = excluded.get(table);
+  if (!columns) {
+    columns = new Set();
+    excluded.set(table, columns);
+  }
+  columns.add(column);
 }
 
 if (paths.length === 0 || paths.length > 2) {
@@ -172,7 +176,9 @@ function hashWorld(path: string): Map<string, TableHash> {
   const db = open(path);
   const out = new Map<string, TableHash>();
   const tables = db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    )
     .all() as { name: string }[];
 
   for (const { name } of tables) {

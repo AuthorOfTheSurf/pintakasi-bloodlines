@@ -112,8 +112,14 @@ const live = (l: Lobbies) => l.board().filter((v) => v.lobbyId !== null);
 // Rival birds by canonical STARTER slot — names are world-unique now (each
 // farm draws its own from the pool), but the seed ids stay deterministic.
 const RIVAL_SLOT: Record<string, number> = {
-  "Tandang Pula": 1, Dalisay: 2, Bagwis: 3, Perlas: 4,
-  Kidlat: 5, Alab: 6, Sinag: 7, "Batong Buhay": 8,
+  "Tandang Pula": 1,
+  Dalisay: 2,
+  Bagwis: 3,
+  Perlas: 4,
+  Kidlat: 5,
+  Alab: 6,
+  Sinag: 7,
+  "Batong Buhay": 8,
 };
 const rivalId = (name: string) => `rival-${RIVAL_SLOT[name]}`;
 
@@ -142,17 +148,23 @@ describe("entry rules (the door)", () => {
     const sinag = byName(w.devFlock, "Sinag"); // 3 — 4W-1L
     expect(() => w.dev.enter(kidlat.id, REAL(w.db))).toThrow(/real stakes open at age 2/);
     expect(() => w.dev.enter("starter-1", REAL(w.db))).toThrow(/not an active fighter/);
-    expect(() => w.dev.enter(alab.id, onCard(w.db, { mode: "real", classType: "maiden" }))).toThrow(/never-winners/);
-    expect(() => w.dev.enter(sinag.id, onCard(w.db, { mode: "real", classType: "nw3" }))).toThrow(/fewer than 3/);
-    expect(() => w.dev.enter(alab.id, onCard(w.db, { mode: "real", classType: "nw3" }))).not.toThrow(); // 1 win < 3
+    expect(() => w.dev.enter(alab.id, onCard(w.db, { mode: "real", classType: "maiden" }))).toThrow(
+      /never-winners/
+    );
+    expect(() => w.dev.enter(sinag.id, onCard(w.db, { mode: "real", classType: "nw3" }))).toThrow(
+      /fewer than 3/
+    );
+    expect(() =>
+      w.dev.enter(alab.id, onCard(w.db, { mode: "real", classType: "nw3" }))
+    ).not.toThrow(); // 1 win < 3
     // The discovery year runs maidens, stakes and claimers (round 23) — but
     // NOT the conditions classes: a one-year-old has no record to sort by.
-    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "nw3", format: "b2" })).toThrow(
-      /open, maiden or claimer/
-    );
-    expect(() => w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b2", price: 200 })).toThrow(
-      /only means something in a claimer/
-    );
+    expect(() =>
+      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "nw3", format: "b2" })
+    ).toThrow(/open, maiden or claimer/);
+    expect(() =>
+      w.dev.enter(kidlat.id, { mode: "juvenile", classType: "open", format: "b2", price: 200 })
+    ).toThrow(/only means something in a claimer/);
   });
 
   test("the fee escrows at entry; an empty wallet cannot enter", () => {
@@ -198,7 +210,9 @@ describe("entry rules (the door)", () => {
     // the maiden class entirely.
     const sinag = byName(w.devFlock, "Sinag");
     expect(sinag.stakesWins).toBe(4);
-    expect(() => w.dev.enter(sinag.id, onCard(w.db, { mode: "real", classType: "maiden" }))).toThrow(/won at stakes/);
+    expect(() =>
+      w.dev.enter(sinag.id, onCard(w.db, { mode: "real", classType: "maiden" }))
+    ).toThrow(/won at stakes/);
   });
 });
 
@@ -346,16 +360,13 @@ describe("unbounded lobbies (round 31 — one room per posted key, no ceiling)",
     const w = world();
     const spec = REAL(w.db);
     w.dev.enter(byName(w.devFlock, "Alab").id, spec);
-    w.rival.enter(
-      w.rivalFlock.all().find((b) => b.status === "active" && b.age >= 2)!.id,
-      spec
-    );
+    w.rival.enter(w.rivalFlock.all().find((b) => b.status === "active" && b.age >= 2)!.id, spec);
 
     const full = w.dev.board();
     const fills = w.dev.board({ detail: "fills" });
-    expect(
-      fills.map(({ entries: _entries, ...lobby }) => lobby)
-    ).toEqual(full.map(({ entries: _entries, ...lobby }) => lobby));
+    expect(fills.map(({ entries: _entries, ...lobby }) => lobby)).toEqual(
+      full.map(({ entries: _entries, ...lobby }) => lobby)
+    );
     expect(fills.every((l) => l.entries.length === 0)).toBe(true);
   });
 
@@ -454,7 +465,8 @@ describe("the card goes off (pure PvP)", () => {
   test("no rake: the winner takes the whole pot, and the staker pool is untouched", () => {
     const w = world();
     const before = totalGp(w.db);
-    const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.stakerPoolCents;
+    const poolBefore = w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!
+      .stakerPoolCents;
     duel(w, "Alab", REAL(w.db), 7001);
     // Zane pulled the fight rake after round 22 proved the LT yield was
     // already strong enough. The daily card is a pooled pot and nothing else.
@@ -485,7 +497,13 @@ describe("the card goes off (pure PvP)", () => {
       db.select().from(birds).where(eq(birds.id, id)).get()!.wins;
     // The legacy starters arrive with seeded records, so this is a DELTA test
     // against what each bird already held.
-    const before = new Map(w.db.select().from(birds).all().map((b) => [b.id, b.stakesWins]));
+    const before = new Map(
+      w.db
+        .select()
+        .from(birds)
+        .all()
+        .map((b) => [b.id, b.stakesWins])
+    );
     const { fight } = duel(w, "Alab", REAL(w.db), 7001);
     const rows = w.db.select().from(battleLog).all();
     const winner = rows.find((r) => r.result === "win")!;
@@ -500,7 +518,11 @@ describe("the card goes off (pure PvP)", () => {
     const j = world();
     const juvenile = onCard(j.db, { mode: "juvenile", classType: "open" });
     duel(j, "Kidlat", juvenile, 7001);
-    const juvWinner = j.db.select().from(battleLog).all().find((r) => r.result === "win")!;
+    const juvWinner = j.db
+      .select()
+      .from(battleLog)
+      .all()
+      .find((r) => r.result === "win")!;
     expect(winsOf(j.db, juvWinner.birdId)).toBe(1); //       the lifetime record moves…
     expect(stakesOf(j.db, juvWinner.birdId)).toBe(0); //     …the stakes record does not
   });
@@ -527,18 +549,26 @@ describe("the card goes off (pure PvP)", () => {
     for (const s of lobby.settlements.filter((s) => s.farm === "Rival Gamefarm"))
       expect(s.fights).toBe(1);
     expect(totalGp(w.db)).toBe(before); // refunds + pooled pots conserve GP exactly
-    const statuses = w.db.select().from(lobbyEntries).all().map((e) => e.status).sort();
+    const statuses = w.db
+      .select()
+      .from(lobbyEntries)
+      .all()
+      .map((e) => e.status)
+      .sort();
     expect(statuses).toEqual(["fought", "fought", "fought"]);
   });
 
   test("juvenile cards count toward the ONE lifetime record, at juvenile stakes", () => {
     const w = world();
-    const { lobby, fight } = duel(w, "Kidlat", onCard(w.db, { mode: "juvenile", classType: "open" }), 31);
+    const { lobby, fight } = duel(
+      w,
+      "Kidlat",
+      onCard(w.db, { mode: "juvenile", classType: "open" }),
+      31
+    );
     expect(fight.stake).toBe(stakePerFight(JUV_FEE));
     // One fight of a possible three, so the land is on that one stake.
-    expect(lobby.settlements[0].land).toBe(
-      landForFight(stakePerFight(JUV_FEE))
-    );
+    expect(lobby.settlements[0].land).toBe(landForFight(stakePerFight(JUV_FEE)));
     const kidlat = byName(w.devFlock, "Kidlat");
     expect(kidlat.wins + kidlat.losses).toBe(1); // one record, ruled round 15
   });
@@ -561,8 +591,7 @@ describe("the card goes off (pure PvP)", () => {
     expect(devSinag.status).toBe("active");
     expect(rivalSinag.status).toBe("active"); // both walk away, win or lose
     // …and both are paid for turning up, on the one stake they risked.
-    for (const s of lobby.settlements)
-      expect(s.land).toBe(landForFight(stakePerFight(REAL_FEE)));
+    for (const s of lobby.settlements) expect(s.land).toBe(landForFight(stakePerFight(REAL_FEE)));
   });
 
   test("same lobby seed → identical night (replayable)", () => {
@@ -598,7 +627,10 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
 
   test("claimer fields are the exception — visible so claims can be placed", () => {
     const w = world();
-    w.dev.enter(byName(w.devFlock, "Alab").id, onCard(w.db, { mode: "real", classType: "claimer" }));
+    w.dev.enter(
+      byName(w.devFlock, "Alab").id,
+      onCard(w.db, { mode: "real", classType: "claimer" })
+    );
     const theirView = live(w.rival)[0];
     expect(theirView.entries.length).toBe(1);
     expect(theirView.entries[0].bird.name).toBe("Alab");
@@ -619,7 +651,8 @@ describe("the fog and the matchmaker (ruled 2026-08-03)", () => {
     w.rival.enter(rivalId("Alab"), REAL(w.db));
     const lobby = w.game.tickDay().card[0];
     expect(lobby.fights.length).toBe(3);
-    for (const f of lobby.fights) expect(f.farms.sort()).toEqual(["Bukidnon Farms", "Rival Gamefarm"]);
+    for (const f of lobby.fights)
+      expect(f.farms.sort()).toEqual(["Bukidnon Farms", "Rival Gamefarm"]);
     expect(lobby.unmatched.length).toBe(0); // nobody goes home empty any more
     const rival = lobby.settlements.find((s) => s.farm === "Rival Gamefarm")!;
     expect(rival.fights).toBe(FIGHTS_PER_GROUP_BIRD); // a full night
@@ -700,9 +733,17 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
     const events = Lobbies.complete(w.db);
     expect(events[0].fights.length).toBe(1);
     expect(events[0].claims.length).toBe(1);
-    const owner = w.db.select().from(farms).all().find((f) => f.name === "Rival Gamefarm")!;
+    const owner = w.db
+      .select()
+      .from(farms)
+      .all()
+      .find((f) => f.name === "Rival Gamefarm")!;
     expect(
-      w.db.select().from(lobbyEntries).all().find((e) => e.birdId === devAlab.id)!.claimedByFarmId
+      w.db
+        .select()
+        .from(lobbyEntries)
+        .all()
+        .find((e) => e.birdId === devAlab.id)!.claimedByFarmId
     ).toBe(owner.id);
   });
 
@@ -718,23 +759,28 @@ describe("the card's three states (OPEN → CLOSED → COMPLETED)", () => {
 
 describe("the scout report (round 28 — reading a bird through the fog)", () => {
   /** One finished fight, reduced to the columns the scout reads. */
-  function logFigure(w: ReturnType<typeof world>, birdId: string, format: "b1" | "b2", pitFigure: number) {
+  function logFigure(
+    w: ReturnType<typeof world>,
+    birdId: string,
+    format: "b1" | "b2",
+    pitFigure: number
+  ) {
     recordFight(w.db, {
-        dayIndex: 0,
-        lobbyId: 1,
-        farmId: w.devId,
-        birdId,
-        mode: "real",
-        format,
-        lobby: "open",
-        opponentBirdId: "rival-bird",
-        opponentFarmId: w.rivalId,
-        opponentName: "Rival",
-        side: 0,
-        result: "win",
-        pitFigure,
-        gpDeltaCents: 0,
-        seed: 1,
+      dayIndex: 0,
+      lobbyId: 1,
+      farmId: w.devId,
+      birdId,
+      mode: "real",
+      format,
+      lobby: "open",
+      opponentBirdId: "rival-bird",
+      opponentFarmId: w.rivalId,
+      opponentName: "Rival",
+      side: 0,
+      result: "win",
+      pitFigure,
+      gpDeltaCents: 0,
+      seed: 1,
     });
   }
 
@@ -850,13 +896,9 @@ describe("the land curve (fight up)", () => {
     // instead of across two cards. Paying per fight would have SHRUNK the
     // reward for taking a full night, which is precisely backwards.
     const stake = stakePerFight(REAL_FEE);
-    expect(landForFight(REAL_FEE)).toBeGreaterThan(
-      FIGHTS_PER_GROUP_BIRD * landForFight(stake)
-    );
+    expect(landForFight(REAL_FEE)).toBeGreaterThan(FIGHTS_PER_GROUP_BIRD * landForFight(stake));
     const juvStake = stakePerFight(JUV_FEE);
-    expect(landForFight(JUV_FEE)).toBeGreaterThan(
-      FIGHTS_PER_GROUP_BIRD * landForFight(juvStake)
-    );
+    expect(landForFight(JUV_FEE)).toBeGreaterThan(FIGHTS_PER_GROUP_BIRD * landForFight(juvStake));
     // …and a bird that fought a SHORT card is still honestly paid short: the
     // curve is fed what it actually risked, so two fights of three pay less
     // than the full night. (That is the half of the round-34 ruling that did
@@ -865,9 +907,7 @@ describe("the land curve (fight up)", () => {
     expect(landForFight(stake)).toBeLessThan(landForFight(2 * stake));
     // 3× the fee pays MORE than 3× the land — the "fight up" incentive, which
     // is the property the whole curve exists for.
-    expect(landForFight(3 * REAL_FEE)).toBeGreaterThan(
-      3 * landForFight(REAL_FEE)
-    );
+    expect(landForFight(3 * REAL_FEE)).toBeGreaterThan(3 * landForFight(REAL_FEE));
   });
 
   /**
@@ -1091,12 +1131,21 @@ describe("the group stage (round 34 — one entry, a group of fights)", () => {
         secondaryColor: "white",
       });
       const bird = makeBird(w.db, { farmId: farm.id, name: `Grouper ${i + 1}` });
-      return { farmId: farm.id, name: farm.name, lobbies: new Lobbies(w.db, farm.id), birdId: bird.id };
+      return {
+        farmId: farm.id,
+        name: farm.name,
+        lobbies: new Lobbies(w.db, farm.id),
+        birdId: bird.id,
+      };
     });
   }
 
   /** Every solo barn cards its bird into one room; the first fixes the seed. */
-  function cardThemAll(w: ReturnType<typeof world>, barns: ReturnType<typeof soloBarns>, seed = 4242) {
+  function cardThemAll(
+    w: ReturnType<typeof world>,
+    barns: ReturnType<typeof soloBarns>,
+    seed = 4242
+  ) {
     const spec = REAL(w.db);
     barns.forEach((b, i) => b.lobbies.enter(b.birdId, spec, i === 0 ? seed : undefined));
     return spec;
@@ -1300,11 +1349,21 @@ describe("the batched scout read (round 44 — one query per roster)", () => {
     const alab = byName(w.devFlock, "Alab");
     for (let i = 0; i < 4; i++)
       recordFight(w.db, {
-        dayIndex: i, lobbyId: 1, farmId: w.devId, birdId: kidlat.id,
-        mode: "real", format: i % 2 === 0 ? "b1" : "b4", lobby: "open",
-        opponentBirdId: "rival-bird", opponentFarmId: w.rivalId, opponentName: "Rival",
-        side: 0, result: i === 0 ? "loss" : "win", pitFigure: 40 + i * 7,
-        gpDeltaCents: i === 0 ? -2000 : 3800, seed: i,
+        dayIndex: i,
+        lobbyId: 1,
+        farmId: w.devId,
+        birdId: kidlat.id,
+        mode: "real",
+        format: i % 2 === 0 ? "b1" : "b4",
+        lobby: "open",
+        opponentBirdId: "rival-bird",
+        opponentFarmId: w.rivalId,
+        opponentName: "Rival",
+        side: 0,
+        result: i === 0 ? "loss" : "win",
+        pitFigure: 40 + i * 7,
+        gpDeltaCents: i === 0 ? -2000 : 3800,
+        seed: i,
       });
     // Alab stays unraced on purpose — the map must still carry its all-prior
     // report, exactly as scoutReport would say.

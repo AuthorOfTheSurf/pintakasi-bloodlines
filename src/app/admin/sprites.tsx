@@ -109,7 +109,8 @@ function pixels(map: string[], palette: Record<string, string>): ReactElement[] 
   map.forEach((row, y) => {
     for (let x = 0; x < row.length; x++) {
       const color = palette[row[x]];
-      if (color) rects.push(<rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={color} />);
+      if (color)
+        rects.push(<rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={color} />);
     }
   });
   return rects;

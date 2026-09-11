@@ -106,7 +106,8 @@ function parseSweep(raw: string): { knob: string; values: number[] } {
   const at = raw.indexOf("=");
   if (at === -1) die(`--sweep needs KNOB=values, e.g. --sweep=BATTLE.ELEMENT_EDGE=0.25,0.5,1`);
   const knob = raw.slice(0, at);
-  if (!sweepableKnobs().includes(knob)) die(`Unknown knob "${knob}". Sweepable knobs:`, sweepableKnobs());
+  if (!sweepableKnobs().includes(knob))
+    die(`Unknown knob "${knob}". Sweepable knobs:`, sweepableKnobs());
   const values = raw
     .slice(at + 1)
     .split(",")
@@ -142,9 +143,7 @@ if (sweepPlan) {
   const runs = values.map((value) => ({
     knob,
     value,
-    report: run(`sweep ${knob}=${value}`, () =>
-      withKnob(knob, value, () => measure(cases, opts))
-    ),
+    report: run(`sweep ${knob}=${value}`, () => withKnob(knob, value, () => measure(cases, opts))),
   }));
 
   if (asJson) console.log(JSON.stringify(runs, null, 2));
@@ -179,13 +178,13 @@ if (convergeWindows) {
 }
 
 const report: BalanceReport = run("measurement", () => measure(cases, opts));
-console.log(
-  asJson
-    ? JSON.stringify(report, null, 2)
-    : asCsv
-      ? formatCsv(report)
-      : formatReport(report, { quiet })
-);
+/** One report, three shapes — JSON for tools, CSV for sheets, prose for people. */
+function render(r: BalanceReport): string {
+  if (asJson) return JSON.stringify(r, null, 2);
+  if (asCsv) return formatCsv(r);
+  return formatReport(r, { quiet });
+}
+console.log(render(report));
 
 // LAST, and always 0 — warnings are the output, not a failure. Errors exited
 // through `die` long before here.

@@ -23,11 +23,13 @@ import { diagnose, formatReport } from "@/engine/doctor";
 const args = process.argv.slice(2);
 const explicit = args.find((a) => !a.startsWith("--"));
 
-const target = explicit
-  ? path.resolve(explicit)
-  : args.includes("--live")
-    ? path.join(process.cwd(), "data", "game.db")
-    : latestSimDb();
+/** An explicit path wins, then --live, then the newest sim. */
+function pickTarget(): string {
+  if (explicit) return path.resolve(explicit);
+  if (args.includes("--live")) return path.join(process.cwd(), "data", "game.db");
+  return latestSimDb();
+}
+const target = pickTarget();
 
 // createDb() runs CREATE TABLE IF NOT EXISTS, so a mistyped path would be
 // CREATED and then reported as a perfectly healthy empty world. Refuse first.

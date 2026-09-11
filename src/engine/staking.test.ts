@@ -25,7 +25,11 @@ describe("the single staking pool", () => {
   // conversion inside farms.ts.
   test("stake and unstake move land between liquid and the pool", () => {
     const w = world({ rivalFlock: false });
-    w.db.update(farms).set({ landTokensCents: 100 * LT_CENTS }).where(eq(farms.id, w.devId)).run();
+    w.db
+      .update(farms)
+      .set({ landTokensCents: 100 * LT_CENTS })
+      .where(eq(farms.id, w.devId))
+      .run();
     w.farms.stake(w.devId, 60);
     expect(row(w.db, w.devId).landTokensCents).toBe(40 * LT_CENTS);
     expect(row(w.db, w.devId).stakedLandCents).toBe(60 * LT_CENTS);

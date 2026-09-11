@@ -127,9 +127,8 @@ export class Game {
    * times had to reason our way past. Now a day either happens or it doesn't.
    */
   private tick(kind: "day" | "week", opts: TickOptions): TickView {
-    return this.database.transaction(
-      (): TickView =>
-        withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind, opts))
+    return this.database.transaction((): TickView =>
+      withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind, opts))
     ) as TickView;
   }
 
@@ -160,7 +159,8 @@ export class Game {
       // the juice; the Majors take whatever is left.
       if (Tournaments.isJuvenileCrownDay(d))
         pintakasi.push(...Tournaments.resolveCrownDay(this.database, d, "juvenile"));
-      if (Tournaments.isCrownDay(d)) pintakasi.push(...Tournaments.resolveCrownDay(this.database, d));
+      if (Tournaments.isCrownDay(d))
+        pintakasi.push(...Tournaments.resolveCrownDay(this.database, d));
     }
     const staking = Farms.distributeStaking(this.database);
     // …and only now do the bot barns bank tonight's land. Their day ran before
@@ -170,6 +170,14 @@ export class Game {
     Bots.sweepStakes(this.database);
     // The office's memory: today's top-line metrics, for tomorrow's diffs.
     recordSnapshot(this.database);
-    return { clock: result.state, daysAdvanced: result.daysAdvanced, fridays, card, pintakasi, bots, staking };
+    return {
+      clock: result.state,
+      daysAdvanced: result.daysAdvanced,
+      fridays,
+      card,
+      pintakasi,
+      bots,
+      staking,
+    };
   }
 }

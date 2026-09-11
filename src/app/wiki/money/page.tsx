@@ -75,17 +75,17 @@ export default function MoneyPage() {
     <>
       <h1>Golden Pesos</h1>
       <p className="lede">
-        Golden Pesos (GP) are the money in the game. Every fee, every prize, every purchase moves
-        in GP. This page is about where it comes from, where it goes, and the one promise the
-        ledger keeps no matter what: nobody&apos;s GP appears from nowhere, and nobody&apos;s GP
-        vanishes into nowhere either.
+        Golden Pesos (GP) are the money in the game. Every fee, every prize, every purchase moves in
+        GP. This page is about where it comes from, where it goes, and the one promise the ledger
+        keeps no matter what: nobody&apos;s GP appears from nowhere, and nobody&apos;s GP vanishes
+        into nowhere either.
       </p>
 
       <h2>The peg</h2>
       <p>
         GP is pegged to the dollar at <strong>{ECONOMY.GP_PER_DOLLAR} GP = $1</strong>. No real
-        money moves yet — the peg exists so every number in this game means something you can
-        feel, not just a big scary integer.
+        money moves yet — the peg exists so every number in this game means something you can feel,
+        not just a big scary integer.
       </p>
       <div className="tablewrap">
         <table>
@@ -108,9 +108,7 @@ export default function MoneyPage() {
               <td className="num">${usd(ECONOMY.DAILY_DRIP)}</td>
             </tr>
             <tr>
-              <td>
-                A grown maiden entry (a night of up to {FIGHTS_PER_GROUP_BIRD} fights)
-              </td>
+              <td>A grown maiden entry (a night of up to {FIGHTS_PER_GROUP_BIRD} fights)</td>
               <td className="num">{maidenFee}</td>
               <td className="num">${usd(maidenFee)}</td>
             </tr>
@@ -136,15 +134,15 @@ export default function MoneyPage() {
         <b>An entry is a night, not a fight.</b> One entry buys your bird a group of up to{" "}
         {FIGHTS_PER_GROUP_BIRD} fights, and the fee splits evenly across them — so a grown maiden
         night risks {stakePerFight(maidenFee)} GP a fight and a juvenile one{" "}
-        {stakePerFight(feeFor("juvenile", "maiden"))} GP, and whatever your bird never got to risk is
-        refunded when the card settles. See <Link href="/wiki/card">The card</Link>.
+        {stakePerFight(feeFor("juvenile", "maiden"))} GP, and whatever your bird never got to risk
+        is refunded when the card settles. See <Link href="/wiki/card">The card</Link>.
       </div>
       <div className="callout tip">
         <b>There is no single price for a fight.</b> Each class of fight costs its own money — from{" "}
-        {cheapestNight} GP for the cheapest juvenile claimer up to {dearestNight} GP for a grown open
-        — and the dearer classes pay back disproportionately more{" "}
-        <Link href="/wiki/land">Land Tokens</Link>. That trade is the main decision you make with your
-        GP, so it has its own page: <Link href="/wiki/ladder">Fighting up</Link>.
+        {cheapestNight} GP for the cheapest juvenile claimer up to {dearestNight} GP for a grown
+        open — and the dearer classes pay back disproportionately more{" "}
+        <Link href="/wiki/land">Land Tokens</Link>. That trade is the main decision you make with
+        your GP, so it has its own page: <Link href="/wiki/ladder">Fighting up</Link>.
       </div>
 
       <h2>The one rule</h2>
@@ -152,11 +150,10 @@ export default function MoneyPage() {
         <b>GP is never printed, and never burned.</b> Two moments mint new GP into the game, and
         exactly two: <strong>genesis</strong> — every farm&apos;s starting stake, plus a small seed
         of championship juice so the first Thursday has something worth winning — and the{" "}
-        <strong>daily drip</strong>, forever after, because farms can&apos;t fund real accounts
-        yet and the drip keeps everyone able to play. That&apos;s it. Every other GP movement in
-        this game — a fight pot, a claim, a cover, a gacha roll, a land purchase — is just GP
-        moving from one farm (or pool) to another. Nothing else creates it, and nothing destroys
-        it.
+        <strong>daily drip</strong>, forever after, because farms can&apos;t fund real accounts yet
+        and the drip keeps everyone able to play. That&apos;s it. Every other GP movement in this
+        game — a fight pot, a claim, a cover, a gacha roll, a land purchase — is just GP moving from
+        one farm (or pool) to another. Nothing else creates it, and nothing destroys it.
       </div>
       <p>
         The game proves this to itself, every tick. GP in circulation is defined as one number:
@@ -202,7 +199,9 @@ export default function MoneyPage() {
             </tr>
             {CLAIMER.PRICES.map((price, i) => (
               <tr key={price}>
-                <td>Claiming tag, rung {i + 1} of {CLAIMER.PRICES.length}</td>
+                <td>
+                  Claiming tag, rung {i + 1} of {CLAIMER.PRICES.length}
+                </td>
                 <td className="num">{price}</td>
                 <td className="num">${usd(price)}</td>
               </tr>
@@ -239,17 +238,18 @@ export default function MoneyPage() {
         A Major&apos;s {PINTAKASI.ENTRY_FEE} GP is not really a spend — every peso of it goes into
         that same crown&apos;s purse, so the entrants are paying each other. It still doesn&apos;t
         buy a seat: the Selection Committee decides who stands, on what the bird has earned. See{" "}
-        <Link href="/wiki/pintakasi">The Pintakasi</Link>. Land is capped at {(LAND.DAILY_BUY_CAP / LT_CENTS).toLocaleString()} LT bought per farm per
-        game-day, and it is never sellable back — see <Link href="/wiki/land">Land Tokens</Link>.
-        You buy and stake land in whole tokens; you <em>earn</em> it in hundredths, so a fought
-        night pays an amount with decimals on it. Standing a rooster at stud
-        costs Land Tokens, not GP — see <Link href="/wiki/breeding">Breeding</Link>.
+        <Link href="/wiki/pintakasi">The Pintakasi</Link>. Land is capped at{" "}
+        {(LAND.DAILY_BUY_CAP / LT_CENTS).toLocaleString()} LT bought per farm per game-day, and it
+        is never sellable back — see <Link href="/wiki/land">Land Tokens</Link>. You buy and stake
+        land in whole tokens; you <em>earn</em> it in hundredths, so a fought night pays an amount
+        with decimals on it. Standing a rooster at stud costs Land Tokens, not GP — see{" "}
+        <Link href="/wiki/breeding">Breeding</Link>.
       </p>
 
       <h2>The two pools</h2>
       <p>
-        Almost every spend above doesn&apos;t vanish — most of it, or a slice of it, lands in one
-        of two shared pools. This is the part that confuses new farms, so slow down here.
+        Almost every spend above doesn&apos;t vanish — most of it, or a slice of it, lands in one of
+        two shared pools. This is the part that confuses new farms, so slow down here.
       </p>
       <div className="cards-2">
         <div className="minicard">
@@ -258,16 +258,15 @@ export default function MoneyPage() {
             Part-funds the week&apos;s championships — see{" "}
             <Link href="/wiki/pintakasi">The Pintakasi</Link>. The other part is the entry fees the
             crowns&apos; own entrants pay ({PINTAKASI.ENTRY_FEE} GP at a Major,{" "}
-            {JUVENILE_MAJOR.ENTRY_FEE} GP at a Juvenile Championship, added to that crown&apos;s purse
-            whole).
-            It fills from two places: {breedJuicePct}% of every breeding cover (the other half of
-            what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
-            {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. Wednesday&apos;s
-            Juvenile Championship takes its slice first — the pool sends it a fixed share, split
-            across its two crowns — and Thursday&apos;s Pintakasi Majors take the entire remainder,
-            split evenly across however many Majors run. Each crown then pays its purse out on{" "}
-            <em>fights won</em>: every win in the bracket takes a share, and a win in each round is
-            worth {PINTAKASI.PURSE.ROUND_MULTIPLIER}× a win in the round before.
+            {JUVENILE_MAJOR.ENTRY_FEE} GP at a Juvenile Championship, added to that crown&apos;s
+            purse whole). It fills from two places: {breedJuicePct}% of every breeding cover (the
+            other half of what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
+            {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll.
+            Wednesday&apos;s Juvenile Championship takes its slice first — the pool sends it a fixed
+            share, split across its two crowns — and Thursday&apos;s Pintakasi Majors take the
+            entire remainder, split evenly across however many Majors run. Each crown then pays its
+            purse out on <em>fights won</em>: every win in the bracket takes a share, and a win in
+            each round is worth {PINTAKASI.PURSE.ROUND_MULTIPLIER}× a win in the round before.
           </p>
         </div>
         <div className="minicard">
@@ -330,17 +329,18 @@ export default function MoneyPage() {
         </table>
       </div>
       <div className="callout tip">
-        <b>The rest of a breeding cover</b> — the piece that isn&apos;t the {breedStakerPct}%
-        staker cut or the {breedJuicePct}% juice share — goes straight to the stud&apos;s owner,
-        {" "}{breedOwnerPct}% of the fee. On the {ECONOMY.BREED_FEE} GP cover that&apos;s{" "}
+        <b>The rest of a breeding cover</b> — the piece that isn&apos;t the {breedStakerPct}% staker
+        cut or the {breedJuicePct}% juice share — goes straight to the stud&apos;s owner,{" "}
+        {breedOwnerPct}% of the fee. On the {ECONOMY.BREED_FEE} GP cover that&apos;s{" "}
         {fmtGp(breedSplit.stakerPoolCents)} GP staker / {fmtGp(breedSplit.juicePoolCents)} GP juice
         / {fmtGp(breedSplit.studOwnerCents)} GP to whoever owns the stud. See{" "}
         <Link href="/wiki/breeding">Breeding</Link>.
       </div>
       <p className="dim">
-        A marketplace rake is reserved in the settings ({(STAKER_FLOWS.MARKET_RAKE * 100).toFixed(0)}%)
-        for a farm-to-farm bird market that isn&apos;t built yet. Fight pots and claim tags don&apos;t
-        feed the juice pool at all today — that pool is fed only by breeding and the gacha.
+        A marketplace rake is reserved in the settings (
+        {(STAKER_FLOWS.MARKET_RAKE * 100).toFixed(0)}%) for a farm-to-farm bird market that
+        isn&apos;t built yet. Fight pots and claim tags don&apos;t feed the juice pool at all today
+        — that pool is fed only by breeding and the gacha.
       </p>
 
       <h2>Escrow</h2>
@@ -348,8 +348,8 @@ export default function MoneyPage() {
         Entering a fight or placing a claim doesn&apos;t spend your GP — it <strong>holds</strong>{" "}
         it. The moment you enter a lobby, your entry fee moves out of your wallet and into escrow;
         the moment you place a claim, the tag price does the same. Nothing is actually paid out
-        until the fight (or the claim draw) resolves. GP sitting in escrow still counts as GP in
-        the game — it just isn&apos;t anyone&apos;s to spend yet.
+        until the fight (or the claim draw) resolves. GP sitting in escrow still counts as GP in the
+        game — it just isn&apos;t anyone&apos;s to spend yet.
       </p>
       <p>Escrow comes back to you in three cases:</p>
       <ul>
@@ -369,8 +369,8 @@ export default function MoneyPage() {
           <strong>A cancelled championship, or a bumped entry.</strong> A Major entry escrows{" "}
           {PINTAKASI.ENTRY_FEE} GP the moment you register. If too few birds are standing on the
           day, the whole bracket cancels and the fee comes back. If the Selection Committee bumps
-          your bird out of a full field later in the week, it comes back then too. You only ever
-          pay for a crown your bird actually stands in. See{" "}
+          your bird out of a full field later in the week, it comes back then too. You only ever pay
+          for a crown your bird actually stands in. See{" "}
           <Link href="/wiki/pintakasi">The Pintakasi</Link>.
         </li>
       </ul>
@@ -388,27 +388,29 @@ export default function MoneyPage() {
       <p>
         Take a {exampleClaimTag} GP claiming tag. The staker rake takes{" "}
         {(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}% of that, {fmtGp(exampleClaimRakeCents)} GP —
-        so the seller banks <strong>{fmtGp(exampleClaimTagCents - exampleClaimRakeCents)} GP</strong>,
-        not the full tag. Staking payouts work the same idea but rarely land as clean: splitting
-        the day&apos;s staker pool pro-rata across everyone&apos;s staked land, however oddly that
-        land happens to be divided up — see <Link href="/wiki/land">Land Tokens</Link>. If your
-        balance ever shows something like .40 or .78 on the end, that&apos;s why.
+        so the seller banks{" "}
+        <strong>{fmtGp(exampleClaimTagCents - exampleClaimRakeCents)} GP</strong>, not the full tag.
+        Staking payouts work the same idea but rarely land as clean: splitting the day&apos;s staker
+        pool pro-rata across everyone&apos;s staked land, however oddly that land happens to be
+        divided up — see <Link href="/wiki/land">Land Tokens</Link>. If your balance ever shows
+        something like .40 or .78 on the end, that&apos;s why.
       </p>
 
       <h2>How to not go broke</h2>
       <p>
-        The daily drip alone covers about <strong>{maidenNightsPerDrip} grown maiden entries</strong>{" "}
-        a day — and each of those is a night of up to {FIGHTS_PER_GROUP_BIRD} fights, so that is
-        really {maidenNightsPerDrip * FIGHTS_PER_GROUP_BIRD} fights a day out of the drip alone.
-        Spend it at the cheap end of the ladder and it is {cheapNightsPerDrip} nights; spend it all in
-        the grown open and it is {dearNightsPerDrip}. Either way you cannot actually run out of GP to
+        The daily drip alone covers about{" "}
+        <strong>{maidenNightsPerDrip} grown maiden entries</strong> a day — and each of those is a
+        night of up to {FIGHTS_PER_GROUP_BIRD} fights, so that is really{" "}
+        {maidenNightsPerDrip * FIGHTS_PER_GROUP_BIRD} fights a day out of the drip alone. Spend it
+        at the cheap end of the ladder and it is {cheapNightsPerDrip} nights; spend it all in the
+        grown open and it is {dearNightsPerDrip}. Either way you cannot actually run out of GP to
         play with as long as you check in — you just choose how hard you want to fight with it (see{" "}
-        <Link href="/wiki/ladder">Fighting up</Link>). The cheapest way to keep new birds coming without
-        touching your wallet is the free gacha pull that check-in also grants: it costs nothing,
-        it always mints a little land, and on the better tokens it drops a whole mystery egg. See{" "}
-        <Link href="/wiki/gacha">The gacha</Link>. Save paid rolls and covers for when you&apos;re
-        actually chasing stars or a specific element — the free pull is the floor everyone stands
-        on.
+        <Link href="/wiki/ladder">Fighting up</Link>). The cheapest way to keep new birds coming
+        without touching your wallet is the free gacha pull that check-in also grants: it costs
+        nothing, it always mints a little land, and on the better tokens it drops a whole mystery
+        egg. See <Link href="/wiki/gacha">The gacha</Link>. Save paid rolls and covers for when
+        you&apos;re actually chasing stars or a specific element — the free pull is the floor
+        everyone stands on.
       </p>
 
       <div className="next">

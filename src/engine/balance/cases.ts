@@ -32,7 +32,6 @@ import {
   FIGURE,
   FORMATS,
   FORMAT_NAMES,
-  PHASES,
   STARS,
   STATS,
   STAT_NAMES,
@@ -67,6 +66,16 @@ import {
   type MeasuredLift,
 } from "./intent";
 import type { BalanceCase, CaseOptions, Row } from "./types";
+
+/**
+ * A lookup the case already guaranteed — every result map is filled by the
+ * loop just above the read, over the same blades and keys. `why` names the
+ * guarantee so a broken refactor says which one it broke.
+ */
+function must<T>(value: T | undefined, why: string): T {
+  if (value === undefined) throw new Error(`balance case: ${why}`);
+  return value;
+}
 
 // ── Shared furniture ────────────────────────────────────────────────────────
 
@@ -169,18 +178,80 @@ const symmetry: BalanceCase = {
 const ATTACKER: Element = ELEMENTS[0];
 const PREY: Element = ELEMENT_BEATS[ATTACKER];
 /** An element the attacker neither beats nor loses to — the clean control pairing. */
-const NEUTRAL: Element = ELEMENTS.find(
-  (e) => e !== ATTACKER && ELEMENT_BEATS[ATTACKER] !== e && ELEMENT_BEATS[e] !== ATTACKER
-)!;
+const NEUTRAL: Element = must(
+  ELEMENTS.find(
+    (e) => e !== ATTACKER && ELEMENT_BEATS[ATTACKER] !== e && ELEMENT_BEATS[e] !== ATTACKER
+  ),
+  "the element wheel has no neutral pairing for the attacker"
+);
 
-const relationTo = (opponent: Element): string =>
-  ELEMENT_BEATS[ATTACKER] === opponent
-    ? "edge"
-    : ELEMENT_BEATS[opponent] === ATTACKER
-      ? "counter"
-      : opponent === ATTACKER
-        ? "mirror"
-        : "neutral";
+const relationTo = (opponent: Element): string => {
+  if (ELEMENT_BEATS[ATTACKER] === opponent) return "edge";
+  if (ELEMENT_BEATS[opponent] === ATTACKER) return "counter";
+  if (opponent === ATTACKER) return "mirror";
+  return "neutral";
+};
+
+/**
+ * gap 0 is the control: identical birds must read as identical. The others
+ * get judged against the fog — a step the figure cannot lift above ±NOISE is
+ * a step the player cannot see.
+ */
+function figureGapVerdict(
+  gap: number,
+  minGap: number
+): { verdict: Row["verdict"]; note: string | undefined } {
+  if (gap === 0) {
+    if (Math.abs(minGap) < 1)
+      return { verdict: "ok", note: "identical birds post identical figures" };
+    return {
+      verdict: "warn",
+      note: "identical birds are NOT posting identical figures — the instrument is broken",
+    };
+  }
+  if (minGap < FIGURE.NOISE)
+    return {
+      verdict: "warn",
+      note: `figure gap is under the ±${FIGURE.NOISE} fog on at least one blade — this much bird is invisible in the number`,
+    };
+  return { verdict: "ok", note: undefined };
+}
+
+/** A weight-matrix row: a dead weight outranks a row that fails to sum to 1. */
+function weightRowVerdict(
+  dead: readonly string[],
+  sum: number
+): { verdict: Row["verdict"]; note: string | undefined } {
+  if (dead.length)
+    return {
+      verdict: "warn",
+      note: `zero weight: ${dead.join(", ")} — EVERY_STAT_EVERYWHERE violated by config`,
+    };
+  if (Math.abs(sum - 1) > 0.001)
+    return {
+      verdict: "warn",
+      note: `row sums to ${sum.toFixed(3)} — a flat grade is worth different roll on this blade`,
+    };
+  return { verdict: "ok", note: undefined };
+}
+
+/** Who the station clawback favours: the own bird, the flat opponent, or nobody. */
+function clawbackSide(A: number, B: number): string {
+  if (A > 0) return "Stn";
+  if (B > 0) return "Even";
+  return "—";
+}
+
+/** Only the 0★ row of the star ladder is judged; the climb has no target. */
+function muteRowVerdict(
+  halfStars: number,
+  muteBroken: boolean
+): { verdict: Row["verdict"]; note: string | undefined } {
+  if (halfStars !== 0) return { verdict: undefined, note: undefined };
+  if (muteBroken)
+    return { verdict: "warn", note: "a 0★ bird is getting element value it should not have" };
+  return { verdict: "ok", note: "0★ mutes the wheel completely" };
+}
 
 const elements: BalanceCase = {
   name: "elements",
@@ -260,13 +331,7 @@ const stars: BalanceCase = {
       return {
         label: `${h / 2}★ (edge ×${(h / STARS.MAX_HALF_STARS).toFixed(1)})`,
         cells: results.map((r) => rate(r)),
-        verdict: h === 0 ? (muteBroken ? "warn" : "ok") : undefined,
-        note:
-          h === 0
-            ? muteBroken
-              ? "a 0★ bird is getting element value it should not have"
-              : "0★ mutes the wheel completely"
-            : undefined,
+        ...muteRowVerdict(h, muteBroken),
       };
     });
 
@@ -438,7 +503,8 @@ const OLD_CLIFF_B = 560; // was: the point that opened the OPPONENT's gate
 
 const station: BalanceCase = {
   name: "station",
-  question: "Station claws back a slice of the stat gap — is the slope smooth, and does it stay short of inverting?",
+  question:
+    "Station claws back a slice of the stat gap — is the slope smooth, and does it stay short of inverting?",
   run(o) {
     const bs = blades(o);
     const control = flat(BASE, { name: "Even" });
@@ -465,7 +531,7 @@ const station: BalanceCase = {
         label: `station ${s}`,
         cells: [
           String(statTotal(me)),
-          `${A > 0 ? "Stn" : B > 0 ? "Even" : "—"} +${(Math.max(A, B)).toFixed(2)}/roll`,
+          `${clawbackSide(A, B)} +${Math.max(A, B).toFixed(2)}/roll`,
           ...bs.map((f) => rate(mirrored(me, control, runOpts(o, f)))),
         ],
       };
@@ -720,22 +786,21 @@ const sensitivity: BalanceCase = {
 
     const matrix: Row[] = STAT_NAMES.map((s) => ({
       label: s,
-      cells: bs.map((f) => rate(lifts.get(`${f}:${s}`)!)),
+      cells: bs.map((f) =>
+        rate(must(lifts.get(`${f}:${s}`), "measured for every blade and key above"))
+      ),
     }));
 
     const rankRows: Row[] = bs.map((f) => {
       const measured: MeasuredLift[] = STAT_NAMES.map((s) => {
-        const r = lifts.get(`${f}:${s}`)!;
+        const r = must(lifts.get(`${f}:${s}`), "measured for every blade and key above");
         return { stat: s, lift: r.winRate - SYMMETRY_TARGET, ci95: r.ci95 };
       });
       const order = [...measured].sort((a, b) => b.lift - a.lift);
       const v = judgeRanking(f, measured);
       return {
         label: bladeLabel(f),
-        cells: [
-          order.map((m) => m.stat).join(" > "),
-          STAT_PRIORITY[f].notation,
-        ],
+        cells: [order.map((m) => m.stat).join(" > "), STAT_PRIORITY[f].notation],
         verdict: v?.verdict,
         note: v?.note,
       };
@@ -754,7 +819,8 @@ const sensitivity: BalanceCase = {
       },
       {
         title: "SENSITIVITY — MEASURED vs INTENDED RANKING",
-        question: "Stats ordered by the lift they actually bought, next to what the blade was designed to reward.",
+        question:
+          "Stats ordered by the lift they actually bought, next to what the blade was designed to reward.",
         columns: ["blade", "measured (all six, by lift)", "intended"],
         rows: rankRows,
         findings: [
@@ -805,7 +871,10 @@ const sensitivity: BalanceCase = {
  *     the engine or just a story.
  */
 const PAIRS: [WeightStat, WeightStat][] = WEIGHT_STATS.flatMap((x, i) =>
-  WEIGHT_STATS.slice(i + 1).map((y, j) => ({ pair: [x, y] as [WeightStat, WeightStat], gap: j + 1 }))
+  WEIGHT_STATS.slice(i + 1).map((y, j) => ({
+    pair: [x, y] as [WeightStat, WeightStat],
+    gap: j + 1,
+  }))
 )
   // Adjacent pairs first (Agility&Sight, Sight&Stamina, Stamina&Gameness) —
   // they are the ones Zane named and the ones the weight matrix pairs up.
@@ -834,6 +903,8 @@ const pairs: BalanceCase = {
     const singles = new Map<string, DuelResult>();
     const spikes = new Map<string, DuelResult>();
     const both = new Map<string, DuelResult>();
+    const pairAt = (f: FightFormat, p: [WeightStat, WeightStat]): DuelResult =>
+      must(both.get(`${f}:${p[0]}+${p[1]}`), "measured for every blade and key above");
 
     for (const f of bs) {
       for (const s of WEIGHT_STATS) {
@@ -850,7 +921,10 @@ const pairs: BalanceCase = {
         both.set(
           `${f}:${x}+${y}`,
           mirrored(
-            shaped({ [x]: BASE + GRADE_STEP, [y]: BASE + GRADE_STEP }, { base: BASE, name: "Pair" }),
+            shaped(
+              { [x]: BASE + GRADE_STEP, [y]: BASE + GRADE_STEP },
+              { base: BASE, name: "Pair" }
+            ),
             control,
             runOpts(o, f)
           )
@@ -871,13 +945,13 @@ const pairs: BalanceCase = {
     ).B;
 
     const range: Row[] = PAIRS.map((p) => {
-      const cells = bs.map((f) => rate(both.get(`${f}:${p[0]}+${p[1]}`)!));
+      const at = (f: FightFormat) => pairAt(f, p);
+      const cells = bs.map((f) => rate(at(f)));
       // Only judgeable with the whole ladder in front of us — `--format=b2`
       // narrows the run to one blade and a range claim needs five.
       if (bs.length < FORMAT_NAMES.length) return { label: pairLabel(p), cells };
 
       const predicted = [keyBlade(p[0]), keyBlade(p[1])];
-      const at = (f: FightFormat) => both.get(`${f}:${p[0]}+${p[1]}`)!;
       // INTERVAL-HONEST, and it matters: at 1,000 runs B3 outranks a predicted
       // home by ~1.5 points on four of these six rows, which is inside ±2.1
       // and is not a result. A naive top-2 check warned on all four. A home
@@ -897,7 +971,7 @@ const pairs: BalanceCase = {
         );
         if (over.length) beatenBy.set(home, over);
       }
-      const middle = both.get(`b3:${p[0]}+${p[1]}`)!;
+      const middle = pairAt("b3", p);
       const holdsMiddle = middle.winRate - middle.ci95 > SYMMETRY_TARGET;
 
       const notes: string[] = [];
@@ -918,11 +992,12 @@ const pairs: BalanceCase = {
     const synergy: Row[] = PAIRS.map((p) => ({
       label: pairLabel(p),
       cells: bs.map((f) => {
-        const pairLift = both.get(`${f}:${p[0]}+${p[1]}`)!.winRate - SYMMETRY_TARGET;
+        const pairLift = pairAt(f, p).winRate - SYMMETRY_TARGET;
         const sum =
-          singles.get(`${f}:${p[0]}`)!.winRate -
+          must(singles.get(`${f}:${p[0]}`), "measured for every blade and key above").winRate -
           SYMMETRY_TARGET +
-          (singles.get(`${f}:${p[1]}`)!.winRate - SYMMETRY_TARGET);
+          (must(singles.get(`${f}:${p[1]}`), "measured for every blade and key above").winRate -
+            SYMMETRY_TARGET);
         return `${signed(pairLift)} of ${signed(sum)}`;
       }),
     }));
@@ -942,10 +1017,12 @@ const pairs: BalanceCase = {
     };
 
     const shapes: Row[] = [
-      ...PAIRS.map((p) =>
-        shapeRow(`pair  ${pairLabel(p)}`, (f) => both.get(`${f}:${p[0]}+${p[1]}`)!)
+      ...PAIRS.map((p) => shapeRow(`pair  ${pairLabel(p)}`, (f) => pairAt(f, p))),
+      ...WEIGHT_STATS.map((s) =>
+        shapeRow(`spike ${s} +${spike}`, (f) =>
+          must(spikes.get(`${f}:${s}`), "measured for every blade and key above")
+        )
       ),
-      ...WEIGHT_STATS.map((s) => shapeRow(`spike ${s} +${spike}`, (f) => spikes.get(`${f}:${s}`)!)),
     ];
 
     return [
@@ -962,7 +1039,8 @@ const pairs: BalanceCase = {
       },
       {
         title: "PAIRS — SYNERGY vs SATURATION",
-        question: "The pair's measured lift, next to the SUM of its two single-stat lifts. Falling short is expected — a win rate cannot pass 100 — so the size of the shortfall is the reading.",
+        question:
+          "The pair's measured lift, next to the SUM of its two single-stat lifts. Falling short is expected — a win rate cannot pass 100 — so the size of the shortfall is the reading.",
         columns: ["pair", ...bs.map(bladeLabel)],
         rows: synergy,
         findings: [
@@ -1011,19 +1089,59 @@ const weather: BalanceCase = {
     // speaks as loudly as a bird's stars, so this measures the weather at
     // its ceiling. A 0★ bird's weather day is a no-op by construction (the
     // stars case owns that invariant).
-    const A = (e: Element) => flat(BASE, { name: "A", element: e, halfStars: STARS.MAX_HALF_STARS });
-    const B = (e: Element) => flat(BASE, { name: "B", element: e, halfStars: STARS.MAX_HALF_STARS });
+    const A = (e: Element) =>
+      flat(BASE, { name: "A", element: e, halfStars: STARS.MAX_HALF_STARS });
+    const B = (e: Element) =>
+      flat(BASE, { name: "B", element: e, halfStars: STARS.MAX_HALF_STARS });
 
     const scenarios = [
-      { key: "alone", label: `${ATTACKER} vs ${NEUTRAL}, ${ATTACKER} day`, a: ATTACKER, b: NEUTRAL, wx: ATTACKER },
-      { key: "alone-ctl", label: `${ATTACKER} vs ${NEUTRAL}, no weather`, a: ATTACKER, b: NEUTRAL, wx: undefined },
-      { key: "stacked", label: `${ATTACKER} vs ${PREY}, ${ATTACKER} day`, a: ATTACKER, b: PREY, wx: ATTACKER },
-      { key: "rps", label: `${ATTACKER} vs ${PREY}, no weather`, a: ATTACKER, b: PREY, wx: undefined },
-      { key: "both", label: `${ATTACKER} vs ${ATTACKER}, ${ATTACKER} day`, a: ATTACKER, b: ATTACKER, wx: ATTACKER },
-      { key: "both-ctl", label: `${ATTACKER} vs ${ATTACKER}, no weather`, a: ATTACKER, b: ATTACKER, wx: undefined },
+      {
+        key: "alone",
+        label: `${ATTACKER} vs ${NEUTRAL}, ${ATTACKER} day`,
+        a: ATTACKER,
+        b: NEUTRAL,
+        wx: ATTACKER,
+      },
+      {
+        key: "alone-ctl",
+        label: `${ATTACKER} vs ${NEUTRAL}, no weather`,
+        a: ATTACKER,
+        b: NEUTRAL,
+        wx: undefined,
+      },
+      {
+        key: "stacked",
+        label: `${ATTACKER} vs ${PREY}, ${ATTACKER} day`,
+        a: ATTACKER,
+        b: PREY,
+        wx: ATTACKER,
+      },
+      {
+        key: "rps",
+        label: `${ATTACKER} vs ${PREY}, no weather`,
+        a: ATTACKER,
+        b: PREY,
+        wx: undefined,
+      },
+      {
+        key: "both",
+        label: `${ATTACKER} vs ${ATTACKER}, ${ATTACKER} day`,
+        a: ATTACKER,
+        b: ATTACKER,
+        wx: ATTACKER,
+      },
+      {
+        key: "both-ctl",
+        label: `${ATTACKER} vs ${ATTACKER}, no weather`,
+        a: ATTACKER,
+        b: ATTACKER,
+        wx: undefined,
+      },
     ] as const;
 
     const got = new Map<string, DuelResult>();
+    const gotAt = (key: string, f: FightFormat): DuelResult =>
+      must(got.get(`${key}:${f}`), "measured for every blade and key above");
     for (const s of scenarios) {
       for (const f of bs) {
         got.set(`${s.key}:${f}`, mirrored(A(s.a), B(s.b), runOpts(o, f, s.wx)));
@@ -1032,17 +1150,15 @@ const weather: BalanceCase = {
 
     const rows: Row[] = scenarios.map((s) => ({
       label: s.label,
-      cells: bs.map((f) => rate(got.get(`${s.key}:${f}`)!)),
+      cells: bs.map((f) => rate(gotAt(s.key, f))),
     }));
 
     // The exact-cancellation check. Not "close enough" — identical.
-    const cancels = bs.every(
-      (f) => got.get(`both:${f}`)!.winRate === got.get(`both-ctl:${f}`)!.winRate
-    );
+    const cancels = bs.every((f) => gotAt("both", f).winRate === gotAt("both-ctl", f).winRate);
     rows.push({
       label: "both matched — cancellation",
       cells: bs.map((f) =>
-        got.get(`both:${f}`)!.winRate === got.get(`both-ctl:${f}`)!.winRate ? "exact" : "DIFFERS"
+        gotAt("both", f).winRate === gotAt("both-ctl", f).winRate ? "exact" : "DIFFERS"
       ),
       verdict: cancels ? "ok" : "warn",
       note: cancels
@@ -1051,10 +1167,10 @@ const weather: BalanceCase = {
     });
 
     const figureRows: Row[] = bs.map((f) => {
-      const wx = got.get(`alone:${f}`)!;
-      const dry = got.get(`alone-ctl:${f}`)!;
-      const stackWx = got.get(`stacked:${f}`)!;
-      const stackDry = got.get(`rps:${f}`)!;
+      const wx = gotAt("alone", f);
+      const dry = gotAt("alone-ctl", f);
+      const stackWx = gotAt("stacked", f);
+      const stackDry = gotAt("rps", f);
       return {
         label: bladeLabel(f),
         cells: [
@@ -1150,12 +1266,7 @@ const reach: BalanceCase = {
       return {
         label: bladeLabel(f),
         cells: [...WEIGHT_STATS.map((k) => w[k].toFixed(2)), sum.toFixed(3)],
-        verdict: dead.length ? "warn" : Math.abs(sum - 1) > 0.001 ? "warn" : "ok",
-        note: dead.length
-          ? `zero weight: ${dead.join(", ")} — EVERY_STAT_EVERYWHERE violated by config`
-          : Math.abs(sum - 1) > 0.001
-            ? `row sums to ${sum.toFixed(3)} — a flat grade is worth different roll on this blade`
-            : undefined,
+        ...weightRowVerdict(dead, sum),
       };
     });
 
@@ -1190,11 +1301,7 @@ const reach: BalanceCase = {
       const reached = obs.filter((t) => t > starterFuel).length / obs.length;
       return {
         label: bladeLabel(f),
-        cells: [
-          String(FORMATS[f].maxTurns),
-          starterFuel.toFixed(1),
-          pct(reached * 100),
-        ],
+        cells: [String(FORMATS[f].maxTurns), starterFuel.toFixed(1), pct(reached * 100)],
       };
     });
 
@@ -1204,11 +1311,15 @@ const reach: BalanceCase = {
         question: "Per blade: the four weights, each > 0, each row summing to 1.",
         columns: ["blade", ...WEIGHT_STATS.map(String), "Σ"],
         rows: matrixRows,
-        findings: [EVERY_STAT_EVERYWHERE + " Since round 27 that is a config property, and this table is its tripwire."],
+        findings: [
+          EVERY_STAT_EVERYWHERE +
+            " Since round 27 that is a config property, and this table is its tripwire.",
+        ],
       },
       {
         title: "REACH — DIAL SYMMETRY",
-        question: "agility read B1→B5 should mirror gameness read B5→B1; sight should mirror stamina.",
+        question:
+          "agility read B1→B5 should mirror gameness read B5→B1; sight should mirror stamina.",
         columns: ["pair", "left", "right", "|diff|"],
         rows: symRows,
         findings: [
@@ -1248,7 +1359,8 @@ const reach: BalanceCase = {
  */
 const fuel: BalanceCase = {
   name: "fuel",
-  question: "Stamina has two routes — the direct weight and the fuel wall. Which carries its value, per blade?",
+  question:
+    "Stamina has two routes — the direct weight and the fuel wall. Which carries its value, per blade?",
   run(o) {
     const control = flat(BASE, { name: "Flat" });
     const rows: Row[] = blades(o).map((f) => {
@@ -1276,7 +1388,13 @@ const fuel: BalanceCase = {
       {
         title: "FUEL — WHERE STAMINA'S LIFT COMES FROM",
         question: `+${SENS_DELTA} stamina vs a flat ${BASE} bird, then the same duel with one route disabled at a time. Lifts are win-rate points over 50.`,
-        columns: ["blade", "win% ±95 (both routes)", "direct weight alone", "fuel wall alone", "interaction"],
+        columns: [
+          "blade",
+          "win% ±95 (both routes)",
+          "direct weight alone",
+          "fuel wall alone",
+          "interaction",
+        ],
         rows,
         findings: [
           `The direct route: stamina × the blade's weight joins every roll like any other stat — worth the most where the weight is biggest (${FORMAT_NAMES.map((f) => `${FORMATS[f].label} ${FORMATS[f].weights.stamina}`).join(", ")}).`,
@@ -1350,7 +1468,14 @@ const crit: BalanceCase = {
       {
         title: "CRIT — THE TARI STRIKE'S SHARE OF THE FIGHT",
         question: `Crit tax: a +${GRADE_STEP}-per-stat favourite (station shut) with crits as shipped vs critMult forced to 1. Flips: identical birds, same seeds, how often the winner changes when crits are removed.`,
-        columns: ["blade", "critMult", "fav win% ±95, crits on", "crits off", "crit tax on the favourite", "outcome flips %"],
+        columns: [
+          "blade",
+          "critMult",
+          "fav win% ±95, crits on",
+          "crits off",
+          "crit tax on the favourite",
+          "outcome flips %",
+        ],
         rows,
         findings: [
           "Doubles odds are structural: 1-in-6 per roll per side, so ~30.6% of turns contain at least one crit — the multiplier, not the frequency, is what varies by blade.",
@@ -1378,9 +1503,16 @@ const crit: BalanceCase = {
  */
 const figure: BalanceCase = {
   name: "figure",
-  question: "When a bird is genuinely better, does the Pit Figure move enough to see through its own fog?",
+  question:
+    "When a bird is genuinely better, does the Pit Figure move enough to see through its own fog?",
   run(o) {
-    const gaps = [0, 50, GRADE_TARGETS[0].delta, GRADE_TARGETS[1].delta, GRADE_TARGETS[1].delta * 2];
+    const gaps = [
+      0,
+      50,
+      GRADE_TARGETS[0].delta,
+      GRADE_TARGETS[1].delta,
+      GRADE_TARGETS[1].delta * 2,
+    ];
     const control = shaped({ station: STATS.MIN }, { base: BASE, name: "Plain" });
 
     const rows: Row[] = gaps.map((gap) => {
@@ -1393,23 +1525,13 @@ const figure: BalanceCase = {
         minGap = Math.min(minGap, dFig);
         cells.push(`${dFig >= 0 ? "+" : ""}${dFig.toFixed(1)}`);
       }
-      // gap 0 is the control: identical birds must read as identical. The
-      // others get judged against the fog — a step the figure cannot lift
-      // above ±NOISE is a step the player cannot see.
-      const verdict: Row["verdict"] =
-        gap === 0 ? (Math.abs(minGap) < 1 ? "ok" : "warn") : minGap < FIGURE.NOISE ? "warn" : "ok";
+      // Judged in figureGapVerdict: the control must read identical, the rest must clear the fog.
+      const { verdict, note } = figureGapVerdict(gap, minGap);
       return {
         label: gap === 0 ? "identical (control)" : `+${gap} every stat`,
         cells,
         verdict,
-        note:
-          gap === 0
-            ? verdict === "ok"
-              ? "identical birds post identical figures"
-              : "identical birds are NOT posting identical figures — the instrument is broken"
-            : verdict === "warn"
-              ? `figure gap is under the ±${FIGURE.NOISE} fog on at least one blade — this much bird is invisible in the number`
-              : undefined,
+        note,
       };
     });
 
@@ -1462,9 +1584,23 @@ const FIGURE_GRADE_STEP = (GRADE_BAND / FIGURE.PEG_STAT) * FIGURE.PEG_FIGURE;
 // is wide enough to swallow the quantization and far too narrow to hide a
 // real regression: the OLD figure's step at these levels was ~5.
 const FIGURE_GRADE_TOLERANCE = 0.9;
+
+/** The first grade is the reference; later ones only earn a note when they fail. */
+function gradeStepNote(
+  isReference: boolean,
+  verdict: Row["verdict"],
+  minStep: number
+): string | undefined {
+  if (isReference) return "first reference grade";
+  if (verdict === "warn")
+    return `smallest blade-to-blade step is +${minStep.toFixed(1)}, more than ${((1 - FIGURE_GRADE_TOLERANCE) * 100).toFixed(0)}% under the derived +${FIGURE_GRADE_STEP} target`;
+  return undefined;
+}
+
 const figureGrade: BalanceCase = {
   name: "figuregrade",
-  question: "Against fixed B+ company, do grade and distance both move a specialist's Pit Figure as expected?",
+  question:
+    "Against fixed B+ company, do grade and distance both move a specialist's Pit Figure as expected?",
   run(o) {
     const dummy = flat(350, { name: "B+ target dummy" });
     // Equal-total specialist profiles: the B1 bird shifts 100 points from
@@ -1475,11 +1611,21 @@ const figureGrade: BalanceCase = {
     const specialist = (level: number, end: "b1" | "b5") =>
       end === "b1"
         ? shaped(
-            { agility: level + 100, sight: level + 100, stamina: level - 100, gameness: level - 100 },
+            {
+              agility: level + 100,
+              sight: level + 100,
+              stamina: level - 100,
+              gameness: level - 100,
+            },
             { base: level, name: "B1 specialist" }
           )
         : shaped(
-            { agility: level - 100, sight: level - 100, stamina: level + 100, gameness: level + 100 },
+            {
+              agility: level - 100,
+              sight: level - 100,
+              stamina: level + 100,
+              gameness: level + 100,
+            },
             { base: level, name: "B5 specialist" }
           );
     const previous = new Map<"home" | "adjacent" | "middle", number>();
@@ -1488,18 +1634,18 @@ const figureGrade: BalanceCase = {
       const left = specialist(level, "b1");
       const right = specialist(level, "b5");
       const averages = {
-        home: (
-          mirrored(left, dummy, runOpts(o, "b1")).meanFigureA +
-          mirrored(right, dummy, runOpts(o, "b5")).meanFigureA
-        ) / 2,
-        adjacent: (
-          mirrored(left, dummy, runOpts(o, "b2")).meanFigureA +
-          mirrored(right, dummy, runOpts(o, "b4")).meanFigureA
-        ) / 2,
-        middle: (
-          mirrored(left, dummy, runOpts(o, "b3")).meanFigureA +
-          mirrored(right, dummy, runOpts(o, "b3")).meanFigureA
-        ) / 2,
+        home:
+          (mirrored(left, dummy, runOpts(o, "b1")).meanFigureA +
+            mirrored(right, dummy, runOpts(o, "b5")).meanFigureA) /
+          2,
+        adjacent:
+          (mirrored(left, dummy, runOpts(o, "b2")).meanFigureA +
+            mirrored(right, dummy, runOpts(o, "b4")).meanFigureA) /
+          2,
+        middle:
+          (mirrored(left, dummy, runOpts(o, "b3")).meanFigureA +
+            mirrored(right, dummy, runOpts(o, "b3")).meanFigureA) /
+          2,
       };
       let minStep = Infinity;
       const cells = (["home", "adjacent", "middle"] as const).map((distance) => {
@@ -1507,23 +1653,19 @@ const figureGrade: BalanceCase = {
         const prior = previous.get(distance);
         previous.set(distance, figure);
         if (prior !== undefined) minStep = Math.min(minStep, figure - prior);
-        return prior === undefined ? figure.toFixed(1) : `${figure.toFixed(1)} (+${(figure - prior).toFixed(1)})`;
+        return prior === undefined
+          ? figure.toFixed(1)
+          : `${figure.toFixed(1)} (+${(figure - prior).toFixed(1)})`;
       });
       const verdict: Row["verdict"] =
-        level === FIGURE_GRADE_LEVELS[0] ||
-        minStep >= FIGURE_GRADE_STEP * FIGURE_GRADE_TOLERANCE
+        level === FIGURE_GRADE_LEVELS[0] || minStep >= FIGURE_GRADE_STEP * FIGURE_GRADE_TOLERANCE
           ? "ok"
           : "warn";
       return {
         label: `${grade} (${level})`,
         cells,
         verdict,
-        note:
-          level === FIGURE_GRADE_LEVELS[0]
-            ? "first reference grade"
-            : verdict === "warn"
-              ? `smallest blade-to-blade step is +${minStep.toFixed(1)}, more than ${((1 - FIGURE_GRADE_TOLERANCE) * 100).toFixed(0)}% under the derived +${FIGURE_GRADE_STEP} target`
-              : undefined,
+        note: gradeStepNote(level === FIGURE_GRADE_LEVELS[0], verdict, minStep),
       };
     });
     return [

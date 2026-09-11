@@ -81,7 +81,13 @@ describe("the weapon dial (blade = distance)", () => {
     // The cap: per-fight, so it stays a loop over single sims.
     for (const format of FORMAT_NAMES) {
       for (let seed = 1; seed <= 40; seed++) {
-        const sim = simulatePair(bird("A", 350), bird("B", 350, "Water"), format, mulberry32(seed), "TEST");
+        const sim = simulatePair(
+          bird("A", 350),
+          bird("B", 350, "Water"),
+          format,
+          mulberry32(seed),
+          "TEST"
+        );
         expect(turnsIn(sim.playByPlay)).toBeLessThanOrEqual(FORMATS[format].maxTurns);
       }
     }
@@ -144,7 +150,13 @@ describe("the Pit Figures (discovery signal)", () => {
   // means. These loops stay hand-rolled on purpose.
   test("banded to 5s, clamped, per side — and losses still carry one", () => {
     for (let seed = 1; seed <= 25; seed++) {
-      const sim = simulatePair(bird("A", 300), bird("B", 450, "Water"), "b2", mulberry32(seed), "TEST");
+      const sim = simulatePair(
+        bird("A", 300),
+        bird("B", 450, "Water"),
+        "b2",
+        mulberry32(seed),
+        "TEST"
+      );
       for (const f of sim.figures) {
         expect(f % FIGURE.BAND).toBe(0);
         expect(f).toBeGreaterThanOrEqual(0);
@@ -162,8 +174,18 @@ describe("the Pit Figures (discovery signal)", () => {
     for (const format of FORMAT_NAMES) {
       for (let seed = 1; seed <= 60; seed++) {
         // Deliberately lopsided both ways, plus even matches.
-        for (const [x, y] of [[280, 420], [420, 280], [350, 350]] as const) {
-          const sim = simulatePair(bird("A", x), bird("B", y, "Water"), format, mulberry32(seed), "T");
+        for (const [x, y] of [
+          [280, 420],
+          [420, 280],
+          [350, 350],
+        ] as const) {
+          const sim = simulatePair(
+            bird("A", x),
+            bird("B", y, "Water"),
+            format,
+            mulberry32(seed),
+            "T"
+          );
           const [w, l] = sim.winner === 0 ? sim.figures : [sim.figures[1], sim.figures[0]];
           expect(w).toBeGreaterThan(l);
         }
@@ -180,7 +202,13 @@ describe("the Pit Figures (discovery signal)", () => {
       let sum = 0;
       const RUNS = 60;
       for (let seed = 1; seed <= RUNS; seed++) {
-        const sim = simulatePair(bird("A", level), bird("B", level, "Water"), "b2", mulberry32(seed), "T");
+        const sim = simulatePair(
+          bird("A", level),
+          bird("B", level, "Water"),
+          "b2",
+          mulberry32(seed),
+          "T"
+        );
         sum += Math.max(...sim.figures);
       }
       return sum / RUNS;
@@ -199,7 +227,13 @@ describe("the Pit Figures (discovery signal)", () => {
     // which no mean can answer.
     let closeLosses = 0;
     for (let seed = 1; seed <= 60; seed++) {
-      const sim = simulatePair(bird("A", 1200), bird("B", 1200, "Water"), "b3", mulberry32(seed), "T");
+      const sim = simulatePair(
+        bird("A", 1200),
+        bird("B", 1200, "Water"),
+        "b3",
+        mulberry32(seed),
+        "T"
+      );
       const loser = Math.min(...sim.figures);
       if (loser > 55) closeLosses++;
     }
@@ -298,7 +332,12 @@ describe("daily Element weather (round 24)", () => {
    * away the evidence.
    */
   const wrCache = new Map<string, number>();
-  function winRatePct(aEl: Element, bEl: Element, weather?: Element, seedFrom: number = LAB.SEED_FROM) {
+  function winRatePct(
+    aEl: Element,
+    bEl: Element,
+    weather?: Element,
+    seedFrom: number = LAB.SEED_FROM
+  ) {
     // Memoised because the neutral pairing is the shared control for two
     // different tests, and re-fighting 4000 bouts to learn the same number is
     // pure wall clock.
@@ -438,7 +477,14 @@ describe("daily Element weather (round 24)", () => {
       expect(withWx.figures[1]).toBeGreaterThanOrEqual(without.figures[1]);
     }
     // …and the narration says so, instead of implying the day picked a side.
-    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Fire"), "b2", mulberry32(9), "T", "Fire");
+    const sim = simulatePair(
+      bird("A", 350, "Fire"),
+      bird("B", 350, "Fire"),
+      "b2",
+      mulberry32(9),
+      "T",
+      "Fire"
+    );
     expect(sim.playByPlay).toContain("both birds call it home, so it settles nothing");
   });
 
@@ -446,7 +492,14 @@ describe("daily Element weather (round 24)", () => {
     // One fight's play-by-play: the lab reports no narration, so this reads a
     // single sim directly. Fire beats Metal (RPS) AND the day is Fire — the
     // Fire bird gets both.
-    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Metal"), "b3", mulberry32(1), "TEST", "Fire");
+    const sim = simulatePair(
+      bird("A", 350, "Fire"),
+      bird("B", 350, "Metal"),
+      "b3",
+      mulberry32(1),
+      "TEST",
+      "Fire"
+    );
     expect(sim.playByPlay).toContain("Today's element is Fire");
     expect(sim.playByPlay).toContain("carries the weather edge");
     // The roll detail interpolates the DELIVERED edge (knob × star scale,
@@ -457,7 +510,14 @@ describe("daily Element weather (round 24)", () => {
   });
 
   test("a no-match day narrates honestly and figures stay banded", () => {
-    const sim = simulatePair(bird("A", 350, "Fire"), bird("B", 350, "Water"), "b2", mulberry32(3), "TEST", "Wood");
+    const sim = simulatePair(
+      bird("A", 350, "Fire"),
+      bird("B", 350, "Water"),
+      "b2",
+      mulberry32(3),
+      "TEST",
+      "Wood"
+    );
     expect(sim.playByPlay).toContain("neither bird calls it home");
     for (const f of sim.figures) {
       expect(f % FIGURE.BAND).toBe(0);
@@ -482,8 +542,7 @@ describe("daily Element weather (round 24)", () => {
     // makes the mean response a little larger than a single track-variant
     // roll, so the old stricter ±NOISE expectation no longer describes this
     // honest close-loss calculation.
-    const at25 = (name: string, element: Element) =>
-      flat(350, { name, element, halfStars: 5 });
+    const at25 = (name: string, element: Element) => flat(350, { name, element, halfStars: 5 });
     const meanFigure = (weather: Element | undefined, seedFrom: number) =>
       duel(at25("A", "Fire"), at25("B", "Wood"), {
         format: "b2",

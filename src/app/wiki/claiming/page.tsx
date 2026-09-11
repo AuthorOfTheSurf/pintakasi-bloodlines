@@ -9,9 +9,9 @@ export default function ClaimingPage() {
     <>
       <h1>Claiming</h1>
       <p className="lede">
-        A claimer is an entry with a price tag on it. You put your own bird up to fight — and to
-        be bought. Any other farm can pay the tag and take it home, but only after it&apos;s
-        fought for you one last time.
+        A claimer is an entry with a price tag on it. You put your own bird up to fight — and to be
+        bought. Any other farm can pay the tag and take it home, but only after it&apos;s fought for
+        you one last time.
       </p>
 
       <h2>What a claimer is</h2>
@@ -27,9 +27,10 @@ export default function ClaimingPage() {
         <li>
           The <strong>entry fee</strong> — what the night&apos;s fights cost. Like every class of
           fight, a claimer is priced (see <Link href="/wiki/ladder">Fighting up</Link>), and{" "}
-          <em>the dearer the tag, the dearer the night</em>: {feeFor("real", "claimer", CLAIMER.PRICES[0])}{" "}
-          GP at the cheap rung up to {feeFor("real", "claimer", CLAIMER.PRICES[CLAIMER.PRICES.length - 1])}{" "}
-          GP at the dear one, and half those numbers in the discovery year.
+          <em>the dearer the tag, the dearer the night</em>:{" "}
+          {feeFor("real", "claimer", CLAIMER.PRICES[0])} GP at the cheap rung up to{" "}
+          {feeFor("real", "claimer", CLAIMER.PRICES[CLAIMER.PRICES.length - 1])} GP at the dear one,
+          and half those numbers in the discovery year.
         </li>
       </ul>
       <p>
@@ -66,7 +67,9 @@ export default function ClaimingPage() {
               <tr key={price}>
                 <td className="num">{price} GP</td>
                 <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
-                <td>{price < ECONOMY.BREED_FEE ? "cheaper than a cover" : "dearer than a cover"}</td>
+                <td>
+                  {price < ECONOMY.BREED_FEE ? "cheaper than a cover" : "dearer than a cover"}
+                </td>
                 <td className="num">{feeFor("real", "claimer", price)} GP</td>
                 <td className="num">{feeFor("juvenile", "claimer", price)} GP</td>
               </tr>
@@ -107,9 +110,9 @@ export default function ClaimingPage() {
         a proven young bird for pocket change.
       </p>
       <p>
-        The juvenile card posts a claimer every night, with the rung alternating, so every price comes
-        around quickly. Everything else about the sequence below works exactly the same whether the
-        bird tagged is a one-year-old or a veteran.
+        The juvenile card posts a claimer every night, with the rung alternating, so every price
+        comes around quickly. Everything else about the sequence below works exactly the same
+        whether the bird tagged is a one-year-old or a veteran.
       </p>
 
       <h2>The sequence</h2>
@@ -117,8 +120,8 @@ export default function ClaimingPage() {
       <ol>
         <li>You enter your bird into a claimer lobby at a tag price.</li>
         <li>
-          Other farms place <strong>sealed claims</strong> — the tag amount escrows immediately,
-          and you don&apos;t know how many claims are in, or from whom, until post time.
+          Other farms place <strong>sealed claims</strong> — the tag amount escrows immediately, and
+          you don&apos;t know how many claims are in, or from whom, until post time.
         </li>
         <li>
           The card goes off. Your bird fights its whole group for <strong>you</strong>, its original
@@ -130,8 +133,8 @@ export default function ClaimingPage() {
         </li>
         <li>
           Only <strong>after</strong> the fight does the bird change hands. If nobody claimed it,
-          nothing happens. If one farm claimed it, that farm gets the bird. If several farms
-          claimed it, the RNG draws one winner — every losing claimant is refunded in full.
+          nothing happens. If one farm claimed it, that farm gets the bird. If several farms claimed
+          it, the RNG draws one winner — every losing claimant is refunded in full.
         </li>
       </ol>
       <div className="callout tip">
@@ -145,8 +148,8 @@ export default function ClaimingPage() {
         The selling barn banks the tag less a small staker rake, paid to the farms staking Land
         Tokens rather than to the house. This rake is one of the few in the game that&apos;s still
         live — the daily-card fight pot itself rakes nothing any more (see{" "}
-        <Link href="/wiki/card">The card</Link>). The buyer always pays the full tag; the rake
-        comes out of the sale, not on top of it.
+        <Link href="/wiki/card">The card</Link>). The buyer always pays the full tag; the rake comes
+        out of the sale, not on top of it.
       </p>
       <div className="tablewrap">
         <table>
@@ -174,8 +177,8 @@ export default function ClaimingPage() {
       </div>
       <p className="dim">
         The rake is {(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}% of the tag — the seller keeps the
-        rest. Nothing is ever printed here either; the rake is just GP moving from the sale into
-        the staking pool.
+        rest. Nothing is ever printed here either; the rake is just GP moving from the sale into the
+        staking pool.
       </p>
 
       <h2>Two more rules</h2>
@@ -197,15 +200,14 @@ export default function ClaimingPage() {
 
       <div className="callout warn">
         <b>Entering a claimer means accepting the tag.</b> Once someone claims your bird, that
-        decision is final — there&apos;s no buying it back, no outbidding, no cancelling. Only tag
-        a bird at a price you&apos;re genuinely willing to let it go for.
+        decision is final — there&apos;s no buying it back, no outbidding, no cancelling. Only tag a
+        bird at a price you&apos;re genuinely willing to let it go for.
       </div>
 
       <h2>What&apos;s next</h2>
       <p>
-        A farm-to-farm marketplace is planned for birds outside the claiming system, using the
-        same rake rule. It isn&apos;t built yet — claiming is the only way to buy or sell a bird
-        today.
+        A farm-to-farm marketplace is planned for birds outside the claiming system, using the same
+        rake rule. It isn&apos;t built yet — claiming is the only way to buy or sell a bird today.
       </p>
 
       <div className="next">

@@ -52,8 +52,14 @@ describe("carriage inheritance", () => {
       [0, 10], // avg 5 via two extremes, same avg as the midrange config
     ];
     for (const [motherHalf, fatherHalf] of configs) {
-      db.update(birds).set({ carriage: "Ground", carriageHalfStars: motherHalf }).where(eq(birds.id, "starter-2")).run();
-      db.update(birds).set({ carriage: "Ground", carriageHalfStars: fatherHalf }).where(eq(birds.id, "starter-1")).run();
+      db.update(birds)
+        .set({ carriage: "Ground", carriageHalfStars: motherHalf })
+        .where(eq(birds.id, "starter-2"))
+        .run();
+      db.update(birds)
+        .set({ carriage: "Ground", carriageHalfStars: fatherHalf })
+        .where(eq(birds.id, "starter-1"))
+        .run();
       const avg = (motherHalf + fatherHalf) / 2;
       for (let i = 0; i < 40; i++) {
         const { egg } = breeding.breed("starter-2", "starter-1");
@@ -61,7 +67,9 @@ describe("carriage inheritance", () => {
         expect(egg.carriageHalfStars).toBeLessThanOrEqual(STARS.MAX_HALF_STARS);
         // Clamping only ever pulls a roll CLOSER to the average, never
         // further — so the raw-spread bound still holds post-clamp.
-        expect(Math.abs(egg.carriageHalfStars - avg)).toBeLessThanOrEqual(BREEDING.STAR_SPREAD_HALF_STARS);
+        expect(Math.abs(egg.carriageHalfStars - avg)).toBeLessThanOrEqual(
+          BREEDING.STAR_SPREAD_HALF_STARS
+        );
         db.delete(birds).where(eq(birds.id, egg.id)).run(); // free the hen for the next trial
       }
     }
@@ -72,8 +80,14 @@ describe("carriage inheritance", () => {
     // The "stronger" parent is whichever has the higher carriageHalfStars —
     // pin that unambiguously to Ground (10, the max) against Air at the
     // floor (0), so every trial's lean roll is the only source of variance.
-    db.update(birds).set({ carriage: "Ground", carriageHalfStars: STARS.MAX_HALF_STARS }).where(eq(birds.id, "starter-2")).run();
-    db.update(birds).set({ carriage: "Air", carriageHalfStars: 0 }).where(eq(birds.id, "starter-1")).run();
+    db.update(birds)
+      .set({ carriage: "Ground", carriageHalfStars: STARS.MAX_HALF_STARS })
+      .where(eq(birds.id, "starter-2"))
+      .run();
+    db.update(birds)
+      .set({ carriage: "Air", carriageHalfStars: 0 })
+      .where(eq(birds.id, "starter-1"))
+      .run();
 
     // STATISTICAL, not exact: each trial is one Bernoulli draw at p =
     // CARRIAGE_LEAN_STRONGER (0.75). At N = 400 the sampling standard

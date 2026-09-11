@@ -284,7 +284,9 @@ export const lobbies = sqliteTable("lobbies", {
   format: text("format", { enum: ["b1", "b2", "b3", "b4", "b5"] }).notNull(),
   price: integer("price"), // claimer tag — null for every other class
   seed: integer("seed").notNull(), // drives the pairing shuffle + fight seeds
-  status: text("status", { enum: ["open", "closed", "completed"] }).notNull().default("open"),
+  status: text("status", { enum: ["open", "closed", "completed"] })
+    .notNull()
+    .default("open"),
   dayOpened: integer("day_opened").notNull(),
 });
 
@@ -330,7 +332,9 @@ export const claims = sqliteTable("claims", {
   farmId: text("farm_id").notNull(), // the claimant
   price: integer("price").notNull(), // escrowed
   dayPlaced: integer("day_placed").notNull(),
-  status: text("status", { enum: ["pending", "won", "refunded"] }).notNull().default("pending"),
+  status: text("status", { enum: ["pending", "won", "refunded"] })
+    .notNull()
+    .default("pending"),
 });
 
 // THE PINTAKASI (round 18) — one row per weekly blade championship. Three
@@ -346,7 +350,9 @@ export const tournaments = sqliteTable("tournaments", {
   division: text("division", { enum: ["major", "juvenile"] })
     .notNull()
     .default("major"),
-  status: text("status", { enum: ["open", "completed", "cancelled"] }).notNull().default("open"),
+  status: text("status", { enum: ["open", "completed", "cancelled"] })
+    .notNull()
+    .default("open"),
   seed: integer("seed").notNull(), // drives every fight in the bracket
   entryFee: integer("entry_fee").notNull(),
   bracketSize: integer("bracket_size"), // set at close: next pow2 ≥ field, ≤ 64

@@ -433,9 +433,7 @@ describe("withKnob puts the config back", () => {
     // Added with the crit case: per-blade knobs live INSIDE FORMATS entries,
     // so the resolver has to walk, not just index a root once.
     const before = FORMATS.b1.critMult;
-    const seen = withKnob("FORMATS.b1.critMult", 1, () =>
-      knobValue(FORMATS.b1.critMult)
-    );
+    const seen = withKnob("FORMATS.b1.critMult", 1, () => knobValue(FORMATS.b1.critMult));
     expect(seen).toBe(1);
     expect(FORMATS.b1.critMult).toBe(before);
     // Sibling blades must be untouched — the walk lands on ONE entry.
@@ -497,8 +495,10 @@ describe("sweep", () => {
     // Full stars: the sweep sets the ceiling and the birds must deliver it.
     const fire = flat(350, { name: "Fire", element: "Fire", halfStars: STARS.MAX_HALF_STARS });
     const metal = flat(350, { name: "Metal", element: "Metal", halfStars: STARS.MAX_HALF_STARS });
-    const rows = sweep("BATTLE.ELEMENT_EDGE", [0, 2], () =>
-      duel(fire, metal, { format: "b2", runs: LAB.HEADLINE_RUNS }).winRate
+    const rows = sweep(
+      "BATTLE.ELEMENT_EDGE",
+      [0, 2],
+      () => duel(fire, metal, { format: "b2", runs: LAB.HEADLINE_RUNS }).winRate
     );
     const [off, loud] = rows.map((r) => r.result);
     expect(loud - off).toBeGreaterThan(20);
@@ -622,10 +622,13 @@ describe("the station slope agrees with the engine and with its own ruling", () 
 describe("converge", () => {
   test("the windows are disjoint by construction", () => {
     const seen: number[] = [];
-    const out = converge((seedFrom) => {
-      seen.push(seedFrom);
-      return seedFrom;
-    }, { windows: 4 });
+    const out = converge(
+      (seedFrom) => {
+        seen.push(seedFrom);
+        return seedFrom;
+      },
+      { windows: 4 }
+    );
     // Derived from the constants, never typed: the guarantee is "no seed is
     // shared", and it only holds while the stride outruns the sample.
     expect(seen).toEqual([0, 1, 2, 3].map((i) => LAB.SEED_FROM + i * LAB.WINDOW_STRIDE));
@@ -649,8 +652,8 @@ describe("converge", () => {
   test("a stable measurement holds across windows", () => {
     // The rig is a blowout, whose true value sits at ~100% — so any spread it
     // shows is the lab's, not the matchup's.
-    const out = converge((seedFrom) =>
-      duel(monster(), maiden(), { format: "b2", runs: 1000, seedFrom }).winRate
+    const out = converge(
+      (seedFrom) => duel(monster(), maiden(), { format: "b2", runs: 1000, seedFrom }).winRate
     );
     expect(out.spread).toBeLessThan(2);
     expect(out.mean).toBeGreaterThan(95);
@@ -660,12 +663,13 @@ describe("converge", () => {
     // Same measurement at n=25 instead of n=1000. If `converge` were handing
     // every window the same seeds, this would come back with spread 0 and the
     // whole convergence check would be theatre.
-    const out = converge((seedFrom) =>
-      duel(flat(350, { name: "A" }), flat(350, { name: "B" }), {
-        format: "b2",
-        runs: 25,
-        seedFrom,
-      }).winRate
+    const out = converge(
+      (seedFrom) =>
+        duel(flat(350, { name: "A" }), flat(350, { name: "B" }), {
+          format: "b2",
+          runs: 25,
+          seedFrom,
+        }).winRate
     );
     expect(out.spread).toBeGreaterThan(0);
   });

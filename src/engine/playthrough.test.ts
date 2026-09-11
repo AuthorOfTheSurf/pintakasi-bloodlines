@@ -41,14 +41,26 @@ function world() {
 // Rival birds by canonical STARTER slot — names are world-unique now (the
 // rival draws pool names), but the seed ids stay deterministic.
 const RIVAL_SLOT: Record<string, number> = {
-  "Tandang Pula": 1, Dalisay: 2, Bagwis: 3, Perlas: 4,
-  Kidlat: 5, Alab: 6, Sinag: 7, "Batong Buhay": 8,
+  "Tandang Pula": 1,
+  Dalisay: 2,
+  Bagwis: 3,
+  Perlas: 4,
+  Kidlat: 5,
+  Alab: 6,
+  Sinag: 7,
+  "Batong Buhay": 8,
 };
 const rivalByName = (w: ReturnType<typeof world>, name: string) =>
   w.rivalFlock.byId(RIVAL_SLOT[name] ? `rival-${RIVAL_SLOT[name]}` : name);
 
 /** Card my bird against a rival bird and let the night go off. */
-function duel(w: ReturnType<typeof world>, myBirdId: string, rivalName: string, spec: LobbySpec, seed: number) {
+function duel(
+  w: ReturnType<typeof world>,
+  myBirdId: string,
+  rivalName: string,
+  spec: LobbySpec,
+  seed: number
+) {
   w.game.lobbies.enter(myBirdId, spec, seed);
   w.rival.enter(rivalByName(w, rivalName).id, spec);
   const tick = w.game.tickDay();
@@ -116,13 +128,31 @@ describe("the full breeding-lifecycle loop closes — PvP edition", () => {
     w.db
       .insert(birds)
       .values({
-        id: "rival-chick", farmId: rivalByName(w, "Kidlat").farmId, name: "Rival Chick",
-        sex: "male", status: "active",
-        agility: 300, sight: 300, stamina: 300, gameness: 300, station: 300, condition: 300,
-        element: "Wood", halfStars: 2, birthWeek: week - 1, birthDay: (week - 1) * 7, named: 1,
+        id: "rival-chick",
+        farmId: rivalByName(w, "Kidlat").farmId,
+        name: "Rival Chick",
+        sex: "male",
+        status: "active",
+        agility: 300,
+        sight: 300,
+        stamina: 300,
+        gameness: 300,
+        station: 300,
+        condition: 300,
+        element: "Wood",
+        halfStars: 2,
+        birthWeek: week - 1,
+        birthDay: (week - 1) * 7,
+        named: 1,
       })
       .run();
-    const juvenile = duel(w, chick.id, "rival-chick", onCard(w.db, { mode: "juvenile", classType: "open" }), 21);
+    const juvenile = duel(
+      w,
+      chick.id,
+      "rival-chick",
+      onCard(w.db, { mode: "juvenile", classType: "open" }),
+      21
+    );
     expect(juvenile.birds).toContain("Alon");
     const afterJuvenile = w.flock.byId(chick.id);
     // ONE lifetime record (round 15): juvenile fights count like any other.
@@ -216,8 +246,7 @@ describe("the cold start (every stable begins with BARN.STARTER_EGGS eggs)", () 
     expect(chick.age).toBe(1);
     expect(["rooster", "hen"]).toContain(chick.sexLabel!);
     expect(
-      game.lobbies.enter(chick.id, onCard(db, { mode: "juvenile", classType: "open" }))
-        .entryId
+      game.lobbies.enter(chick.id, onCard(db, { mode: "juvenile", classType: "open" })).entryId
     ).toBeGreaterThan(0);
   });
 });
@@ -241,6 +270,8 @@ describe("hardcore arm of the loop", () => {
     expect(after.status).toBe("retired");
     expect(after.retiredBy).toBe("hardcore");
     // The whole point: she can breed immediately.
-    expect(() => new Breeding(w.db, w.farmId, mulberry32(5)).breed(sinag.id, "starter-1")).not.toThrow();
+    expect(() =>
+      new Breeding(w.db, w.farmId, mulberry32(5)).breed(sinag.id, "starter-1")
+    ).not.toThrow();
   });
 });

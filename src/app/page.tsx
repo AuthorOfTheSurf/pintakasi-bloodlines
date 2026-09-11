@@ -5,8 +5,8 @@ export default function Home() {
       <p>Breed, fight, retire. Claude is the game client; the stewards watch from the office.</p>
       <ul>
         <li>
-          Admin view: <a href="/admin">/admin</a> — top-line figures, the unified ledger, fight/farm/bird
-          tables
+          Admin view: <a href="/admin">/admin</a> — top-line figures, the unified ledger,
+          fight/farm/bird tables
         </li>
         <li>
           The Handbook: <a href="/wiki">/wiki</a> — the player-facing rules, every number read live

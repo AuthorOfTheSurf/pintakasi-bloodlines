@@ -19,7 +19,10 @@ test("the grade ladder", () => {
 
 test("grade colors follow the letter family", () => {
   expect(gradeColor("C+")).toBe(gradeColor("C"));
-  expect(new Set([gradeColor("C"), gradeColor("B"), gradeColor("A"), gradeColor("S"), gradeColor("O")]).size).toBe(5);
+  expect(
+    new Set([gradeColor("C"), gradeColor("B"), gradeColor("A"), gradeColor("S"), gradeColor("O")])
+      .size
+  ).toBe(5);
 });
 
 test("overall = six-stat average through the same lookup (Zane's worked example)", () => {

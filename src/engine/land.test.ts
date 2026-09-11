@@ -55,7 +55,11 @@ const landOf = (db: DB, farmId: string) => {
  * `crown_land` type belonged to the deleted per-fight mint).
  */
 const crownLandRows = (db: DB) =>
-  db.select().from(events).all().filter((e) => e.type === "purse_payout" && (e.lt ?? 0) !== 0);
+  db
+    .select()
+    .from(events)
+    .all()
+    .filter((e) => e.type === "purse_payout" && (e.lt ?? 0) !== 0);
 
 describe("every Land Token in the world got there through a ledger row", () => {
   test("a fresh world starts at zero on both sides", () => {

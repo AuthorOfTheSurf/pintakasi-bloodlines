@@ -6,17 +6,17 @@ rounds from now.
 
 ## The headline numbers (M-series Mac, one core)
 
-| Run | Wall clock | ms/fight |
-|---|---|---|
-| 91 days, round-42 code | 306s | 21.3 |
-| 91 days, after round 43 | ~110s | 7.5 |
-| 112 days, after round 43 | 241s | 8.3 |
-| 182 days, after round 43 | 3,087s (51 min) | 21.3 |
-| 112 days, after round 44 | 164s | 5.5 |
-| 182 days, after round 44 | 812s (13.5 min) | 5.25 |
+| Run                          | Wall clock      | ms/fight |
+| ---------------------------- | --------------- | -------- |
+| 91 days, round-42 code       | 306s            | 21.3     |
+| 91 days, after round 43      | ~110s           | 7.5      |
+| 112 days, after round 43     | 241s            | 8.3      |
+| 182 days, after round 43     | 3,087s (51 min) | 21.3     |
+| 112 days, after round 44     | 164s            | 5.5      |
+| 182 days, after round 44     | 812s (13.5 min) | 5.25     |
 | **112 days, after round 47** | **2:11 (131s)** | **4.48** |
 | **182 days, after round 47** | **9:58 (598s)** | **4.10** |
-| **91 days, after round 48** | **1:08 (68s)** | **4.31** |
+| **91 days, after round 48**  | **1:08 (68s)**  | **4.31** |
 | **182 days, after round 48** | **9:02 (542s)** | **3.70** |
 
 (Wall clocks print as m:ss since round 47 — Zane's ask — so the table follows.
@@ -157,16 +157,16 @@ the split — re-run the `__prof` method before trusting these shares for the ne
 dig. What certainly remains per entry is the door's eligibility, cap, wallet
 and escrow work; breeding still rebuilds a global market once per priced hen.
 
-| Phase | cost | share | What it is |
-|---|---|---|---|
-| tick: lobbies.resolve | 40.3s | 25% | **taken in round 47** (the settle-up ledger) — what's left is recordFight + the fight event |
-| bots "3b crowns" | 32.7s | 20% | crown chase; the refusal bill **taken in round 47** (bump-line memo); the skip-the-seated scan and entry preamble remain |
-| bots "3 breeding" | 17.2s | 11% | the round-43 batched browse — already fixed once |
-| bots "5 carding" | 15.0s | 9% | `weatherCardsToday` + `pickOffering` + `enter` |
-| bots "4 liquidity" | 11.4s | 7% | odd-lobby filling |
-| bots "1 ritual" | 10.7s | 7% | check-in, gacha rolls, barn expansion, staking |
-| bots "6 claims" | 9.9s | 6% | claimer-field shopping (builds real cards) |
-| doctor | 5.2s | 3% | once per run |
+| Phase                 | cost  | share | What it is                                                                                                               |
+| --------------------- | ----- | ----- | ------------------------------------------------------------------------------------------------------------------------ |
+| tick: lobbies.resolve | 40.3s | 25%   | **taken in round 47** (the settle-up ledger) — what's left is recordFight + the fight event                              |
+| bots "3b crowns"      | 32.7s | 20%   | crown chase; the refusal bill **taken in round 47** (bump-line memo); the skip-the-seated scan and entry preamble remain |
+| bots "3 breeding"     | 17.2s | 11%   | the round-43 batched browse — already fixed once                                                                         |
+| bots "5 carding"      | 15.0s | 9%    | `weatherCardsToday` + `pickOffering` + `enter`                                                                           |
+| bots "4 liquidity"    | 11.4s | 7%    | odd-lobby filling                                                                                                        |
+| bots "1 ritual"       | 10.7s | 7%    | check-in, gacha rolls, barn expansion, staking                                                                           |
+| bots "6 claims"       | 9.9s  | 6%    | claimer-field shopping (builds real cards)                                                                               |
+| doctor                | 5.2s  | 3%    | once per run                                                                                                             |
 
 ## Candidate directions, in EV order
 

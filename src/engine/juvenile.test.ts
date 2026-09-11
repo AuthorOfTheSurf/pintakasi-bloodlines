@@ -52,8 +52,8 @@ function qualifyJuvenile(db: DB, birdId: string, wins: number = JUVENILE_MAJOR.Q
 /** Which division a resolution's tournament row belongs to — resolutions
  *  themselves don't carry the division, so look it up. */
 const divisionOf = (db: DB, tournamentId: number): Division =>
-  (db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).get()!.division as Division) ??
-  "major";
+  (db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).get()!
+    .division as Division) ?? "major";
 
 const totalCents = (db: DB) => {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
@@ -257,9 +257,9 @@ describe("it is NOT hardcore — the discovery-year contrast with the Majors", (
       .all()
       .filter((b) => b.id === sinag.id || b.id === "rival-8");
     expect(majorFighters.length).toBe(2);
-    expect(majorFighters.filter((b) => b.status === "retired" && b.retiredBy === "hardcore").length).toBe(
-      1
-    );
+    expect(
+      majorFighters.filter((b) => b.status === "retired" && b.retiredBy === "hardcore").length
+    ).toBe(1);
     expect(majorFighters.filter((b) => b.status === "active").length).toBe(1); // the champion fights on
   });
 });

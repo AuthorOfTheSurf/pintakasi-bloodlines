@@ -65,9 +65,7 @@ function short(v: number): string {
 // run 0.1–2s, and a tooltip that says "0 seconds" reads as a broken chart.
 // Counts and GP totals are integers or large, so every older chart is unmoved.
 const full = (v: number) =>
-  Number.isInteger(v) || Math.abs(v) >= 100
-    ? Math.round(v).toLocaleString("en-US")
-    : v.toFixed(1);
+  Number.isInteger(v) || Math.abs(v) >= 100 ? Math.round(v).toLocaleString("en-US") : v.toFixed(1);
 
 /**
  * The instant tooltip (round 46, Zane's ask). The charts used to lean on SVG
@@ -79,13 +77,32 @@ const full = (v: number) =>
  * has no auto-sizing box, and ~6.3 units/char at font 12 is close enough
  * that nothing clips.
  */
-function InstantTip({ lines, xAnchor, flip, y }: { lines: string[]; xAnchor: number; flip: boolean; y: number }) {
+function InstantTip({
+  lines,
+  xAnchor,
+  flip,
+  y,
+}: {
+  lines: string[];
+  xAnchor: number;
+  flip: boolean;
+  y: number;
+}) {
   const boxW = Math.max(...lines.map((l) => l.length)) * 6.3 + 12;
   const boxH = lines.length * 14 + 8;
   const x = flip ? xAnchor - boxW - 4 : xAnchor + 4;
   return (
     <g className="tip" pointerEvents="none">
-      <rect x={x} y={y} width={boxW} height={boxH} rx={3} fill="#0f0d0a" stroke="#4a4436" opacity={0.97} />
+      <rect
+        x={x}
+        y={y}
+        width={boxW}
+        height={boxH}
+        rx={3}
+        fill="#0f0d0a"
+        stroke="#4a4436"
+        opacity={0.97}
+      />
       {lines.map((l, j) => (
         <text key={j} x={x + 6} y={y + 14 + j * 14} fill="#e8e0d0" fontSize={AXIS_FONT}>
           {l}
@@ -163,7 +180,12 @@ export function DayChart({
         {title}
         {note ? <span className="dim"> — {note}</span> : null}
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={title}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={title}
+      >
         {/* Horizontal rules, drawn off the BAR scale — the left axis is the
             one the bars sit on, so it owns the grid; the line's own scale
             gets ticks but no rules, or the plot reads as two overlaid grids. */}
@@ -189,7 +211,14 @@ export function DayChart({
                 {short(t)}
               </text>
             ))}
-            <line x1={x0 + plotW} x2={x0 + plotW} y1={y0} y2={yBase} stroke={GRID} strokeWidth={1} />
+            <line
+              x1={x0 + plotW}
+              x2={x0 + plotW}
+              y1={y0}
+              y2={yBase}
+              stroke={GRID}
+              strokeWidth={1}
+            />
           </>
         ) : null}
 
@@ -214,9 +243,23 @@ export function DayChart({
         {days.map((d, i) => (
           <g key={`c-${d}`} className="daycol">
             {bars[i] > 0 ? (
-              <rect className="bar" x={xOf(i)} y={yBar(bars[i])} width={barW} height={yBase - yBar(bars[i])} fill={BAR} />
+              <rect
+                className="bar"
+                x={xOf(i)}
+                y={yBar(bars[i])}
+                width={barW}
+                height={yBase - yBar(bars[i])}
+                fill={BAR}
+              />
             ) : null}
-            <rect className="hcol" x={xOf(i)} y={y0} width={slot} height={plotH} fill="transparent" />
+            <rect
+              className="hcol"
+              x={xOf(i)}
+              y={y0}
+              width={slot}
+              height={plotH}
+              fill="transparent"
+            />
             <InstantTip
               lines={[
                 `day ${d} — ${full(bars[i])} ${barUnit}`,
@@ -233,7 +276,13 @@ export function DayChart({
             yet (a 20-day sim has no covers). An empty frame reads as a broken
             chart, so it says which of the two it is. */}
         {barTop <= 1 && !bars.some((v) => v > 0) ? (
-          <text x={x0 + plotW / 2} y={y0 + plotH / 2} textAnchor="middle" fill={MUTED} fontSize={AXIS_FONT}>
+          <text
+            x={x0 + plotW / 2}
+            y={y0 + plotH / 2}
+            textAnchor="middle"
+            fill={MUTED}
+            fontSize={AXIS_FONT}
+          >
             no {barUnit} yet
           </text>
         ) : null}
@@ -241,7 +290,14 @@ export function DayChart({
         <line x1={x0} x2={x0 + plotW} y1={yBase} y2={yBase} stroke={GRID} strokeWidth={1} />
         {days.map((d, i) =>
           i % labelEvery === 0 ? (
-            <text key={`x-${d}`} x={xOf(i) + barW / 2} y={yBase + 13} textAnchor="middle" fill={MUTED} fontSize={AXIS_FONT}>
+            <text
+              key={`x-${d}`}
+              x={xOf(i) + barW / 2}
+              y={yBase + 13}
+              textAnchor="middle"
+              fill={MUTED}
+              fontSize={AXIS_FONT}
+            >
               {d}
             </text>
           ) : null
@@ -330,7 +386,12 @@ export function StackedDayChart({
         {title}
         {note ? <span className="dim"> — {note}</span> : null}
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={title}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={title}
+      >
         {barTicks.map((t) => (
           <g key={`bt-${t}`}>
             <line x1={x0} x2={x0 + plotW} y1={yOf(t)} y2={yOf(t)} stroke={GRID} strokeWidth={1} />
@@ -353,7 +414,14 @@ export function StackedDayChart({
                 {short(t)}
               </text>
             ))}
-            <line x1={x0 + plotW} x2={x0 + plotW} y1={y0} y2={yBase} stroke={GRID} strokeWidth={1} />
+            <line
+              x1={x0 + plotW}
+              x2={x0 + plotW}
+              y1={y0}
+              y2={yBase}
+              stroke={GRID}
+              strokeWidth={1}
+            />
           </>
         ) : null}
 
@@ -395,7 +463,14 @@ export function StackedDayChart({
                   />
                 );
               })}
-              <rect className="hcol" x={xOf(i)} y={y0} width={slot} height={plotH} fill="transparent" />
+              <rect
+                className="hcol"
+                x={xOf(i)}
+                y={y0}
+                width={slot}
+                height={plotH}
+                fill="transparent"
+              />
               <InstantTip
                 lines={[
                   `day ${d} — ${full(dayTotals[i])} ${barUnit}`,
@@ -413,7 +488,13 @@ export function StackedDayChart({
         })}
 
         {barTop <= 1 && !dayTotals.some((v) => v > 0) ? (
-          <text x={x0 + plotW / 2} y={y0 + plotH / 2} textAnchor="middle" fill={MUTED} fontSize={AXIS_FONT}>
+          <text
+            x={x0 + plotW / 2}
+            y={y0 + plotH / 2}
+            textAnchor="middle"
+            fill={MUTED}
+            fontSize={AXIS_FONT}
+          >
             no {barUnit} yet
           </text>
         ) : null}
@@ -421,7 +502,14 @@ export function StackedDayChart({
         <line x1={x0} x2={x0 + plotW} y1={yBase} y2={yBase} stroke={GRID} strokeWidth={1} />
         {days.map((d, i) =>
           i % labelEvery === 0 ? (
-            <text key={`x-${d}`} x={xOf(i) + barW / 2} y={yBase + 13} textAnchor="middle" fill={MUTED} fontSize={AXIS_FONT}>
+            <text
+              key={`x-${d}`}
+              x={xOf(i) + barW / 2}
+              y={yBase + 13}
+              textAnchor="middle"
+              fill={MUTED}
+              fontSize={AXIS_FONT}
+            >
               {d}
             </text>
           ) : null
@@ -446,7 +534,9 @@ export function StackedDayChart({
       </svg>
       <span className="sr-only" aria-hidden={false}>
         {`${title}: ${full(dayTotals.reduce((s, v) => s + v, 0))} ${barUnit} over ${days.length} days, ` +
-          series.map((ser) => `${ser.label} ${full(ser.values.reduce((s, v) => s + v, 0))}`).join(", ")}
+          series
+            .map((ser) => `${ser.label} ${full(ser.values.reduce((s, v) => s + v, 0))}`)
+            .join(", ")}
       </span>
     </figure>
   );

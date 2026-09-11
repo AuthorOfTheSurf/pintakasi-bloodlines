@@ -280,7 +280,10 @@ const signed = (v: number | null | undefined) =>
 const ltNum = (v: number | null | undefined) =>
   v == null
     ? ""
-    : (v / LT_CENTS).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    : (v / LT_CENTS).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
 const signedLt = (v: number | null | undefined) =>
   v == null || v === 0 ? "" : `${v > 0 ? "+" : "−"}${ltNum(Math.abs(v))}`;
@@ -304,12 +307,30 @@ function GradedNameCell(props: {
     <span>
       {grade ? (
         <>
-          <b className="grade" style={{ color: gradeColor(grade) }}>{grade}</b>{" "}
+          <b className="grade" style={{ color: gradeColor(grade) }}>
+            {grade}
+          </b>{" "}
         </>
       ) : null}
       {props.value}
     </span>
   );
+}
+
+/** The words half of TokenAmountCell; "" means "show nothing". */
+function tokenAmountText(
+  value: number,
+  isLt: boolean,
+  display: "signed" | "positive" | "plain" | undefined,
+  dp: number | undefined
+): string {
+  // Two places whichever door the value comes through: the "positive" path used
+  // to round to whole units, so one column of the same currency disagreed with
+  // its neighbours about how much precision GP has (round 37).
+  const mag = (v: number) => (isLt ? ltNum(v) : num(v, dp ?? 2));
+  if (display === "signed") return isLt ? signedLt(value) : signed(value);
+  if (display === "positive") return value ? `+${mag(value)}` : "";
+  return mag(value);
 }
 
 /** A numeric token amount with the currency icon kept beside the value. */
@@ -323,16 +344,7 @@ function TokenAmountCell(props: {
   // The token decides the SCALE, not just the icon: GP rows arrive in whole GP,
   // land rows in hundredths of a token (round 36). `dp` only means anything to
   // GP — land is fixed at two places by ltNum.
-  const isLt = props.token === "lt";
-  // Two places whichever door the value comes through: the "positive" path used
-  // to round to whole units, so one column of the same currency disagreed with
-  // its neighbours about how much precision GP has (round 37).
-  const mag = (v: number) => (isLt ? ltNum(v) : num(v, props.dp ?? 2));
-  const text = props.display === "signed"
-    ? (isLt ? signedLt(props.value) : signed(props.value))
-    : props.display === "positive"
-      ? (props.value ? `+${mag(props.value)}` : "")
-      : mag(props.value);
+  const text = tokenAmountText(props.value, props.token === "lt", props.display, props.dp);
   if (!text) return null;
   return (
     <span>
@@ -394,7 +406,7 @@ const FARM_COLS: ColDef<FarmRowUI>[] = [
   {
     colId: "record",
     headerName: "record",
-    valueGetter: (p) => p.data ? `${p.data.wins}-${p.data.losses}` : "",
+    valueGetter: (p) => (p.data ? `${p.data.wins}-${p.data.losses}` : ""),
     comparator: (_a, _b, nodeA, nodeB) => {
       const a = nodeA.data as FarmRowUI | undefined;
       const b = nodeB.data as FarmRowUI | undefined;
@@ -449,7 +461,13 @@ const FIGHT_COLS: ColDef<FightRowUI>[] = [
     type: "rightAligned",
     sortable: false,
   },
-  { field: "pot", headerName: "pot GP", type: "rightAligned", width: 95, valueFormatter: (p) => num(p.value) },
+  {
+    field: "pot",
+    headerName: "pot GP",
+    type: "rightAligned",
+    width: 95,
+    valueFormatter: (p) => num(p.value),
+  },
   { field: "element", width: 115, cellRenderer: ElementCell },
 ];
 
@@ -471,7 +489,9 @@ function GradeCell(props: { value?: number }) {
   const grade = gradeOf(props.value);
   return (
     <span>
-      <b className="grade" style={{ color: gradeColor(grade) }}>{grade}</b>{" "}
+      <b className="grade" style={{ color: gradeColor(grade) }}>
+        {grade}
+      </b>{" "}
       <span className="statnum">{props.value}</span>
     </span>
   );
@@ -482,7 +502,9 @@ function TotalCell(props: { value?: number }) {
   const grade = overallGradeOf(props.value);
   return (
     <span>
-      <b className="grade" style={{ color: gradeColor(grade) }}>{grade}</b>{" "}
+      <b className="grade" style={{ color: gradeColor(grade) }}>
+        {grade}
+      </b>{" "}
       <span className="statnum">{props.value}</span>
     </span>
   );
@@ -573,9 +595,21 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   farmCol("farm", "farm", "farm"),
   { field: "sex", width: 95 },
   { field: "age", type: "rightAligned", width: 75 },
-  { field: "total", headerName: "Overall", type: "rightAligned", width: 120, cellRenderer: TotalCell },
+  {
+    field: "total",
+    headerName: "Overall",
+    type: "rightAligned",
+    width: 120,
+    cellRenderer: TotalCell,
+  },
   { field: "element", width: 115, cellRenderer: ElementCell },
-  { field: "stars", headerName: "★", type: "rightAligned", width: 75, valueFormatter: (p) => `${p.value}★` },
+  {
+    field: "stars",
+    headerName: "★",
+    type: "rightAligned",
+    width: 75,
+    valueFormatter: (p) => `${p.value}★`,
+  },
   statCol("agility"),
   statCol("sight"),
   statCol("stamina"),
@@ -586,7 +620,7 @@ const BIRD_COLS: ColDef<BirdRowUI>[] = [
   {
     colId: "record",
     headerName: "Record",
-    valueGetter: (p) => p.data ? `${p.data.wins}-${p.data.losses}` : "",
+    valueGetter: (p) => (p.data ? `${p.data.wins}-${p.data.losses}` : ""),
     comparator: (_a, _b, nodeA, nodeB) => {
       const a = nodeA.data as BirdRowUI | undefined;
       const b = nodeB.data as BirdRowUI | undefined;
@@ -643,8 +677,7 @@ const BIRD_FIGHT_COLS: ColDef<BirdFightRowUI>[] = [
     // Its own figure first, always — the Fights tab reads winner/loser, this one
     // reads mine/theirs, which is the only way to see a bird beaten by a shorter
     // price. A null opponent figure means the bout had no quoted counter-price.
-    valueGetter: (p) =>
-      p.data ? `${p.data.figure} / ${p.data.opponentFigure ?? "—"}` : "",
+    valueGetter: (p) => (p.data ? `${p.data.figure} / ${p.data.opponentFigure ?? "—"}` : ""),
     width: 110,
     type: "rightAligned",
     sortable: false,
@@ -680,7 +713,13 @@ const BREEDING_COLS: ColDef<BreedingRowUI>[] = [
   farmCol("studFarm", "stud's farm", "studFarm"),
   farmCol("nestFarm", "nest (egg's farm)", "nestFarm"),
   { field: "stage", width: 120 },
-  { field: "fee", headerName: "fee GP", type: "rightAligned", width: 90, valueFormatter: (p) => num(p.value) },
+  {
+    field: "fee",
+    headerName: "fee GP",
+    type: "rightAligned",
+    width: 90,
+    valueFormatter: (p) => num(p.value),
+  },
   {
     field: "studShare",
     headerName: "stud share GP",
@@ -792,7 +831,13 @@ const LEDGER_COLS: ColDef<LedgerRowUI>[] = [
   { field: "day", type: "rightAligned", width: 80 },
   { field: "type", width: 140 },
   farmCol("farm", "farm", "farm"),
-  { field: "message", headerName: "what happened", flex: 1, minWidth: 460, tooltipField: "message" },
+  {
+    field: "message",
+    headerName: "what happened",
+    flex: 1,
+    minWidth: 460,
+    tooltipField: "message",
+  },
   {
     field: "gp",
     headerName: "ΔGP",
@@ -850,6 +895,78 @@ type ReplayState =
   | { status: "ok"; replay: FightReplay };
 
 /**
+ * What sits under the header of a FightReplayPanel — a function rather than a
+ * nested ternary so each of the three states reads on its own.
+ */
+function replayBody(state: ReplayState, logId: number) {
+  if (state.status === "loading") {
+    // Worth saying WHY it takes a moment: this is a fight being fought
+    // again, not a row being fetched.
+    return <p className="world">Replaying fight #{logId} from its seed…</p>;
+  }
+  if (state.status === "error") {
+    return (
+      <p className="world" style={{ color: "#c86a5a" }}>
+        {state.message}
+      </p>
+    );
+  }
+  return (
+    <>
+      {state.replay.drifted ? (
+        // NEVER hidden and never shown as if it were fine. The engine has
+        // changed since this fight was fought, so the text below is a
+        // fight between these two birds under TODAY's rules — the archive
+        // is what actually happened, and it wins.
+        <div
+          style={{
+            border: "1px solid #7a5a1a",
+            background: "#2a2110",
+            borderRadius: 4,
+            padding: ".5rem .7rem",
+            margin: "0 0 .5rem",
+            fontSize: ".8rem",
+            color: "#e8b64c",
+          }}
+        >
+          <b>⚠ This transcript is no longer trustworthy.</b> The fight engine has changed since this
+          fight was fought, so replaying its seed no longer reproduces the result stored beside it.
+          The archive is the true record:{" "}
+          <b>
+            Pit Figures {state.replay.archivedFigures[0]} / {state.replay.archivedFigures[1]}
+          </b>
+          . The replay below says {state.replay.figures[0]} / {state.replay.figures[1]} —{" "}
+          {state.replay.driftDetail}.
+        </div>
+      ) : null}
+      <pre
+        style={{
+          height: 300,
+          overflow: "auto",
+          margin: 0,
+          padding: ".6rem .8rem",
+          background: "#1c1914",
+          color: "#e8e0d0",
+          border: "1px solid #3a342a",
+          borderRadius: 4,
+          fontFamily: "ui-monospace, Menlo, monospace",
+          fontSize: 12.5,
+          lineHeight: 1.5,
+          // The narration is laid out with its own newlines but has no
+          // fixed width, so it wraps rather than growing a horizontal bar.
+          whiteSpace: "pre-wrap",
+          // Drifted text stays legible but visibly demoted, so a screenshot
+          // of it can't be mistaken for the real record.
+          opacity: state.replay.drifted ? 0.65 : 1,
+        }}
+      >
+        {state.replay.playByPlay}
+      </pre>
+    </>
+  );
+}
+
+/**
  * ── READING A FIGHT (round 38) ─────────────────────────────────────────────
  *
  * The narration is not in the database any more — it is rebuilt from the
@@ -882,66 +999,52 @@ function FightReplayPanel({
           day {fight.day} · {fight.card} · vs {fight.opponent} · {fight.result}
         </span>
       </p>
-      {state.status === "loading" ? (
-        // Worth saying WHY it takes a moment: this is a fight being fought
-        // again, not a row being fetched.
-        <p className="world">Replaying fight #{fight.logId} from its seed…</p>
-      ) : state.status === "error" ? (
-        <p className="world" style={{ color: "#c86a5a" }}>{state.message}</p>
-      ) : (
-        <>
-          {state.replay.drifted ? (
-            // NEVER hidden and never shown as if it were fine. The engine has
-            // changed since this fight was fought, so the text below is a
-            // fight between these two birds under TODAY's rules — the archive
-            // is what actually happened, and it wins.
-            <div
-              style={{
-                border: "1px solid #7a5a1a",
-                background: "#2a2110",
-                borderRadius: 4,
-                padding: ".5rem .7rem",
-                margin: "0 0 .5rem",
-                fontSize: ".8rem",
-                color: "#e8b64c",
-              }}
-            >
-              <b>⚠ This transcript is no longer trustworthy.</b> The fight engine has
-              changed since this fight was fought, so replaying its seed no longer
-              reproduces the result stored beside it. The archive is the true record:{" "}
-              <b>
-                Pit Figures {state.replay.archivedFigures[0]} / {state.replay.archivedFigures[1]}
-              </b>
-              . The replay below says {state.replay.figures[0]} / {state.replay.figures[1]} —{" "}
-              {state.replay.driftDetail}.
-            </div>
-          ) : null}
-          <pre
-            style={{
-              height: 300,
-              overflow: "auto",
-              margin: 0,
-              padding: ".6rem .8rem",
-              background: "#1c1914",
-              color: "#e8e0d0",
-              border: "1px solid #3a342a",
-              borderRadius: 4,
-              fontFamily: "ui-monospace, Menlo, monospace",
-              fontSize: 12.5,
-              lineHeight: 1.5,
-              // The narration is laid out with its own newlines but has no
-              // fixed width, so it wraps rather than growing a horizontal bar.
-              whiteSpace: "pre-wrap",
-              // Drifted text stays legible but visibly demoted, so a screenshot
-              // of it can't be mistaken for the real record.
-              opacity: state.replay.drifted ? 0.65 : 1,
-            }}
-          >
-            {state.replay.playByPlay}
-          </pre>
-        </>
-      )}
+      {replayBody(state, fight.logId)}
     </div>
+  );
+}
+
+/**
+ * One bird's fight list under the flock (round 37), or the plain sentence that
+ * stands in for it when there is nothing to list.
+ */
+function BirdFightHistory({
+  birdName,
+  fights,
+  defaultColDef,
+  onOpen,
+}: {
+  birdName: string;
+  fights: BirdFightRowUI[];
+  defaultColDef: ColDef<BirdFightRowUI>;
+  onOpen: (fight: BirdFightRowUI) => void;
+}) {
+  if (fights.length === 0) {
+    // An empty grid reads as a loading bug. Say the plain thing instead:
+    // most birds on this list are eggs, chicks, or simply unmatched.
+    return <p className="world">{birdName} has never been in the pit — no fight history yet.</p>;
+  }
+  // The grid fills its box, so the hint sits OUTSIDE it — a
+  // paragraph inside the fixed 300px would push rows off the bottom.
+  return (
+    <>
+      {/* Nothing else in the office rewards a click on a row of a
+          second-level grid, so it has to be said out loud. */}
+      <p className="world" style={{ margin: "0 0 .35rem", fontSize: ".8rem" }}>
+        Click a fight to read the play-by-play.
+      </p>
+      <div style={{ height: 300 }}>
+        <AgGridReact<BirdFightRowUI>
+          theme={officeTheme}
+          rowData={fights}
+          columnDefs={BIRD_FIGHT_COLS}
+          defaultColDef={defaultColDef}
+          autoSizeStrategy={AUTOSIZE}
+          // A row here is a fight worth reading, not just a result.
+          onRowClicked={(e) => e.data && onOpen(e.data)}
+        />
+      </div>
+    </>
   );
 }
 
@@ -951,8 +1054,17 @@ function FightReplayPanel({
 // to four figures and sat above every table on every visit, whether or not
 // today's question was a trend.
 const TABS = [
-  "Charts", "Farms", "Fights", "Birds", "Breeding", "Gacha", "GP", "Staking", "The Ledger",
-  "The Card", "🏆 The Pintakasi",
+  "Charts",
+  "Farms",
+  "Fights",
+  "Birds",
+  "Breeding",
+  "Gacha",
+  "GP",
+  "Staking",
+  "The Ledger",
+  "The Card",
+  "🏆 The Pintakasi",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -1001,10 +1113,8 @@ export function AdminTabs({
   // the transcript is still in flight.
   const [openFight, setOpenFight] = useState<BirdFightRowUI | null>(null);
   const [replay, setReplay] = useState<ReplayState>({ status: "loading" });
-  const selectedBird = openBird ? birds.find((b) => b.id === openBird) ?? null : null;
-  const selectedFights = selectedBird
-    ? birdFights.filter((f) => f.birdId === selectedBird.id)
-    : [];
+  const selectedBird = openBird ? (birds.find((b) => b.id === openBird) ?? null) : null;
+  const selectedFights = selectedBird ? birdFights.filter((f) => f.birdId === selectedBird.id) : [];
 
   // The office's only fetch. The abort matters more than it looks: clicking
   // down a bird's history faster than the server replays means several fights
@@ -1061,8 +1171,28 @@ export function AdminTabs({
           </button>
         ))}
       </nav>
-      {pane("Farms", 720, <AgGridReact<FarmRowUI> theme={officeTheme} rowData={farms} columnDefs={FARM_COLS} defaultColDef={base} autoSizeStrategy={AUTOSIZE} />)}
-      {pane("Fights", 640, <AgGridReact<FightRowUI> theme={officeTheme} rowData={fights} columnDefs={FIGHT_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      {pane(
+        "Farms",
+        720,
+        <AgGridReact<FarmRowUI>
+          theme={officeTheme}
+          rowData={farms}
+          columnDefs={FARM_COLS}
+          defaultColDef={base}
+          autoSizeStrategy={AUTOSIZE}
+        />
+      )}
+      {pane(
+        "Fights",
+        640,
+        <AgGridReact<FightRowUI>
+          theme={officeTheme}
+          rowData={fights}
+          columnDefs={FIGHT_COLS}
+          defaultColDef={{ ...base, floatingFilter: true }}
+          autoSizeStrategy={AUTOSIZE}
+        />
+      )}
       {/*
         Birds is the one tab that stacks two grids (round 37): the flock on top,
         and — once a row is clicked — that bird's fight history underneath. It
@@ -1081,7 +1211,7 @@ export function AdminTabs({
             rowHeight={38}
             autoSizeStrategy={AUTOSIZE}
             onRowClicked={(e) => {
-              setOpenBird((cur) => (cur === e.data?.id ? null : e.data?.id ?? null));
+              setOpenBird((cur) => (cur === e.data?.id ? null : (e.data?.id ?? null)));
               // A transcript belongs to one bird's history; changing birds (or
               // closing this one) must not leave the other bird's fight open.
               setOpenFight(null);
@@ -1119,48 +1249,74 @@ export function AdminTabs({
                 state={replay}
                 onBack={() => setOpenFight(null)}
               />
-            ) : selectedFights.length === 0 ? (
-              // An empty grid reads as a loading bug. Say the plain thing instead:
-              // most birds on this list are eggs, chicks, or simply unmatched.
-              <p className="world">
-                {selectedBird.name} has never been in the pit — no fight history yet.
-              </p>
             ) : (
-              // The grid fills its box, so the hint sits OUTSIDE it — a
-              // paragraph inside the fixed 300px would push rows off the bottom.
-              <>
-                {/* Nothing else in the office rewards a click on a row of a
-                    second-level grid, so it has to be said out loud. */}
-                <p className="world" style={{ margin: "0 0 .35rem", fontSize: ".8rem" }}>
-                  Click a fight to read the play-by-play.
-                </p>
-                <div style={{ height: 300 }}>
-                  <AgGridReact<BirdFightRowUI>
-                    theme={officeTheme}
-                    rowData={selectedFights}
-                    columnDefs={BIRD_FIGHT_COLS}
-                    defaultColDef={base}
-                    autoSizeStrategy={AUTOSIZE}
-                    // A row here is a fight worth reading, not just a result.
-                    onRowClicked={(e) => e.data && setOpenFight(e.data)}
-                  />
-                </div>
-              </>
+              <BirdFightHistory
+                birdName={selectedBird.name}
+                fights={selectedFights}
+                defaultColDef={base}
+                onOpen={setOpenFight}
+              />
             )}
           </div>
         ) : null}
       </div>
-      {pane("Breeding", 640, <AgGridReact<BreedingRowUI> theme={officeTheme} rowData={breeding} columnDefs={BREEDING_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
-      {pane("Gacha", 640, <AgGridReact<GachaRowUI> theme={officeTheme} rowData={gacha} columnDefs={GACHA_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
-      {pane("GP", 640, <AgGridReact<GpRowUI> theme={officeTheme} rowData={gp} columnDefs={GP_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      {pane(
+        "Breeding",
+        640,
+        <AgGridReact<BreedingRowUI>
+          theme={officeTheme}
+          rowData={breeding}
+          columnDefs={BREEDING_COLS}
+          defaultColDef={{ ...base, floatingFilter: true }}
+          autoSizeStrategy={AUTOSIZE}
+        />
+      )}
+      {pane(
+        "Gacha",
+        640,
+        <AgGridReact<GachaRowUI>
+          theme={officeTheme}
+          rowData={gacha}
+          columnDefs={GACHA_COLS}
+          defaultColDef={{ ...base, floatingFilter: true }}
+          autoSizeStrategy={AUTOSIZE}
+        />
+      )}
+      {pane(
+        "GP",
+        640,
+        <AgGridReact<GpRowUI>
+          theme={officeTheme}
+          rowData={gp}
+          columnDefs={GP_COLS}
+          defaultColDef={{ ...base, floatingFilter: true }}
+          autoSizeStrategy={AUTOSIZE}
+        />
+      )}
       {/* Staking leads with the world's two totals, then the farm-by-farm book. */}
       <div style={{ display: tab === "Staking" ? "block" : "none" }}>
         {stakingSummary}
         <div style={{ height: 420 }}>
-          <AgGridReact<StakingRowUI> theme={officeTheme} rowData={staking} columnDefs={STAKING_COLS} defaultColDef={base} autoSizeStrategy={AUTOSIZE} />
+          <AgGridReact<StakingRowUI>
+            theme={officeTheme}
+            rowData={staking}
+            columnDefs={STAKING_COLS}
+            defaultColDef={base}
+            autoSizeStrategy={AUTOSIZE}
+          />
         </div>
       </div>
-      {pane("The Ledger", 640, <AgGridReact<LedgerRowUI> theme={officeTheme} rowData={ledger} columnDefs={LEDGER_COLS} defaultColDef={{ ...base, floatingFilter: true }} autoSizeStrategy={AUTOSIZE} />)}
+      {pane(
+        "The Ledger",
+        640,
+        <AgGridReact<LedgerRowUI>
+          theme={officeTheme}
+          rowData={ledger}
+          columnDefs={LEDGER_COLS}
+          defaultColDef={{ ...base, floatingFilter: true }}
+          autoSizeStrategy={AUTOSIZE}
+        />
+      )}
       <div style={{ display: tab === "Charts" ? "block" : "none" }}>{charts}</div>
       <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
       <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>

@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Breeding — The Pintakasi Handbook",
-  description: "Only retired birds breed — the bloodline rule, covers, the fee split, inheritance, and the nest.",
+  description:
+    "Only retired birds breed — the bloodline rule, covers, the fee split, inheritance, and the nest.",
 };
 
 export default function BreedingPage() {
@@ -49,17 +50,15 @@ export default function BreedingPage() {
         <Link href="/wiki/pintakasi">Pintakasi Major</Link>, which force-retires it on the spot.
       </p>
       <p>
-        That&apos;s the loop, and it&apos;s deliberate: a fighting career <strong>ends</strong>{" "}
-        and a breeding life <strong>begins</strong> — the same bird, a second job. A lost crown and
-        an age retirement don&apos;t delete a bird from the game, they feed it into the barn. A bird
+        That&apos;s the loop, and it&apos;s deliberate: a fighting career <strong>ends</strong> and
+        a breeding life <strong>begins</strong> — the same bird, a second job. A lost crown and an
+        age retirement don&apos;t delete a bird from the game, they feed it into the barn. A bird
         you lost in a Major, or aged out, is still worth exactly as much to your bloodline as one
         you never risked.
       </p>
 
       <h2>The bloodline restriction</h2>
-      <p>
-        You cannot breed a bird with its own kin. Forbidden pairings are checked two ways:
-      </p>
+      <p>You cannot breed a bird with its own kin. Forbidden pairings are checked two ways:</p>
       <ul>
         <li>
           <strong>Ancestors, {BREEDING.ANCESTOR_DEPTH} generations back.</strong> A bird cannot
@@ -77,8 +76,8 @@ export default function BreedingPage() {
 
       <h2>Covers</h2>
       <p>
-        A <strong>cover</strong> is one breeding — your hen paired against one rooster, retired,
-        of your own or listed by another farm. Buying a cover costs a flat{" "}
+        A <strong>cover</strong> is one breeding — your hen paired against one rooster, retired, of
+        your own or listed by another farm. Buying a cover costs a flat{" "}
         <strong>{ECONOMY.BREED_FEE} GP</strong>, no matter whose stud it is or how decorated its
         record. The hen&apos;s owner pays; the hen&apos;s owner keeps the egg.
       </p>
@@ -91,23 +90,23 @@ export default function BreedingPage() {
       <div className="callout tip">
         <b>Listing a retired rooster at stud is income.</b> You can always cover your own hens with
         your own retired rooster, up to the owner-reserved slots, whether or not you&apos;ve listed
-        him. <em>Listing</em> him opens the public slots to every other farm&apos;s hens — and
-        every cover anyone buys against him pays his owner a share (below). A good retired rooster
-        sitting idle in your barn is money left on the table.
+        him. <em>Listing</em> him opens the public slots to every other farm&apos;s hens — and every
+        cover anyone buys against him pays his owner a share (below). A good retired rooster sitting
+        idle in your barn is money left on the table.
       </div>
       <div className="callout warn">
         <b>Listing costs land — the game&apos;s first Land Token sink.</b> Opening a rooster&apos;s
         {/* Land figures are hundredths of a token since round 36. */}
         public slots for the first time costs a flat{" "}
-        <strong>{(COVERS.STUD_LISTING_LT / LT_CENTS).toLocaleString()} LT</strong>,
-        spent outright — not staked, not refundable. Pulling him from the barn and re-listing him
-        later is free; the land bought the seat, not a subscription. Why this door: a stud is the
-        best asset in the game — it earns on every outside cover, and its own owner still breeds
-        through it on the reserved slots at nothing above the ordinary fee. A gate that desirable
-        is worth paying land for, and it&apos;s the first thing in the game that takes Land Tokens{" "}
-        <em>out</em> of the world rather than just paying them out (barn expansion is the second)
-        — see <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into
-        a price.
+        <strong>{(COVERS.STUD_LISTING_LT / LT_CENTS).toLocaleString()} LT</strong>, spent outright —
+        not staked, not refundable. Pulling him from the barn and re-listing him later is free; the
+        land bought the seat, not a subscription. Why this door: a stud is the best asset in the
+        game — it earns on every outside cover, and its own owner still breeds through it on the
+        reserved slots at nothing above the ordinary fee. A gate that desirable is worth paying land
+        for, and it&apos;s the first thing in the game that takes Land Tokens <em>out</em> of the
+        world rather than just paying them out (barn expansion is the second) — see{" "}
+        <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into a
+        price.
       </div>
 
       <h2>The fee split</h2>
@@ -149,10 +148,10 @@ export default function BreedingPage() {
       </div>
       <p className="dim">
         The staker cut pays every farm holding Land Tokens, whether or not they ever breed a bird —
-        it&apos;s a landholder&apos;s cut of the whole game&apos;s breeding activity. The juice
-        pool is the same pot that gacha spend feeds, and it becomes the purse for the Thursday
-        championships. Nothing here is printed or burned — every centi-GP in the fee lands
-        somewhere real.
+        it&apos;s a landholder&apos;s cut of the whole game&apos;s breeding activity. The juice pool
+        is the same pot that gacha spend feeds, and it becomes the purse for the Thursday
+        championships. Nothing here is printed or burned — every centi-GP in the fee lands somewhere
+        real.
       </p>
 
       <h2>Inheritance</h2>
@@ -172,9 +171,9 @@ export default function BreedingPage() {
           <b>Stars and element</b>
           Half-star rating lands within {BREEDING.STAR_SPREAD_HALF_STARS} half-stars of the
           parents&apos; average, up to the {maxStars}★ cap. The chick&apos;s element leans toward
-          whichever parent carries the higher star rating most of the time, leans toward the
-          other parent less often, and only rarely lands on a completely different element as its
-          own small mutation.
+          whichever parent carries the higher star rating most of the time, leans toward the other
+          parent less often, and only rarely lands on a completely different element as its own
+          small mutation.
         </div>
         <div className="minicard">
           <b>Carriage</b>
@@ -189,18 +188,18 @@ export default function BreedingPage() {
       </div>
       <p>
         One more thing is decided at the cover and hidden from you: the egg&apos;s sex, a flat{" "}
-        {femalePct}/{100 - femalePct} coin flip, sealed until hatch day. You won&apos;t know if
-        you bred a hen or a rooster until the egg actually opens.
+        {femalePct}/{100 - femalePct} coin flip, sealed until hatch day. You won&apos;t know if you
+        bred a hen or a rooster until the egg actually opens.
       </p>
 
       <h2>What to breed for</h2>
       <p>
-        Averaging two sheets is easy. Knowing <em>which</em> two sheets to average is the game.
-        Here is the plan the game is built around, in order.
+        Averaging two sheets is easy. Knowing <em>which</em> two sheets to average is the game. Here
+        is the plan the game is built around, in order.
       </p>
       <p>
-        <strong>First, pick a shape.</strong> The four fighting stats sit on a dial, from the
-        sprint end to the deep-water end:{" "}
+        <strong>First, pick a shape.</strong> The four fighting stats sit on a dial, from the sprint
+        end to the deep-water end:{" "}
         {DISTANCE_STATS.map((stat, i) => (
           <span key={stat}>
             {i > 0 ? " → " : ""}
@@ -244,15 +243,15 @@ export default function BreedingPage() {
         Why a <em>pair</em> and not one huge stat? Because a pair buys you a <strong>floor</strong>.
         A bird built on one towering stat is wonderful at one blade and ordinary at the other four —
         and since you can&apos;t see a chick&apos;s sheet, you won&apos;t know which blade that is
-        for months. A paired bird is strong at the two blades its two stats key, still clearly
-        ahead of a plain bird in the middle, and never truly bad anywhere. Under the fog, the floor
-        is the part you actually own.
+        for months. A paired bird is strong at the two blades its two stats key, still clearly ahead
+        of a plain bird in the middle, and never truly bad anywhere. Under the fog, the floor is the
+        part you actually own.
       </p>
       <p>
-        <strong>Then take the extras where you can get them.</strong> Once two candidate covers
-        give a similar shape, break the tie on <strong>station</strong>, <strong>condition</strong>,
-        and <strong>stars</strong>. None of them keys a blade, so none of them fights your shape —
-        they are pure profit on top of it.
+        <strong>Then take the extras where you can get them.</strong> Once two candidate covers give
+        a similar shape, break the tie on <strong>station</strong>, <strong>condition</strong>, and{" "}
+        <strong>stars</strong>. None of them keys a blade, so none of them fights your shape — they
+        are pure profit on top of it.
       </p>
       <div className="callout tip">
         <b>Why bother?</b> A shaped bird is what wins the{" "}
@@ -263,8 +262,8 @@ export default function BreedingPage() {
       </div>
       <p className="dim">
         This is the opening plan, not the only one. Single big stats are a real line as well —
-        stars, station and condition are all still on the table for a bird with one enormous
-        number. Start with a pair; deviate once you know why you&apos;re deviating.
+        stars, station and condition are all still on the table for a bird with one enormous number.
+        Start with a pair; deviate once you know why you&apos;re deviating.
       </p>
 
       <h2>The nest rule and the calendar</h2>
@@ -275,9 +274,9 @@ export default function BreedingPage() {
         following Friday.
       </div>
       <p>
-        Plan around Fridays. A hen cannot take two covers while pregnant, but laying starts her
-        next cycle before the first egg opens. Roosters have their own weekly cover cap above, so
-        no single top stud can supply every nest.
+        Plan around Fridays. A hen cannot take two covers while pregnant, but laying starts her next
+        cycle before the first egg opens. Roosters have their own weekly cover cap above, so no
+        single top stud can supply every nest.
       </p>
       <p>
         A new farm begins with {BARN.STARTER_EGGS} eggs. They hatch together on its first Hatch
@@ -291,15 +290,14 @@ export default function BreedingPage() {
         flock&apos;s stat band — see <Link href="/wiki/gacha">the gacha</Link> for exactly how
         capped. A lucky roll can hand you real stars, but that&apos;s a single injection, not
         something that compounds — the next roll starts from zero again. Breeding is the only path
-        where a chick&apos;s stats <em>and</em> stars start from something better than either
-        parent — two strong birds plus a lucky mutation roll — and stack again in the next
-        generation. The gacha can hand you a good body once. Only the nest hands you quality that
-        keeps climbing.
+        where a chick&apos;s stats <em>and</em> stars start from something better than either parent
+        — two strong birds plus a lucky mutation roll — and stack again in the next generation. The
+        gacha can hand you a good body once. Only the nest hands you quality that keeps climbing.
       </p>
       <p>
-        There&apos;s a second reason the nest is where fortunes are made: it&apos;s the one place
-        in the game where you decide with the <strong>lights on</strong>. A live bird&apos;s stats
-        are hidden until it retires (see <Link href="/wiki/birds">Birds &amp; stats</Link>) — but
+        There&apos;s a second reason the nest is where fortunes are made: it&apos;s the one place in
+        the game where you decide with the <strong>lights on</strong>. A live bird&apos;s stats are
+        hidden until it retires (see <Link href="/wiki/birds">Birds &amp; stats</Link>) — but
         breeding only uses retired birds, so when you pick a pairing, both full sheets are on the
         table. That split is the point of the whole design: breeding is the <em>informed</em>{" "}
         decision, fighting is the <em>discovered</em> one. You breed with everything known, then

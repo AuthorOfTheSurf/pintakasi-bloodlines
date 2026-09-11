@@ -164,8 +164,7 @@ export function simulatePair(
   // total, shrank its own deficit, and cancelled itself — the lab measured
   // a station-2000 build at 45% AT PARITY because its big total handed the
   // flat opponent a clawback against fighting stats it didn't have.
-  const total = (f: Fighter) =>
-    Object.values(f.stats).reduce((x, y) => x + y, 0) - f.stats.station;
+  const total = (f: Fighter) => Object.values(f.stats).reduce((x, y) => x + y, 0) - f.stats.station;
   const claw = (self: Fighter, other: Fighter) => {
     const deficit = Math.max(0, total(other) - total(self));
     const gapPerRoll = deficit / 6 / BATTLE.ROLL_DIVISOR;
@@ -214,8 +213,7 @@ export function simulatePair(
 
     // Narration only since round 27 — the weight matrix rolls every stat on
     // every turn, but the fight still has chapters worth naming.
-    const phase =
-      turn <= PHASES.BREAK_THROUGH_TURN ? "break" : turn <= PHASES.OPEN_THROUGH_TURN ? "open" : "deep";
+    const phase = phaseOf(turn);
 
     // The fuel wall: a bird past its tank delivers only WALL_FACTOR of its
     // agility and sight from here on. Narrated once, the turn it blows.
@@ -243,20 +241,18 @@ export function simulatePair(
     if (w.doubles) damage = Math.round(damage * fmt.critMult);
     loser.wind -= damage;
     winner.dealt += damage;
-    const move = w.doubles
-      ? `TARI STRIKE (double ${w.dice[0]}s!)`
-      : w.dice[0] + w.dice[1] >= 10
-        ? "high slash"
-        : w.dice[0] + w.dice[1] <= 4
-          ? "quick feint"
-          : "clean hit";
+    const move = moveName(w.dice, w.doubles);
     lines.push(
       `T${turn} [${phase}] ${winner.name} lands a ${move} — ${damage} wind. (${w.detail} vs ${l.detail}) ${loser.name}: ${Math.max(0, loser.wind)}`
     );
 
     // The morale check — gameness's teeth. Once per fight, when a bird is
     // first badly hurt, it decides whether to keep fighting or RUN.
-    if (loser.wind > 0 && loser.wind < loser.maxWind * BATTLE.QUIT_WIND_FRACTION && !loser.quitChecked) {
+    if (
+      loser.wind > 0 &&
+      loser.wind < loser.maxWind * BATTLE.QUIT_WIND_FRACTION &&
+      !loser.quitChecked
+    ) {
       loser.quitChecked = true;
       const quitChance = BATTLE.QUIT_BASE_CHANCE * (1 - loser.stats.gameness / STATS.MAX);
       if (rng() < quitChance) {
@@ -295,7 +291,8 @@ export function simulatePair(
   const won = winner === 0 ? a : b;
   const lost = winner === 0 ? b : a;
   const variant = randInt(rng, -FIGURE.NOISE, FIGURE.NOISE);
-  const band = (raw: number) => Math.max(0, Math.round((raw + variant) / FIGURE.BAND) * FIGURE.BAND);
+  const band = (raw: number) =>
+    Math.max(0, Math.round((raw + variant) / FIGURE.BAND) * FIGURE.BAND);
 
   // The reference form — what a NOMINAL_CONDITION bird averages per turn.
   // Derived from BATTLE's own curve so the two can never drift apart: form is
@@ -350,6 +347,22 @@ export function simulatePair(
   lines.push(`🏆 ${winner === 0 ? a.name : b.name} WINS.`);
   lines.push(`Pit Figures: ${a.name} ${figures[0]} · ${b.name} ${figures[1]} (${fmt.label})`);
   return { winner, playByPlay: lines.join("\n"), figures };
+}
+
+/** The chapter a turn falls in — narration only (see simulatePair). */
+function phaseOf(turn: number): "break" | "open" | "deep" {
+  if (turn <= PHASES.BREAK_THROUGH_TURN) return "break";
+  if (turn <= PHASES.OPEN_THROUGH_TURN) return "open";
+  return "deep";
+}
+
+/** What the winning roll looked like from the stands — doubles first, then the pip sum. */
+function moveName(dice: [number, number], doubles: boolean): string {
+  if (doubles) return `TARI STRIKE (double ${dice[0]}s!)`;
+  const pips = dice[0] + dice[1];
+  if (pips >= 10) return "high slash";
+  if (pips <= 4) return "quick feint";
+  return "clean hit";
 }
 
 function turnRoll(

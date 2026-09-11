@@ -60,7 +60,12 @@ describe("seeded database", () => {
           name: "Bad Bird",
           sex: "male",
           status: "active",
-          agility: 500, sight: 500, stamina: 500, gameness: 500, station: 500, condition: 500,
+          agility: 500,
+          sight: 500,
+          stamina: 500,
+          gameness: 500,
+          station: 500,
+          condition: 500,
           element: "Fire",
           halfStars: 11, // > 10 violates CHECK
           birthWeek: 0,

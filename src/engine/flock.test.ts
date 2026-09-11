@@ -8,13 +8,7 @@ import { weatherOfDay, type Element } from "./config";
 import { Flock } from "./flock";
 import { GameClock } from "./game-clock";
 import { overallGradeOf } from "./grades";
-import {
-  canHardcore,
-  canManualRetire,
-  canJuvenile,
-  canRealFight,
-  mustRetire,
-} from "./lifecycle";
+import { canHardcore, canManualRetire, canJuvenile, canRealFight, mustRetire } from "./lifecycle";
 
 function freshGame() {
   const db = createDb(":memory:");
@@ -22,7 +16,12 @@ function freshGame() {
   return { db, farmId, clock: new GameClock(db), flock: new Flock(db, farmId) };
 }
 
-function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: number, birthDay: number) {
+function insertEgg(
+  db: ReturnType<typeof createDb>,
+  id: string,
+  birthWeek: number,
+  birthDay: number
+) {
   db.insert(birds)
     .values({
       id,
@@ -30,7 +29,12 @@ function insertEgg(db: ReturnType<typeof createDb>, id: string, birthWeek: numbe
       name: "Egg of Dalisay",
       sex: "female",
       status: "egg",
-      agility: 400, sight: 400, stamina: 400, gameness: 400, station: 400, condition: 400,
+      agility: 400,
+      sight: 400,
+      stamina: 400,
+      gameness: 400,
+      station: 400,
+      condition: 400,
       element: "Water",
       halfStars: 4,
       birthWeek,
@@ -198,7 +202,11 @@ describe("the fog (round 28 — the sheet hides until retirement)", () => {
     const retired = flock.retire(sinag.id);
     for (const stat of SHEET) expect(retired[stat]).toBe(raw[stat]);
     // …and the event log says so, so the barn's neighbors hear the number too.
-    const event = db.select().from(events).all().find((e) => e.type === "retire")!;
+    const event = db
+      .select()
+      .from(events)
+      .all()
+      .find((e) => e.type === "retire")!;
     expect(event.message).toContain("The sheet is public");
   });
 
@@ -221,7 +229,11 @@ describe("the fog (round 28 — the sheet hides until retirement)", () => {
     // setting the status BEFORE view() runs, the cap's reveal would arrive
     // one read late and the hatch-day event feed would show a dark sheet.
     const { db, clock, flock } = freshGame();
-    const raw = db.select().from(birds).all().find((b) => b.name === "Batong Buhay")!;
+    const raw = db
+      .select()
+      .from(birds)
+      .all()
+      .find((b) => b.name === "Batong Buhay")!;
     let capped: ReturnType<typeof flock.byId> | undefined;
     for (let i = 0; i < 4; i++) {
       clock.tickWeek((w) => {
@@ -244,21 +256,21 @@ describe("the form book (weather on past fights)", () => {
     result: "win" | "loss" = "win"
   ) {
     recordFight(db, {
-        dayIndex,
-        lobbyId: 1,
-        farmId,
-        birdId,
-        mode: "real",
-        format: "b2",
-        lobby: "open",
-        opponentBirdId: "rival-bird",
-        opponentFarmId: "farm-2",
-        opponentName: "Rival",
-        side: 0,
-        result,
-        pitFigure,
-        gpDeltaCents: 0,
-        seed: 1,
+      dayIndex,
+      lobbyId: 1,
+      farmId,
+      birdId,
+      mode: "real",
+      format: "b2",
+      lobby: "open",
+      opponentBirdId: "rival-bird",
+      opponentFarmId: "farm-2",
+      opponentName: "Rival",
+      side: 0,
+      result,
+      pitFigure,
+      gpDeltaCents: 0,
+      seed: 1,
     });
   }
 

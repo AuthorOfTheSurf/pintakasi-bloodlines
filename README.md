@@ -7,6 +7,7 @@ Currently the game is mainly played and developed as a simulation to get the gam
 **Players and agents connect through MCP** at `/api/mcp`; REST exists for scripted tests. Claude Code (or your favorite coding agent) is recommended as the client used during development and simulation testing.
 
 Running the app locally serves a UI that shows all of the birds, breeds, fights and so on that occurred. This UI accepts a database parameter, so previous simulations can be viewed too.
+
 - **Stewards' Office** at `/admin` (all of the game stats, and the nicest game UI available so far)
 - **The Pintakasi Handbook** at `/wiki` (the player-facing rules, numbers get imported from config).
 
@@ -24,6 +25,7 @@ Next.js + TypeScript + Bun · SQLite (Drizzle + better-sqlite3) · `@modelcontex
 Note that SQLite will work fine locally, but on Vercel because that's serverless. Can modify and swap to Turso/libSQL if hosting their becomes desired.
 
 ## Quick summary of the game
+
 - A season is 7 game-days and starts on Friday
 - Friday is "Hatch Day". Pregnant hens produce a 0yo egg. Existing eggs grow into 1yo juvenile chicks. All other birds age +1 year.
 - The goal of the game is to win Golden Pesos (GP) and amass Land Tokens (LT) via battling your birds
@@ -49,9 +51,9 @@ Note that SQLite will work fine locally, but on Vercel because that's serverless
 - `/api/mcp` - MCP server and routes
 - `src/app/wiki/` — the Handbook. **Change a game rule, change the Handbook in the same commit** (see `CLAUDE.md`).
 - `scripts/`
-    - `simulate.ts` (simulation code, the main thing we "play the game with" right now)
-    - `doctor.ts` (checks the game world database and prints out detailed findings, checks invariants (e.g. money printed out of thin air))
-    - `balance.ts` (a suite for tuning the balance of the game. This checks things like stronger birds winning more vs. weaker birds. Used to balance out the fighting stats)
+  - `simulate.ts` (simulation code, the main thing we "play the game with" right now)
+  - `doctor.ts` (checks the game world database and prints out detailed findings, checks invariants (e.g. money printed out of thin air))
+  - `balance.ts` (a suite for tuning the balance of the game. This checks things like stronger birds winning more vs. weaker birds. Used to balance out the fighting stats)
 
 ## Run
 
@@ -67,9 +69,9 @@ The database is **per-machine**: `data/*.db` is gitignored, so a clone never car
 
 To play manually, open the **Stewards' Office** at `/admin` and use **+1 Day** or **+1 Week**. A fresh world starts on Friday; **+1 Week** reaches the following Hatch Friday, when all eight eggs become age-1 chicks. Local development leaves these controls enabled.
 
-To play through an MCP client, `.mcp.json` in the repo root already does this for Claude Code — start `bun dev` first, since the endpoint *is* the server.
+To play through an MCP client, `.mcp.json` in the repo root already does this for Claude Code — start `bun dev` first, since the endpoint _is_ the server.
 
-**Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get *"Multiple farms exist — pass your farm key"*, which is the server being careful, not broken. Playing as somebody new instead? `register_farm` over MCP hands you a fresh key; put that in the URL.
+**Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get _"Multiple farms exist — pass your farm key"_, which is the server being careful, not broken. Playing as somebody new instead? `register_farm` over MCP hands you a fresh key; put that in the URL.
 
 Tests: `bun test` · Types: `bun run typecheck` · Health of a world: `bun run doctor` · The combat lab: `bun run balance`
 
@@ -125,11 +127,11 @@ The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-de
 
 One SQLite file = one world. Three kinds exist:
 
-| World | File | Who writes it |
-|---|---|---|
-| **Live** (prod) | `data/game.db` on whatever box serves the game (a personal server, NOT Vercel; SQLite needs a persistent disk) | The players, via `bun dev` / `next start` |
-| **Simulation** | `data/sim-YYYYMMDD-HHMM.db` — every run gets its OWN timestamped file | `bun run simulate [days]` — seeds a fresh world (day 0, a Friday) and plays N days with the bots (defaults to 112 days, 16 full weeks) |
-| **Tests** | `:memory:` | `bun test` — never touches disk |
+| World           | File                                                                                                           | Who writes it                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Live** (prod) | `data/game.db` on whatever box serves the game (a personal server, NOT Vercel; SQLite needs a persistent disk) | The players, via `bun dev` / `next start`                                                                                              |
+| **Simulation**  | `data/sim-YYYYMMDD-HHMM.db` — every run gets its OWN timestamped file                                          | `bun run simulate [days]` — seeds a fresh world (day 0, a Friday) and plays N days with the bots (defaults to 112 days, 16 full weeks) |
+| **Tests**       | `:memory:`                                                                                                     | `bun test` — never touches disk                                                                                                        |
 
 - View a full sim: `bun run simulate`, then `bun dev:sim` → http://localhost:3435/admin — it always resolves to the NEWEST sim db (port 3435, so it can run beside the live server on 3434).
 - Continue the newest run instead of starting fresh: `bun run simulate 7 --keep` — handy for pausing mid-week, inspecting the state, then playing on.

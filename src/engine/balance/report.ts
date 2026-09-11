@@ -112,7 +112,7 @@ function renderTable(table: Table): string[] {
     // The verdict is a suffix on the line, not a bullet in front of it — the
     // doctor's weather line and adoption bars both read this way, and it keeps
     // the numeric columns in one unbroken block down the page.
-    const mark = row.verdict === "ok" ? " ✓" : row.verdict === "warn" ? " ⚠" : "";
+    const mark = verdictMark(row.verdict);
     const note = row.note ? `  ${row.note}` : "";
     out.push(`  ${row.label.padEnd(w.label)}${gutter}${cells}${mark}${note}`);
   }
@@ -183,6 +183,23 @@ function measured(cell: string): { value: number; ci?: number } | undefined {
 
 const numeric = (cell: string) => measured(cell)?.value;
 
+/** The suffix a row's verdict earns on its line. */
+function verdictMark(verdict: string | undefined): string {
+  if (verdict === "ok") return " ✓";
+  if (verdict === "warn") return " ⚠";
+  return "";
+}
+
+/**
+ * Which cells to converge: every cell carrying an interval, else the first
+ * numeric cell, else none.
+ */
+function convergedColumns(withCi: number[], first: number): number[] {
+  if (withCi.length > 0) return withCi;
+  if (first === -1) return [];
+  return [first];
+}
+
 /** The column a case reports its interval in, when it splits it out. */
 const isCiColumn = (col: string) => /±|\bci\b/i.test(col);
 
@@ -226,9 +243,18 @@ export function convergeCases(
   windows: number
 ): ConvergenceReport {
   const seeds = Array.from({ length: windows }, (_, i) => LAB.SEED_FROM + i * LAB.WINDOW_STRIDE);
-  const byWindow = new Map(seeds.map((seedFrom) => [seedFrom, measure(cases, { ...opts, seedFrom })]));
+  const byWindow = new Map(
+    seeds.map((seedFrom) => [seedFrom, measure(cases, { ...opts, seedFrom })])
+  );
 
-  const shape = byWindow.get(seeds[0])!;
+  const shape = byWindow.get(seeds[0]);
+  if (!shape) throw new Error(`convergeCases: needs at least one window, got ${windows}`);
+  // converge() walks the same SEED_FROM + i × WINDOW_STRIDE seeds measured above.
+  const windowOf = (seedFrom: number) => {
+    const report = byWindow.get(seedFrom);
+    if (!report) throw new Error(`convergeCases: seed window ${seedFrom} was never measured`);
+    return report;
+  };
   const rows: ConvergedRow[] = [];
   for (const [t, table] of shape.tables.entries()) {
     const heads = headersOf(table);
@@ -243,10 +269,10 @@ export function convergeCases(
       // cases put the measurement before the diagnostics.
       const withCi = row.cells.flatMap((c, j) => (measured(c)?.ci !== undefined ? [j] : []));
       const first = row.cells.findIndex((c) => numeric(c) !== undefined);
-      const picks = withCi.length > 0 ? withCi : first === -1 ? [] : [first];
+      const picks = convergedColumns(withCi, first);
       for (const col of picks) {
         const pick = (seedFrom: number) =>
-          numeric(byWindow.get(seedFrom)!.tables[t]?.rows[i]?.cells[col] ?? "") ?? NaN;
+          numeric(windowOf(seedFrom).tables[t]?.rows[i]?.cells[col] ?? "") ?? NaN;
         const c = converge(pick, { windows });
         const ci =
           measured(row.cells[col])?.ci ??
@@ -277,7 +303,10 @@ export function formatConvergence(r: ConvergenceReport): string {
       `stride ${LAB.WINDOW_STRIDE.toLocaleString()}`
   );
 
-  const label = Math.max(REPORT.MIN_LABEL_WIDTH, ...r.rows.map((x) => `${x.table} ${x.label}`.length));
+  const label = Math.max(
+    REPORT.MIN_LABEL_WIDTH,
+    ...r.rows.map((x) => `${x.table} ${x.label}`.length)
+  );
   const num = (n: number) => (Number.isFinite(n) ? n.toFixed(2) : "—");
   const cols = ["mean", "spread", "±ci"];
   const width = 8;
@@ -292,13 +321,20 @@ export function formatConvergence(r: ConvergenceReport): string {
       ].join(gutter)
   );
   for (const row of r.rows) {
-    const cells = [...row.values.map(num), num(row.mean), num(row.spread), row.ci === undefined ? "—" : num(row.ci)];
+    const cells = [
+      ...row.values.map(num),
+      num(row.mean),
+      num(row.spread),
+      row.ci === undefined ? "—" : num(row.ci),
+    ];
     out.push(
       `  ${`${row.table} ${row.label}`.padEnd(label)}${gutter}` +
         cells.map((c) => c.padStart(width)).join(gutter) +
         // A wide row is the finding, so it is marked where it happens rather
         // than only counted in the footer.
-        (row.wide ? `  ⚠ spread ${num(row.spread)} > ci ${num(row.ci!)} (${row.column})` : "")
+        (row.wide && row.ci !== undefined // `wide` is only ever set with a ci
+          ? `  ⚠ spread ${num(row.spread)} > ci ${num(row.ci)} (${row.column})`
+          : "")
     );
   }
 

@@ -67,6 +67,17 @@ function landByFights(potCents: number, bracketSize: number) {
  */
 const wholeLt = (cents: number) => (cents / LT_CENTS).toLocaleString();
 
+/**
+ * The row label for a bird that fought `mine` times in a full bracket whose
+ * longest run is `most` fights. The top row is two birds at once, so each
+ * table words it its own way.
+ */
+function fightsLabel(mine: number, most: number, topLabel: string): string {
+  if (mine === 1) return "Lost its first fight";
+  if (mine === most) return topLabel;
+  return `Won ${mine - 1}, then lost`;
+}
+
 export default function LandPage() {
   // The "fighting up pays more land" comparison, re-anchored in round 42 on the
   // two ends of ONE division's class ladder — a grown maiden against a grown
@@ -122,7 +133,6 @@ export default function LandPage() {
   // the thin-field effect, which is the surprising half of the rule.
   const majorBracket = PINTAKASI.MAX_BRACKET;
   const majorLand = landByFights(PINTAKASI.LAND_POT, majorBracket);
-  const majorTopFights = majorLand[majorLand.length - 1];
   const majorOneFight = majorLand[0];
   const thinBracket = 4;
   const thinLand = landByFights(PINTAKASI.LAND_POT, thinBracket);
@@ -182,23 +192,24 @@ export default function LandPage() {
         the whole entry:
       </p>
       <div className="callout tip">
-        <b>Land comes in fractions.</b> A grown maiden night pays{" "}
-        {fmtLt(landForFight(cheapFee))} LT, not a round number — awards are minted in hundredths of
-        a token, the same way GP is counted in centavos. That is there
-        to keep the curve honest: when land only came in whole tokens, the rounding at the cheap end
-        was worth more than the curve itself, and for one round the discovery year paid better land
-        per peso than a real card did. Hundredths make the rounding too small to matter.
+        <b>Land comes in fractions.</b> A grown maiden night pays {fmtLt(landForFight(cheapFee))}{" "}
+        LT, not a round number — awards are minted in hundredths of a token, the same way GP is
+        counted in centavos. That is there to keep the curve honest: when land only came in whole
+        tokens, the rounding at the cheap end was worth more than the curve itself, and for one
+        round the discovery year paid better land per peso than a real card did. Hundredths make the
+        rounding too small to matter.
         <br />
         <br />
-        The rule of thumb: <strong>you earn fractional land, you buy and stake round numbers</strong>
-        . Fighting, the gacha and the crowns all mint decimals. Buying land, staking it and
-        unstaking it are whole-token actions.
+        The rule of thumb:{" "}
+        <strong>you earn fractional land, you buy and stake round numbers</strong>. Fighting, the
+        gacha and the crowns all mint decimals. Buying land, staking it and unstaking it are
+        whole-token actions.
       </div>
       <p className="dim">
         Every award on this page moved when the entry fees moved. Each class of fight has its own
         price now — a maiden night and an open night are no longer the same money (see{" "}
-        <Link href="/wiki/ladder">Fighting up</Link>) — and since land is measured off what your bird
-        risked, a dearer class simply mints more of it. That is the whole point of pricing the
+        <Link href="/wiki/ladder">Fighting up</Link>) — and since land is measured off what your
+        bird risked, a dearer class simply mints more of it. That is the whole point of pricing the
         classes.
       </p>
       <div className="tablewrap">
@@ -227,8 +238,8 @@ export default function LandPage() {
       </div>
       <p className="dim">
         Those five are a sample, not the whole ladder — the daily card runs prices from{" "}
-        {cheapestNight} GP up to {dearestNight} GP. <Link href="/wiki/ladder">Fighting up</Link> lists
-        every rung and what each one mints.
+        {cheapestNight} GP up to {dearestNight} GP. <Link href="/wiki/ladder">Fighting up</Link>{" "}
+        lists every rung and what each one mints.
       </p>
       <p className="dim">
         A short card pays less, and honestly so — the bird risked less. It happens when your
@@ -248,11 +259,11 @@ export default function LandPage() {
         <p className="dim">
           One honest wrinkle, at these two particular prices. The rounding on the award is worth
           more than the curve down at the cheap end: the cheaper award works out at{" "}
-          {cheapRaw.toFixed(2)} before rounding and is paid as {fmtLt(landForFight(cheapFee))} LT. So
-          per GP staked, the cheap rung is actually the <em>better</em> land deal right now — about{" "}
-          {cheapBetterPct}% better, which is backwards and worth reporting. The curve underneath is
-          still steeper than a straight line; it just needs bigger stakes before the rounding stops
-          mattering.
+          {cheapRaw.toFixed(2)} before rounding and is paid as {fmtLt(landForFight(cheapFee))} LT.
+          So per GP staked, the cheap rung is actually the <em>better</em> land deal right now —
+          about {cheapBetterPct}% better, which is backwards and worth reporting. The curve
+          underneath is still steeper than a straight line; it just needs bigger stakes before the
+          rounding stops mattering.
         </p>
       )}
 
@@ -260,9 +271,10 @@ export default function LandPage() {
       <p>
         The championships do not use the curve above at all. Each crown has a{" "}
         <strong>fixed pot of land</strong> set in advance — {wholeLt(PINTAKASI.LAND_POT)} LT for a
-        Pintakasi Major, {wholeLt(JUVENILE_MAJOR.LAND_POT)} LT for a Juvenile Championship — and that
-        pot is divided <strong>evenly across every fight actually fought in the bracket</strong>. Your
-        bird&apos;s share is simply its own fights divided by all of them.
+        Pintakasi Major, {wholeLt(JUVENILE_MAJOR.LAND_POT)} LT for a Juvenile Championship — and
+        that pot is divided{" "}
+        <strong>evenly across every fight actually fought in the bracket</strong>. Your bird&apos;s
+        share is simply its own fights divided by all of them.
       </p>
       <p>That one sentence has three consequences, and all three are meant:</p>
       <ul>
@@ -271,8 +283,8 @@ export default function LandPage() {
           weighted, nothing is a bonus — it is just counting.
         </li>
         <li>
-          <strong>A bye earns nothing.</strong> If the field was short and your bird skipped a round,
-          that round bought it no land, because a bye is not a fight.
+          <strong>A bye earns nothing.</strong> If the field was short and your bird skipped a
+          round, that round bought it no land, because a bye is not a fight.
         </li>
         <li>
           <strong>A thin field pays each bird more.</strong> The pot is the same size whether{" "}
@@ -297,11 +309,11 @@ export default function LandPage() {
               <tr key={r.mine}>
                 <td className="num">{r.mine}</td>
                 <td>
-                  {r.mine === 1
-                    ? "Lost its first fight"
-                    : r.mine === majorLand.length
-                      ? "The champion and the runner-up — both fought every round"
-                      : `Won ${r.mine - 1}, then lost`}
+                  {fightsLabel(
+                    r.mine,
+                    majorLand.length,
+                    "The champion and the runner-up — both fought every round"
+                  )}
                 </td>
                 {/* Pot shares are hundredths like every land figure since round
                     36 — format, never print raw. */}
@@ -312,16 +324,16 @@ export default function LandPage() {
         </table>
       </div>
       <div className="callout tip">
-        <b>The champion and the runner-up take the same land.</b> Land counts{" "}
-        <em>fights</em>, not wins — and both of them fought every round. The purse is what separates
-        them (see <Link href="/wiki/pintakasi">The Pintakasi</Link>); the land does not care who won.
+        <b>The champion and the runner-up take the same land.</b> Land counts <em>fights</em>, not
+        wins — and both of them fought every round. The purse is what separates them (see{" "}
+        <Link href="/wiki/pintakasi">The Pintakasi</Link>); the land does not care who won.
       </div>
       <div className="callout tip">
-        <b>What a quiet crown is worth.</b> Take that same {wholeLt(PINTAKASI.LAND_POT)} LT pot and a
-        field of only {thinBracket} birds. Now the bracket runs {thinBracket - 1} fights instead of{" "}
-        {majorBracket - 1}, so losing your first fight pays {fmtLt(thinOneFight.cents)} LT — against{" "}
-        {fmtLt(majorOneFight.cents)} LT in the full field. Same pot, fewer ways to split it. If a
-        crown looks empty on the board, that is an argument for entering, not against.
+        <b>What a quiet crown is worth.</b> Take that same {wholeLt(PINTAKASI.LAND_POT)} LT pot and
+        a field of only {thinBracket} birds. Now the bracket runs {thinBracket - 1} fights instead
+        of {majorBracket - 1}, so losing your first fight pays {fmtLt(thinOneFight.cents)} LT —
+        against {fmtLt(majorOneFight.cents)} LT in the full field. Same pot, fewer ways to split it.
+        If a crown looks empty on the board, that is an argument for entering, not against.
       </div>
       <p className="dim">
         The Wednesday Juvenile Championship works exactly the same way off its own smaller pot: in a
@@ -336,10 +348,10 @@ export default function LandPage() {
         curve <em>and</em> hand every eliminated bird a consolation grant that got{" "}
         <em>bigger the earlier it fell</em> — so a first-round loser could bank more land than the
         champion. Two scales that nobody had priced against each other. One pot cannot invert like
-        that, because it is one division of one number. A first-round exit at a Major now simply takes
-        the smallest share on the board — {fmtLt(majorOneFight.cents)} LT of a{" "}
-        {wholeLt(PINTAKASI.LAND_POT)} LT pot, still a great deal of land — and the deep run is the one
-        that pays most.
+        that, because it is one division of one number. A first-round exit at a Major now simply
+        takes the smallest share on the board — {fmtLt(majorOneFight.cents)} LT of a{" "}
+        {wholeLt(PINTAKASI.LAND_POT)} LT pot, still a great deal of land — and the deep run is the
+        one that pays most.
       </p>
 
       <h3>Gacha and buying outright</h3>
@@ -357,9 +369,9 @@ export default function LandPage() {
               <td>Every gacha roll</td>
               <td className="num">{wholeLt(LAND.PER_GACHA_ROLL)} LT</td>
               <td>
-                Free or paid — every roll pays land, whatever else drops. The{" "}
-                {ECONOMY.BUNDLE_ROLLS}-roll bundle pays for all {ECONOMY.BUNDLE_ROLLS} of its rolls
-                ({wholeLt(LAND.PER_GACHA_ROLL * ECONOMY.BUNDLE_ROLLS)} LT), banked as one line in
+                Free or paid — every roll pays land, whatever else drops. The {ECONOMY.BUNDLE_ROLLS}
+                -roll bundle pays for all {ECONOMY.BUNDLE_ROLLS} of its rolls (
+                {wholeLt(LAND.PER_GACHA_ROLL * ECONOMY.BUNDLE_ROLLS)} LT), banked as one line in
                 your ledger rather than {ECONOMY.BUNDLE_ROLLS} separate ones.
               </td>
             </tr>
@@ -397,16 +409,17 @@ export default function LandPage() {
       <div className="callout warn">
         <b>Standing a rooster at stud costs {wholeLt(COVERS.STUD_LISTING_LT)} LT.</b> Opening a
         retired rooster&apos;s public cover slots for the first time spends{" "}
-        {wholeLt(COVERS.STUD_LISTING_LT)} Land Tokens outright — not staked, not refundable, gone. Re-listing him later, after pulling him
-        from the barn, is free; the land bought the seat once, not a subscription. See{" "}
-        <Link href="/wiki/breeding">Breeding</Link> for the full mechanic.
+        {wholeLt(COVERS.STUD_LISTING_LT)} Land Tokens outright — not staked, not refundable, gone.
+        Re-listing him later, after pulling him from the barn, is free; the land bought the seat
+        once, not a subscription. See <Link href="/wiki/breeding">Breeding</Link> for the full
+        mechanic.
       </div>
       <p>
         Why a stud, of everything in the game: it&apos;s the best asset there is. It earns on every
-        outside cover, it makes the birds, and its own owner still breeds through it on the
-        reserved slots at nothing above the ordinary fee. A gate that desirable is worth paying
-        land for — and it puts every barn in the same choice: stake land for yield, or spend it to
-        open an income stream. That choice is exactly what a sink is for.
+        outside cover, it makes the birds, and its own owner still breeds through it on the reserved
+        slots at nothing above the ordinary fee. A gate that desirable is worth paying land for —
+        and it puts every barn in the same choice: stake land for yield, or spend it to open an
+        income stream. That choice is exactly what a sink is for.
       </p>
 
       <h2>The second sink — expanding the barn</h2>
@@ -415,26 +428,30 @@ export default function LandPage() {
         that breeds seriously will eventually need more room. Each expansion adds{" "}
         {BARN.EXPANSION_SLOTS} slots, and the price <strong>climbs</strong>: the first costs{" "}
         {wholeLt(nextExpansionCost(0))} LT, the second {wholeLt(nextExpansionCost(1))}, the third{" "}
-        {wholeLt(nextExpansionCost(2))}, and so on. Like the stud seat, the land is spent outright
-        — not staked, not refundable, gone.
+        {wholeLt(nextExpansionCost(2))}, and so on. Like the stud seat, the land is spent outright —
+        not staked, not refundable, gone.
       </p>
       <p>
-        Why it climbs instead of sitting at one price: a leading stable earns four figures of land
-        a day, so a flat price would stop being a decision after the first month. And why it
-        matters that it&apos;s land: nearly all of a stable&apos;s tokens are normally staked, so
-        expanding means unstaking — giving up that land&apos;s share of every future payout. The
-        slots aren&apos;t the real price. The yield is.
+        Why it climbs instead of sitting at one price: a leading stable earns four figures of land a
+        day, so a flat price would stop being a decision after the first month. And why it matters
+        that it&apos;s land: nearly all of a stable&apos;s tokens are normally staked, so expanding
+        means unstaking — giving up that land&apos;s share of every future payout. The slots
+        aren&apos;t the real price. The yield is.
       </p>
 
       <h2>Staking — the heart of the page</h2>
       <p>
         Liquid LT just sits in your barn. <strong>Staked</strong> LT earns a pro-rata share of a
-        shared pool, paid out to every staker every single game-day at the tick. &ldquo;Pro-rata&rdquo;
-        means simply this: your share of today&apos;s payout equals your share of all the land
-        currently staked, by anyone, in the whole game. Own 10% of the staked land in the world and
-        you take home 10% of whatever the pool holds today. Nothing more complicated than that.
+        shared pool, paid out to every staker every single game-day at the tick.
+        &ldquo;Pro-rata&rdquo; means simply this: your share of today&apos;s payout equals your
+        share of all the land currently staked, by anyone, in the whole game. Own 10% of the staked
+        land in the world and you take home 10% of whatever the pool holds today. Nothing more
+        complicated than that.
       </p>
-      <p>Nearly every GP that changes hands in the game feeds that pool. Here is every inflow, computed live:</p>
+      <p>
+        Nearly every GP that changes hands in the game feeds that pool. Here is every inflow,
+        computed live:
+      </p>
       <div className="tablewrap">
         <table>
           <thead>
@@ -474,9 +491,9 @@ export default function LandPage() {
               <td className="num">{(STAKER_FLOWS.LAND_PURCHASE_SHARE * 100).toFixed(0)}%</td>
               <td>
                 Buying the full {wholeLt(LAND.DAILY_BUY_CAP)} LT daily cap costs{" "}
-                {exampleLandPurchaseGp.toLocaleString()} GP — all {fmtGp(exampleLandPurchaseCents)} GP of it goes
-                straight to the pool. When someone buys land, the people already holding it get
-                paid for the dilution.
+                {exampleLandPurchaseGp.toLocaleString()} GP — all {fmtGp(exampleLandPurchaseCents)}{" "}
+                GP of it goes straight to the pool. When someone buys land, the people already
+                holding it get paid for the dilution.
               </td>
             </tr>
           </tbody>
@@ -493,9 +510,9 @@ export default function LandPage() {
       <div className="callout tip">
         <b>A worked example.</b> Say the pool holds {poolGp} GP today, and your staked land is{" "}
         {(yourShareOfPool * 100).toFixed(0)}% of all the LT staked in the game. At tonight&apos;s
-        tick you get {(yourShareOfPool * 100).toFixed(0)}% of {poolGp} GP — {yourPayoutGp.toFixed(2)}{" "}
-        GP, credited straight to your wallet. Every other staker gets paid the exact same way, off
-        the exact same pool, at the exact same moment.
+        tick you get {(yourShareOfPool * 100).toFixed(0)}% of {poolGp} GP —{" "}
+        {yourPayoutGp.toFixed(2)} GP, credited straight to your wallet. Every other staker gets paid
+        the exact same way, off the exact same pool, at the exact same moment.
       </div>
       <p className="dim">
         Payouts are floored to the whole cent per farm. Whatever fraction of a cent is left over
@@ -506,9 +523,9 @@ export default function LandPage() {
       <h2>Stake it immediately</h2>
       <div className="callout warn">
         <b>Liquid land earns nothing. None. Zero.</b> Staking costs nothing to do, and you can
-        unstake any time you want your land back to spend or hold liquid. There is no reason —
-        ever — to leave LT sitting unstaked in your barn. Every game-day it sits idle is a payout
-        you didn&apos;t collect and can never get back. Stake it the moment you earn it.
+        unstake any time you want your land back to spend or hold liquid. There is no reason — ever
+        — to leave LT sitting unstaked in your barn. Every game-day it sits idle is a payout you
+        didn&apos;t collect and can never get back. Stake it the moment you earn it.
       </div>
       <p className="dim">
         Staking and unstaking work in whole tokens, so the odd fraction on the end of your balance
@@ -520,15 +537,15 @@ export default function LandPage() {
       <p>
         This used to be a thin loop. Staking once paid out of breed-cover fees only, and nothing
         else — and when the designer actually measured it, ten farms staking over 10,000 LT between
-        them earned about 56 GP <em>combined</em>, across 35 game-days. That is not a reason to
-        hold land. It is a reason to ignore it.
+        them earned about 56 GP <em>combined</em>, across 35 game-days. That is not a reason to hold
+        land. It is a reason to ignore it.
       </p>
       <p>
-        The fix was not a bigger number on one flow — it was more flows. The claiming tag, the
-        gacha spend, the breed cover, and every land purchase all pay the pool now. (Round 23
-        pulled the fight pot back out again — see above — but the other flows are exactly why the
-        pool survived that without going thin again.) The intent is plain: make land worth
-        holding, so that players play <strong>for</strong> it, not just around it.
+        The fix was not a bigger number on one flow — it was more flows. The claiming tag, the gacha
+        spend, the breed cover, and every land purchase all pay the pool now. (Round 23 pulled the
+        fight pot back out again — see above — but the other flows are exactly why the pool survived
+        that without going thin again.) The intent is plain: make land worth holding, so that
+        players play <strong>for</strong> it, not just around it.
       </p>
 
       <h2>Is it worth it?</h2>
@@ -543,13 +560,13 @@ export default function LandPage() {
           an empty pool, and an empty pool pays nothing, however much you have staked.
         </li>
         <li>
-          Every new LT minted — by fighting, by the gacha, by anyone buying land — dilutes
-          everybody else&apos;s share of the same pool. Your 10% today can become 9% tomorrow if
-          the total staked grows faster than your own stake does.
+          Every new LT minted — by fighting, by the gacha, by anyone buying land — dilutes everybody
+          else&apos;s share of the same pool. Your 10% today can become 9% tomorrow if the total
+          staked grows faster than your own stake does.
         </li>
         <li>
-          There is no floor and no guarantee. The pool has been thin before (see above) and could
-          be again if activity drops. What changed round 22 is how many taps feed it, not a promise
+          There is no floor and no guarantee. The pool has been thin before (see above) and could be
+          again if activity drops. What changed round 22 is how many taps feed it, not a promise
           about how full it stays.
         </li>
       </ul>

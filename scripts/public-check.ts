@@ -17,10 +17,7 @@ import { existsSync } from "node:fs";
 function trackedFiles(): string[] {
   const result = Bun.spawnSync(["git", "ls-files", "-z"]);
   if (result.exitCode !== 0) throw new Error("git ls-files failed");
-  return Buffer.from(result.stdout)
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean);
+  return Buffer.from(result.stdout).toString("utf8").split("\0").filter(Boolean);
 }
 
 const forbiddenPaths = [

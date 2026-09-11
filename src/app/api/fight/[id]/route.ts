@@ -40,7 +40,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const replay = replayFight(db(), battleLogId);
   if (!replay)
     return NextResponse.json(
-      { error: `Fight #${battleLogId} cannot be replayed — the archive is missing a bird or the other half of the bout.` },
+      {
+        error: `Fight #${battleLogId} cannot be replayed — the archive is missing a bird or the other half of the bout.`,
+      },
       { status: 404 }
     );
 

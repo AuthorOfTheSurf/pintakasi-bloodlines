@@ -68,11 +68,15 @@ export interface Topline {
  */
 function countRows(db: DB, table: SQLiteTable, where?: SQL): number {
   const q = db.select({ n: count() }).from(table);
-  return (where ? q.where(where) : q).get()!.n;
+  const row = (where ? q.where(where) : q).get();
+  // An aggregate with no GROUP BY always yields exactly one row, even over an empty table.
+  if (!row) throw new Error("count(*) returned no row");
+  return row.n;
 }
 
 export function computeTopline(db: DB): Topline {
-  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) throw new Error("game_state row 1 missing — the world was never seeded");
   const allFarms = db.select().from(farms).all();
   // ⚠ `allBirds` IS GONE (round 43) — this used to read the WHOLE birds table to
   // produce four numbers, and round 35's lesson below applies to it word for
@@ -183,8 +187,11 @@ export function gpFromFaucetsCents(db: DB): number {
   // The genesis juice is a pool_accrual rather than a wallet credit, so it
   // carries no gpCents — its amount lives in the event's data payload.
   const genesis = ev
-    .filter((e) => e.type === "pool_accrual" && e.data)
-    .map((e) => JSON.parse(e.data!) as { juicePoolCents?: number; source?: string })
+    .flatMap((e) =>
+      e.type === "pool_accrual" && e.data
+        ? [JSON.parse(e.data) as { juicePoolCents?: number; source?: string }]
+        : []
+    )
     .filter((d) => d.source === "genesis")
     .reduce((s, d) => s + (d.juicePoolCents ?? 0), 0);
   return sumOf("farm_registered") + sumOf("check_in") + genesis;
@@ -218,7 +225,11 @@ export function stakingBook(db: DB): StakingBook {
     });
   }
   return {
-    totalStakedLand: db.select().from(farms).all().reduce((s, f) => s + f.stakedLandCents, 0),
+    totalStakedLand: db
+      .select()
+      .from(farms)
+      .all()
+      .reduce((s, f) => s + f.stakedLandCents, 0),
     totalPaidCents: [...byFarm.values()].reduce((s, p) => s + p.cents, 0),
     payoutDays: days.size,
     byFarm,

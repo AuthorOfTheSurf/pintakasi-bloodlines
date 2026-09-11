@@ -2,7 +2,7 @@
 
 The fleet has two loops at two speeds. The **player** is in the tick — a local
 model, 14+ wakes a day, cheap and fast, reading its morning brief and moving.
-The **coach** is out of the tick — big, slow, smart, *rare*. It never plays a
+The **coach** is out of the tick — big, slow, smart, _rare_. It never plays a
 turn: it reads the paper trail, forms a judgement about each barn's week, and
 writes new **standing orders** via `tune`. The expensive model's intelligence
 gets compiled into cheap sentences the local model executes all week.
@@ -86,6 +86,7 @@ read-only).
 > orders (under 60 words), or the word KEEP.
 >
 > Rules for good orders:
+>
 > - State goals and priorities, never mechanics — the player knows the rules.
 > - Name what the paper trail shows it under- or over-doing.
 > - One personality per barn; keep its existing creed unless it's losing.

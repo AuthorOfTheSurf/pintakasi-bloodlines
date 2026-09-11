@@ -112,8 +112,8 @@ export default function LadderPage() {
       </p>
 
       <div className="callout">
-        <b>The one-line version.</b> An open night costs {feeMultiple.toFixed(1)}× a maiden night and
-        mints {landMultiple.toFixed(1)}× the <Link href="/wiki/land">Land Tokens</Link>. Pay{" "}
+        <b>The one-line version.</b> An open night costs {feeMultiple.toFixed(1)}× a maiden night
+        and mints {landMultiple.toFixed(1)}× the <Link href="/wiki/land">Land Tokens</Link>. Pay{" "}
         {feeMultiple.toFixed(1)} times as much, get {landMultiple.toFixed(1)} times as much. That is
         the deal, and it is the same shape at every step of the ladder.
       </div>
@@ -153,9 +153,7 @@ export default function LadderPage() {
               <tr key={r.label}>
                 <td>{r.label}</td>
                 <td>{r.who}</td>
-                <td className="num">
-                  {r.label === "nw3" ? "—" : `${r.juvenile} GP`}
-                </td>
+                <td className="num">{r.label === "nw3" ? "—" : `${r.juvenile} GP`}</td>
                 <td className="num">{r.real} GP</td>
               </tr>
             ))}
@@ -164,10 +162,10 @@ export default function LadderPage() {
       </div>
       <p className="dim">
         The discovery year has no nw3 class — a one-year-old hasn&apos;t fought long enough to have
-        the record it sorts by — so that cell is empty rather than cheap. And maiden and nw3 cost the
-        same money on purpose: a group stage hands out up to {FIGHTS_PER_GROUP_BIRD} fights a night,
-        so most birds graduate out of maiden almost at once, and charging the two rungs apart would
-        just tax an accident of timing.
+        the record it sorts by — so that cell is empty rather than cheap. And maiden and nw3 cost
+        the same money on purpose: a group stage hands out up to {FIGHTS_PER_GROUP_BIRD} fights a
+        night, so most birds graduate out of maiden almost at once, and charging the two rungs apart
+        would just tax an accident of timing.
       </p>
       <div className="callout tip">
         <b>Every price divides by {FIGHTS_PER_GROUP_BIRD}.</b> One entry buys a group of up to{" "}
@@ -181,8 +179,9 @@ export default function LadderPage() {
       <h2>What the extra money buys</h2>
       <p>
         Land. Your bird earns <Link href="/wiki/land">Land Tokens</Link> on the total it risked in a
-        night, win or lose, and the curve underneath is <strong>steeper than a straight line</strong>.
-        Doubling the stake more than doubles the land.
+        night, win or lose, and the curve underneath is{" "}
+        <strong>steeper than a straight line</strong>. Doubling the stake more than doubles the
+        land.
       </p>
       <div className="tablewrap">
         <table>
@@ -211,17 +210,17 @@ export default function LadderPage() {
       <p>
         Read the last column from top to bottom. It never falls, and from the cheapest night in the
         game to the dearest it climbs by about{" "}
-        {Math.round((landPerGp(dearest) / landPerGp(cheapest) - 1) * 100)}%. That is the incentive in
-        one number: the dearer the company, the more land each peso you risked comes back as. A cheap
-        fight is cheap in every sense.
+        {Math.round((landPerGp(dearest) / landPerGp(cheapest) - 1) * 100)}%. That is the incentive
+        in one number: the dearer the company, the more land each peso you risked comes back as. A
+        cheap fight is cheap in every sense.
       </p>
       <div className="callout tip">
         <b>Why land and not prize money.</b> Prize money comes out of the other bird&apos;s pocket —
         a fight pot is just the two stakes, so the game cannot pay you more for climbing without
-        taking it off somebody. Land is <em>minted</em>. So land is the lever the game uses to reward
-        a decision, and 1 Land Token is minted per {LAND.FEE_PER_TOKEN} GP risked at the bottom of the
-        curve and rather more than that further up. See <Link href="/wiki/land">Land Tokens</Link> for
-        what land is actually worth to you.
+        taking it off somebody. Land is <em>minted</em>. So land is the lever the game uses to
+        reward a decision, and 1 Land Token is minted per {LAND.FEE_PER_TOKEN} GP risked at the
+        bottom of the curve and rather more than that further up. See{" "}
+        <Link href="/wiki/land">Land Tokens</Link> for what land is actually worth to you.
       </div>
 
       <h2>Why the open is the dearest fight on the card</h2>
@@ -234,9 +233,9 @@ export default function LadderPage() {
         Your bird&apos;s six stats are hidden for its whole fighting career (see{" "}
         <Link href="/wiki/birds">Birds &amp; stats</Link>). All you ever get is how it performs. So
         the most valuable thing you can buy in this game is a straight answer about how good your
-        bird really is — and the only place to buy that answer is against the best company available.
-        If a one-year-old can win in the open at a given blade, you know something about it that no
-        amount of beating maidens will ever tell you.
+        bird really is — and the only place to buy that answer is against the best company
+        available. If a one-year-old can win in the open at a given blade, you know something about
+        it that no amount of beating maidens will ever tell you.
       </p>
       <div className="callout tip">
         <b>The most expensive discovery in the game, on purpose.</b> A juvenile open night is{" "}
@@ -247,9 +246,9 @@ export default function LadderPage() {
 
       <h2>Priced against the cost of a bird</h2>
       <p>
-        Every number above was set against one anchor: the {ECONOMY.BREED_FEE} GP it costs to breed a
-        bird (see <Link href="/wiki/breeding">Breeding</Link>). The rule the designer wanted is short
-        — <strong>a body is cheap and a night is dear</strong>.
+        Every number above was set against one anchor: the {ECONOMY.BREED_FEE} GP it costs to breed
+        a bird (see <Link href="/wiki/breeding">Breeding</Link>). The rule the designer wanted is
+        short — <strong>a body is cheap and a night is dear</strong>.
       </p>
       <div className="tablewrap">
         <table>
@@ -280,8 +279,8 @@ export default function LadderPage() {
         </table>
       </div>
       <p>
-        Why that way round: a bird that can actually win should earn back what it cost to create in a
-        night or two of good company. That makes a good bird worth a lot more than the price of a
+        Why that way round: a bird that can actually win should earn back what it cost to create in
+        a night or two of good company. That makes a good bird worth a lot more than the price of a
         cover — which is what makes birds worth breeding, worth buying, and worth arguing about. And
         it means your GP goes on <em>fighting</em> rather than on collecting animals you never card.
       </p>
@@ -289,27 +288,24 @@ export default function LadderPage() {
       <h2>The discovery year is half price</h2>
       <p>
         Look down the two fee columns again: every juvenile rung is exactly half its grown twin. A
-        one-year-old is still learning what it is, and the season it learns in should not cost what a
-        veteran&apos;s does. Age {AGE.CHICK} is the only year a bird&apos;s results don&apos;t follow
-        it forever, so it is the right year to experiment in — and the price says so.
+        one-year-old is still learning what it is, and the season it learns in should not cost what
+        a veteran&apos;s does. Age {AGE.CHICK} is the only year a bird&apos;s results don&apos;t
+        follow it forever, so it is the right year to experiment in — and the price says so.
       </p>
       <p>
-        Keeping it exactly half is a deliberate choice rather than a rounding. It makes &ldquo;campaign
-        this bird hard as a juvenile&rdquo; a real economic decision, not a difference you&apos;d never
-        notice.
+        Keeping it exactly half is a deliberate choice rather than a rounding. It makes
+        &ldquo;campaign this bird hard as a juvenile&rdquo; a real economic decision, not a
+        difference you&apos;d never notice.
       </p>
       <div className="callout warn">
-        <b>But a juvenile is not cheap to sell.</b> Claiming tags are the{" "}
-        <em>same ladder</em> for both seasons — {CLAIMER.PRICES.join(" / ")} GP — because a
-        one-year-old that has campaigned has real earnings behind it and is worth a grown bird&apos;s
-        price. Half the entry fee, full price on the animal. See{" "}
-        <Link href="/wiki/claiming">Claiming</Link>.
+        <b>But a juvenile is not cheap to sell.</b> Claiming tags are the <em>same ladder</em> for
+        both seasons — {CLAIMER.PRICES.join(" / ")} GP — because a one-year-old that has campaigned
+        has real earnings behind it and is worth a grown bird&apos;s price. Half the entry fee, full
+        price on the animal. See <Link href="/wiki/claiming">Claiming</Link>.
       </div>
 
       <h2>Above the ladder: the crowns</h2>
-      <p>
-        The championships sit above every rung on the card, and they are priced above them too.
-      </p>
+      <p>The championships sit above every rung on the card, and they are priced above them too.</p>
       <div className="tablewrap">
         <table>
           <thead>
@@ -341,11 +337,10 @@ export default function LadderPage() {
       </div>
       <p>
         The juvenile crown used to be free. It stopped being free the moment the ladder got priced,
-        and for a simple reason: once a juvenile open night costs{" "}
-        {feeFor("juvenile", "open")} GP, a free championship would be the{" "}
-        <em>cheapest</em> serious fight a one-year-old could take. The best stage in the discovery
-        year, at no cost, while an ordinary Tuesday cost real money — exactly backwards. It is{" "}
-        {JUVENILE_MAJOR.ENTRY_FEE} GP now, which is still less than{" "}
+        and for a simple reason: once a juvenile open night costs {feeFor("juvenile", "open")} GP, a
+        free championship would be the <em>cheapest</em> serious fight a one-year-old could take.
+        The best stage in the discovery year, at no cost, while an ordinary Tuesday cost real money
+        — exactly backwards. It is {JUVENILE_MAJOR.ENTRY_FEE} GP now, which is still less than{" "}
         {(JUVENILE_MAJOR.ENTRY_FEE / feeFor("juvenile", "maiden")).toFixed(1)}× a juvenile maiden
         night. Read <Link href="/wiki/pintakasi">The Pintakasi</Link> for what the crowns pay.
       </p>
@@ -361,8 +356,8 @@ export default function LadderPage() {
           don&apos;t follow the bird, and the open class is where the honest answers live.
         </li>
         <li>
-          <strong>Card a good bird up.</strong> If it keeps winning, the dearer class pays for itself
-          twice — bigger pots and disproportionately more land.
+          <strong>Card a good bird up.</strong> If it keeps winning, the dearer class pays for
+          itself twice — bigger pots and disproportionately more land.
         </li>
         <li>
           <strong>Use claimers when you&apos;re unsure.</strong> The cheapest fight in the game is a

@@ -50,13 +50,13 @@ export default function WikiHome() {
           {FIGHTS_PER_GROUP_BIRD} fights off one entry.
         </li>
         <li>
-          <strong>Fight up.</strong> Harder classes cost more — {cheapestNight} GP to{" "}
-          {dearestNight} GP a night — and pay back more than the extra money. Climbing is the whole
-          shape of a career. <Link href="/wiki/ladder">What each class costs →</Link>
+          <strong>Fight up.</strong> Harder classes cost more — {cheapestNight} GP to {dearestNight}{" "}
+          GP a night — and pay back more than the extra money. Climbing is the whole shape of a
+          career. <Link href="/wiki/ladder">What each class costs →</Link>
         </li>
         <li>
-          <strong>Bank the land.</strong> Win or lose, both fighters earn Land Tokens. Stake them and
-          they pay you GP every day, forever.
+          <strong>Bank the land.</strong> Win or lose, both fighters earn Land Tokens. Stake them
+          and they pay you GP every day, forever.
         </li>
         <li>
           <strong>Chase a Major.</strong> Thursday&apos;s Pintakasi Majors are open to any age-
@@ -86,8 +86,10 @@ export default function WikiHome() {
         <div className="minicard">
           <b>Land Tokens (LT)</b>
           The one you keep. Minted by fighting, never sellable, and{" "}
-          <strong>staked land earns a share of nearly every GP that changes hands in the world</strong>.{" "}
-          <Link href="/wiki/land">How land works →</Link>
+          <strong>
+            staked land earns a share of nearly every GP that changes hands in the world
+          </strong>
+          . <Link href="/wiki/land">How land works →</Link>
         </div>
       </div>
 
@@ -97,8 +99,7 @@ export default function WikiHome() {
         never change after hatching — and they stay <strong>hidden</strong> for the whole fighting
         career, revealed only at retirement. Until then you read the bird&apos;s figures and its
         scout report, not its sheet. A barn starts with {BARN.CAPACITY} slots and grows for Land
-        Tokens.{" "}
-        <Link href="/wiki/birds">The full anatomy →</Link>
+        Tokens. <Link href="/wiki/birds">The full anatomy →</Link>
       </p>
 
       <h2>The week</h2>
@@ -154,8 +155,8 @@ export default function WikiHome() {
         <div className="minicard">
           <b>Want to win money?</b>
           <Link href="/wiki/fighting">Fighting</Link> explains the five blades and how to read a Pit
-          Figure — the whole skill of the game. Then{" "}
-          <Link href="/wiki/ladder">Fighting up</Link> for where to spend it.
+          Figure — the whole skill of the game. Then <Link href="/wiki/ladder">Fighting up</Link>{" "}
+          for where to spend it.
         </div>
         <div className="minicard">
           <b>Playing the long game?</b>

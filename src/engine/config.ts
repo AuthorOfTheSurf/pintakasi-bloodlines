@@ -60,8 +60,12 @@ export type StatName = (typeof STAT_NAMES)[number];
  * STAT_NAMES' first four and the weight matrix's own keys, so the two cannot
  * drift apart in silence.
  */
-export const DISTANCE_STATS = ["agility", "sight", "stamina", "gameness"] as const satisfies
-  readonly StatName[];
+export const DISTANCE_STATS = [
+  "agility",
+  "sight",
+  "stamina",
+  "gameness",
+] as const satisfies readonly StatName[];
 export type DistanceStat = (typeof DISTANCE_STATS)[number];
 
 /**
@@ -1916,11 +1920,11 @@ export function purseShareOf(
   const rounds = Math.log2(bracketSize);
   let totalWeight = 0;
   for (let r = 1; r <= rounds; r++) totalWeight += (bracketSize / 2 ** r) * m ** (r - 1);
+  const bonusPay = { champion: purse.CHAMPION, runnerUp: purse.RUNNER_UP, none: 0 }[bonus];
   return (
     // 1 + m + … + m^(wins-1) — the geometric sum, which is `wins` itself when
     // the multiplier is 1 and 2^wins − 1 at the old doubling.
-    (purse.ADVANCEMENT * (m === 1 ? wins : (m ** wins - 1) / (m - 1))) / totalWeight +
-    (bonus === "champion" ? purse.CHAMPION : bonus === "runnerUp" ? purse.RUNNER_UP : 0)
+    (purse.ADVANCEMENT * (m === 1 ? wins : (m ** wins - 1) / (m - 1))) / totalWeight + bonusPay
   );
 }
 
@@ -1980,12 +1984,28 @@ export const CADENCE = {
 // ⚠ Three Handbook pages still keep private copies of this array. They are
 // identical today; if this one is ever reordered they will silently disagree.
 export const DAY_NAMES = [
-  "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
 ] as const;
 
 export const FARM_COLORS = [
-  "red", "orange", "yellow", "green", "teal", "blue",
-  "purple", "pink", "brown", "black", "white", "gold",
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "teal",
+  "blue",
+  "purple",
+  "pink",
+  "brown",
+  "black",
+  "white",
+  "gold",
 ] as const;
 export type FarmColor = (typeof FARM_COLORS)[number];
 

@@ -45,7 +45,10 @@ describe("a seeded world replays whole", () => {
         .select()
         .from(events)
         .all()
-        .map((e) => `${e.dayIndex}|${e.type}|${e.farmId ?? ""}|${e.gpCents ?? ""}|${e.lt ?? ""}|${e.message}`);
+        .map(
+          (e) =>
+            `${e.dayIndex}|${e.type}|${e.farmId ?? ""}|${e.gpCents ?? ""}|${e.lt ?? ""}|${e.message}`
+        );
     } finally {
       seedWorld(null); // never leak a pinned stream into other tests
     }

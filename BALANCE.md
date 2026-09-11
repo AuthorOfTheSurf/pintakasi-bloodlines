@@ -47,13 +47,13 @@ Round 26 hit the 80/98 targets only at B3 — the ends deviated because turn
 count amplifies stats, and one divisor can't fix five blades. `statScale`
 (1.5 / 1.15 / 1.0 / 0.9 / 0.8 across B1–B5) is that fix. At 4,000 runs:
 
-| blade | +100 wins (was, r26) | +200 wins (was, r26) | target |
-|---|---|---|---|
-| B1 | 76.3% (69.1) | 91.8% (84.9) | 80 / 98 — the one remaining ⚠ |
-| B2 | 77.2% (74.8) | 93.1% (91.6) | ✓ |
-| **B3** | **83.7%** (82.9) | **97.0%** (97.4) | **✓ the reference point** |
-| B4 | 84.9% (87.5) | 97.6% (98.8) | ✓ |
-| B5 | 84.6% (—) | 98.0% (—) | ✓ |
+| blade  | +100 wins (was, r26) | +200 wins (was, r26) | target                        |
+| ------ | -------------------- | -------------------- | ----------------------------- |
+| B1     | 76.3% (69.1)         | 91.8% (84.9)         | 80 / 98 — the one remaining ⚠ |
+| B2     | 77.2% (74.8)         | 93.1% (91.6)         | ✓                             |
+| **B3** | **83.7%** (82.9)     | **97.0%** (97.4)     | **✓ the reference point**     |
+| B4     | 84.9% (87.5)         | 97.6% (98.8)         | ✓                             |
+| B5     | 84.6% (—)            | 98.0% (—)            | ✓                             |
 
 B1's +200 miss (91.8 vs 98) is a variance floor, not a tuning error: five
 turns of 2d6 plus a 2.5× Tari Strike simply cannot deliver 98% — pushing
@@ -65,14 +65,14 @@ is written down.
 
 The sensitivity matrix (+200 on one stat vs flat, 4,000 runs):
 
-| stat | B1 | B2 | B3 | B4 | B5 |
-|---|---|---|---|---|---|
-| agility | **75.5** | 63.8 | 68.2 | 57.6 | 54.6 |
-| sight | 65.9 | **74.2** | 68.2 | 60.8 | 57.5 |
-| stamina | 56.1 | 59.6 | 68.2 | **80.9** | 71.2 |
-| gameness | 55.1 | 58.7 | 67.8 | 71.9 | **86.8** |
-| station | 50.0 | 50.0 | 50.0 | 50.0 | 50.0 |
-| condition | 51.6 | 51.8 | 52.4 | 51.7 | 52.3 |
+| stat      | B1       | B2       | B3   | B4       | B5       |
+| --------- | -------- | -------- | ---- | -------- | -------- |
+| agility   | **75.5** | 63.8     | 68.2 | 57.6     | 54.6     |
+| sight     | 65.9     | **74.2** | 68.2 | 60.8     | 57.5     |
+| stamina   | 56.1     | 59.6     | 68.2 | **80.9** | 71.2     |
+| gameness  | 55.1     | 58.7     | 67.8 | 71.9     | **86.8** |
+| station   | 50.0     | 50.0     | 50.0 | 50.0     | 50.0     |
+| condition | 51.6     | 51.8     | 52.4 | 51.7     | 52.3     |
 
 One key stat per off-center blade, every stat live on every blade (the old
 engine had gameness structurally DEAD on B1 — its phase started at turn 11 of
@@ -98,16 +98,16 @@ The old plumbing — wind pool per stamina point, per-turn decay — is gone.
 Uniform 100 wind, and stamina's two new routes measured separately (`fuel`):
 
 | blade | whole lift | direct weight alone | fuel wall alone |
-|---|---|---|---|
-| B1 | +5.9 | +5.9 | −0.6 |
-| B2 | +10.3 | +10.3 | −0.7 |
-| B3 | +17.5 | +14.0 | +3.9 |
-| B4 | +30.3 | +27.8 | +2.3 |
-| B5 | +20.9 | +19.0 | −0.2 |
+| ----- | ---------- | ------------------- | --------------- |
+| B1    | +5.9       | +5.9                | −0.6            |
+| B2    | +10.3      | +10.3               | −0.7            |
+| B3    | +17.5      | +14.0               | +3.9            |
+| B4    | +30.3      | +27.8               | +2.3            |
+| B5    | +20.9      | +19.0               | −0.2            |
 
 Honest verdict: the **weight** carries stamina's value; the **wall** adds
 2–4 points on the middle blades and ~nothing at the ends — at B1/B2 no tank
-ever empties (0% of fights reach the wall), and at B5 *everyone* is blown by
+ever empties (0% of fights reach the wall), and at B5 _everyone_ is blown by
 the end (99.5% of fights pass a starter's 12.9 fuel turns), so marginal fuel
 turns matter most at B3/B4 (37% / 85% wall rates). The wall's real product is
 structure: the "X is blown — running on heart" beat, and the guarantee that
@@ -139,14 +139,14 @@ both blades its two stats key, and still good in the middle against a flat
 bird. **Confirmed, at 4,000 runs, for all six pairs.** Every row is +100 on
 two stats against a flat 350 bird:
 
-| pair | B1 | B2 | B3 | B4 | B5 |
-|---|---|---|---|---|---|
-| **agility & sight** | **70.8** | **69.2** | 68.2 | 59.0 | 56.2 |
-| sight & stamina | 61.1 | 67.1 | 69.4 | **72.8** | 65.2 |
-| stamina & gameness | 55.3 | 59.2 | 68.7 | **77.0** | **80.6** |
-| agility & stamina | 66.3 | 61.7 | 69.4 | **71.4** | 63.4 |
-| sight & gameness | 60.2 | 66.5 | 67.9 | 66.4 | **75.3** |
-| agility & gameness | 65.8 | 61.0 | 67.9 | 65.2 | **73.8** |
+| pair                | B1       | B2       | B3   | B4       | B5       |
+| ------------------- | -------- | -------- | ---- | -------- | -------- |
+| **agility & sight** | **70.8** | **69.2** | 68.2 | 59.0     | 56.2     |
+| sight & stamina     | 61.1     | 67.1     | 69.4 | **72.8** | 65.2     |
+| stamina & gameness  | 55.3     | 59.2     | 68.7 | **77.0** | **80.6** |
+| agility & stamina   | 66.3     | 61.7     | 69.4 | **71.4** | 63.4     |
+| sight & gameness    | 60.2     | 66.5     | 67.9 | 66.4     | **75.3** |
+| agility & gameness  | 65.8     | 61.0     | 67.9 | 65.2     | **73.8** |
 
 ±1.0. No pair is ever below 55% — a paired bird has no bad blade, which is
 the property the plan is bought for.
@@ -154,12 +154,12 @@ the property the plan is bought for.
 **Range is real, and it costs peak.** The shape table runs a pair and a
 single spike at the SAME total surplus, both against flat:
 
-| build | peak | peak height | spread (max−min) |
-|---|---|---|---|
-| pair agility & sight | B1 | 70.8 | **14.6** |
-| spike agility +200 | B1 | **75.5** | 20.9 |
-| pair stamina & gameness | B5 | 80.6 | 25.3 |
-| spike gameness +200 | B5 | **86.8** | 31.8 |
+| build                   | peak | peak height | spread (max−min) |
+| ----------------------- | ---- | ----------- | ---------------- |
+| pair agility & sight    | B1   | 70.8        | **14.6**         |
+| spike agility +200      | B1   | **75.5**    | 20.9             |
+| pair stamina & gameness | B5   | 80.6        | 25.3             |
+| spike gameness +200     | B5   | **86.8**    | 31.8             |
 
 The trade, in one line: a pair gives up roughly **5 points of peak** and buys
 back roughly **5 points at its second home and at B3**. Spike spreads run
@@ -170,7 +170,7 @@ and condition are all still on the table for a one-number bird.)
 
 **The middle blade is the pair's blade.** B3 sits at 67.9–69.4 for every
 single pair — for four of the six it beats one of the pair's own key blades,
-and for the widest pairs it is their *third* best blade. That is B3 doing
+and for the widest pairs it is their _third_ best blade. That is B3 doing
 what it was built to do: it weighs all four stats equally, so a two-stat bird
 collects on both halves there while a spike collects on one. The `pairs` case
 exempts the even blade from its home check for exactly this reason (read off
@@ -196,18 +196,17 @@ a split bird, which is a fair reading of a sprint.
 > multiplicative. See **"The Pit Figure has a unit — rebuilt round 30"**.
 > Kept as history because it is the measurement that forced the rebuild.
 
-
 `GHOST_PACE`'s comment promises that an even fight between starters figures
 ~50. It doesn't, and hasn't since round 27 rescaled the wind and every
 `damageMult`. The `symmetry` control reads:
 
 | blade | mean figure, even fight |
-|---|---|
-| B1 | 26.9 |
-| B2 | 27.1 |
-| B3 | 29.3 |
-| B4 | 30.2 |
-| B5 | 31.5 |
+| ----- | ----------------------- |
+| B1    | 26.9                    |
+| B2    | 27.1                    |
+| B3    | 29.3                    |
+| B4    | 30.2                    |
+| B5    | 31.5                    |
 
 Flat across the dial, so the cross-format normalization still works — the
 whole SCALE is just low. Live worlds agree: mean normalized figure 32.1
@@ -217,8 +216,8 @@ Two consequences, one fixed and one deferred.
 
 **Fixed:** `SCOUT.PRIOR_FIGURE` was 50 — the score an unread blade gets. With
 reality at ~30, every blade a bird had actually fought was dragged toward 32
-while every blade it hadn't stayed parked at 50. *Evidence lost to ignorance,
-by construction.* Replaying 5,505 live entries with only that number changed:
+while every blade it hadn't stayed parked at 50. _Evidence lost to ignorance,
+by construction._ Replaying 5,505 live entries with only that number changed:
 scout accuracy **26.5% → 31.2%** exact, **52.2% → 56.0%** on-or-adjacent.
 `PRIOR_WEIGHT` at 0.5 / 1 / 2 all landed within 0.3, so this was the prior
 itself, not the Bayes.
@@ -236,14 +235,14 @@ already reads 110 against the clamp at 150.
 Read the `figuregrade` table ACROSS a row rather than down it. A fixed
 200-point specialist shape, against fixed B+ company:
 
-| public grade | home | adjacent | middle | home − middle |
-|---|---|---|---|---|
-| B (250) | 22.6 | 18.3 | 11.9 | 10.7 |
-| B+ (350) | 41.2 | 36.7 | 29.3 | 11.9 |
-| A (450) | 59.6 | 56.0 | 50.5 | 9.1 |
-| A+ (550) | 77.4 | 73.9 | 70.3 | 7.1 |
-| S (650) | 93.8 | 90.6 | 88.9 | 4.9 |
-| S+ (750) | 110.2 | 107.6 | 106.7 | 3.5 |
+| public grade | home  | adjacent | middle | home − middle |
+| ------------ | ----- | -------- | ------ | ------------- |
+| B (250)      | 22.6  | 18.3     | 11.9   | 10.7          |
+| B+ (350)     | 41.2  | 36.7     | 29.3   | 11.9          |
+| A (450)      | 59.6  | 56.0     | 50.5   | 9.1           |
+| A+ (550)     | 77.4  | 73.9     | 70.3   | 7.1           |
+| S (650)      | 93.8  | 90.6     | 88.9   | 4.9           |
+| S+ (750)     | 110.2 | 107.6    | 106.7  | 3.5           |
 
 Down a column, a grade step is worth +16 to +21. Across a row, the entire
 blade-fit signal is 3.5–11.9 and **shrinks as the bird improves** — the
@@ -254,7 +253,7 @@ the discovery loop and probably wants its own ruling.
 
 **Two fixes tested and rejected, so nobody retries them.** Normalizing the
 result out of the figure (subtracting the win/loss means) DROPPED accuracy
-31.2% → 23.2% — winning at a blade *is* blade-fit evidence. Weather
+31.2% → 23.2% — winning at a blade _is_ blade-fit evidence. Weather
 normalization is worth only +0.2 to +0.8 points; real, but not the
 bottleneck, since only ~25% of entries are timed and stars scale the effect.
 It needs no schema change whenever it is wanted (`weatherOfDay(dayIndex)` is
@@ -269,26 +268,25 @@ a pure function of a column already stored).
 > 50% bar. See **"Discovery, after the rebuild"** and open item 7.
 > Kept as history — this is the measurement that produced `BREEDING_PLAN`.
 
-
 The doctor's answer key is the argmax over `FORMATS[].weights`. Measured
 across a 13-week world, how much the median bird's home blade beats its
 runner-up:
 
 | percentile | home-blade margin (weighted stat points) |
-|---|---|
-| p10 | 1.9 |
-| p50 | 11.1 |
-| p90 | 28.3 |
+| ---------- | ---------------------------------------- |
+| p10        | 1.9                                      |
+| p50        | 11.1                                     |
+| p90        | 28.3                                     |
 
 **Half the flock had no home blade worth finding.** Those birds are
 unlearnable by construction, and grading the scout on them reports noise as
 failure. Restricting to birds with a real home, on the same logs:
 
-| answer key | scout exact | vs random |
-|---|---|---|
-| all birds | 31.2% | 20% |
-| home margin ≥ 10 | 35.6% | 20% |
-| home margin ≥ 25 | 47.6% | 20% |
+| answer key       | scout exact | vs random |
+| ---------------- | ----------- | --------- |
+| all birds        | 31.2%       | 20%       |
+| home margin ≥ 10 | 35.6%       | 20%       |
+| home margin ≥ 25 | 47.6%       | 20%       |
 
 The scout was never as blind as the raw number said. The cause was breeding,
 not the report: bots took the first legal cover off a shuffled list, which
@@ -320,7 +318,7 @@ are no longer capped at all.
 
 **The peg, measured at build time (600 fights per cell).** Two identical
 flat-1000 birds at B3: the winner posts **102.8**, the loser **81.6**, mean
-92.1. So `PEG_FIGURE` is what a flat `PEG_STAT` bird posts *when it wins* —
+92.1. So `PEG_FIGURE` is what a flat `PEG_STAT` bird posts _when it wins_ —
 the peg is on the number, not near it. Flat 320 (today's starters) reads 25.2
 mean; flat 1500 reads 153.1.
 
@@ -346,13 +344,13 @@ construction, with no hand-tuned per-blade table — which is exactly the job
 proportionally with no fit term written anywhere. Measured on a true
 specialist (pair +200, off-pair −200) at five levels:
 
-| base | B1 | B2 | B3 | B4 | B5 | home−middle | home−worst |
-|---|---|---|---|---|---|---|---|
-| 320 | 37.0 | 32.0 | 25.8 | 16.3 | 13.2 | 11.2 | 23.8 |
-| 500 | 54.7 | 49.4 | 43.1 | 31.1 | 27.1 | 11.6 | 27.6 |
-| 800 | 84.5 | 79.6 | 74.0 | 58.8 | 53.7 | 10.5 | 30.8 |
-| 1200 | 127.7 | 122.2 | 118.0 | 103.0 | 95.7 | 9.6 | 32.0 |
-| 1600 | 175.7 | 170.8 | 168.2 | 153.0 | 147.6 | 7.5 | 28.2 |
+| base | B1    | B2    | B3    | B4    | B5    | home−middle | home−worst |
+| ---- | ----- | ----- | ----- | ----- | ----- | ----------- | ---------- |
+| 320  | 37.0  | 32.0  | 25.8  | 16.3  | 13.2  | 11.2        | 23.8       |
+| 500  | 54.7  | 49.4  | 43.1  | 31.1  | 27.1  | 11.6        | 27.6       |
+| 800  | 84.5  | 79.6  | 74.0  | 58.8  | 53.7  | 10.5        | 30.8       |
+| 1200 | 127.7 | 122.2 | 118.0 | 103.0 | 95.7  | 9.6         | 32.0       |
+| 1600 | 175.7 | 170.8 | 168.2 | 153.0 | 147.6 | 7.5         | 28.2       |
 
 Compare the round-29 table above, where home−middle **collapsed 11.9 → 3.5**
 as birds improved and good birds were structurally harder to type than bad
@@ -381,11 +379,11 @@ band.
 The payoff, on the clear-home verdict (birds whose home blade actually beats
 its runner-up — the scout is not graded on coin flips):
 
-| age bucket | clear-home exact, r29 | r30 | random |
-|---|---|---|---|
-| age 1 | — | 57.3% | 20% |
-| age 2–3 | — | 50.9% | 20% |
-| **age 4+** | **30.5%** | **57.5%** (83.5% on-or-adjacent) | 20% |
+| age bucket | clear-home exact, r29 | r30                              | random |
+| ---------- | --------------------- | -------------------------------- | ------ |
+| age 1      | —                     | 57.3%                            | 20%    |
+| age 2–3    | —                     | 50.9%                            | 20%    |
+| **age 4+** | **30.5%**             | **57.5%** (83.5% on-or-adjacent) | 20%    |
 
 Raw accuracy over all birds, including the shapeless ones: 50.4 / 41.8 / 44.0
 by the same buckets.
@@ -399,10 +397,10 @@ number in the report would have looked fine. From a 91-day sim (the round-30
 era default — runs are 182 days since round 43):
 
 | generation | mean stat | mean stars | median home margin |
-|---|---|---|---|
-| 0 | 328.2 | 1.75★ | 8.1 |
-| 1 | 335.7 | 1.74★ | 11.2 |
-| 2 | 348.1 | 2.06★ | 10.3 |
+| ---------- | --------- | ---------- | ------------------ |
+| 0          | 328.2     | 1.75★      | 8.1                |
+| 1          | 335.7     | 1.74★      | 11.2               |
+| 2          | 348.1     | 2.06★      | 10.3               |
 
 +20.0 stat points over two nests, and the shape line rises off the founders.
 The loop compounds, slowly. The margin column uses the identical `homeBlade`
@@ -429,7 +427,7 @@ unselected founders. The assertion was removed rather than tuned.
 
 Round 30 closed with a hypothesis: discovery had got sharper, so bots carded
 their birds' true best blades more often, so entries spread across five blades
-and fragmented the lobby keys. The reading was that better discovery *costs*
+and fragmented the lobby keys. The reading was that better discovery _costs_
 matchmaking density. **That trade does not exist.** Round 31 fixed the key
 space alone — the scout, `SCOUT.EXPLORE`, `JITTER` and the figure were not
 touched — and the unmatched rate fell by more than two thirds. Discovery never
@@ -440,12 +438,12 @@ if its key did not exist, so every fight type was on offer every day and the
 perfect fight always existed because you invented it by asking. Measured over
 91 days, before:
 
-| | |
-|---|---|
-| live lobby keys | 74 |
-| entries a day across them | ~70 |
-| mean birds per lobby | 2.9 (against a capacity of 8) |
-| entries that never drew an opponent | 16.3% |
+|                                     |                               |
+| ----------------------------------- | ----------------------------- |
+| live lobby keys                     | 74                            |
+| entries a day across them           | ~70                           |
+| mean birds per lobby                | 2.9 (against a capacity of 8) |
+| entries that never drew an opponent | 16.3%                         |
 
 **The decomposition is what settled the argument.** Of those unmatched entries,
 **35% were the sole entrant** in a lobby nobody else joined, **31% were two
@@ -456,13 +454,13 @@ into a fight.
 
 ### What was cut, and what it had measured
 
-| axis | before | after | the measurement that ruled it |
-|---|---|---|---|
-| hardcore on the daily card | yes | **gone** | 201 entries → 55 fights, **45.3% unmatched** — the worst of any mode, for under one fight a day |
-| `nw2` / `nw3` | two classes | **one (`nw3`)** | exclusive constituencies of **10** and **18** birds out of 181 active |
-| `CLAIMER.PRICES` | 5 rungs | **3** (50/200/600) | claimers were **40 of 75 keys** — 53% of the space off one axis — at **0.33 entries per key** |
-| `CLAIMER.JUVENILE_PRICES` | 3 rungs | **2** (25/100) | same axis, same arithmetic |
-| total key space | **75** | **50** | |
+| axis                       | before      | after              | the measurement that ruled it                                                                   |
+| -------------------------- | ----------- | ------------------ | ----------------------------------------------------------------------------------------------- |
+| hardcore on the daily card | yes         | **gone**           | 201 entries → 55 fights, **45.3% unmatched** — the worst of any mode, for under one fight a day |
+| `nw2` / `nw3`              | two classes | **one (`nw3`)**    | exclusive constituencies of **10** and **18** birds out of 181 active                           |
+| `CLAIMER.PRICES`           | 5 rungs     | **3** (50/200/600) | claimers were **40 of 75 keys** — 53% of the space off one axis — at **0.33 entries per key**   |
+| `CLAIMER.JUVENILE_PRICES`  | 3 rungs     | **2** (25/100)     | same axis, same arithmetic                                                                      |
+| total key space            | **75**      | **50**             |                                                                                                 |
 
 The dear claimer rungs were not thin, they were dead: b3@400 drew **two**
 entries in 84 days. Hardcore survives where it earns its keep — the Pintakasi
@@ -483,13 +481,13 @@ a blade in a maiden.
 
 ### The result, on a fresh 91-day world (the era's default length — 182 since round 43)
 
-| | before | after |
-|---|---|---|
-| mean birds per lobby | 2.9 | **7.36** |
-| entries never drawing an opponent | 16.3% | **4.5%** |
-| lobbies holding a single bird | 334 (16.6%) | **26 (3.9%)** |
-| same-barn-only stranding | ~302 birds | **25 birds** |
-| lobbies | 2,012 | 673 |
+|                                   | before      | after         |
+| --------------------------------- | ----------- | ------------- |
+| mean birds per lobby              | 2.9         | **7.36**      |
+| entries never drawing an opponent | 16.3%       | **4.5%**      |
+| lobbies holding a single bird     | 334 (16.6%) | **26 (3.9%)** |
+| same-barn-only stranding          | ~302 birds  | **25 birds**  |
+| lobbies                           | 2,012       | 673           |
 
 All five invariants pass with **zero health warnings** (round 30 ended on two).
 Two things worth checking that did NOT get worse:
@@ -598,8 +596,8 @@ lobbies mean parity is a coin flip, where the old capacity of 8 was even ON
 PURPOSE. But unbounded lobbies also change the residue's SHAPE for the better.
 Round-robin across a whole room is impossible (30 birds = 435 fights), so the
 next round partitions each room into GROUPS — Zane's FIFA group-stage analogy —
-where a room of 30 becomes seven groups of four plus one of two and *everybody
-fights*. Only a room holding a single entry would strand anyone.
+where a room of 30 becomes seven groups of four plus one of two and _everybody
+fights_. Only a room holding a single entry would strand anyone.
 
 It is a wide change, not a knob: `CADENCE.FIGHTS_PER_BIRD_PER_DAY`, the
 `potCents = ea.fee * 200` assumption, per-fight `landForFight` minting and the
@@ -629,7 +627,7 @@ capacity.
 The wheel is ADDITIVE, so its edge shrinks in relative terms exactly as
 breeding raises the stat floor — the opposite of what a counter-meta wants.
 Two companions to the same rework: per-fight random weather, and showing a
-lobby's element composition, because the counter-meta is currently *unplayable*
+lobby's element composition, because the counter-meta is currently _unplayable_
 rather than merely weak — the field is fogged, so nobody can counter what they
 cannot see. PFL-style aging curves and carriage (Ground/Air, still data-only
 since round 23, and the natural second star axis) sit in the same queue.

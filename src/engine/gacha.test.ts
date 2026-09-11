@@ -152,7 +152,14 @@ describe("gacha", () => {
       // tier constraint is asserted against the raw row, where it lives.
       const row = db.select().from(birds).where(eq(birds.id, r.egg.id)).get()!;
       expect(r.egg.agility).toBeNull(); // stars are the visible jackpot
-      for (const stat of [row.agility, row.sight, row.stamina, row.gameness, row.station, row.condition]) {
+      for (const stat of [
+        row.agility,
+        row.sight,
+        row.stamina,
+        row.gameness,
+        row.station,
+        row.condition,
+      ]) {
         expect(stat).toBeGreaterThanOrEqual(tier.statMin);
         expect(stat).toBeLessThanOrEqual(tier.statMax);
       }
@@ -240,7 +247,11 @@ describe("gacha", () => {
       out = gacha.bundle();
     }
     expect(out.eggs).toBeGreaterThan(0);
-    const rows = db.select().from(events).all().filter((e) => e.type === "gacha");
+    const rows = db
+      .select()
+      .from(events)
+      .all()
+      .filter((e) => e.type === "gacha");
     expect(rows.length).toBe(1 + out.eggs); // the summary, plus one per egg
     expect(rows.filter((e) => (e.lt ?? 0) !== 0).length).toBe(1); // …and only the summary carries land
   });

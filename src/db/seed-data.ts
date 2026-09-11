@@ -45,21 +45,90 @@ interface StarterSpec {
  */
 const STARTERS: StarterSpec[] = [
   // The retired barn — breeding stock from day one (two unrelated pairs).
-  { name: "Tandang Pula", sex: "male", status: "retired", age: 10, element: "Fire", halfStars: 5, wins: 14, losses: 3 },
-  { name: "Dalisay", sex: "female", status: "retired", age: 9, element: "Water", halfStars: 4, wins: 8, losses: 2 },
-  { name: "Bagwis", sex: "male", status: "retired", age: 11, element: "Metal", halfStars: 6, wins: 11, losses: 5 },
-  { name: "Perlas", sex: "female", status: "retired", age: 10, element: "Earth", halfStars: 3, wins: 6, losses: 4 },
+  {
+    name: "Tandang Pula",
+    sex: "male",
+    status: "retired",
+    age: 10,
+    element: "Fire",
+    halfStars: 5,
+    wins: 14,
+    losses: 3,
+  },
+  {
+    name: "Dalisay",
+    sex: "female",
+    status: "retired",
+    age: 9,
+    element: "Water",
+    halfStars: 4,
+    wins: 8,
+    losses: 2,
+  },
+  {
+    name: "Bagwis",
+    sex: "male",
+    status: "retired",
+    age: 11,
+    element: "Metal",
+    halfStars: 6,
+    wins: 11,
+    losses: 5,
+  },
+  {
+    name: "Perlas",
+    sex: "female",
+    status: "retired",
+    age: 10,
+    element: "Earth",
+    halfStars: 3,
+    wins: 6,
+    losses: 4,
+  },
   // The active roster — one bird at each interesting gate.
   { name: "Kidlat", sex: "male", status: "active", age: 1, element: "Wood", halfStars: 2 }, // discovery year
-  { name: "Alab", sex: "male", status: "active", age: 2, element: "Fire", halfStars: 3, wins: 1, losses: 1 }, // real stakes
-  { name: "Sinag", sex: "female", status: "active", age: 3, element: "Metal", halfStars: 4, wins: 4, losses: 1 }, // the fork is open
-  { name: "Batong Buhay", sex: "male", status: "active", age: 5, element: "Earth", halfStars: 2, wins: 7, losses: 6 }, // veteran
+  {
+    name: "Alab",
+    sex: "male",
+    status: "active",
+    age: 2,
+    element: "Fire",
+    halfStars: 3,
+    wins: 1,
+    losses: 1,
+  }, // real stakes
+  {
+    name: "Sinag",
+    sex: "female",
+    status: "active",
+    age: 3,
+    element: "Metal",
+    halfStars: 4,
+    wins: 4,
+    losses: 1,
+  }, // the fork is open
+  {
+    name: "Batong Buhay",
+    sex: "male",
+    status: "active",
+    age: 5,
+    element: "Earth",
+    halfStars: 2,
+    wins: 7,
+    losses: 6,
+  }, // veteran
 ];
 
 // The dev farm's canonical egg names; other farms draw from the pool.
 const EGG_NAMES = [
-  "Tandang Pula", "Dalisay", "Kidlat", "Sinag",
-  "Bagwis", "Perlas", "Alab", "Batong Buhay",
+  "Tandang Pula",
+  "Dalisay",
+  "Kidlat",
+  "Sinag",
+  "Bagwis",
+  "Perlas",
+  "Alab",
+  "Batong Buhay",
 ];
 
 function rollStats(rng: Rng) {
@@ -144,7 +213,9 @@ export function seedStarterFlock(
 
   if (opts.shape === "legacy") {
     const names =
-      farmId === DEV_FARM_ID ? STARTERS.map((s) => s.name) : drawStarterNames(db, STARTERS.length, rng);
+      farmId === DEV_FARM_ID
+        ? STARTERS.map((s) => s.name)
+        : drawStarterNames(db, STARTERS.length, rng);
     const rows: NewBird[] = STARTERS.map((s, i) => {
       const element = s.element ?? (ELEMENTS[i % ELEMENTS.length] as Element);
       return {
@@ -187,10 +258,11 @@ export function seedStarterFlock(
   const week = Math.floor(today / 7);
 
   const names =
-    farmId === DEV_FARM_ID ? EGG_NAMES.slice(0, BARN.STARTER_EGGS) : drawStarterNames(db, BARN.STARTER_EGGS, rng);
-  const sexes: ("male" | "female")[] = Array.from(
-    { length: BARN.STARTER_EGGS },
-    (_, i) => (i < BARN.STARTER_EGGS / 2 ? "male" : "female")
+    farmId === DEV_FARM_ID
+      ? EGG_NAMES.slice(0, BARN.STARTER_EGGS)
+      : drawStarterNames(db, BARN.STARTER_EGGS, rng);
+  const sexes: ("male" | "female")[] = Array.from({ length: BARN.STARTER_EGGS }, (_, i) =>
+    i < BARN.STARTER_EGGS / 2 ? "male" : "female"
   );
   const elements = [...ELEMENTS] as Element[];
   // Shuffle sexes and elements with the flock rng — balanced, not uniform.

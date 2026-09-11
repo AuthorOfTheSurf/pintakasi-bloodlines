@@ -66,8 +66,7 @@ function world() {
   };
 }
 
-const byName = (db: DB, flock: Flock, name: string) =>
-  flock.all().find((b) => b.name === name)!;
+const byName = (db: DB, flock: Flock, name: string) => flock.all().find((b) => b.name === name)!;
 
 /**
  * Bank CAREER EARNINGS on a bird — the number the Selection Committee has
@@ -82,20 +81,20 @@ const byName = (db: DB, flock: Flock, name: string) =>
  */
 function earned(db: DB, birdId: string, farmId: string, cents: number): void {
   recordFight(db, {
-      dayIndex: 0,
-      lobbyId: 1,
-      farmId,
-      birdId,
-      mode: "real",
-      format: "b1",
-      opponentBirdId: "ghost",
-      opponentFarmId: "house",
-      opponentName: "Sparring Ghost",
-      side: 0,
-      result: "win",
-      pitFigure: 50,
-      gpDeltaCents: cents,
-      seed: 1,
+    dayIndex: 0,
+    lobbyId: 1,
+    farmId,
+    birdId,
+    mode: "real",
+    format: "b1",
+    opponentBirdId: "ghost",
+    opponentFarmId: "house",
+    opponentName: "Sparring Ghost",
+    side: 0,
+    result: "win",
+    pitFigure: 50,
+    gpDeltaCents: cents,
+    seed: 1,
   });
 }
 
@@ -127,10 +126,11 @@ function escrowEntry(db: DB, tournamentId: number, birdId: string, farmId: strin
       `fixture overdraft: ${farmId} holds ${farm.gp} GP and the entry costs ${fee} — ` +
         `give the barn more money rather than skipping the debit`
     );
-  db.update(farms).set({ gp: farm.gp - fee }).where(eq(farms.id, farmId)).run();
-  db.insert(tournamentEntries)
-    .values({ tournamentId, birdId, farmId, fee, dayEntered: 0 })
+  db.update(farms)
+    .set({ gp: farm.gp - fee })
+    .where(eq(farms.id, farmId))
     .run();
+  db.insert(tournamentEntries).values({ tournamentId, birdId, farmId, fee, dayEntered: 0 }).run();
 }
 
 const totalCents = (db: DB) => {
@@ -253,7 +253,11 @@ describe("registration & the Selection Committee", () => {
     // nothing to do with the bird: the same rooster walks in tomorrow if the
     // barn has 80 GP tomorrow.
     const w = world();
-    w.db.update(farms).set({ gp: PINTAKASI.ENTRY_FEE - 1 }).where(eq(farms.id, w.devId)).run();
+    w.db
+      .update(farms)
+      .set({ gp: PINTAKASI.ENTRY_FEE - 1 })
+      .where(eq(farms.id, w.devId))
+      .run();
     const sinag = byName(w.db, w.devFlock, "Sinag");
     expect(() => w.dev.enter(sinag.id, "b1")).toThrow(/escrowed/);
     expect(gpOf(w.db, w.devId)).toBe(PINTAKASI.ENTRY_FEE - 1); // refused ≠ charged
@@ -308,7 +312,12 @@ describe("registration & the Selection Committee", () => {
     // Two entries, two bills, both taken once.
     expect(gpOf(w.db, w.devId)).toBe(before - majorFee - juvFee);
     expect(
-      w.db.select().from(tournamentEntries).all().map((e) => e.fee).sort((a, b) => a - b)
+      w.db
+        .select()
+        .from(tournamentEntries)
+        .all()
+        .map((e) => e.fee)
+        .sort((a, b) => a - b)
     ).toEqual([juvFee, majorFee]);
     expectConserved(w.db);
   });
@@ -582,7 +591,9 @@ describe("registration & the Selection Committee", () => {
     const bumped = entries.filter((e) => e.status === "bumped");
     expect(bumped.length).toBe(1);
     // …and it is the POOREST bird that went home, not an arbitrary one.
-    expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe("Dummy 0");
+    expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe(
+      "Dummy 0"
+    );
     // ⚠ REFUND PATH 1 OF 3: THE COMMITTEE BUMP. Vacuous while entry was free —
     // it compared 0 against 0 — and now the real thing: a barn shoved out of a
     // full field gets back exactly what it put in, to the GP, at the moment it
@@ -606,7 +617,11 @@ describe("registration & the Selection Committee", () => {
     // entry row to refund against.
     expect(gpOf(w.db, w.devId)).toBe(devGpBefore);
     expect(
-      w.db.select().from(tournamentEntries).where(eq(tournamentEntries.tournamentId, t.id)).all()
+      w.db
+        .select()
+        .from(tournamentEntries)
+        .where(eq(tournamentEntries.tournamentId, t.id))
+        .all()
         .filter((e) => e.status === "pending").length
     ).toBe(PINTAKASI.MAX_BRACKET); // a refusal costs the field nothing
     // Sixty-four seats bought, one refunded, one sold, one refused — and the
@@ -663,7 +678,9 @@ describe("registration & the Selection Committee", () => {
     expect(entries.filter((e) => e.status === "pending").length).toBe(PINTAKASI.MAX_BRACKET);
     const bumped = entries.filter((e) => e.status === "bumped");
     expect(bumped.length).toBe(1);
-    expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe("Dummy 0");
+    expect(w.db.select().from(birds).where(eq(birds.id, bumped[0].birdId)).get()!.name).toBe(
+      "Dummy 0"
+    );
     expectConserved(w.db);
   });
 });
@@ -783,11 +800,15 @@ describe("the crown-day resolution", () => {
     expect(two).toBeGreaterThan(one);
 
     // The log: two mirrored hardcore rows per fight, tournament-tagged.
-    const rows = w.db.select().from(battleLog).all().filter((r) => r.tournamentId !== null);
+    const rows = w.db
+      .select()
+      .from(battleLog)
+      .all()
+      .filter((r) => r.tournamentId !== null);
     expect(rows.length).toBe(6);
-    expect(rows.every((r) => r.lobbyId === null && r.mode === "hardcore" && r.gpDeltaCents === 0)).toBe(
-      true
-    );
+    expect(
+      rows.every((r) => r.lobbyId === null && r.mode === "hardcore" && r.gpDeltaCents === 0)
+    ).toBe(true);
   });
 
   test("byes go to the top seeds; a 3-bird field fights twice", () => {
@@ -825,7 +846,11 @@ describe("the crown-day resolution", () => {
     expectConserved(w.db);
     expect(w.db.select().from(birds).where(eq(birds.id, sinag.id)).get()!.status).toBe("active");
     expect(
-      w.db.select().from(tournaments).all().find((t) => t.format === "b1")!.status
+      w.db
+        .select()
+        .from(tournaments)
+        .all()
+        .find((t) => t.format === "b1")!.status
     ).toBe("cancelled");
   });
 
@@ -841,9 +866,7 @@ describe("the crown-day resolution", () => {
     // A 2-bracket's runner-up is a first-round loser: zero GP, champion sweeps.
     expect(result.payouts.length).toBe(1);
     expect(result.payouts[0].gpCents).toBe(result.purseCents);
-    expect(
-      w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.juicePoolCents
-    ).toBe(0);
+    expect(w.db.select().from(gameState).where(eq(gameState.id, 1)).get()!.juicePoolCents).toBe(0);
     expect(totalCents(w.db)).toBe(before);
   });
 
@@ -908,8 +931,11 @@ describe("the crown-day resolution", () => {
     w.rival.enter("rival-8", "b1");
     const scratch = makeBird(w.db, { name: "Sablay", age: 3 });
     w.dev.enter(scratch.id, "b3");
-    w.db.update(birds).set({ status: "retired", retiredBy: "manual", retiredWeek: 0 })
-      .where(eq(birds.id, scratch.id)).run();
+    w.db
+      .update(birds)
+      .set({ status: "retired", retiredBy: "manual", retiredWeek: 0 })
+      .where(eq(birds.id, scratch.id))
+      .run();
     const before = totalCents(w.db);
 
     tickThroughCrownDay(w.game);
@@ -935,7 +961,11 @@ describe("the crown-day resolution", () => {
     expect(tick.pintakasi.length).toBe(1);
     expect(tick.pintakasi[0].champion).not.toBeNull();
     expect(
-      w.db.select().from(tournaments).all().filter((t) => t.status === "completed").length
+      w.db
+        .select()
+        .from(tournaments)
+        .all()
+        .filter((t) => t.status === "completed").length
     ).toBe(1);
   });
 
@@ -948,9 +978,9 @@ describe("the crown-day resolution", () => {
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 3 (Monday)
     lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }));
     for (let i = 0; i < 3; i++) w.game.tickDay(); // → day 6 (Thursday, crown day)
-    expect(() =>
-      lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }))
-    ).toThrow(/Pintakasi/);
+    expect(() => lobbies.enter(bb.id, onCard(w.db, { mode: "real", classType: "open" }))).toThrow(
+      /Pintakasi/
+    );
   });
 
   test("the crown door refuses a bird already on tonight's card — the converse guard", () => {
@@ -1210,7 +1240,12 @@ describe("the purse is paid on fights won", () => {
    */
   const byeField = (w: ReturnType<typeof world>, topSeedStat: number, restStat: number) => {
     const across = (v: number) => ({
-      agility: v, sight: v, stamina: v, gameness: v, station: v, condition: v,
+      agility: v,
+      sight: v,
+      stamina: v,
+      gameness: v,
+      station: v,
+      condition: v,
     });
     const { field } = pinnedBracket(w, {
       size: 3,
@@ -1355,7 +1390,7 @@ describe("the purse is paid on fights won", () => {
     // is a balance conversation (juice inflow, field sizes), not an arithmetic
     // bug. The break-even is asserted below so the margin is visible rather than
     // implied.
-    const breakEvenCents = fee * 100 / purseShareOf(32, PINTAKASI.PURSE, 1);
+    const breakEvenCents = (fee * 100) / purseShareOf(32, PINTAKASI.PURSE, 1);
     expect(breakEvenCents / 100).toBeCloseTo(11_157, 0);
     pinnedBracket(w, { size: 32, juiceCents: 694_000, feeEach: fee });
     const before = totalCents(w.db);
@@ -1455,7 +1490,13 @@ describe("the purse is paid on fights won", () => {
     );
     // …and NOBODY died for it: the discovery year's crown is the one stage in the
     // game that charges a fee without putting a career on the line.
-    expect(w.db.select().from(birds).all().every((b) => b.retiredBy !== "hardcore")).toBe(true);
+    expect(
+      w.db
+        .select()
+        .from(birds)
+        .all()
+        .every((b) => b.retiredBy !== "hardcore")
+    ).toBe(true);
     expect(result.payouts.reduce((s, p) => s + p.gpCents, 0)).toBe(result.purseCents);
     expect(totalCents(w.db)).toBe(before);
   });
@@ -1519,138 +1560,162 @@ describe("the purse is paid on fights won", () => {
     // sits here because it is the other half of "the discovery year pays
     // early": paying a chick for a first-round win would mean very little if
     // the win could still cost it everything.
-    expect(juvWorld.db.select().from(birds).all().every((b) => b.retiredBy !== "hardcore")).toBe(true);
+    expect(
+      juvWorld.db
+        .select()
+        .from(birds)
+        .all()
+        .every((b) => b.retiredBy !== "hardcore")
+    ).toBe(true);
   });
 
-/**
- * ── THE CROWN LAND POT, AS THE BRACKET PAYS IT (round 42) ───────────────────
- *
- * A crown used to pay land TWICE — a per-fight mint on its own steeper curve,
- * plus an elimination GRANT ladder that paid the earliest-eliminated the most —
- * and the two scales had drifted into an inversion at the juvenile crown, where
- * a champion banked 6.75 LT against a first-round loser's 10.15. One fixed pot,
- * divided across every fight actually fought, replaces both.
- *
- * `lobbies.test.ts` pins `landPotShare` as arithmetic. These pin what the
- * BRACKET does with it, which is the half that can leak: the champion absorbs
- * the flooring dust, and land is MINTED here, so a hundredth dropped is a real
- * gap between what config says a crown pays and what the ledger records.
- */
-describe("the crown land pot pays out exactly", () => {
-  /** Every entry's land award in a resolved crown, biggest last. */
-  const grants = (db: DB) =>
-    db.select().from(tournamentEntries).all().map((e) => e.landGranted).sort((a, b) => a - b);
+  /**
+   * ── THE CROWN LAND POT, AS THE BRACKET PAYS IT (round 42) ───────────────────
+   *
+   * A crown used to pay land TWICE — a per-fight mint on its own steeper curve,
+   * plus an elimination GRANT ladder that paid the earliest-eliminated the most —
+   * and the two scales had drifted into an inversion at the juvenile crown, where
+   * a champion banked 6.75 LT against a first-round loser's 10.15. One fixed pot,
+   * divided across every fight actually fought, replaces both.
+   *
+   * `lobbies.test.ts` pins `landPotShare` as arithmetic. These pin what the
+   * BRACKET does with it, which is the half that can leak: the champion absorbs
+   * the flooring dust, and land is MINTED here, so a hundredth dropped is a real
+   * gap between what config says a crown pays and what the ledger records.
+   */
+  describe("the crown land pot pays out exactly", () => {
+    /** Every entry's land award in a resolved crown, biggest last. */
+    const grants = (db: DB) =>
+      db
+        .select()
+        .from(tournamentEntries)
+        .all()
+        .map((e) => e.landGranted)
+        .sort((a, b) => a - b);
 
-  test("a 32-bird bracket mints the pot and not a hundredth more", () => {
-    const w = world();
-    pinnedBracket(w, { size: 32, juiceCents: 500_000 });
-    const result = tickThroughCrownDay(w.game).pintakasi[0];
-    expect(result.bracketSize).toBe(32);
+    test("a 32-bird bracket mints the pot and not a hundredth more", () => {
+      const w = world();
+      pinnedBracket(w, { size: 32, juiceCents: 500_000 });
+      const result = tickThroughCrownDay(w.game).pintakasi[0];
+      expect(result.bracketSize).toBe(32);
 
-    const paid = grants(w.db);
-    expect(paid.length).toBe(32);
-    // THE CONSERVATION CLAIM. 31 fights = 62 fighter-slots, and every hundredth
-    // of the pot reaches a farm: the sixteen first-round losers take 1/62 each,
-    // the champion takes 5/62 plus whatever the floors left behind.
-    expect(paid.reduce((s, n) => s + n, 0)).toBe(PINTAKASI.LAND_POT);
-    const slots = 2 * 31;
-    expect(paid[0]).toBe(landPotShare(PINTAKASI.LAND_POT, slots, 1));
-    expect(paid.filter((n) => n === paid[0]).length).toBe(16); // one win, one share
-    // MONOTONE IN FIGHTS FOUGHT — the property the deleted grant ladder broke.
-    // The champion fought the most, so it banks the most; nothing about the
-    // FINISH enters into it, only the count of blades thrown.
-    expect(paid[31]).toBeGreaterThanOrEqual(landPotShare(PINTAKASI.LAND_POT, slots, 5));
-    expect(paid[31]).toBe(Math.max(...paid));
-    // …and the farm piles agree with the entry rows: the pot arrived somewhere.
-    // (No `expectConserved` here: `pinnedBracket` sets the juice pool by hand, so
-    // the faucet-side GP proof would fail on the fixture. Land has its own
-    // conservation claim and it is the one above — the pot, to the hundredth.)
-    const held = w.db.select().from(farms).all().reduce((s, f) => s + f.landTokensCents, 0);
-    expect(held).toBeGreaterThanOrEqual(PINTAKASI.LAND_POT);
-  });
-
-  test("A BYE BUYS NO LAND — a champion that byed in banks less than the bird it beat", () => {
-    // ⚠ THE SHARPEST FORM OF THE RULE, and the one a reader will want to argue
-    // with. A 3-bird field seeds the top bird straight into the final: it fights
-    // ONCE and wins the crown, while the bird that came up through the bracket
-    // fought TWICE. Land pays FIGHTS, so the runner-up banks the bigger pile —
-    // and that is correct, because the champion never threw a blade in round one.
-    // (The PURSE goes the other way, and pins that separately: the trophy is what
-    // pays for finishing, land is what pays for fighting.)
-    const w = world();
-    const across = (v: number) => ({
-      agility: v, sight: v, stamina: v, gameness: v, station: v, condition: v,
+      const paid = grants(w.db);
+      expect(paid.length).toBe(32);
+      // THE CONSERVATION CLAIM. 31 fights = 62 fighter-slots, and every hundredth
+      // of the pot reaches a farm: the sixteen first-round losers take 1/62 each,
+      // the champion takes 5/62 plus whatever the floors left behind.
+      expect(paid.reduce((s, n) => s + n, 0)).toBe(PINTAKASI.LAND_POT);
+      const slots = 2 * 31;
+      expect(paid[0]).toBe(landPotShare(PINTAKASI.LAND_POT, slots, 1));
+      expect(paid.filter((n) => n === paid[0]).length).toBe(16); // one win, one share
+      // MONOTONE IN FIGHTS FOUGHT — the property the deleted grant ladder broke.
+      // The champion fought the most, so it banks the most; nothing about the
+      // FINISH enters into it, only the count of blades thrown.
+      expect(paid[31]).toBeGreaterThanOrEqual(landPotShare(PINTAKASI.LAND_POT, slots, 5));
+      expect(paid[31]).toBe(Math.max(...paid));
+      // …and the farm piles agree with the entry rows: the pot arrived somewhere.
+      // (No `expectConserved` here: `pinnedBracket` sets the juice pool by hand, so
+      // the faucet-side GP proof would fail on the fixture. Land has its own
+      // conservation claim and it is the one above — the pot, to the hundredth.)
+      const held = w.db
+        .select()
+        .from(farms)
+        .all()
+        .reduce((s, f) => s + f.landTokensCents, 0);
+      expect(held).toBeGreaterThanOrEqual(PINTAKASI.LAND_POT);
     });
-    const { field } = pinnedBracket(w, {
-      size: 3,
-      juiceCents: 100_000,
-      each: (i) => across(i === 0 ? 900 : 300), // the top seed is overwhelming
+
+    test("A BYE BUYS NO LAND — a champion that byed in banks less than the bird it beat", () => {
+      // ⚠ THE SHARPEST FORM OF THE RULE, and the one a reader will want to argue
+      // with. A 3-bird field seeds the top bird straight into the final: it fights
+      // ONCE and wins the crown, while the bird that came up through the bracket
+      // fought TWICE. Land pays FIGHTS, so the runner-up banks the bigger pile —
+      // and that is correct, because the champion never threw a blade in round one.
+      // (The PURSE goes the other way, and pins that separately: the trophy is what
+      // pays for finishing, land is what pays for fighting.)
+      const w = world();
+      const across = (v: number) => ({
+        agility: v,
+        sight: v,
+        stamina: v,
+        gameness: v,
+        station: v,
+        condition: v,
+      });
+      const { field } = pinnedBracket(w, {
+        size: 3,
+        juiceCents: 100_000,
+        each: (i) => across(i === 0 ? 900 : 300), // the top seed is overwhelming
+      });
+      earned(w.db, field[0].id, field[0].farmId, 10_000); // → committee rank 1 → the bye
+      const result = tickThroughCrownDay(w.game).pintakasi[0];
+      expect(result.rounds[0].byes).toEqual([field[0].name]);
+      expect(result.champion!.bird).toBe(field[0].name);
+
+      const rows = w.db.select().from(tournamentEntries).all();
+      const landOf = (birdId: string) => rows.find((e) => e.birdId === birdId)!.landGranted;
+      const runnerUp = result.payouts.find((p) => p.stage === "runner-up")!.bird;
+      const runnerUpId = w.db
+        .select()
+        .from(birds)
+        .all()
+        .find((b) => b.name === runnerUp)!.id;
+      // Two fights happened, so four fighter-slots: 1/4 to the champion (plus dust),
+      // 2/4 to the bird that fought twice, 1/4 to the bird it beat first.
+      const slots = 2 * 2;
+      expect(landOf(runnerUpId)).toBe(landPotShare(PINTAKASI.LAND_POT, slots, 2));
+      expect(landOf(field[0].id)).toBeLessThan(landOf(runnerUpId));
+      // …and the pot still pays out whole: a bye takes nothing OUT of the divisor
+      // either, which is what keeps a short bracket's arithmetic exact.
+      expect(rows.reduce((s, e) => s + e.landGranted, 0)).toBe(PINTAKASI.LAND_POT);
     });
-    earned(w.db, field[0].id, field[0].farmId, 10_000); // → committee rank 1 → the bye
-    const result = tickThroughCrownDay(w.game).pintakasi[0];
-    expect(result.rounds[0].byes).toEqual([field[0].name]);
-    expect(result.champion!.bird).toBe(field[0].name);
 
-    const rows = w.db.select().from(tournamentEntries).all();
-    const landOf = (birdId: string) => rows.find((e) => e.birdId === birdId)!.landGranted;
-    const runnerUp = result.payouts.find((p) => p.stage === "runner-up")!.bird;
-    const runnerUpId = w.db.select().from(birds).all().find((b) => b.name === runnerUp)!.id;
-    // Two fights happened, so four fighter-slots: 1/4 to the champion (plus dust),
-    // 2/4 to the bird that fought twice, 1/4 to the bird it beat first.
-    const slots = 2 * 2;
-    expect(landOf(runnerUpId)).toBe(landPotShare(PINTAKASI.LAND_POT, slots, 2));
-    expect(landOf(field[0].id)).toBeLessThan(landOf(runnerUpId));
-    // …and the pot still pays out whole: a bye takes nothing OUT of the divisor
-    // either, which is what keeps a short bracket's arithmetic exact.
-    expect(rows.reduce((s, e) => s + e.landGranted, 0)).toBe(PINTAKASI.LAND_POT);
+    test("A THIN FIELD PAYS MORE PER BIRD — same pot, fewer fights to divide it by", () => {
+      // Zane: "if there's just a few participants, they should see a big LT pot,
+      // this is good because it encourages participation and maxed out finals
+      // brackets." The deleted per-fight mint did the OPPOSITE — it paid by the
+      // fight, so a bigger bracket simply minted more — and that inversion of the
+      // incentive is one of the reasons a pot was preferred.
+      const thin = world();
+      pinnedBracket(thin, { size: 2, juiceCents: 100_000 });
+      const thinResult = tickThroughCrownDay(thin.game).pintakasi[0];
+      expect(thinResult.bracketSize).toBe(2);
+
+      const full = world();
+      pinnedBracket(full, { size: 32, juiceCents: 100_000 });
+      tickThroughCrownDay(full.game);
+
+      // The straight final's two birds split the whole pot between them; a
+      // 32-bracket's champion — five fights deep — takes a twelfth of it.
+      const thinGrants = grants(thin.db);
+      const fullGrants = grants(full.db);
+      expect(thinGrants.reduce((s, n) => s + n, 0)).toBe(PINTAKASI.LAND_POT);
+      expect(fullGrants.reduce((s, n) => s + n, 0)).toBe(PINTAKASI.LAND_POT);
+      expect(Math.min(...thinGrants)).toBeGreaterThan(Math.max(...fullGrants));
+    });
+
+    test("the juvenile crown has its own, smaller pot — and pays it out just as exactly", () => {
+      // The two pots are separate knobs for the same reason the two purses are:
+      // one stage is the discovery year and one is the top of the game. A shared
+      // number is how the deleted grant ladder came to pay a juvenile champion less
+      // than its first-round losers — nobody was pricing the stages against each
+      // other, because nothing made them look at both at once.
+      const w = world();
+      pinnedBracket(w, { size: 8, juiceCents: 400_000, division: "juvenile" });
+      const result = crownResults(w.game)[0];
+      expect(result.bracketSize).toBe(8);
+      const paid = grants(w.db);
+      expect(paid.reduce((s, n) => s + n, 0)).toBe(JUVENILE_MAJOR.LAND_POT);
+      expect(JUVENILE_MAJOR.LAND_POT).toBeLessThan(PINTAKASI.LAND_POT);
+      // 7 fights = 14 slots; the champion fought three of them, the first-round
+      // losers one each — and the ordering never inverts.
+      const slots = 2 * 7;
+      expect(paid[0]).toBe(landPotShare(JUVENILE_MAJOR.LAND_POT, slots, 1));
+      expect(Math.max(...paid)).toBeGreaterThanOrEqual(
+        landPotShare(JUVENILE_MAJOR.LAND_POT, slots, 3)
+      );
+    });
   });
-
-  test("A THIN FIELD PAYS MORE PER BIRD — same pot, fewer fights to divide it by", () => {
-    // Zane: "if there's just a few participants, they should see a big LT pot,
-    // this is good because it encourages participation and maxed out finals
-    // brackets." The deleted per-fight mint did the OPPOSITE — it paid by the
-    // fight, so a bigger bracket simply minted more — and that inversion of the
-    // incentive is one of the reasons a pot was preferred.
-    const thin = world();
-    pinnedBracket(thin, { size: 2, juiceCents: 100_000 });
-    const thinResult = tickThroughCrownDay(thin.game).pintakasi[0];
-    expect(thinResult.bracketSize).toBe(2);
-
-    const full = world();
-    pinnedBracket(full, { size: 32, juiceCents: 100_000 });
-    tickThroughCrownDay(full.game);
-
-    // The straight final's two birds split the whole pot between them; a
-    // 32-bracket's champion — five fights deep — takes a twelfth of it.
-    const thinGrants = grants(thin.db);
-    const fullGrants = grants(full.db);
-    expect(thinGrants.reduce((s, n) => s + n, 0)).toBe(PINTAKASI.LAND_POT);
-    expect(fullGrants.reduce((s, n) => s + n, 0)).toBe(PINTAKASI.LAND_POT);
-    expect(Math.min(...thinGrants)).toBeGreaterThan(Math.max(...fullGrants));
-  });
-
-  test("the juvenile crown has its own, smaller pot — and pays it out just as exactly", () => {
-    // The two pots are separate knobs for the same reason the two purses are:
-    // one stage is the discovery year and one is the top of the game. A shared
-    // number is how the deleted grant ladder came to pay a juvenile champion less
-    // than its first-round losers — nobody was pricing the stages against each
-    // other, because nothing made them look at both at once.
-    const w = world();
-    pinnedBracket(w, { size: 8, juiceCents: 400_000, division: "juvenile" });
-    const result = crownResults(w.game)[0];
-    expect(result.bracketSize).toBe(8);
-    const paid = grants(w.db);
-    expect(paid.reduce((s, n) => s + n, 0)).toBe(JUVENILE_MAJOR.LAND_POT);
-    expect(JUVENILE_MAJOR.LAND_POT).toBeLessThan(PINTAKASI.LAND_POT);
-    // 7 fights = 14 slots; the champion fought three of them, the first-round
-    // losers one each — and the ordering never inverts.
-    const slots = 2 * 7;
-    expect(paid[0]).toBe(landPotShare(JUVENILE_MAJOR.LAND_POT, slots, 1));
-    expect(Math.max(...paid)).toBeGreaterThanOrEqual(
-      landPotShare(JUVENILE_MAJOR.LAND_POT, slots, 3)
-    );
-  });
-});
 });
 
 /**
@@ -1689,11 +1754,22 @@ describe("the juvenile crown chase declares before it sends", () => {
   function readsWellAt(db: DB, farmId: string, birdId: string, format: FightFormat, figure = 90) {
     for (let i = 0; i < SCOUT.MIN_READS; i++) {
       recordFight(db, {
-          dayIndex: i, lobbyId: 1, farmId, birdId,
-          mode: "juvenile", format,
-          opponentBirdId: "ghost", opponentFarmId: "house", opponentName: "Sparring Ghost",
-          selfGrade: SCOUT.REFERENCE_GRADE, opponentGrade: SCOUT.REFERENCE_GRADE,
-          side: 0, result: "win", pitFigure: figure, gpDeltaCents: 0, seed: i,
+        dayIndex: i,
+        lobbyId: 1,
+        farmId,
+        birdId,
+        mode: "juvenile",
+        format,
+        opponentBirdId: "ghost",
+        opponentFarmId: "house",
+        opponentName: "Sparring Ghost",
+        selfGrade: SCOUT.REFERENCE_GRADE,
+        opponentGrade: SCOUT.REFERENCE_GRADE,
+        side: 0,
+        result: "win",
+        pitFigure: figure,
+        gpDeltaCents: 0,
+        seed: i,
       });
     }
   }
@@ -1879,19 +1955,19 @@ describe("the committee's book", () => {
 /** As `earned`, but the figure is what matters and the money is zero. */
 function figured(db: DB, birdId: string, farmId: string, pitFigure: number): void {
   recordFight(db, {
-      dayIndex: 0,
-      lobbyId: 1,
-      farmId,
-      birdId,
-      mode: "real",
-      format: "b1",
-      opponentBirdId: "ghost",
-      opponentFarmId: "house",
-      opponentName: "Sparring Ghost",
-      side: 0,
-      result: "win",
-      pitFigure,
-      gpDeltaCents: 0,
-      seed: 1,
+    dayIndex: 0,
+    lobbyId: 1,
+    farmId,
+    birdId,
+    mode: "real",
+    format: "b1",
+    opponentBirdId: "ghost",
+    opponentFarmId: "house",
+    opponentName: "Sparring Ghost",
+    side: 0,
+    result: "win",
+    pitFigure,
+    gpDeltaCents: 0,
+    seed: 1,
   });
 }

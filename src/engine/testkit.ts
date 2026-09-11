@@ -6,7 +6,6 @@ import { DEV_FARM_ID, seedGame, seedStarterFlock } from "@/db/seed-data";
 import { Breeding } from "./breeding";
 import {
   CALENDAR,
-  PINTAKASI,
   cardOfDay,
   type FarmColor,
   type FightFormat,
@@ -20,6 +19,19 @@ import { GameClock } from "./game-clock";
 import { Lobbies, type LobbySpec } from "./lobbies";
 import { gpFromFaucetsCents, gpInWorldCents } from "./snapshots";
 import { Tournaments } from "./tournaments";
+
+/** Fixture lookups that a broken setup — not a failing rule — would miss. */
+function must<T>(value: T | undefined, why: string): T {
+  if (value === undefined) throw new Error(`testkit: ${why}`);
+  return value;
+}
+
+function stateRow(db: DB) {
+  return must(
+    db.select().from(gameState).where(eq(gameState.id, 1)).get(),
+    "game_state row 1 missing — seedGame was never run"
+  );
+}
 
 /**
  * THE TESTKIT (round 24) — one fixture, one bird factory, one conservation
@@ -156,8 +168,7 @@ export function world(opts: WorldOptions = {}): World {
 
   // After every flock is seeded, before anything a test inserts — see the
   // warning on the option itself.
-  if (opts.qualified)
-    db.update(birds).set({ wins: 1, stakesWins: 1 }).run();
+  if (opts.qualified) db.update(birds).set({ wins: 1, stakesWins: 1 }).run();
 
   const devFlock = new Flock(db, dev.farmId);
   return {
@@ -168,7 +179,11 @@ export function world(opts: WorldOptions = {}): World {
     rivalId: rivalFarm.id,
     dev: { ...barnOf(dev.farmId), lobbies: game.lobbies, flock: game.flock },
     rival: barnOf(rivalFarm.id),
-    bird: (name) => devFlock.all().find((b) => b.name === name)!,
+    bird: (name) =>
+      must(
+        devFlock.all().find((b) => b.name === name),
+        `no bird named ${name} in the dev flock`
+      ),
     rivalSlot: (name) => `rival-${RIVAL_SLOT[name]}`,
     barn: (name) => {
       const found = extras.get(name);
@@ -206,7 +221,7 @@ let counter = 0;
  */
 export function makeBird(db: DB, overrides: Partial<NewBird> & { age?: number } = {}) {
   const { age, ...rest } = overrides;
-  const today = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+  const today = stateRow(db).dayIndex;
   const week = GameClock.weekOf(today);
   const born = week - (age ?? 2);
   const n = ++counter;
@@ -240,7 +255,10 @@ export function makeBird(db: DB, overrides: Partial<NewBird> & { age?: number } 
   }
 
   db.insert(birds).values(row).run();
-  return db.select().from(birds).where(eq(birds.id, row.id)).get()!;
+  return must(
+    db.select().from(birds).where(eq(birds.id, row.id)).get(),
+    `bird ${row.id} missing right after insert`
+  );
 }
 
 /** n birds, with a per-index override — for the 64-dummy and 14-hen loops. */
@@ -256,7 +274,7 @@ export function makeBirds(
 
 /** One farm's wallet to the CENT — fractional flows land here. */
 export function walletCents(db: DB, farmId: string): number {
-  const f = db.select().from(farms).where(eq(farms.id, farmId)).get()!;
+  const f = must(db.select().from(farms).where(eq(farms.id, farmId)).get(), `no farm ${farmId}`);
   return f.gp * 100 + f.gpCents;
 }
 
@@ -269,7 +287,7 @@ export function walletCents(db: DB, farmId: string): number {
  * sides fall together, which is exactly the shape of a burn.
  */
 export function expectConserved(db: DB): void {
-  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+  const state = stateRow(db);
   expect(state.stakerPoolCents).toBeGreaterThanOrEqual(0);
   expect(state.juicePoolCents).toBeGreaterThanOrEqual(0);
   expect(gpInWorldCents(db)).toBe(gpFromFaucetsCents(db));
@@ -297,7 +315,7 @@ export function onCard(
   db: DB,
   want: { mode: FightMode; classType: Lobby; format?: FightFormat }
 ): LobbySpec {
-  const day = db.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex;
+  const day = stateRow(db).dayIndex;
   const posted = cardOfDay(day).filter(
     (k) =>
       k.mode === want.mode &&
@@ -314,7 +332,12 @@ export function onCard(
     );
   }
   const k = posted[0];
-  return { mode: k.mode, classType: k.classType, format: k.format, ...(k.price ? { price: k.price } : {}) };
+  return {
+    mode: k.mode,
+    classType: k.classType,
+    format: k.format,
+    ...(k.price ? { price: k.price } : {}),
+  };
 }
 
 /** The first day at or after `from` whose card posts this class. */

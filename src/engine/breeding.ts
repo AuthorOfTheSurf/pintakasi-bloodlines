@@ -19,10 +19,9 @@ import {
   type Element,
   type StatName,
   LT_CENTS,
-  fmtLt,
 } from "./config";
 import { emit, fmtGp } from "./events";
-import { creditCents } from "./farms";
+import { creditCents, readFarm, readWorldState } from "./farms";
 import { overallGradeOf, type Grade } from "./grades";
 import { uniqueName } from "./naming";
 import { Flock, type BirdView } from "./flock";
@@ -76,7 +75,12 @@ export function splitBreedFee(feeGp: number): FeeSplit {
   const juicePoolCents = Math.round(total * BREED_SPLIT.JUICE);
   // The stud owner takes the remainder, so the three parts sum to the fee
   // exactly — rounding drift lands on the owner, never printed or burned.
-  return { feeGp, stakerPoolCents, juicePoolCents, studOwnerCents: total - stakerPoolCents - juicePoolCents };
+  return {
+    feeGp,
+    stakerPoolCents,
+    juicePoolCents,
+    studOwnerCents: total - stakerPoolCents - juicePoolCents,
+  };
 }
 
 export class Breeding {
@@ -114,7 +118,7 @@ export class Breeding {
     if (!ownStud && !fatherRow.listedStud)
       throw new Error(`${fatherRow.name} is not listed in the breeding barn`);
 
-    const state = this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!;
+    const state = readWorldState(this.database);
     const day = state.dayIndex;
     const week = GameClock.weekOf(day);
 
@@ -154,9 +158,11 @@ export class Breeding {
         `${fatherRow.name} has used all ${COVERS.OWNER_RESERVED} owner covers this week`
       );
     if (!ownStud && covers.public >= COVERS.PER_WEEK)
-      throw new Error(`${fatherRow.name} is covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`);
+      throw new Error(
+        `${fatherRow.name} is covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`
+      );
 
-    const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+    const farm = readFarm(this.database, this.farmId);
     if (farm.gp < ECONOMY.BREED_FEE)
       throw new Error(`A cover costs ${ECONOMY.BREED_FEE} GP — you have ${farm.gp}`);
 
@@ -180,19 +186,15 @@ export class Breeding {
     // Inheritance reads the RAW rows: the hen's view is fogged by type
     // (round 28), but both parents are retired here — their sheets are
     // public — and the genetics never depended on the view anyway.
-    const motherRow = this.database.select().from(birds).where(eq(birds.id, motherId)).get()!;
+    const motherRow = this.database.select().from(birds).where(eq(birds.id, motherId)).get();
+    if (!motherRow) throw new Error(`hen ${motherId} vanished between byId and her cover`);
     const stats = this.inheritStats(motherRow, fatherRow);
     const { element, halfStars } = this.inheritStars(motherRow, fatherRow);
     const { carriage, carriageHalfStars } = this.inheritCarriage(motherRow, fatherRow);
 
     // Coat v0 (round 14): take a parent's base coat, small mutation chance;
     // trim keys off the chick's own element. Real coat genetics come later.
-    const baseCoat =
-      this.rng() < COAT_MUTATION_CHANCE
-        ? BASE_COATS[randInt(this.rng, 0, BASE_COATS.length - 1)]
-        : this.rng() < 0.5
-          ? mother.baseCoat
-          : fatherRow.baseCoat;
+    const baseCoat = this.inheritCoat(mother.baseCoat, fatherRow.baseCoat);
     const trimColor = TRIM_BY_ELEMENT[element][this.rng() < 0.5 ? 0 : 1];
 
     // The nest timeline: the cover makes the hen pregnant NOW; the egg is
@@ -224,7 +226,7 @@ export class Breeding {
     };
     this.database.insert(birds).values(egg).run();
 
-    const studFarm = this.database.select().from(farms).where(eq(farms.id, fatherRow.farmId)).get()!;
+    const studFarm = readFarm(this.database, fatherRow.farmId);
     emit(this.database, {
       type: "breed",
       farmId: this.farmId,
@@ -270,7 +272,7 @@ export class Breeding {
       // not staked, not refundable. It's the first thing in the game that
       // takes Land Tokens OUT of the world, which is what gives the yield a
       // price to be measured against.
-      const farm = this.database.select().from(farms).where(eq(farms.id, this.farmId)).get()!;
+      const farm = readFarm(this.database, this.farmId);
       if (farm.landTokensCents < COVERS.STUD_LISTING_LT)
         throw new Error(
           `Standing ${bird.name} at stud costs ${COVERS.STUD_LISTING_LT / LT_CENTS} LT — ${farm.name} holds ` +
@@ -325,9 +327,7 @@ export class Breeding {
     if (hen.sex !== "female") throw new Error(`${hen.name} is a rooster — browse with a hen`);
     if (hen.status !== "retired") throw new Error(`${hen.name} must be retired to breed`);
 
-    const week = GameClock.weekOf(
-      this.database.select().from(gameState).where(eq(gameState.id, 1)).get()!.dayIndex
-    );
+    const week = GameClock.weekOf(readWorldState(this.database).dayIndex);
     const candidates = this.database
       .select()
       .from(birds)
@@ -342,7 +342,11 @@ export class Breeding {
     // of a 218s sim — half the world's wall clock. Three reads replace all of
     // it; the per-rooster loop below touches no database at all.
     const farmById = new Map(
-      this.database.select().from(farms).all().map((f) => [f.id, f])
+      this.database
+        .select()
+        .from(farms)
+        .all()
+        .map((f) => [f.id, f])
     );
     // Every egg sired THIS WEEK, in one query — the birthDay range is exactly
     // `GameClock.weekOf(birthDay) === week` (floor division by 7), which is
@@ -360,9 +364,11 @@ export class Breeding {
         )
       )
       .all()) {
-      const list = eggsByFather.get(egg.fatherId!) ?? [];
+      const fatherId = egg.fatherId;
+      if (fatherId === null) throw new Error("isNotNull(fatherId) let a fatherless egg through");
+      const list = eggsByFather.get(fatherId) ?? [];
       list.push({ farmId: egg.farmId });
-      eggsByFather.set(egg.fatherId!, list);
+      eggsByFather.set(fatherId, list);
     }
     // The pedigree, prefetched to ANCESTOR_DEPTH generations for the hen and
     // every candidate at once — one chunked query per generation instead of
@@ -401,7 +407,8 @@ export class Breeding {
     const studs: StudView[] = [];
     const excluded: { name: string; farm: string; reason: string }[] = [];
     for (const rooster of candidates) {
-      const farm = farmById.get(rooster.farmId)!;
+      const farm = farmById.get(rooster.farmId);
+      if (!farm) throw new Error(`stud ${rooster.id} belongs to unknown farm ${rooster.farmId}`);
       const mine = rooster.farmId === this.farmId;
       const weekEggs = eggsByFather.get(rooster.id) ?? [];
       const owner = weekEggs.filter((e) => e.farmId === rooster.farmId).length;
@@ -427,8 +434,12 @@ export class Breeding {
         });
       } else {
         const total =
-          rooster.agility + rooster.sight + rooster.stamina +
-          rooster.gameness + rooster.station + rooster.condition;
+          rooster.agility +
+          rooster.sight +
+          rooster.stamina +
+          rooster.gameness +
+          rooster.station +
+          rooster.condition;
         studs.push({
           birdId: rooster.id,
           farm: farm.name,
@@ -480,7 +491,9 @@ export class Breeding {
     mother: Pick<BirdRow, (typeof STAT_NAMES)[number]>,
     father: Pick<BirdRow, (typeof STAT_NAMES)[number]>
   ): Record<(typeof STAT_NAMES)[number], number> {
-    const out = {} as Record<(typeof STAT_NAMES)[number], number>;
+    // Stat by stat in STAT_NAMES order — the rng draws are consumed in that
+    // order, so the sequence (not just the set) of stats is load-bearing.
+    const out: Partial<Record<(typeof STAT_NAMES)[number], number>> = {};
     for (const stat of STAT_NAMES) {
       let value =
         Math.round((mother[stat] + father[stat]) / 2) +
@@ -491,7 +504,8 @@ export class Breeding {
       }
       out[stat] = Math.min(STATS.MAX, Math.max(STATS.MIN, value));
     }
-    return out;
+    // The loop above wrote every STAT_NAMES key, so the Partial is whole.
+    return out as Record<(typeof STAT_NAMES)[number], number>;
   }
 
   /**
@@ -515,14 +529,12 @@ export class Breeding {
           randInt(this.rng, -BREEDING.STAR_SPREAD_HALF_STARS, BREEDING.STAR_SPREAD_HALF_STARS)
       )
     );
-    const [stronger, weaker] =
-      mother.carriageHalfStars === father.carriageHalfStars
-        ? this.rng() < 0.5
-          ? [mother, father]
-          : [father, mother]
-        : mother.carriageHalfStars > father.carriageHalfStars
-          ? [mother, father]
-          : [father, mother];
+    const [stronger, weaker] = this.strongerFirst(
+      mother,
+      father,
+      mother.carriageHalfStars,
+      father.carriageHalfStars
+    );
     const roll = this.rng();
     const carriage: Carriage =
       roll < BREEDING.CARRIAGE_LEAN_STRONGER
@@ -545,28 +557,62 @@ export class Breeding {
       10,
       Math.max(
         0,
-        Math.round(avg) + randInt(this.rng, -BREEDING.STAR_SPREAD_HALF_STARS, BREEDING.STAR_SPREAD_HALF_STARS)
+        Math.round(avg) +
+          randInt(this.rng, -BREEDING.STAR_SPREAD_HALF_STARS, BREEDING.STAR_SPREAD_HALF_STARS)
       )
     );
 
-    const [stronger, weaker] =
-      mother.halfStars === father.halfStars
-        ? this.rng() < 0.5
-          ? [mother, father]
-          : [father, mother]
-        : mother.halfStars > father.halfStars
-          ? [mother, father]
-          : [father, mother];
+    const [stronger, weaker] = this.strongerFirst(
+      mother,
+      father,
+      mother.halfStars,
+      father.halfStars
+    );
 
     const roll = this.rng();
-    const element: Element =
-      roll < 0.7
-        ? (stronger.element as Element)
-        : roll < 0.95
-          ? (weaker.element as Element)
-          : ELEMENTS[randInt(this.rng, 0, ELEMENTS.length - 1)];
+    const element = this.elementFromRoll(
+      roll,
+      stronger.element as Element,
+      weaker.element as Element
+    );
 
     return { element, halfStars };
+  }
+
+  /**
+   * Order a pair stronger-first by `motherScore` vs `fatherScore`. A tie is
+   * a coin flip — and ONLY a tie draws from the rng, so an untied pair must
+   * not consume a roll here (the seeded stream downstream depends on it).
+   */
+  private strongerFirst<T>(mother: T, father: T, motherScore: number, fatherScore: number): [T, T] {
+    if (motherScore === fatherScore) {
+      if (this.rng() < 0.5) return [mother, father];
+      return [father, mother];
+    }
+    if (motherScore > fatherScore) return [mother, father];
+    return [father, mother];
+  }
+
+  /**
+   * The element lean from one already-drawn roll: 70% the stronger parent's,
+   * 25% the weaker's, 5% a wild type — and only the wild branch draws again.
+   */
+  private elementFromRoll(roll: number, stronger: Element, weaker: Element): Element {
+    if (roll < 0.7) return stronger;
+    if (roll < 0.95) return weaker;
+    return ELEMENTS[randInt(this.rng, 0, ELEMENTS.length - 1)];
+  }
+
+  /**
+   * Coat v0 (round 14): a small mutation chance to any base coat, otherwise
+   * a coin flip between the parents'. The rng draws are lazy — a mutation
+   * never flips the coin — and that draw count is part of the seeded stream.
+   */
+  private inheritCoat(motherCoat: string, fatherCoat: string): string {
+    if (this.rng() < COAT_MUTATION_CHANCE)
+      return BASE_COATS[randInt(this.rng, 0, BASE_COATS.length - 1)];
+    if (this.rng() < 0.5) return motherCoat;
+    return fatherCoat;
   }
 
   /**
