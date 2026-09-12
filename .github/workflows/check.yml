@@ -1,15 +1,32 @@
 name: check
 
-# The same gate as .githooks/pre-commit, plus types and tests — for the
-# commits that never passed through a local hook (agents, web edits, PRs
-# from other machines).
+# The same gate as .githooks/pre-commit, plus the checks a hook is too slow
+# to run — for the commits that never passed through a local hook (agents,
+# web edits, PRs from other machines).
+#
+# The jobs are split so a red tick says WHAT broke without opening the log,
+# and they run in parallel, so the wall clock is the slowest one (~2 min)
+# rather than the sum. The repo is public, so Actions minutes are free —
+# throughput is the only budget being spent here.
+#
+# What deliberately stays OUT: anything needing Ollama. A local 14b model is
+# minutes per game-day and gigabytes of download; the llm barns are an
+# experiment run by hand (BRAINS.md), not a gate. The scripted sim below
+# covers the engine those experiments sit on.
 on:
   push:
     branches: [main]
   pull_request:
 
+# A second push to the same branch cancels the first run's jobs — nobody
+# needs the verdict on a commit that has already been superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  style:
+    name: lint · format · types
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,3 +35,54 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun run typecheck
+
+  test:
+    name: engine tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Everything but src/actors — pure logic, no servers, ~30s locally.
+      - run: bun test src/engine src/db
+
+  actors:
+    name: actor tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Split from the engine tests because this one boots a real local
+      # rivet-engine binary (rivetkit ships it as a per-platform optional
+      # dependency). If the Linux build ever stops resolving, THIS job goes
+      # red on its own and the 500 engine tests still report honestly.
+      - run: bun test src/actors
+
+  simulate:
+    name: 30-day sim · doctor invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # The tests say the rules do what they say; the doctor says the WORLD
+      # is still sound — GP conservation to the cent, no stranded escrow, no
+      # Pit Figure inversions. It exits non-zero on a broken invariant, so
+      # this is a real gate, not a log to read. 30 seeded days is ~18s
+      # locally and enough for the daily card, staking, claims and a Hatch
+      # Friday to have all run several times. The 112/182-day balance runs
+      # stay a human's call — they judge health warnings, which are
+      # judgement, not pass/fail.
+      - run: bun run simulate 30 --seed=1
+
+  build:
+    name: next build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Catches what tsc alone cannot: a server/client boundary mistake, a
+      # bad route export, a page that only fails when it renders.
+      - run: bun run build
