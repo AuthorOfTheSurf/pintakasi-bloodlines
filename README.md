@@ -1,5 +1,7 @@
 # Pintakasi: Bloodlines
 
+[![check](https://github.com/AuthorOfTheSurf/pintakasi-bloodlines/actions/workflows/check.yml/badge.svg)](https://github.com/AuthorOfTheSurf/pintakasi-bloodlines/actions/workflows/check.yml)
+
 Breed, fight, retire. The strongest Birds in the game do not exist yet, we get to breed for them.
 
 Currently the game is mainly played and developed as a simulation to get the game balance and design right.
