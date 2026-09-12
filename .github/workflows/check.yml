@@ -29,7 +29,7 @@ jobs:
     name: lint · format · types
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint
@@ -40,30 +40,36 @@ jobs:
     name: engine tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Everything but src/actors — pure logic, no servers, ~30s locally.
-      - run: bun test src/engine src/db
+      # --timeout: a runner is ~1.5x slower than a dev laptop, and the
+      # heaviest engine tests play a fortnight of real bot days. One of them
+      # sits at 5.0s locally against bun's 5s default, which made main's
+      # first run red on a test that had passed thousands of times. The
+      # heavy tests carry their own explicit timeouts now; this is the net
+      # under the next one, not a licence to let a test crawl.
+      - run: bun test src/engine src/db --timeout=20000
 
   actors:
     name: actor tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Split from the engine tests because this one boots a real local
       # rivet-engine binary (rivetkit ships it as a per-platform optional
       # dependency). If the Linux build ever stops resolving, THIS job goes
       # red on its own and the 500 engine tests still report honestly.
-      - run: bun test src/actors
+      - run: bun test src/actors --timeout=20000
 
   simulate:
     name: 30-day sim · doctor invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # The tests say the rules do what they say; the doctor says the WORLD
@@ -80,7 +86,7 @@ jobs:
     name: next build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Catches what tsc alone cannot: a server/client boundary mistake, a

@@ -145,7 +145,13 @@ describe("a bot day", () => {
     );
     expect(entries.length).toBeGreaterThan(100); // enough for the rate to mean anything
     expect(timed.length / entries.length).toBeGreaterThan(1 / ELEMENTS.length);
-  });
+    // Fourteen tickDays of real bot play is ~5.0s on a dev laptop — bun's
+    // default per-test timeout is 5s, so this test has been passing by
+    // milliseconds and went red the first time it ran on a CI runner
+    // (5,943ms). The fortnight is the point of the test (a 1-in-5 rate needs
+    // a fortnight of entries to mean anything), so the timeout moves, not
+    // the test.
+  }, 30_000);
 
   test("several days keep the world moving without a crash", () => {
     const w = world({ only: FAST_ROSTER });
