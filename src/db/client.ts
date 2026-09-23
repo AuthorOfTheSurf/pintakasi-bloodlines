@@ -14,20 +14,22 @@ export type DB = BetterSQLite3Database<typeof schema>;
 const req = createRequire(import.meta.url);
 
 /**
- * Round 35, alongside the indexes and the per-tick transaction.
+ * Round 35 added the cache and temp-store pragmas below. It also set
+ * `synchronous = NORMAL`, which is gone now.
  *
- * `synchronous = NORMAL` is the one that matters: under WAL it stops fsyncing
- * on every commit and syncs at checkpoints instead. The durability it trades
- * away is narrow and, for this project, already accepted — a power cut can
- * cost the most recent commits, but NOT integrity, because WAL still recovers
- * a consistent database. Sim worlds are explicitly disposable (house rule),
- * and the live world is one hand-played game we can re-tick.
+ * `synchronous = FULL`: every commit is fsynced before it returns. Under WAL,
+ * NORMAL syncs only at checkpoints. That survives a process crash but not
+ * the host going down, and Zo restarts on its own. On 2026-09-23 a restart
+ * cost TworDuel six days of commits, including paid purchases (tworduel#47).
+ * "Sim worlds are disposable" was the reason for NORMAL, but the live world
+ * runs on this same function, and a lost tick is lost silently. So every
+ * database runs FULL, on every machine.
  *
  * The cache is 64 MB rather than SQLite's 2 MB default; the working set is a
  * 60 MB database being scanned repeatedly, so this is the difference between
  * reading the battle log from memory and reading it from disk.
  */
-const SPEED_PRAGMAS = ["synchronous = NORMAL", "cache_size = -64000", "temp_store = MEMORY"];
+const PRAGMAS = ["synchronous = FULL", "cache_size = -64000", "temp_store = MEMORY"];
 
 /** Open (and bootstrap) a database — ":memory:" for tests. */
 export function createDb(file: string = defaultDbPath()): DB {
@@ -37,7 +39,7 @@ export function createDb(file: string = defaultDbPath()): DB {
     const { Database } = req("bun:sqlite");
     const sqlite = new Database(file);
     sqlite.run("PRAGMA journal_mode = WAL");
-    for (const p of SPEED_PRAGMAS) sqlite.run(`PRAGMA ${p}`);
+    for (const p of PRAGMAS) sqlite.run(`PRAGMA ${p}`);
     for (const stmt of splitStatements(DDL)) sqlite.run(stmt);
     const { drizzle } = req("drizzle-orm/bun-sqlite");
     return drizzle(sqlite, { schema }) as unknown as DB;
@@ -46,7 +48,7 @@ export function createDb(file: string = defaultDbPath()): DB {
   const Database = req("better-sqlite3");
   const sqlite = new Database(file);
   sqlite.pragma("journal_mode = WAL");
-  for (const p of SPEED_PRAGMAS) sqlite.pragma(p);
+  for (const p of PRAGMAS) sqlite.pragma(p);
   sqlite.exec(DDL);
   const { drizzle } = req("drizzle-orm/better-sqlite3");
   return drizzle(sqlite, { schema }) as DB;
