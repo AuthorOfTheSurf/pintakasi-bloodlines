@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -23,6 +23,7 @@ import {
   LtIcon,
   TOKEN_EGG_HEX,
 } from "./sprites";
+import { FightViewer } from "./fight-viewer";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -901,7 +902,7 @@ type ReplayState =
   | { status: "ok"; replay: FightReplay };
 
 /**
- * What sits under the header of a FightReplayPanel — a function rather than a
+ * What sits under the header of a FightReplayModal — a function rather than a
  * nested ternary so each of the three states reads on its own.
  */
 function replayBody(state: ReplayState, logId: number) {
@@ -944,7 +945,17 @@ function replayBody(state: ReplayState, logId: number) {
           . The replay below says {state.replay.figures[0]} / {state.replay.figures[1]} —{" "}
           {state.replay.driftDetail}.
         </div>
-      ) : null}
+      ) : (
+        // Keyed by the fight, so opening another one starts a fresh reel from
+        // its intro instead of carrying the last fight's cursor into it. A
+        // drifted replay has no timeline to hand over, so it gets no picture.
+        <FightViewer
+          key={logId}
+          timeline={state.replay.timeline}
+          looks={state.replay.looks}
+          stables={state.replay.stables}
+        />
+      )}
       <pre
         style={{
           height: 300,
@@ -976,37 +987,87 @@ function replayBody(state: ReplayState, logId: number) {
  * ── READING A FIGHT (round 38) ─────────────────────────────────────────────
  *
  * The narration is not in the database any more — it is rebuilt from the
- * fight's seed on request — so this is the one thing in the office that talks
- * to the server after the page loads, and the only place a spinner exists.
+ * fight's seed on request — so a fight, like the career it belongs to, is
+ * asked of the server after the page loads.
  *
- * It REPLACES the fight-history grid rather than stacking under it. The Birds
- * tab was already two grids deep in a fixed-height pane; a third level would
- * have pushed the flock off-screen, and the transcript is a hundred lines of
- * text that wants the room. Every level keeps its own way back — the fight
- * list is still there behind "← back", and the bird's row above is untouched —
- * so nobody loses their place by clicking through.
+ * It opens OVER the office as a modal (round 50), and the fight list stays
+ * where it was underneath. It used to replace the list, which was right while
+ * a fight was a hundred lines of text that wanted the room — but a fight is
+ * now something you watch, and watching a bird's career means one fight after
+ * another. Replacing the list made every next fight a trip back through
+ * "← back". Now closing the modal lands on the list, and the two arrows step
+ * through the career without closing it at all.
  */
-function FightReplayPanel({
+function FightReplayModal({
   fight,
   state,
-  onBack,
+  onClose,
+  onEarlier,
+  onLater,
 }: {
   fight: BirdFightRowUI;
   state: ReplayState;
-  onBack: () => void;
+  onClose: () => void;
+  /** Undefined at either end of the career, which is what disables the arrow. */
+  onEarlier: (() => void) | undefined;
+  onLater: (() => void) | undefined;
 }) {
+  // A native <dialog>, opened with showModal(). That is what makes it a modal
+  // in fact and not only in looks: the browser traps Tab inside it, makes the
+  // office behind it inert, puts it in the top layer and closes it on Escape.
+  // A positioned <div> with role="dialog" promised all of that to a screen
+  // reader and delivered none of it — Tab walked out into the tab bar
+  // underneath, where Enter switched tabs with the fight still open.
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = dialog.current;
+    if (el && !el.open) el.showModal();
+  }, []);
+
+  // The arrow keys step through the career, because a hand that has just
+  // watched a fight should not have to find the button for the next one.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // The scrubber takes the arrows for itself when it has focus.
+      if (e.target instanceof HTMLInputElement) return;
+      if (e.key === "ArrowLeft") onEarlier?.();
+      if (e.key === "ArrowRight") onLater?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onEarlier, onLater]);
+
   return (
-    <div>
-      <p style={{ margin: "0 0 .5rem", fontSize: ".85rem" }}>
-        <button onClick={onBack} style={{ ...CHIP, marginLeft: 0 }}>
-          ← back to the fight list
-        </button>{" "}
-        <span className="world">
-          day {fight.day} · {fight.card} · vs {fight.opponent} · {fight.result}
-        </span>
-      </p>
-      {replayBody(state, fight.logId)}
-    </div>
+    <dialog
+      ref={dialog}
+      className="fight-modal"
+      aria-label={`Fight on day ${fight.day} against ${fight.opponent}`}
+      // Escape and any other browser-initiated close arrive here.
+      onClose={onClose}
+      // The dialog element itself is only ever the click target on its
+      // backdrop; a click inside lands on the panel or something in it.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div style={{ padding: ".7rem .9rem .9rem" }}>
+        <p style={{ margin: "0 0 .6rem", fontSize: ".85rem", display: "flex", gap: ".3rem" }}>
+          <button onClick={onEarlier} disabled={!onEarlier} style={{ ...CHIP, marginLeft: 0 }}>
+            ← earlier
+          </button>
+          <button onClick={onLater} disabled={!onLater} style={{ ...CHIP, marginLeft: 0 }}>
+            later →
+          </button>
+          <span className="world" style={{ alignSelf: "center", marginLeft: ".4rem" }}>
+            day {fight.day} · {fight.card} · vs {fight.opponent}
+          </span>
+          <button onClick={onClose} style={{ ...CHIP, marginLeft: "auto" }}>
+            close ✕
+          </button>
+        </p>
+        {replayBody(state, fight.logId)}
+      </div>
+    </dialog>
   );
 }
 
@@ -1129,6 +1190,17 @@ export function AdminTabs({
   const [replay, setReplay] = useState<ReplayState>({ status: "loading" });
   const selectedBird = openBird ? (birds.find((b) => b.id === openBird) ?? null) : null;
   const [history, setHistory] = useState<HistoryState>({ status: "loading" });
+  const closeFight = useCallback(() => setOpenFight(null), []);
+  // The fight one step earlier or later in this bird's career, as a handler —
+  // or undefined when there is none, so the modal can grey the arrow out.
+  // Career order (oldest first) is the order the history arrives in, whatever
+  // the grid happens to be sorted by.
+  const stepFight = (by: -1 | 1) => {
+    if (!openFight || history.status !== "ok") return undefined;
+    const at = history.fights.findIndex((f) => f.logId === openFight.logId);
+    const next = at === -1 ? undefined : history.fights[at + by];
+    return next ? () => setOpenFight(next) : undefined;
+  };
 
   // A bird's career is fetched when the bird is opened (round 50). It used to
   // arrive with the page — every bird's fights in one capped array — and the
@@ -1277,20 +1349,21 @@ export function AdminTabs({
                 close ✕
               </button>
             </h3>
+            <BirdFightHistory
+              birdName={selectedBird.name}
+              state={history}
+              defaultColDef={base}
+              onOpen={setOpenFight}
+            />
             {openFight ? (
-              <FightReplayPanel
+              <FightReplayModal
                 fight={openFight}
                 state={replay}
-                onBack={() => setOpenFight(null)}
+                onClose={closeFight}
+                onEarlier={stepFight(-1)}
+                onLater={stepFight(1)}
               />
-            ) : (
-              <BirdFightHistory
-                birdName={selectedBird.name}
-                state={history}
-                defaultColDef={base}
-                onOpen={setOpenFight}
-              />
-            )}
+            ) : null}
           </div>
         ) : null}
       </div>
