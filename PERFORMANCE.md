@@ -147,6 +147,16 @@ are volume-proportional rather than late-run-weighted.
   every wide battle row for `result = win`; the final-size query on the
   279,322-row audit world measured 26.7 ms → 2.1 ms. Snapshot overwrite is one
   upsert, and predecessor lookup is an indexed `ORDER BY ... LIMIT 1`.
+- **Round 50, the fight as a timeline** (`fight-timeline.ts`): `simulatePair`
+  stopped building its play-by-play — it records a `FightTimeline` and the
+  text is a getter. Measured on the function alone (200,000 fights, all five
+  blades): **9.5 → 1.9 µs/fight**. That is real and it is also irrelevant
+  here: a fight costs ~4,700 µs in the sim, so the saving is 0.16% of it, and
+  the 92-day seed-1 run read 4.67 ms/fight before and 4.79 after, which is
+  one run each side and inside run-to-run noise. **Narration was never where
+  the time went** — don't dig in `fight-sim.ts` for speed. The round was done
+  for the viewer, and proven neutral: 92-day worlds identical under
+  `worldhash --ignore-ids`, 26,880 transcripts byte-identical.
 
 ## Where the remaining time goes
 

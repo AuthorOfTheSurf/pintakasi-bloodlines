@@ -88,6 +88,22 @@ describe("a fought card replays exactly", () => {
     // recomputed tonight, one read off the archive. Equal is the whole point.
     expect(replay.figures).toEqual(replay.archivedFigures);
     expect(replay.figures).toEqual(fight.figures);
+    // What a viewer draws from (round 50): the fight as facts, and each side's
+    // coat in the same [A, B] order as the timeline's corners.
+    if (replay.drifted) throw new Error("a clean replay reported drift");
+    expect(replay.timeline.figures).toEqual(fight.figures);
+    const birdRows = [rows[0], rows[1]]
+      .sort((x, y) => x.side - y.side)
+      .map((r) => {
+        const bird = w.db.select().from(birds).where(eq(birds.id, r.birdId)).get();
+        if (!bird) throw new Error(`bird ${r.birdId} is missing from the flock`);
+        return bird;
+      });
+    expect(replay.timeline.corners.map((c) => c.name)).toEqual(birdRows.map((b) => b.name));
+    expect(replay.looks).toEqual([
+      { sex: birdRows[0].sex, baseCoat: birdRows[0].baseCoat, trimColor: birdRows[0].trimColor },
+      { sex: birdRows[1].sex, baseCoat: birdRows[1].baseCoat, trimColor: birdRows[1].trimColor },
+    ]);
     // A replay is a pure read — it must not so much as touch the books.
     expectConserved(w.db);
   });
@@ -186,6 +202,9 @@ describe("the drift guard", () => {
     // replaced by what the engine now believes.
     expect(replay.archivedFigures).toEqual([bumped, b.pitFigure]);
     expect(replay.playByPlay.length).toBeGreaterThan(0);
+    // …but there is nothing to ANIMATE: a drifted fight hands a viewer no
+    // timeline, so it cannot be drawn as though it happened.
+    expect("timeline" in replay).toBe(false);
   });
 
   /**

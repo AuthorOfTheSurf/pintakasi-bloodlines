@@ -3,7 +3,6 @@ import {
   ELEMENT_BEATS,
   FIGURE,
   FORMATS,
-  PHASES,
   STARS,
   STATS,
   WEATHER,
@@ -12,6 +11,15 @@ import {
 } from "./config";
 
 type BladeFormat = (typeof FORMATS)[FightFormat];
+import {
+  narrate,
+  winnerOf,
+  type Corner,
+  type Ending,
+  type FightTimeline,
+  type Roll,
+  type Turn,
+} from "./fight-timeline";
 import { randInt, roll2d6, type Rng } from "./rng";
 
 export type BirdStats = {
@@ -69,8 +77,16 @@ export function toCombatant(row: {
 
 export interface SimResult {
   winner: 0 | 1;
-  playByPlay: string;
   figures: [number, number]; // per-side Pit Figures — each fogged separately
+  /** What happened, as facts — the record the play-by-play and the viewer both render. */
+  timeline: FightTimeline;
+  /**
+   * `narrate(timeline)`, built when read (round 50). A getter because a sim
+   * settles ~28,000 fights and reads the text of none of them: until this
+   * round every one of those fights formatted its whole transcript and threw
+   * it away.
+   */
+  readonly playByPlay: string;
 }
 
 interface Fighter {
@@ -81,11 +97,16 @@ interface Fighter {
   wind: number;
   maxWind: number;
   fuelTurns: number; // how many turns of full output the tank holds (round 27)
-  walled: boolean; // has the wall been narrated yet
+  blownOn: number | null; // the turn the tank ran dry — past it, the bird is walled
   clawPerRoll: number; // station's slope — set once at the scale, pre-form
+  // The wheel and weather edges, star- and blade-scaled. Like the clawback
+  // they are the same number on every roll, so they are judged once at the
+  // scale. null = this bird carries none.
+  elemEdge: number | null;
+  wxEdge: number | null;
   quitChecked: boolean; // the once-per-fight morale check
   ran: boolean;
-  dealt: number; // damage bookkeeping for the play-by-play
+  dealt: number; // damage bookkeeping
   // The Pit Figure's night term (round 30): the total NON-DICE addition this
   // bird actually rolled, summed over the turns it fought. Everything the
   // bird brought — form, the element wheel, the weather, station's clawback,
@@ -126,8 +147,10 @@ function toFighter(c: Combatant): Fighter {
     wind: BATTLE.WIND,
     maxWind: BATTLE.WIND,
     fuelTurns: BATTLE.FUEL.BASE_TURNS + c.stats.stamina * BATTLE.FUEL.TURNS_PER_STAMINA,
-    walled: false,
+    blownOn: null,
     clawPerRoll: 0,
+    elemEdge: null,
+    wxEdge: null,
     quitChecked: false,
     ran: false,
     dealt: 0,
@@ -173,81 +196,54 @@ export function simulatePair(
   a.clawPerRoll = claw(a, b);
   b.clawPerRoll = claw(b, a);
 
-  const lines: string[] = [
-    `⚔ ${header} · ${fmt.label} — ${a.name} (${a.halfStars / 2}★ ${a.element}) vs ${b.name} (${b.halfStars / 2}★ ${b.element})`,
-    `Wind: ${a.name} ${a.wind} · ${b.name} ${b.wind}`,
-  ];
-  // The wheel only matters as loudly as the advantaged bird's stars say
-  // (2026-08-04): a 0★ bird's matchup is decorative, and the narration must
-  // not imply an edge the roll never sees.
-  const wheelLine = (adv: Fighter, prey: Fighter) =>
-    adv.halfStars === 0
-      ? `${adv.element} overcomes ${prey.element} on the wheel — but ${adv.name} carries no stars, so it counts for nothing.`
-      : `${adv.element} overcomes ${prey.element} — ${adv.name} presses a ${adv.halfStars / 2}★ element edge.`;
-  if (ELEMENT_BEATS[a.element] === b.element) lines.push(wheelLine(a, b));
-  else if (ELEMENT_BEATS[b.element] === a.element) lines.push(wheelLine(b, a));
-  if (weather) {
-    const aMatch = a.element === weather;
-    const bMatch = b.element === weather;
-    if (aMatch && bMatch) {
-      // Both matched cancels EXACTLY: damage is the roll MARGIN, so the same
-      // bonus on both sides drops out and the fight is bit-identical to a
-      // no-weather one. Say that, rather than implying the day did something.
-      lines.push(`Today's element is ${weather} — both birds call it home, so it settles nothing.`);
-    } else if (aMatch || bMatch) {
-      const who = aMatch ? a.name : b.name;
-      lines.push(`Today's element is ${weather} — ${who} carries the weather edge.`);
-    } else {
-      lines.push(`Today's element is ${weather} — neither bird calls it home.`);
-    }
-  }
-  // Narration only — the slope itself has no threshold. 0.05 per roll is
-  // where the clawback stops being rounding error and starts being a story.
-  if (a.clawPerRoll >= 0.05) lines.push(`${a.name} is outmatched on paper — station will tell.`);
-  if (b.clawPerRoll >= 0.05) lines.push(`${b.name} is outmatched on paper — station will tell.`);
+  // Stars are the element's VOLUME (2026-08-04): both edges scale by
+  // halfStars/10, so 5.0★ delivers the full ceiling and 0★ mutes the
+  // matchup entirely. Every half-step is a real rung.
+  const edges = (self: Fighter, other: Fighter) => {
+    const starScale = self.halfStars / STARS.MAX_HALF_STARS;
+    if (!(starScale > 0)) return;
+    if (ELEMENT_BEATS[self.element] === other.element)
+      self.elemEdge = BATTLE.ELEMENT_EDGE * starScale * fmt.statScale;
+    // The day's ascendant element (round 24): a bird OF the weather's element
+    // gets the weather edge at the same star volume, stacking with the
+    // head-to-head RPS edge above.
+    if (weather && self.element === weather) self.wxEdge = WEATHER.EDGE * starScale * fmt.statScale;
+  };
+  edges(a, b);
+  edges(b, a);
 
-  let turnsFought = 0;
+  const turns: Turn[] = [];
   for (let turn = 1; turn <= fmt.maxTurns; turn++) {
     if (a.wind <= 0 || b.wind <= 0 || a.ran || b.ran) break;
-    turnsFought = turn;
-
-    // Narration only since round 27 — the weight matrix rolls every stat on
-    // every turn, but the fight still has chapters worth naming.
-    const phase = phaseOf(turn);
 
     // The fuel wall: a bird past its tank delivers only WALL_FACTOR of its
-    // agility and sight from here on. Narrated once, the turn it blows.
-    for (const f of [a, b]) {
-      if (!f.walled && turn > f.fuelTurns) {
-        f.walled = true;
-        lines.push(`${f.name} is blown — the tank is empty, running on heart now.`);
-      }
-    }
+    // agility and sight from here on.
+    for (const f of [a, b]) if (f.blownOn === null && turn > f.fuelTurns) f.blownOn = turn;
 
-    const ra = turnRoll(a, b, fmt, rng, weather);
-    const rb = turnRoll(b, a, fmt, rng, weather);
+    const ra = turnRoll(a, fmt, rng);
+    const rb = turnRoll(b, fmt, rng);
     // Book the night BEFORE the roll is resolved — a bird's figure counts
     // what it brought to every turn it fought, win or lose the exchange.
     a.bonusRolled += ra.bonus;
     b.bonusRolled += rb.bonus;
+    const rolls = [ra.roll, rb.roll] as const;
 
     if (ra.total === rb.total) {
-      lines.push(`T${turn} [${phase}] Both circle — ${ra.detail} vs ${rb.detail}. No blood.`);
+      turns.push({ rolls, exchange: TIE });
       continue;
     }
-    const [winner, loser, w, l] = ra.total > rb.total ? [a, b, ra, rb] : [b, a, rb, ra];
+    const aWon = ra.total > rb.total;
+    const [winner, loser, w, l] = aWon ? [a, b, ra, rb] : [b, a, rb, ra];
     // Damage = roll margin × the blade. Knives hit like trucks; gaffs chip.
     let damage = Math.max(1, Math.round((w.total - l.total) * fmt.damageMult));
-    if (w.doubles) damage = Math.round(damage * fmt.critMult);
+    const crit = w.roll.dice[0] === w.roll.dice[1];
+    if (crit) damage = Math.round(damage * fmt.critMult);
     loser.wind -= damage;
     winner.dealt += damage;
-    const move = moveName(w.dice, w.doubles);
-    lines.push(
-      `T${turn} [${phase}] ${winner.name} lands a ${move} — ${damage} wind. (${w.detail} vs ${l.detail}) ${loser.name}: ${Math.max(0, loser.wind)}`
-    );
 
     // The morale check — gameness's teeth. Once per fight, when a bird is
     // first badly hurt, it decides whether to keep fighting or RUN.
+    let stood = false;
     if (
       loser.wind > 0 &&
       loser.wind < loser.maxWind * BATTLE.QUIT_WIND_FRACTION &&
@@ -255,32 +251,25 @@ export function simulatePair(
     ) {
       loser.quitChecked = true;
       const quitChance = BATTLE.QUIT_BASE_CHANCE * (1 - loser.stats.gameness / STATS.MAX);
-      if (rng() < quitChance) {
-        loser.ran = true;
-        lines.push(`${loser.name} breaks and RUNS — no gameness left in it.`);
-      } else {
-        lines.push(`${loser.name} is badly hurt but stands its ground.`);
-      }
+      if (rng() < quitChance) loser.ran = true;
+      else stood = true;
     }
+    turns.push({
+      rolls,
+      exchange: {
+        kind: "hit",
+        by: aWon ? 0 : 1,
+        damage,
+        crit,
+        windAfter: Math.max(0, loser.wind),
+        stood,
+      },
+    });
   }
+  const turnsFought = turns.length;
 
-  // Neutral decision: a run loses, an empty wind pool loses, otherwise the
-  // deeper wind pool wins at the bell (dead-even wind = the judges flip).
-  let winner: 0 | 1;
-  if (a.ran) winner = 1;
-  else if (b.ran) winner = 0;
-  else if (b.wind <= 0) winner = 0;
-  else if (a.wind <= 0) winner = 1;
-  else if (a.wind !== b.wind) winner = a.wind > b.wind ? 0 : 1;
-  else winner = rng() < 0.5 ? 0 : 1;
-
-  if (a.ran || b.ran) {
-    // Line already narrated at the moment of the break.
-  } else if (a.wind <= 0 || b.wind <= 0) {
-    lines.push(`${(a.wind <= 0 ? a : b).name} is out of wind — the sentensyador calls it.`);
-  } else {
-    lines.push(`Time is called — ${winner === 0 ? a.name : b.name} kept more wind.`);
-  }
+  const ending = endingOf(a, b, rng);
+  const winner = winnerOf(ending);
 
   // ── The Pit Figures (rebuilt round 30 — spine × night) ────────────────────
   // See the FIGURE block in config for the full design note. In short: the
@@ -344,36 +333,71 @@ export function simulatePair(
   const figures: [number, number] =
     winner === 0 ? [winnerFigure, loserFigure] : [loserFigure, winnerFigure];
 
-  lines.push(`🏆 ${winner === 0 ? a.name : b.name} WINS.`);
-  lines.push(`Pit Figures: ${a.name} ${figures[0]} · ${b.name} ${figures[1]} (${fmt.label})`);
-  return { winner, playByPlay: lines.join("\n"), figures };
+  const timeline: FightTimeline = {
+    header,
+    format,
+    corners: [cornerOf(a), cornerOf(b)],
+    wheel: wheelOf(a, b),
+    weather: weather
+      ? { element: weather, home: [a.element === weather, b.element === weather] }
+      : null,
+    turns,
+    ending,
+    figures,
+  };
+  let text: string | undefined;
+  return {
+    winner,
+    figures,
+    timeline,
+    get playByPlay() {
+      return (text ??= narrate(timeline));
+    },
+  };
 }
 
-/** The chapter a turn falls in — narration only (see simulatePair). */
-function phaseOf(turn: number): "break" | "open" | "deep" {
-  if (turn <= PHASES.BREAK_THROUGH_TURN) return "break";
-  if (turn <= PHASES.OPEN_THROUGH_TURN) return "open";
-  return "deep";
+// A tie carries nothing, so every tied turn of every fight shares this one.
+const TIE = { kind: "tie" } as const;
+
+function cornerOf(f: Fighter): Corner {
+  return {
+    name: f.name,
+    element: f.element,
+    halfStars: f.halfStars,
+    wind: f.maxWind,
+    claw: f.clawPerRoll,
+    elemEdge: f.elemEdge,
+    wxEdge: f.wxEdge,
+    blownOn: f.blownOn,
+  };
 }
 
-/** What the winning roll looked like from the stands — doubles first, then the pip sum. */
-function moveName(dice: [number, number], doubles: boolean): string {
-  if (doubles) return `TARI STRIKE (double ${dice[0]}s!)`;
-  const pips = dice[0] + dice[1];
-  if (pips >= 10) return "high slash";
-  if (pips <= 4) return "quick feint";
-  return "clean hit";
+function wheelOf(a: Fighter, b: Fighter): 0 | 1 | null {
+  if (ELEMENT_BEATS[a.element] === b.element) return 0;
+  if (ELEMENT_BEATS[b.element] === a.element) return 1;
+  return null;
+}
+
+/**
+ * Neutral decision: a run loses, an empty wind pool loses, otherwise the
+ * deeper wind pool wins at the bell (dead-even wind = the judges flip). The
+ * flip is the one draw here, and it is taken only on that last branch.
+ */
+function endingOf(a: Fighter, b: Fighter, rng: Rng): Ending {
+  if (a.ran) return { kind: "ran", side: 0 };
+  if (b.ran) return { kind: "ran", side: 1 };
+  if (b.wind <= 0) return { kind: "windOut", side: 1 };
+  if (a.wind <= 0) return { kind: "windOut", side: 0 };
+  if (a.wind !== b.wind) return { kind: "bell", winner: a.wind > b.wind ? 0 : 1, coinFlip: false };
+  return { kind: "bell", winner: rng() < 0.5 ? 0 : 1, coinFlip: true };
 }
 
 function turnRoll(
   self: Fighter,
-  other: Fighter,
   fmt: BladeFormat,
-  rng: Rng,
-  weather?: Element
-): { total: number; bonus: number; dice: [number, number]; doubles: boolean; detail: string } {
+  rng: Rng
+): { total: number; bonus: number; roll: Roll } {
   const dice = roll2d6(rng);
-  const parts = [`${dice[0]}+${dice[1]}`];
 
   // Condition — day-of-fight form, rolled fresh every turn. High condition
   // pins form near 100%; low condition means some turns arrive badly.
@@ -385,7 +409,7 @@ function turnRoll(
   // bird's speed stats (agility/sight) deliver only WALL_FACTOR of
   // themselves; stamina and gameness never wall — the tank IS stamina's
   // mechanic, and grit is mental.
-  const wall = self.walled ? BATTLE.FUEL.WALL_FACTOR : 1;
+  const wall = self.blownOn === null ? 1 : BATTLE.FUEL.WALL_FACTOR;
   const { weights, statScale } = fmt;
   const s = self.stats;
   const blend =
@@ -398,38 +422,15 @@ function turnRoll(
   // the fight samples it 5 times or 45. Only the dice go unscaled.
   let total = dice[0] + dice[1] + (blend * form * statScale) / BATTLE.ROLL_DIVISOR;
 
-  // Stars are the element's VOLUME (2026-08-04): both edges scale by
-  // halfStars/10, so 5.0★ delivers the full ceiling and 0★ mutes the
-  // matchup entirely. Every half-step is a real rung.
-  const starScale = self.halfStars / STARS.MAX_HALF_STARS;
-  if (starScale > 0 && ELEMENT_BEATS[self.element] === other.element) {
-    total += BATTLE.ELEMENT_EDGE * starScale * statScale;
-    parts.push(`+${(BATTLE.ELEMENT_EDGE * starScale * statScale).toFixed(2)}elem`);
-  }
-  // The day's ascendant element (round 24): a bird OF the weather's element
-  // gets the weather edge at the same star volume, stacking with the
-  // head-to-head RPS edge above.
-  if (starScale > 0 && weather && self.element === weather) {
-    total += WEATHER.EDGE * starScale * statScale;
-    parts.push(`+${(WEATHER.EDGE * starScale * statScale).toFixed(2)}wx`);
-  }
+  // The wheel, then the weather — both judged at the scale (see `edges`).
+  if (self.elemEdge !== null) total += self.elemEdge;
+  if (self.wxEdge !== null) total += self.wxEdge;
   // Station — the rivalry stat: the outmatched bird claws back a station-
   // sized fraction of the gap on every roll (see the scale, above).
-  if (self.clawPerRoll > 0) {
-    total += self.clawPerRoll * form * statScale;
-    parts.push("+station");
-  }
+  if (self.clawPerRoll > 0) total += self.clawPerRoll * form * statScale;
   // Gameness holds a hurt bird's performance together late.
-  if (self.wind < self.maxWind * BATTLE.QUIT_WIND_FRACTION) {
-    total += ((self.stats.gameness * form) / BATTLE.GAMENESS_DIVISOR) * statScale;
-    parts.push("+gameness");
-  }
+  const gameness = self.wind < self.maxWind * BATTLE.QUIT_WIND_FRACTION;
+  if (gameness) total += ((self.stats.gameness * form) / BATTLE.GAMENESS_DIVISOR) * statScale;
   // `bonus` is everything except the dice — the Pit Figure's night term.
-  return {
-    total,
-    bonus: total - dice[0] - dice[1],
-    dice,
-    doubles: dice[0] === dice[1],
-    detail: parts.join(""),
-  };
+  return { total, bonus: total - dice[0] - dice[1], roll: { dice, gameness } };
 }
