@@ -1,5 +1,6 @@
 import path from "node:path";
 import { db, defaultDbPath } from "@/db/client";
+import { cardLabel } from "./bird-fights";
 import { TickControls } from "./tick-controls";
 import { publicTicksEnabled } from "@/app/ticks";
 import {
@@ -53,7 +54,6 @@ import {
 } from "./charts";
 import {
   AdminTabs,
-  type BirdFightRowUI,
   type BirdRowUI,
   type BreedingRowUI,
   type FarmRowUI,
@@ -76,19 +76,6 @@ export const dynamic = "force-dynamic";
 
 const LEDGER_LIMIT = 3000;
 const FIGHT_LIMIT = 1000;
-/**
- * The per-bird fight histories behind the Birds grid's detail panel — ONE ROW
- * PER BIRD PER FIGHT (so a fight contributes two), across every bird, because
- * the grid filters to the clicked bird on the client.
- *
- * The most recent rows win: a long world holds tens of thousands of them, and
- * the whole array is serialized into the page. WHAT FALLS OFF: the OLDEST
- * fights, so a long-retired bird can show a short history — or none — while
- * everything the current card produced is always present. Raise it if the
- * panel starts lying about veterans; the cost is page weight, nothing else.
- */
-const BIRD_FIGHT_LIMIT = 6000;
-
 function gpFmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
@@ -187,19 +174,6 @@ function deltaFmt(magnitude: number, opts: { cents?: boolean; lt?: boolean }): s
   if (opts.cents) return gpFmt(magnitude);
   if (opts.lt) return ltFmt(magnitude);
   return magnitude.toLocaleString();
-}
-
-/**
- * The card's name for a lobby: mode·class, with "REAL" left unsaid (round
- * 20 — real stakes are the default, so only juvenile and hardcore announce
- * themselves). A plain real/open card just reads OPEN.
- */
-function cardLabel(mode: string, classType: string): string {
-  const parts = [
-    ...(mode === "real" ? [] : [mode.toUpperCase()]),
-    ...(classType === "open" ? [] : [classType.toUpperCase()]),
-  ];
-  return parts.length ? parts.join("·") : "OPEN";
 }
 
 /**
@@ -1216,61 +1190,6 @@ export default function Admin() {
     };
   });
 
-  // ── Every bird's fight history (round 37) ─────────────────────────────────
-  // Feeds the Birds grid's detail panel. One row per battle_log row — the
-  // bird's OWN side of the fight — so a bout appears twice in this array,
-  // once under each fighter, and the panel never has to know which seat its
-  // bird sat in.
-  //
-  // The opponent's Pit Figure lives on the opponent's own row. Single
-  // elimination in the Majors and one meeting per group on the daily card
-  // (round 34) make (lobby|tournament, birdId, opponentBirdId) unique, so the
-  // reciprocal row is addressable exactly — same reasoning the Fights grid's
-  // `mirror` lookup runs on, done once as a map because this pass covers the
-  // whole log rather than a thousand winners.
-  const figureKey = (r: LogRow) => `${r.lobbyId}|${r.tournamentId}|${r.birdId}|${r.opponentBirdId}`;
-  const figureByPair = new Map(log.map((r) => [figureKey(r), r.pitFigure]));
-  // Which round of a bracket a fight was: a bird's `eliminatedRound` is the
-  // round of the fight that beat it, so the LOSER's number names the bout for
-  // both sides — and the champion, who never has one, reads off its victims.
-  const eliminatedRound = new Map(
-    allTEntries.map((e) => [`${e.tournamentId}|${e.birdId}`, e.eliminatedRound])
-  );
-  const birdFights: BirdFightRowUI[] = log.slice(-BIRD_FIGHT_LIMIT).map((r) => {
-    const loserId = r.result === "win" ? r.opponentBirdId : r.birdId;
-    const tournament = r.tournamentId
-      ? allTournaments.find((t) => t.id === r.tournamentId)
-      : undefined;
-    const round = r.tournamentId ? eliminatedRound.get(`${r.tournamentId}|${loserId}`) : null;
-    return {
-      // Carried so the pane can ask the server to replay this exact fight.
-      logId: r.id,
-      birdId: r.birdId,
-      day: r.dayIndex,
-      card: r.tournamentId
-        ? `🏆 ${FORMATS[r.format].label} PINTAKASI${
-            tournament?.bracketSize && round
-              ? ` · ${roundName(round, Math.log2(tournament.bracketSize), tournament.bracketSize)}`
-              : ""
-          }`
-        : `${FORMATS[r.format].label} · ${cardLabel(r.mode, r.lobby)}${r.claimPrice ? ` @${r.claimPrice}` : ""}`,
-      opponent: r.opponentName,
-      opponentFarm: fname(r.opponentFarmId),
-      opponentFarmP: fcolors(r.opponentFarmId).P ?? "",
-      opponentFarmS: fcolors(r.opponentFarmId).S ?? "",
-      result: r.result,
-      figure: r.pitFigure,
-      // Null rather than 0 when the mirror is missing — a Pit Figure of zero
-      // is a legal (terrible) fight, and inventing one would read as a rout.
-      opponentFigure:
-        figureByPair.get(`${r.lobbyId}|${r.tournamentId}|${r.opponentBirdId}|${r.birdId}`) ?? null,
-      // The signed net for THIS bird, rake already deducted by the engine.
-      // Pintakasi rows carry 0 — the purse settles on the tournament entry,
-      // not per fight (see the netGpCents pass above).
-      gp: r.gpDeltaCents / 100,
-    };
-  });
-
   const split = splitBreedFee(ECONOMY.BREED_FEE);
   const breedingRows: BreedingRowUI[] = bred.map((b, i) => {
     const father = b.fatherId ? birdById.get(b.fatherId) : undefined;
@@ -1560,7 +1479,6 @@ export default function Admin() {
         farms={farmRows}
         fights={fightRows}
         birds={birdRows}
-        birdFights={birdFights}
         breeding={breedingRows}
         gacha={gachaRows}
         gp={gpRows}

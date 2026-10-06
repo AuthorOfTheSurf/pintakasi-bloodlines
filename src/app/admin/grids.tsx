@@ -888,6 +888,12 @@ const CHIP: React.CSSProperties = {
   marginLeft: ".4rem",
 };
 
+/** A bird's career as the history pane has it — asked for when the bird is opened. */
+type HistoryState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ok"; fights: BirdFightRowUI[] };
+
 /** What the replay panel is currently showing. */
 type ReplayState =
   | { status: "loading" }
@@ -1010,15 +1016,25 @@ function FightReplayPanel({
  */
 function BirdFightHistory({
   birdName,
-  fights,
+  state,
   defaultColDef,
   onOpen,
 }: {
   birdName: string;
-  fights: BirdFightRowUI[];
+  state: HistoryState;
   defaultColDef: ColDef<BirdFightRowUI>;
   onOpen: (fight: BirdFightRowUI) => void;
 }) {
+  // Three different things, said differently: still asking, could not ask,
+  // and asked and the answer is none. Only the last may say "never fought".
+  if (state.status === "loading") return <p className="world">Reading {birdName}&apos;s fights…</p>;
+  if (state.status === "error")
+    return (
+      <p className="world">
+        Could not read {birdName}&apos;s fights — {state.message}
+      </p>
+    );
+  const { fights } = state;
   if (fights.length === 0) {
     // An empty grid reads as a loading bug. Say the plain thing instead:
     // most birds on this list are eggs, chicks, or simply unmatched.
@@ -1074,7 +1090,6 @@ export function AdminTabs({
   farms,
   fights,
   birds,
-  birdFights,
   breeding,
   gacha,
   gp,
@@ -1089,7 +1104,6 @@ export function AdminTabs({
   farms: FarmRowUI[];
   fights: FightRowUI[];
   birds: BirdRowUI[];
-  birdFights: BirdFightRowUI[]; // every bird's fights; the pane filters by birdId
   breeding: BreedingRowUI[];
   gacha: GachaRowUI[];
   gp: GpRowUI[];
@@ -1114,9 +1128,29 @@ export function AdminTabs({
   const [openFight, setOpenFight] = useState<BirdFightRowUI | null>(null);
   const [replay, setReplay] = useState<ReplayState>({ status: "loading" });
   const selectedBird = openBird ? (birds.find((b) => b.id === openBird) ?? null) : null;
-  const selectedFights = selectedBird ? birdFights.filter((f) => f.birdId === selectedBird.id) : [];
+  const [history, setHistory] = useState<HistoryState>({ status: "loading" });
 
-  // The office's only fetch. The abort matters more than it looks: clicking
+  // A bird's career is fetched when the bird is opened (round 50). It used to
+  // arrive with the page — every bird's fights in one capped array — and the
+  // cap silently dropped the history of any bird that had not fought lately.
+  // Aborted on the next click for the same reason the replay below is.
+  useEffect(() => {
+    if (!openBird) return;
+    setHistory({ status: "loading" });
+    const ac = new AbortController();
+    fetch(`/api/fight/by-bird/${encodeURIComponent(openBird)}`, { signal: ac.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`The archive answered ${res.status} for this bird's fights.`);
+        setHistory({ status: "ok", fights: (await res.json()) as BirdFightRowUI[] });
+      })
+      .catch((err: unknown) => {
+        if (ac.signal.aborted) return;
+        setHistory({ status: "error", message: err instanceof Error ? err.message : String(err) });
+      });
+    return () => ac.abort();
+  }, [openBird]);
+
+  // The office's other fetch. The abort matters more than it looks: clicking
   // down a bird's history faster than the server replays means several fights
   // in flight at once, and without it the LAST response to land wins rather
   // than the last one asked for.
@@ -1252,7 +1286,7 @@ export function AdminTabs({
             ) : (
               <BirdFightHistory
                 birdName={selectedBird.name}
-                fights={selectedFights}
+                state={history}
                 defaultColDef={base}
                 onOpen={setOpenFight}
               />
