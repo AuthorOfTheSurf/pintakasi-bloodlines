@@ -53,6 +53,14 @@ export default tseslint.config(
     },
   },
   {
-    ignores: [".next/**", ".next-sim/**", "data/**", "runs/**", "node_modules/**"],
+    ignores: [
+      ".next/**",
+      ".next-sim/**",
+      "data/**",
+      "runs/**",
+      "node_modules/**",
+      // Agent worktrees are whole checkouts, node_modules and build output included.
+      ".claude/worktrees/**",
+    ],
   }
 );

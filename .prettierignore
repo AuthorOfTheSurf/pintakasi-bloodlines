@@ -7,3 +7,5 @@ data/
 runs/
 *.log
 bun.lock
+.droid-reviews/
+.claude/worktrees/
