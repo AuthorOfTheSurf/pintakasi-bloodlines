@@ -1900,6 +1900,11 @@ const CSS = `
   .diff { font-size: .65em; font-weight: 600; margin-left: .35em; vertical-align: middle; }
   .up { color: #7fc97f; } .down { color: #e07a6a; }
   .farm-chip { white-space: nowrap; }
+  /* The fight modal. The panel is the padded box INSIDE the dialog, so the
+     dialog's own padding is zero and a click that lands on the dialog element
+     can only be a click on the backdrop. */
+  dialog.fight-modal { width: min(800px, calc(100vw - 2rem)); max-height: 92vh; margin: 4vh auto auto; padding: 0; overflow-y: auto; background: #1f1b15; color: inherit; border: 1px solid #3a342a; border-radius: 6px; }
+  dialog.fight-modal::backdrop { background: rgba(10, 8, 6, 0.72); }
   .dot { display: inline-block; width: .65em; height: .65em; border-radius: 50%; border: 2px solid; margin-right: .4em; }
   .bot { color: #12100d; background: #9a8f78; border-radius: 3px; font-size: .7em; padding: 0 .3em; margin-left: .45em; vertical-align: middle; }
   .world { color: #9a8f78; font-style: italic; }

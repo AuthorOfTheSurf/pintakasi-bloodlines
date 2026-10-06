@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -1012,13 +1012,22 @@ function FightReplayModal({
   onEarlier: (() => void) | undefined;
   onLater: (() => void) | undefined;
 }) {
-  // Escape closes and the arrow keys step, because a hand that has just
-  // watched a fight is on the keyboard or the mouse and should not have to
-  // change which. Bound on the window: the modal holds no focused input of
-  // its own to hang the listener on until somebody clicks inside it.
+  // A native <dialog>, opened with showModal(). That is what makes it a modal
+  // in fact and not only in looks: the browser traps Tab inside it, makes the
+  // office behind it inert, puts it in the top layer and closes it on Escape.
+  // A positioned <div> with role="dialog" promised all of that to a screen
+  // reader and delivered none of it — Tab walked out into the tab bar
+  // underneath, where Enter switched tabs with the fight still open.
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const el = dialog.current;
+    if (el && !el.open) el.showModal();
+  }, []);
+
+  // The arrow keys step through the career, because a hand that has just
+  // watched a fight should not have to find the button for the next one.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
       // The scrubber takes the arrows for itself when it has focus.
       if (e.target instanceof HTMLInputElement) return;
       if (e.key === "ArrowLeft") onEarlier?.();
@@ -1026,38 +1035,22 @@ function FightReplayModal({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, onEarlier, onLater]);
+  }, [onEarlier, onLater]);
 
   return (
-    <div
-      // A click on the dimmed office closes; a click inside the panel must not.
+    <dialog
+      ref={dialog}
+      className="fight-modal"
+      aria-label={`Fight on day ${fight.day} against ${fight.opponent}`}
+      // Escape and any other browser-initiated close arrive here.
+      onClose={onClose}
+      // The dialog element itself is only ever the click target on its
+      // backdrop; a click inside lands on the panel or something in it.
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 50,
-        background: "rgba(10, 8, 6, 0.72)",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        padding: "4vh 1rem",
-        overflowY: "auto",
-      }}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Fight on day ${fight.day} against ${fight.opponent}`}
-        style={{
-          width: "min(800px, 100%)",
-          background: "#1f1b15",
-          border: "1px solid #3a342a",
-          borderRadius: 6,
-          padding: ".7rem .9rem .9rem",
-        }}
-      >
+      <div style={{ padding: ".7rem .9rem .9rem" }}>
         <p style={{ margin: "0 0 .6rem", fontSize: ".85rem", display: "flex", gap: ".3rem" }}>
           <button onClick={onEarlier} disabled={!onEarlier} style={{ ...CHIP, marginLeft: 0 }}>
             ← earlier
@@ -1074,7 +1067,7 @@ function FightReplayModal({
         </p>
         {replayBody(state, fight.logId)}
       </div>
-    </div>
+    </dialog>
   );
 }
 
