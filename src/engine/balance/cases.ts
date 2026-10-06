@@ -1247,7 +1247,7 @@ function turnLengths(a: Combatant, b: Combatant, f: FightFormat, o: CaseOptions)
   const out: number[] = [];
   for (let seed = o.seedFrom; seed < o.seedFrom + o.runs; seed++) {
     const sim = simulatePair(a, b, f, mulberry32(seed), "LAB");
-    out.push(Math.max(0, ...[...sim.playByPlay.matchAll(/^T(\d+) /gm)].map((m) => Number(m[1]))));
+    out.push(sim.timeline.turns.length);
   }
   return out;
 }

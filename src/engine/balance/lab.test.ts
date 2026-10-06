@@ -259,28 +259,25 @@ describe("duel's bookkeeping is self-consistent", () => {
   });
 
   test("meanTurns tracks the blade's length", () => {
-    // b1 caps at 5 turns, b4 at 30. A meanTurns that ignored the
-    // T<n> markers (or read the last line instead of the max) would flatten
-    // these into each other.
+    // b1 caps at 5 turns, b4 at 30. A meanTurns that did not count the
+    // turns actually fought would flatten these into each other.
     const [a, b] = twins();
     const sprint = duel(a, b, { format: "b1", runs: QUICK }).meanTurns;
     const marathon = duel(a, b, { format: "b4", runs: QUICK }).meanTurns;
     expect(sprint).toBeLessThan(marathon);
   });
 
-  test("two birds with the same name are refused, not silently misattributed", () => {
-    // The endings and run rates are parsed out of name-keyed narration, so
-    // identical names would credit both birds' runs to one side and the lab
-    // would report a fabricated gameness asymmetry with no error anywhere.
-    const same = { format: "b2" as const, runs: 10 };
-    expect(() => duel(flat(350, { name: "Dup" }), flat(400, { name: "Dup" }), same)).toThrow(
-      /both birds are named "Dup"/
-    );
-    // The likeliest way to hit it by accident: `flat` defaults every bird to
-    // "A", so the naive two-liner is caught rather than quietly measured.
-    expect(() => duel(flat(350), flat(400), same)).toThrow(/distinct names/);
-    // …and through mirrored, which builds its own combatants on the way.
-    expect(() => mirrored(flat(350), flat(400), same)).toThrow(/distinct names/);
+  test("two birds with the same name are measured side by side, not by name", () => {
+    // Runs and endings are read off the fight's timeline by SIDE (round 50).
+    // They used to be parsed out of name-keyed narration, where identical
+    // names credited both birds' runs to one side — a fabricated gameness
+    // asymmetry — and `duel` had to refuse the pair outright.
+    const o = { format: "b2" as const, runs: QUICK };
+    const dup = duel(flat(350, { name: "Dup" }), flat(400, { name: "Dup" }), o);
+    expect(dup).toEqual(duel(flat(350, { name: "A" }), flat(400, { name: "B" }), o));
+    // The weaker bird is the one that breaks, and it sits on side A.
+    expect(dup.ranRateA).toBeGreaterThan(dup.ranRateB);
+    expect(dup.ranRateA + dup.ranRateB).toBeCloseTo(dup.endings.ran, 9);
   });
 });
 

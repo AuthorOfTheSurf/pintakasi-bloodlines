@@ -158,10 +158,6 @@ export interface DuelResult {
   underdog: "A" | "B" | "neither";
 }
 
-/** Fought turns, read off the play-by-play's T<n> markers. */
-const turnsIn = (playByPlay: string) =>
-  Math.max(0, ...[...playByPlay.matchAll(/^T(\d+) /gm)].map((m) => Number(m[1])));
-
 /**
  * Reproduce the engine's station decision WITHOUT running a fight.
  *
@@ -214,11 +210,6 @@ export function clawbackOf(a: Combatant, b: Combatant): { A: number; B: number }
 export function duel(a: Combatant, b: Combatant, opts: DuelOptions): DuelResult {
   const runs = opts.runs ?? LAB.DEFAULT_RUNS;
   const seedFrom = opts.seedFrom ?? LAB.SEED_FROM;
-  if (a.name === b.name) {
-    // The endings are parsed out of narration, which is name-keyed. Identical
-    // names would silently attribute both birds' runs to one side.
-    throw new Error(`duel(): both birds are named "${a.name}" — give them distinct names`);
-  }
 
   let winsA = 0;
   let turns = 0;
@@ -235,24 +226,23 @@ export function duel(a: Combatant, b: Combatant, opts: DuelOptions): DuelResult 
   for (let seed = seedFrom; seed < seedFrom + runs; seed++) {
     const sim = simulatePair(a, b, opts.format, mulberry32(seed), "LAB", opts.weather);
     if (sim.winner === 0) winsA++;
-    const fought = turnsIn(sim.playByPlay);
+    const { turns: foughtTurns, ending } = sim.timeline;
+    const fought = foughtTurns.length;
     turns += fought;
     if (fought > longest) longest = fought;
     figA += sim.figures[0];
     figB += sim.figures[1];
     figWinner += sim.figures[sim.winner];
 
-    const aRan = sim.playByPlay.includes(`${a.name} breaks and RUNS`);
-    const bRan = sim.playByPlay.includes(`${b.name} breaks and RUNS`);
-    if (aRan) ranA++;
-    if (bRan) ranB++;
+    if (ending.kind === "ran" && ending.side === 0) ranA++;
+    if (ending.kind === "ran" && ending.side === 1) ranB++;
 
     // Three ways a fight ends, and they are not interchangeable: a bird that
     // RAN is a gameness failure, an emptied wind pool is a damage race, and
     // the bell is a fight nobody could finish. A knob that quietly converts
     // one into another has changed the game even if the win rate held still.
-    if (aRan || bRan) endRan++;
-    else if (sim.playByPlay.includes("is out of wind")) endWind++;
+    if (ending.kind === "ran") endRan++;
+    else if (ending.kind === "windOut") endWind++;
     else endBell++;
   }
 

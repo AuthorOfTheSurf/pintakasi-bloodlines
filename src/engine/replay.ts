@@ -1,8 +1,9 @@
 import { and, eq, ne } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birds, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birds, farms, tournamentEntries, tournaments } from "@/db/schema";
 import { FORMATS, weatherOfDay, type Element, type FightFormat } from "./config";
 import { simulatePair, toCombatant } from "./fight-sim";
+import type { FightTimeline, Pair } from "./fight-timeline";
 import { labelOf } from "./lobbies";
 import { roundName } from "./tournaments";
 import { mulberry32 } from "./rng";
@@ -49,7 +50,7 @@ import { mulberry32 } from "./rng";
  * The doctor samples this (see `replayFidelity`) so an engine change that
  * orphans history shows up on the next run instead of the next bug report.
  */
-export interface FightReplay {
+interface ReplayCommon {
   /** The regenerated narration. Present even when drifted — flagged, not hidden. */
   playByPlay: string;
   /** Pit Figures as the CURRENT engine produces them, [side A, side B]. */
@@ -57,12 +58,39 @@ export interface FightReplay {
   /** The archived figures, in the same order — what actually happened. */
   archivedFigures: [number, number];
   /**
-   * TRUE = the engine no longer reproduces the archived result. Trust the
-   * archive, not the transcript.
+   * What each bird looks like, [side A, side B] (round 50). Cosmetic: it feeds
+   * no roll, and like a name it is today's coat, not the night's.
    */
-  drifted: boolean;
-  driftDetail?: string;
+  looks: Pair<BirdLook>;
+  /**
+   * The barn each bird fought FOR, [side A, side B] — read off the battle-log
+   * row, not the bird. A claimed bird changes hands, and a fight belongs to
+   * the stable that carded it that night, not to whoever owns the bird now.
+   */
+  stables: Pair<Stable>;
 }
+
+/** A stable as a name plate shows it: its name and the two colours of its badge. */
+export type Stable = Pick<typeof farms.$inferSelect, "name" | "primaryColor" | "secondaryColor">;
+
+/** What a sprite needs to draw a bird. Derived from the row, so a schema change breaks here. */
+export type BirdLook = Pick<typeof birds.$inferSelect, "sex" | "baseCoat" | "trimColor">;
+
+/**
+ * `drifted: true` = the engine no longer reproduces the archived result.
+ * Trust the archive, not the transcript.
+ *
+ * A drifted replay carries NO TIMELINE (round 50). The transcript of a fight
+ * that contradicts its own archive is demoted and flagged; an ANIMATION of it
+ * would be a confident picture of something that did not happen. So "drifted
+ * fights are not animated" is not a rule a viewer has to remember — there is
+ * nothing to hand it.
+ */
+export type FightReplay = ReplayCommon &
+  (
+    | { drifted: false; driftDetail?: undefined; timeline: FightTimeline }
+    | { drifted: true; driftDetail: string }
+  );
 
 /**
  * Rebuild one fight from its battle-log row.
@@ -135,13 +163,29 @@ export function replayFight(db: DB, battleLogId: number): FightReplay | null {
       `the replay is won by ${sim.winner === 0 ? birdA.name : birdB.name}, the archive by ${archivedWinner === 0 ? birdA.name : birdB.name}`
     );
 
-  return {
+  const common: ReplayCommon = {
     playByPlay: sim.playByPlay,
     figures: sim.figures,
     archivedFigures,
-    drifted: drift.length > 0,
-    driftDetail: drift.length > 0 ? drift.join(" · ") : undefined,
+    looks: [lookOf(birdA), lookOf(birdB)],
+    stables: [stableOf(db, a.farmId), stableOf(db, b.farmId)],
   };
+  if (drift.length > 0) return { ...common, drifted: true, driftDetail: drift.join(" · ") };
+  return { ...common, drifted: false, timeline: sim.timeline };
+}
+
+/**
+ * Cosmetic like a look, so a farm row that has gone missing costs the badge
+ * and not the replay: the id stands in for the name, in the office's neutral.
+ */
+function stableOf(db: DB, farmId: string): Stable {
+  const farm = db.select().from(farms).where(eq(farms.id, farmId)).get();
+  if (!farm) return { name: farmId, primaryColor: "#3a342a", secondaryColor: "#3a342a" };
+  return { name: farm.name, primaryColor: farm.primaryColor, secondaryColor: farm.secondaryColor };
+}
+
+function lookOf(bird: BirdLook): BirdLook {
+  return { sex: bird.sex, baseCoat: bird.baseCoat, trimColor: bird.trimColor };
 }
 
 /**
