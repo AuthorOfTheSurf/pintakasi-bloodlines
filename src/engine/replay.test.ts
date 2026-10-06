@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { battleLog, birds } from "@/db/schema";
+import { battleLog, birds, farms } from "@/db/schema";
 import { replayFidelity, replayFight } from "./replay";
 import { expectConserved, onCard, world, type World } from "./testkit";
 import type { LobbySpec } from "./lobbies";
@@ -104,6 +104,12 @@ describe("a fought card replays exactly", () => {
       { sex: birdRows[0].sex, baseCoat: birdRows[0].baseCoat, trimColor: birdRows[0].trimColor },
       { sex: birdRows[1].sex, baseCoat: birdRows[1].baseCoat, trimColor: birdRows[1].trimColor },
     ]);
+    // …and the barn each side fought for, read off the row it wrote that night.
+    const farmRows = w.db.select().from(farms).all();
+    expect(replay.stables.map((s) => s.name)).toEqual(
+      birdRows.map((b) => farmRows.find((f) => f.id === b.farmId)?.name ?? "")
+    );
+    expect(new Set(replay.stables.map((s) => s.name)).size).toBe(2);
     // A replay is a pure read — it must not so much as touch the books.
     expectConserved(w.db);
   });

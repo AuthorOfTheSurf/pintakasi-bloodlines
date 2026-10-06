@@ -1,6 +1,6 @@
 import { and, eq, ne } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, birds, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birds, farms, tournamentEntries, tournaments } from "@/db/schema";
 import { FORMATS, weatherOfDay, type Element, type FightFormat } from "./config";
 import { simulatePair, toCombatant } from "./fight-sim";
 import type { FightTimeline, Pair } from "./fight-timeline";
@@ -62,7 +62,16 @@ interface ReplayCommon {
    * no roll, and like a name it is today's coat, not the night's.
    */
   looks: Pair<BirdLook>;
+  /**
+   * The barn each bird fought FOR, [side A, side B] — read off the battle-log
+   * row, not the bird. A claimed bird changes hands, and a fight belongs to
+   * the stable that carded it that night, not to whoever owns the bird now.
+   */
+  stables: Pair<Stable>;
 }
+
+/** A stable as a name plate shows it: its name and the two colours of its badge. */
+export type Stable = Pick<typeof farms.$inferSelect, "name" | "primaryColor" | "secondaryColor">;
 
 /** What a sprite needs to draw a bird. Derived from the row, so a schema change breaks here. */
 export type BirdLook = Pick<typeof birds.$inferSelect, "sex" | "baseCoat" | "trimColor">;
@@ -159,9 +168,20 @@ export function replayFight(db: DB, battleLogId: number): FightReplay | null {
     figures: sim.figures,
     archivedFigures,
     looks: [lookOf(birdA), lookOf(birdB)],
+    stables: [stableOf(db, a.farmId), stableOf(db, b.farmId)],
   };
   if (drift.length > 0) return { ...common, drifted: true, driftDetail: drift.join(" · ") };
   return { ...common, drifted: false, timeline: sim.timeline };
+}
+
+/**
+ * Cosmetic like a look, so a farm row that has gone missing costs the badge
+ * and not the replay: the id stands in for the name, in the office's neutral.
+ */
+function stableOf(db: DB, farmId: string): Stable {
+  const farm = db.select().from(farms).where(eq(farms.id, farmId)).get();
+  if (!farm) return { name: farmId, primaryColor: "#3a342a", secondaryColor: "#3a342a" };
+  return { name: farm.name, primaryColor: farm.primaryColor, secondaryColor: farm.secondaryColor };
 }
 
 function lookOf(bird: BirdLook): BirdLook {
