@@ -23,6 +23,7 @@ import {
   LtIcon,
   TOKEN_EGG_HEX,
 } from "./sprites";
+import { FightViewer } from "./fight-viewer";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -944,7 +945,17 @@ function replayBody(state: ReplayState, logId: number) {
           . The replay below says {state.replay.figures[0]} / {state.replay.figures[1]} —{" "}
           {state.replay.driftDetail}.
         </div>
-      ) : null}
+      ) : (
+        // Keyed by the fight, so opening another one starts a fresh reel from
+        // its intro instead of carrying the last fight's cursor into it. A
+        // drifted replay has no timeline to hand over, so it gets no picture.
+        <FightViewer
+          key={logId}
+          timeline={state.replay.timeline}
+          looks={state.replay.looks}
+          stables={state.replay.stables}
+        />
+      )}
       <pre
         style={{
           height: 300,
