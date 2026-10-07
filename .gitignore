@@ -7,6 +7,6 @@ next-env.d.ts
 data/*.db
 data/*.db-*
 .DS_Store
-.next-sim/
+.next-*/
 data/snapshots/
 .claude/worktrees/

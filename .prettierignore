@@ -1,7 +1,5 @@
 .next/
-.next-sim/
-.next-chartcheck/
-.next-ui-check/
+.next-*/
 node_modules/
 data/
 runs/
