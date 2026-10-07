@@ -4,7 +4,7 @@ import { onCard, world, type World } from "@/engine/testkit";
 import { birdFightRows } from "./bird-fights";
 
 /**
- * The history pane reads one bird's career on demand (round 50). What it
+ * The history pane reads one bird's career on demand (round 65). What it
  * replaced was every bird's fights in one array capped at the newest 6,000
  * rows — which told a 64-18 bird that had not fought for two weeks that it
  * "has never been in the pit". So the claim under test is the plain one: a

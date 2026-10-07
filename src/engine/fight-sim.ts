@@ -81,7 +81,7 @@ export interface SimResult {
   /** What happened, as facts — the record the play-by-play and the viewer both render. */
   timeline: FightTimeline;
   /**
-   * `narrate(timeline)`, built when read (round 50). A getter because a sim
+   * `narrate(timeline)`, built when read (round 65). A getter because a sim
    * settles ~28,000 fights and reads the text of none of them: until this
    * round every one of those fights formatted its whole transcript and threw
    * it away.
@@ -97,7 +97,7 @@ interface Fighter {
   health: number;
   maxHealth: number;
   fuelTurns: number; // how many turns of full output the tank holds (round 27)
-  blownOn: number | null; // the turn the tank ran dry — past it, the bird is walled
+  gassedOn: number | null; // the turn the tank ran dry — past it, the bird is walled
   clawPerRoll: number; // station's slope — set once at the scale, pre-form
   // The wheel and weather edges, star- and blade-scaled. Like the clawback
   // they are the same number on every roll, so they are judged once at the
@@ -147,7 +147,7 @@ function toFighter(c: Combatant): Fighter {
     health: BATTLE.HEALTH,
     maxHealth: BATTLE.HEALTH,
     fuelTurns: BATTLE.FUEL.BASE_TURNS + c.stats.stamina * BATTLE.FUEL.TURNS_PER_STAMINA,
-    blownOn: null,
+    gassedOn: null,
     clawPerRoll: 0,
     elemEdge: null,
     wxEdge: null,
@@ -218,7 +218,7 @@ export function simulatePair(
 
     // The fuel wall: a bird past its tank delivers only WALL_FACTOR of its
     // agility and sight from here on.
-    for (const f of [a, b]) if (f.blownOn === null && turn > f.fuelTurns) f.blownOn = turn;
+    for (const f of [a, b]) if (f.gassedOn === null && turn > f.fuelTurns) f.gassedOn = turn;
 
     const ra = turnRoll(a, fmt, rng);
     const rb = turnRoll(b, fmt, rng);
@@ -368,7 +368,7 @@ function cornerOf(f: Fighter): Corner {
     claw: f.clawPerRoll,
     elemEdge: f.elemEdge,
     wxEdge: f.wxEdge,
-    blownOn: f.blownOn,
+    gassedOn: f.gassedOn,
   };
 }
 
@@ -410,7 +410,7 @@ function turnRoll(
   // bird's speed stats (agility/sight) deliver only WALL_FACTOR of
   // themselves; stamina and gameness never wall — the tank IS stamina's
   // mechanic, and grit is mental.
-  const wall = self.blownOn === null ? 1 : BATTLE.FUEL.WALL_FACTOR;
+  const wall = self.gassedOn === null ? 1 : BATTLE.FUEL.WALL_FACTOR;
   const { weights, statScale } = fmt;
   const s = self.stats;
   const blend =

@@ -32,7 +32,7 @@ warning (item 1 under "Still open").
 
 Every turn roll blends ALL FOUR distance stats by the blade's `weights`
 (B1 keys agility, B2 sight, B3 nobody — dead flat — B4 stamina, B5 gameness).
-Health (called wind until round 51) is a uniform 100 for every bird; no stat buys hit points. Stamina sets
+Health (called wind until round 66) is a uniform 100 for every bird; no stat buys hit points. Stamina sets
 the FUEL TANK (`8 + stamina × 0.014` turns of full output; past it the bird
 hits the wall and its agility/sight halve). A per-blade `statScale` makes a
 stat gap worth roughly the same win rate whether the fight samples it 5 times
@@ -95,7 +95,7 @@ morale check) that equal weights had left ~4 points loud.
 ### 4. Stamina is a real distance stat (was: a decorative decay knob + secret HP)
 
 The old plumbing — wind pool per stamina point, per-turn decay — is gone.
-Uniform 100 wind, and stamina's two new routes measured separately (`fuel`):
+Uniform 100 health, and stamina's two new routes measured separately (`fuel`):
 
 | blade | whole lift | direct weight alone | fuel wall alone |
 | ----- | ---------- | ------------------- | --------------- |
@@ -107,10 +107,10 @@ Uniform 100 wind, and stamina's two new routes measured separately (`fuel`):
 
 Honest verdict: the **weight** carries stamina's value; the **wall** adds
 2–4 points on the middle blades and ~nothing at the ends — at B1/B2 no tank
-ever empties (0% of fights reach the wall), and at B5 _everyone_ is blown by
+ever empties (0% of fights reach the wall), and at B5 _everyone_ is gassed by
 the end (99.5% of fights pass a starter's 12.9 fuel turns), so marginal fuel
 turns matter most at B3/B4 (37% / 85% wall rates). The wall's real product is
-structure: the "X is blown — running on heart" beat, and the guarantee that
+structure: the "X is gassed — running on heart" beat, and the guarantee that
 the deep water tests heart in every long fight.
 
 ### 5. Figures survived the surgery

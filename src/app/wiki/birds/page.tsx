@@ -130,7 +130,7 @@ export default function BirdsPage() {
               <td>
                 Sets how many turns the bird fights at full power: {BATTLE.FUEL.BASE_TURNS} turns
                 plus {BATTLE.FUEL.TURNS_PER_STAMINA} per point of stamina. When the tank empties the
-                bird hits the wall — agility and sight drop to{" "}
+                bird is gassed — agility and sight drop to{" "}
                 {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% for the rest of the fight. It also
                 carries its own weight on every roll, heaviest at B4. A sprint never empties a tank;
                 a marathon is decided by it.
@@ -383,11 +383,11 @@ export default function BirdsPage() {
         tonight&apos;s fight engine doesn&apos;t read it — every bout today still runs on stats,
         element, and stars alone. The intended hook: the sim already runs in phases (see below), and
         Air is meant to pay early — over the top of a low fighter before anyone&apos;s health is
-        gone — while Ground pays late, once the flyer is blown and the shuffler grinds it down. That
-        would tie carriage straight to blade choice, since a B1 bout lives almost entirely in the
-        early phase and a B5 bout spends most of its turns in the late one. Until that lands, treat
-        carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s
-        card.
+        gone — while Ground pays late, once the flyer is gassed and the shuffler grinds it down.
+        That would tie carriage straight to blade choice, since a B1 bout lives almost entirely in
+        the early phase and a B5 bout spends most of its turns in the late one. Until that lands,
+        treat carriage as a trait you&apos;re breeding <em>for</em>, not one that changes
+        tonight&apos;s card.
       </div>
 
       <h2>Age and the life cycle</h2>

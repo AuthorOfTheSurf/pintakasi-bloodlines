@@ -259,3 +259,26 @@ before assuming "current value = only value this ever was":
 - **⚠ THREE DOORS A FEE WOULD HAVE CLOSED WITHOUT A WORD.** (1) `chaseCrowns`'s wallet check **had never executed** — it short-circuited on `ENTRY_FEE > 0`, so it was written for a paid season that hadn't arrived; worse, it `return`ed on an empty wallet and both passes bailed, so a barn that couldn't afford its THIRD blade would have abandoned the two it could. It skips per crown now. (2) `chaseJuvenileCrowns` checked no wallet at all on the stated grounds that the stage "costs nothing" — true, but the fee came off the Majors' knob, so every juvenile entry in the game would have thrown into a bare `catch`. (3) `auto-play` passed **no reserve** to `chaseCrowns`, so an honest stable would have bought championship seats with the money it needed to card its ordinary birds — and crowns run before the daily card.
 - **THE BRACKET'S LAND COLUMN WAS TELLING THE OPPOSITE OF THE TRUTH.** Zane asked whether round-winning birds should get "a little LT too". They already do, and generously — `runTournamentFight` mints 55.90 LT to **both** fighters on **every** fight, on top of the elimination grant, so a champion banks **284.5 LT against a first-round loser's 110.9**. The office showed only the grant, which is deliberately inverted ("land to the fallen"), so the column read _champion 5 LT, first-round loser 55_. Across the sim the per-fight mint is **2.4× the grants**. No new land was needed; the display was wrong.
 - **THE DOCTOR PRINTS WHO FUNDS THE PURSE**, not just its size — the split is the argument this round is built on, and nothing anywhere showed it.
+
+**Rounds 42–64 are not written up here.** This ledger went quiet after round 41 while the work moved elsewhere, and the round numbers kept counting. The one-line version, taken from the commit titles, so that a reader knows where to look:
+
+- **Round 42** (2026-08-08): the class ladder gets prices, and the crowns pay one land pot instead of two.
+- **Round 43** (2026-08-08): the sim learns to time itself and the default run becomes 112 days; barns grow for Land Tokens; every barn gets a gacha habit; five entries per barn and 32 seats in the Majors; `--seed` pins the bracket for the first time. Speed work is in `PERFORMANCE.md`.
+- **Round 44** (2026-08-08): the scout keeps a running book (`bird_form`).
+- **Round 45** (2026-08-08): the breed fee re-splits 10/50/40, and stud owners get five house covers.
+- **Rounds 46–49** (2026-08-08 to 2026-08-09): office charts and simulation speed. See `PERFORMANCE.md`.
+- **Rounds 50–64** (2026-08-14 to 2026-08-16): the AI barns, the coach loop and the experiment seasons. See `BRAINS.md`, `COACHING.md` and `runs/journal.md`.
+
+**Round 65** (2026-10-06 to 2026-10-07) — **A FIGHT CAN BE WATCHED.** No rule changed. Zane asked for "some motion" and "something to watch", in the office only.
+
+- **THE FIGHT IS RECORDED AS FACTS, AND THE WORDS ARE RENDERED FROM THEM.** `simulatePair` writes a `FightTimeline` and no longer builds a string. The play-by-play is `narrate(timeline)`. The move was proven byte-identical over 26,880 fights against the engine that wrote prose directly, and a 92-day seed-1 world is identical on all 13 tables.
+- **THE PIT.** A replayed fight plays in a modal over the bird's fight list, 10 to 40 seconds whatever the blade. Zane's rulings: replay only; a drifted fight shows its banner and is not animated; no backward compatibility for old fights; RuneScape-style damage numbers; a title card first and a tally last.
+- **A BIRD'S CAREER IS READ WHEN IT IS ASKED FOR.** The office used to ship every bird's fights in one array capped at 6,000 rows, which hid the history of the top earner.
+- **⚠ THESE COMMENTS FIRST SHIPPED LABELLED "ROUND 50".** That number was already taken by the barn actors. They were relabelled 65 in round 66.
+
+**Round 66** (2026-10-07) — **THREE WORDS CHANGE, AND THE PICTURE STOPS SHOWING THE DICE.** No rule or number changed. A 92-day seed-1 world is identical before and after.
+
+- **WIND IS NOW HEALTH.** Zane, after watching the first animated fights: _"'Wind' as HP still confuses me."_ It read as breath, and so did the fuel tank's word, so two meters sounded like one. `BATTLE.WIND` → `BATTLE.HEALTH`, `QUIT_WIND_FRACTION` → `QUIT_HEALTH_FRACTION`, the ending `windOut` → `healthOut`. A hit line says "12 damage", because "12 health" read as a heal.
+- **BLOWN IS NOW GASSED.** The fuel tank emptying. The viewer flashes it, and "blown" beside a health bar read as the bird being finished. Not ruled by Zane word for word: he approved renaming it and the word was chosen for him. Change it back with one script if it is wrong.
+- **EVERYTHING ABOVE THIS ENTRY STILL SAYS WIND AND BLOWN.** This file and PROGRESS.md record what was ruled under the names of the day and were not rewritten. BALANCE.md is different: where it describes the engine as it stands, it now says health and gassed, and where it tells the history of a round it keeps the old words.
+- **THE CAPTION UNDER THE PICTURE IS PLAIN.** Zane: _"we kinda want to hide that sort of thing."_ `transcriptOf(t, "plain")` drops the dice, the bonuses and the die face of a Tari Strike. The steward's transcript in the office keeps them, and `narrate` is unchanged.

@@ -12,7 +12,7 @@ import {
 } from "@/engine/fight-timeline";
 
 /**
- * ── THE REEL: A FIGHT, CUT FOR PLAYBACK (round 50) ─────────────────────────
+ * ── THE REEL: A FIGHT, CUT FOR PLAYBACK (round 65) ─────────────────────────
  *
  * A timeline says what happened. A reel says what is on screen at each step
  * and for how long. It is the one place the viewer's pacing lives, and it is
@@ -58,7 +58,7 @@ export const PACING = {
 /** What the pit looks like once a beat has finished — enough to draw any beat cold. */
 export interface PitState {
   readonly health: Pair<number>;
-  readonly blown: Pair<boolean>;
+  readonly gassed: Pair<boolean>;
 }
 
 /**
@@ -88,7 +88,7 @@ export type Beat = {
       readonly phase: ReturnType<typeof phaseOf>;
       readonly exchange: Exchange;
       /** Whose tank emptied on THIS turn — the one-off flash, not the standing state. */
-      readonly blewNow: Pair<boolean>;
+      readonly gassedNow: Pair<boolean>;
     }
   | {
       readonly kind: "outro";
@@ -155,7 +155,7 @@ export function reelOf(t: FightTimeline): Reel {
 
   let pit: PitState = {
     health: [t.corners[0].health, t.corners[1].health],
-    blown: [false, false],
+    gassed: [false, false],
   };
   const beats: Beat[] = [
     { kind: "title", ms: PACING.TITLE_MS, lines: [], after: pit },
@@ -164,10 +164,10 @@ export function reelOf(t: FightTimeline): Reel {
 
   t.turns.forEach((turn, i) => {
     const n = i + 1;
-    const blewNow = [t.corners[0].blownOn === n, t.corners[1].blownOn === n] as const;
+    const gassedNow = [t.corners[0].gassedOn === n, t.corners[1].gassedOn === n] as const;
     pit = {
       health: healthAfter(pit.health, turn.exchange),
-      blown: [pit.blown[0] || blewNow[0], pit.blown[1] || blewNow[1]],
+      gassed: [pit.gassed[0] || gassedNow[0], pit.gassed[1] || gassedNow[1]],
     };
     beats.push({
       kind: "turn",
@@ -177,7 +177,7 @@ export function reelOf(t: FightTimeline): Reel {
       n,
       phase: phaseOf(n),
       exchange: turn.exchange,
-      blewNow,
+      gassedNow,
     });
   });
 

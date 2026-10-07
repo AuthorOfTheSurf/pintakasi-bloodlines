@@ -207,11 +207,11 @@ export default function FightingPage() {
         <li>
           <strong>The fuel tank — stamina&apos;s real job.</strong> A bird fights at full power for{" "}
           {BATTLE.FUEL.BASE_TURNS} turns, plus {BATTLE.FUEL.TURNS_PER_STAMINA} more per point of
-          stamina. When the tank empties, the bird <strong>hits the wall</strong>: its agility and
-          sight deliver only {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% of themselves for the rest
-          of the fight. Stamina and gameness never fade — the tank <em>is</em> stamina&apos;s
-          mechanic, and grit is mental. A sprint ends before any tank empties; the deep-water blades
-          are decided by who is still fighting at full book when it matters.
+          stamina. When the tank empties, the bird is <strong>gassed</strong>: its agility and sight
+          deliver only {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% of themselves for the rest of
+          the fight. Stamina and gameness never fade — the tank <em>is</em> stamina&apos;s mechanic,
+          and grit is mental. A sprint ends before any tank empties; the deep-water blades are
+          decided by who is still fighting at full book when it matters.
         </li>
         <li>
           <strong>Element can tip a roll.</strong> If your element overcomes your opponent&apos;s in

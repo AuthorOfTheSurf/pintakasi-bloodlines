@@ -147,7 +147,7 @@ are volume-proportional rather than late-run-weighted.
   every wide battle row for `result = win`; the final-size query on the
   279,322-row audit world measured 26.7 ms → 2.1 ms. Snapshot overwrite is one
   upsert, and predecessor lookup is an indexed `ORDER BY ... LIMIT 1`.
-- **Round 50, the fight as a timeline** (`fight-timeline.ts`): `simulatePair`
+- **Round 65, the fight as a timeline** (`fight-timeline.ts`): `simulatePair`
   stopped building its play-by-play — it records a `FightTimeline` and the
   text is a getter. Measured on the function alone (200,000 fights, all five
   blades): **9.5 → 1.9 µs/fight**. That is real and it is also irrelevant

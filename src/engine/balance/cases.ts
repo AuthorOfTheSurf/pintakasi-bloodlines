@@ -1239,7 +1239,7 @@ const weather: BalanceCase = {
  * Turn-length histogram for a blade.
  *
  * `duel` reports a MEAN turn count, and a mean cannot answer "how often does a
- * fight reach the wall" — a 30-turn blade averaging 9 turns might blow tanks
+ * fight reach the wall" — a 30-turn blade averaging 9 turns might empty tanks
  * in half its fights or in none of them. So this walks the same seed window
  * `duel` uses and keeps the distribution instead of collapsing it.
  */
