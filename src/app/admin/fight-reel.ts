@@ -43,7 +43,7 @@ export const PACING = {
 
 /** What the pit looks like once a beat has finished — enough to draw any beat cold. */
 export interface PitState {
-  readonly wind: Pair<number>;
+  readonly health: Pair<number>;
   readonly blown: Pair<boolean>;
 }
 
@@ -90,7 +90,7 @@ export function reelOf(t: FightTimeline): Reel {
   const turnMs = Math.min(PACING.TURN_MS, (PACING.MAX_MS - fixed) / Math.max(1, t.turns.length));
 
   let pit: PitState = {
-    wind: [t.corners[0].wind, t.corners[1].wind],
+    health: [t.corners[0].health, t.corners[1].health],
     blown: [false, false],
   };
   const beats: Beat[] = [
@@ -101,7 +101,7 @@ export function reelOf(t: FightTimeline): Reel {
     const n = i + 1;
     const blewNow = [t.corners[0].blownOn === n, t.corners[1].blownOn === n] as const;
     pit = {
-      wind: windAfter(pit.wind, turn.exchange),
+      health: healthAfter(pit.health, turn.exchange),
       blown: [pit.blown[0] || blewNow[0], pit.blown[1] || blewNow[1]],
     };
     beats.push({
@@ -128,8 +128,8 @@ export function reelOf(t: FightTimeline): Reel {
   return { beats, totalMs: fixed + turnMs * t.turns.length };
 }
 
-function windAfter(wind: Pair<number>, exchange: Exchange): Pair<number> {
-  if (exchange.kind === "tie") return wind;
+function healthAfter(health: Pair<number>, exchange: Exchange): Pair<number> {
+  if (exchange.kind === "tie") return health;
   const struck = otherSide(exchange.by);
-  return struck === 0 ? [exchange.windAfter, wind[1]] : [wind[0], exchange.windAfter];
+  return struck === 0 ? [exchange.healthAfter, health[1]] : [health[0], exchange.healthAfter];
 }

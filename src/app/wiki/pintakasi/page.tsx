@@ -363,7 +363,7 @@ export default function PintakasiPage() {
       </p>
       <p>
         The whole bracket — every round, from the opener to the final — runs in{" "}
-        <strong>one day</strong>, and winners heal to full wind between rounds. That&apos;s a
+        <strong>one day</strong>, and winners heal to full health between rounds. That&apos;s a
         deliberate break from realism: Pintakasi: Bloodlines is a game, not a cockfighting
         simulator, and nobody wants to re-register a surviving bird every morning for a week just to
         keep a bracket alive. One day, start to finish, and you find out who&apos;s crowned before

@@ -147,7 +147,7 @@ export interface DuelResult {
   ranRateA: number;
   ranRateB: number;
   /** How fights ENDED, as percentages. Three ways, and they mean different things. */
-  endings: { ran: number; windOut: number; bell: number };
+  endings: { ran: number; healthOut: number; bell: number };
   /**
    * Which side, if either, collects the station clawback — the side with the
    * smaller base total. Surfaced on every result because a stat change that
@@ -220,7 +220,7 @@ export function duel(a: Combatant, b: Combatant, opts: DuelOptions): DuelResult 
   let ranA = 0;
   let ranB = 0;
   let endRan = 0;
-  let endWind = 0;
+  let endHealth = 0;
   let endBell = 0;
 
   for (let seed = seedFrom; seed < seedFrom + runs; seed++) {
@@ -238,11 +238,11 @@ export function duel(a: Combatant, b: Combatant, opts: DuelOptions): DuelResult 
     if (ending.kind === "ran" && ending.side === 1) ranB++;
 
     // Three ways a fight ends, and they are not interchangeable: a bird that
-    // RAN is a gameness failure, an emptied wind pool is a damage race, and
+    // RAN is a gameness failure, an emptied health pool is a damage race, and
     // the bell is a fight nobody could finish. A knob that quietly converts
     // one into another has changed the game even if the win rate held still.
     if (ending.kind === "ran") endRan++;
-    else if (ending.kind === "windOut") endWind++;
+    else if (ending.kind === "healthOut") endHealth++;
     else endBell++;
   }
 
@@ -260,7 +260,7 @@ export function duel(a: Combatant, b: Combatant, opts: DuelOptions): DuelResult 
     ranRateB: (ranB / runs) * 100,
     endings: {
       ran: (endRan / runs) * 100,
-      windOut: (endWind / runs) * 100,
+      healthOut: (endHealth / runs) * 100,
       bell: (endBell / runs) * 100,
     },
     underdog: underdogOf(a, b),
@@ -298,7 +298,7 @@ export function mirrored(a: Combatant, b: Combatant, opts: DuelOptions): DuelRes
     ranRateB: avg(forward.ranRateB, reverse.ranRateA),
     endings: {
       ran: avg(forward.endings.ran, reverse.endings.ran),
-      windOut: avg(forward.endings.windOut, reverse.endings.windOut),
+      healthOut: avg(forward.endings.healthOut, reverse.endings.healthOut),
       bell: avg(forward.endings.bell, reverse.endings.bell),
     },
     underdog: forward.underdog,

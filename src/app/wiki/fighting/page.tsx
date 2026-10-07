@@ -100,9 +100,9 @@ export default function FightingPage() {
     <>
       <h1>Fighting</h1>
       <p className="lede">
-        Every fight is decided by a blade, a lot of dice, and two hidden meters: wind and gameness.
-        You can&apos;t see any of this math anywhere else in the game — this page is the whole
-        engine, in plain words. Read it once and every result on the card will make sense.
+        Every fight is decided by a blade, a lot of dice, and two hidden meters: health and
+        gameness. You can&apos;t see any of this math anywhere else in the game — this page is the
+        whole engine, in plain words. Read it once and every result on the card will make sense.
       </p>
 
       <h2>The five blades</h2>
@@ -194,9 +194,9 @@ export default function FightingPage() {
       <h2>How a fight resolves, turn by turn</h2>
       <ol>
         <li>
-          <strong>Wind is the health bar — and it&apos;s the same for everyone.</strong> Every bird
-          starts every fight with exactly {BATTLE.WIND} wind. No stat buys hit points. It only ever
-          goes down once the fight starts.
+          <strong>Health is the same for everyone.</strong> Every bird starts every fight with
+          exactly {BATTLE.HEALTH} health. No stat buys hit points. It only ever goes down once the
+          fight starts.
         </li>
         <li>
           <strong>Both birds roll every turn.</strong> Two six-sided dice, plus a sliver of the
@@ -231,25 +231,25 @@ export default function FightingPage() {
           can be the whole story.
         </li>
         <li>
-          <strong>The morale check — once per fight.</strong> The instant a bird&apos;s wind first
-          drops under {Math.round(BATTLE.QUIT_WIND_FRACTION * 100)}% of its max, two things trigger.
-          Its gameness (divided by {BATTLE.GAMENESS_DIVISOR}) starts adding to every roll it makes
-          for the rest of the fight — grit holding a hurt bird together. And it rolls once to decide
-          whether it keeps fighting: the chance of quitting is{" "}
+          <strong>The morale check — once per fight.</strong> The instant a bird&apos;s health first
+          drops under {Math.round(BATTLE.QUIT_HEALTH_FRACTION * 100)}% of its max, two things
+          trigger. Its gameness (divided by {BATTLE.GAMENESS_DIVISOR}) starts adding to every roll
+          it makes for the rest of the fight — grit holding a hurt bird together. And it rolls once
+          to decide whether it keeps fighting: the chance of quitting is{" "}
           {Math.round(BATTLE.QUIT_BASE_CHANCE * 100)}% × (1 − gameness ÷ {STATS.MAX}). High-gameness
           birds almost never run; low-gameness birds that get hurt early often do.
         </li>
         <li>
           <strong>The fight ends</strong> the moment one of these happens: a bird runs (the other
-          wins); a bird&apos;s wind hits zero (the other wins); the blade&apos;s turn cap is reached
-          and one bird still holds more wind (that bird wins on decision); or the turn cap is
-          reached dead-even (the judges flip a coin).
+          wins); a bird&apos;s health hits zero (the other wins); the blade&apos;s turn cap is
+          reached and one bird still holds more health (that bird wins on decision); or the turn cap
+          is reached dead-even (the judges flip a coin).
         </li>
       </ol>
       <div className="callout warn">
         <b>A bird can quit.</b> The morale check above is real — a low-gameness bird that gets hurt
-        early can break and run, losing the fight outright even with wind still left in the tank.
-        Gameness is the stat that keeps a bird in a fight it&apos;s losing.
+        early can break and run, losing the fight outright even with health still left. Gameness is
+        the stat that keeps a bird in a fight it&apos;s losing.
       </div>
 
       <h2>The day&apos;s element — weather</h2>
@@ -435,11 +435,11 @@ export default function FightingPage() {
       <h3>A loss is marked down by beaten lengths</h3>
       <p>
         Both birds are scored on their own spine and their own night first. Then the loser is marked
-        down for how much wind the winner had left at the bell, as a share of its own figure — up to{" "}
-        {FIGURE.BEATEN_SHARE * 100}% of it if it was beaten by the length of the pit, and never less
-        than {FIGURE.MIN_BEATEN_SHARE * 100}%. A share, not a flat subtraction: losing badly costs a
-        starter and a champion the same <em>proportion</em>, which is why a loss means the same
-        thing at every level.
+        down for how much health the winner had left at the bell, as a share of its own figure — up
+        to {FIGURE.BEATEN_SHARE * 100}% of it if it was beaten by the length of the pit, and never
+        less than {FIGURE.MIN_BEATEN_SHARE * 100}%. A share, not a flat subtraction: losing badly
+        costs a starter and a champion the same <em>proportion</em>, which is why a loss means the
+        same thing at every level.
       </p>
       <p>
         <strong>There is no ceiling.</strong> Nothing clamps the top of the scale. If breeding

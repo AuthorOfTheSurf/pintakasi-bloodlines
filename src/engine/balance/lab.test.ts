@@ -219,9 +219,9 @@ describe("duel's bookkeeping is self-consistent", () => {
   test("in every format: endings account for 100% of fights, and ran is the sum of both sides", () => {
     for (const format of FORMAT_NAMES) {
       const d = duel(monster(), maiden(), { format, runs: QUICK });
-      const { ran, windOut, bell } = d.endings;
-      expect(ran + windOut + bell).toBeCloseTo(100, 10);
-      for (const v of [ran, windOut, bell]) expect(v).toBeGreaterThanOrEqual(0);
+      const { ran, healthOut, bell } = d.endings;
+      expect(ran + healthOut + bell).toBeCloseTo(100, 10);
+      for (const v of [ran, healthOut, bell]) expect(v).toBeGreaterThanOrEqual(0);
       // Only the bird that just took a hit gets the morale check, and the
       // fight stops the moment it breaks — so at most one side can run, and
       // the two per-side rates must add up to the ending exactly. This is the

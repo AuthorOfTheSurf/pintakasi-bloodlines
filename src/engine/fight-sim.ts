@@ -94,8 +94,8 @@ interface Fighter {
   stats: BirdStats; // base stats, untouched — stars stopped boosting them (2026-08-04)
   element: Element;
   halfStars: number;
-  wind: number;
-  maxWind: number;
+  health: number;
+  maxHealth: number;
   fuelTurns: number; // how many turns of full output the tank holds (round 27)
   blownOn: number | null; // the turn the tank ran dry — past it, the bird is walled
   clawPerRoll: number; // station's slope — set once at the scale, pre-form
@@ -138,14 +138,14 @@ function toFighter(c: Combatant): Fighter {
   // turnRoll. The old +20/star boost also inflated totals into the underdog
   // comparison, which is how a 5★ bird measured worse than its 0★ twin.
   //
-  // Wind is UNIFORM since round 27 — stamina buys fuel turns, not hit points.
+  // Health is UNIFORM since round 27 — stamina buys fuel turns, not hit points.
   return {
     name: c.name,
     stats: { ...c.stats },
     element: c.element,
     halfStars: c.halfStars,
-    wind: BATTLE.WIND,
-    maxWind: BATTLE.WIND,
+    health: BATTLE.HEALTH,
+    maxHealth: BATTLE.HEALTH,
     fuelTurns: BATTLE.FUEL.BASE_TURNS + c.stats.stamina * BATTLE.FUEL.TURNS_PER_STAMINA,
     blownOn: null,
     clawPerRoll: 0,
@@ -214,7 +214,7 @@ export function simulatePair(
 
   const turns: Turn[] = [];
   for (let turn = 1; turn <= fmt.maxTurns; turn++) {
-    if (a.wind <= 0 || b.wind <= 0 || a.ran || b.ran) break;
+    if (a.health <= 0 || b.health <= 0 || a.ran || b.ran) break;
 
     // The fuel wall: a bird past its tank delivers only WALL_FACTOR of its
     // agility and sight from here on.
@@ -238,15 +238,15 @@ export function simulatePair(
     let damage = Math.max(1, Math.round((w.total - l.total) * fmt.damageMult));
     const crit = w.roll.dice[0] === w.roll.dice[1];
     if (crit) damage = Math.round(damage * fmt.critMult);
-    loser.wind -= damage;
+    loser.health -= damage;
     winner.dealt += damage;
 
     // The morale check — gameness's teeth. Once per fight, when a bird is
     // first badly hurt, it decides whether to keep fighting or RUN.
     let stood = false;
     if (
-      loser.wind > 0 &&
-      loser.wind < loser.maxWind * BATTLE.QUIT_WIND_FRACTION &&
+      loser.health > 0 &&
+      loser.health < loser.maxHealth * BATTLE.QUIT_HEALTH_FRACTION &&
       !loser.quitChecked
     ) {
       loser.quitChecked = true;
@@ -261,7 +261,7 @@ export function simulatePair(
         by: aWon ? 0 : 1,
         damage,
         crit,
-        windAfter: Math.max(0, loser.wind),
+        healthAfter: Math.max(0, loser.health),
         stood,
       },
     });
@@ -310,10 +310,10 @@ export function simulatePair(
   };
   const winnerRaw = rawFigure(won);
   const loserRaw = rawFigure(lost);
-  // Beaten lengths: the gap in wind left at the end, as a fraction of the
+  // Beaten lengths: the gap in health left at the end, as a fraction of the
   // loser's own pool. A bird that ran, or emptied, was beaten by the length
-  // of the pit; a bird that lost on wind at the bell was beaten by inches.
-  const remaining = (f: Fighter) => Math.max(0, f.wind) / f.maxWind;
+  // of the pit; a bird that lost on health at the bell was beaten by inches.
+  const remaining = (f: Fighter) => Math.max(0, f.health) / f.maxHealth;
   const margin = lost.ran ? 1 : Math.min(1, Math.max(0, remaining(won) - remaining(lost)));
   const beatenShare = Math.max(FIGURE.MIN_BEATEN_SHARE, margin * FIGURE.BEATEN_SHARE);
 
@@ -364,7 +364,7 @@ function cornerOf(f: Fighter): Corner {
     name: f.name,
     element: f.element,
     halfStars: f.halfStars,
-    wind: f.maxWind,
+    health: f.maxHealth,
     claw: f.clawPerRoll,
     elemEdge: f.elemEdge,
     wxEdge: f.wxEdge,
@@ -379,16 +379,17 @@ function wheelOf(a: Fighter, b: Fighter): 0 | 1 | null {
 }
 
 /**
- * Neutral decision: a run loses, an empty wind pool loses, otherwise the
- * deeper wind pool wins at the bell (dead-even wind = the judges flip). The
+ * Neutral decision: a run loses, an empty health pool loses, otherwise the
+ * deeper health pool wins at the bell (dead-even health = the judges flip). The
  * flip is the one draw here, and it is taken only on that last branch.
  */
 function endingOf(a: Fighter, b: Fighter, rng: Rng): Ending {
   if (a.ran) return { kind: "ran", side: 0 };
   if (b.ran) return { kind: "ran", side: 1 };
-  if (b.wind <= 0) return { kind: "windOut", side: 1 };
-  if (a.wind <= 0) return { kind: "windOut", side: 0 };
-  if (a.wind !== b.wind) return { kind: "bell", winner: a.wind > b.wind ? 0 : 1, coinFlip: false };
+  if (b.health <= 0) return { kind: "healthOut", side: 1 };
+  if (a.health <= 0) return { kind: "healthOut", side: 0 };
+  if (a.health !== b.health)
+    return { kind: "bell", winner: a.health > b.health ? 0 : 1, coinFlip: false };
   return { kind: "bell", winner: rng() < 0.5 ? 0 : 1, coinFlip: true };
 }
 
@@ -429,7 +430,7 @@ function turnRoll(
   // sized fraction of the gap on every roll (see the scale, above).
   if (self.clawPerRoll > 0) total += self.clawPerRoll * form * statScale;
   // Gameness holds a hurt bird's performance together late.
-  const gameness = self.wind < self.maxWind * BATTLE.QUIT_WIND_FRACTION;
+  const gameness = self.health < self.maxHealth * BATTLE.QUIT_HEALTH_FRACTION;
   if (gameness) total += ((self.stats.gameness * form) / BATTLE.GAMENESS_DIVISOR) * statScale;
   // `bonus` is everything except the dice — the Pit Figure's night term.
   return { total, bonus: total - dice[0] - dice[1], roll: { dice, gameness } };

@@ -76,7 +76,7 @@ function parseIntent(notation: string): BladeIntent {
  *
  * Read these as the "distance" dial the formats were built around: the short
  * blades are decided in the opening exchanges (so the stats that drive early
- * turns should dominate), the long ones are wars of attrition (so wind and
+ * turns should dominate), the long ones are wars of attrition (so health and
  * grit should). Station and condition are deliberately absent — they are the
  * two BEHAVIORAL anchors, they matter in every format and define none, so they
  * have no place in a per-blade ranking.

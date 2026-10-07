@@ -20,7 +20,7 @@ import { BirdSprite, ElementSprite } from "./sprites";
  * is also what makes the scrubber free, because landing on a beat cold and
  * arriving at it by playing are the same render.
  *
- * The wind bars are the one thing NOT keyed. They persist across beats so a
+ * The health bars are the one thing NOT keyed. They persist across beats so a
  * width change is a transition from where the bar already was.
  */
 
@@ -74,12 +74,12 @@ function actOf(beat: Beat, side: Side): Act {
   }
   const { ending } = beat;
   if (ending.kind === "ran" && ending.side === side) return "flee";
-  if (ending.kind === "windOut" && ending.side === side) return "drop";
+  if (ending.kind === "healthOut" && ending.side === side) return "drop";
   return beat.winner === side ? "crow" : "stand";
 }
 
 // The hit lands at about a third of the beat. The lunge peaks there, the
-// flinch, the splat and the wind bar all start there, so the four read as one
+// flinch, the splat and the health bar all start there, so the four read as one
 // blow even when a long gaff fight has squeezed the beat to a fraction of a second.
 const ACT_ANIMATION: Record<Act, string | undefined> = {
   enter: "pit-enter calc(var(--beat) * 0.6) ease-out both",
@@ -228,7 +228,7 @@ function splatFor(beat: Beat, side: Side): ReactNode {
 }
 
 // A blow reads in two steps, the way a fighting game shows it. At the moment
-// of impact the live bar SNAPS to the new wind, and the stretch it just lost
+// of impact the live bar SNAPS to the new health, and the stretch it just lost
 // stays behind as a faded ghost: the size of the hit, readable at a glance.
 // Then the ghost drains away. One bar sliding down says the same thing later
 // and blurrier, because the eye has to wait for it to stop to know the damage.
@@ -239,7 +239,7 @@ const BAR_SNAP = `width 0s linear ${IMPACT}, background-color 0s linear ${IMPACT
 const GHOST_DRAIN =
   "width calc(var(--beat) * 0.3) ease-in calc(var(--beat) * 0.6), background-color 0s linear calc(var(--beat) * 0.9)";
 
-function windColor(share: number): string {
+function healthColor(share: number): string {
   if (share > 0.5) return "#6fbf73";
   if (share > 0.25) return "#e0b52c";
   return "#c93a26";
@@ -247,7 +247,7 @@ function windColor(share: number): string {
 
 function Plate({
   corner,
-  wind,
+  health,
   blown,
   side,
   drains,
@@ -255,13 +255,13 @@ function Plate({
 }: {
   corner: Corner;
   stable: Stable;
-  wind: number;
+  health: number;
   blown: boolean;
   side: Side;
   /** A turn is on screen, so a change in width is a blow landing and is shown landing. */
   drains: boolean;
 }) {
-  const share = corner.wind > 0 ? Math.max(0, Math.min(1, wind / corner.wind)) : 0;
+  const share = corner.health > 0 ? Math.max(0, Math.min(1, health / corner.health)) : 0;
   return (
     <div
       style={{
@@ -311,7 +311,7 @@ function Plate({
             position: "absolute",
             inset: 0,
             width: `${share * 100}%`,
-            background: windColor(share),
+            background: healthColor(share),
             opacity: 0.55,
             transition: drains ? GHOST_DRAIN : "none",
           }}
@@ -321,17 +321,17 @@ function Plate({
             position: "absolute",
             inset: 0,
             width: `${share * 100}%`,
-            background: windColor(share),
+            background: healthColor(share),
             // Waits for the blow, so the bar moves WITH the splat. Off a turn
             // both layers jump: a restart that refilled the bar on the same
-            // delay left a red bar under "wind 100/100" for most of a second.
+            // delay left a red bar under "health 100/100" for most of a second.
             transition: drains ? BAR_SNAP : "none",
           }}
         />
       </div>
       <div style={{ marginTop: 2, display: "flex", color: "#9a8f78" }}>
         <span>
-          wind {wind}/{corner.wind}
+          health {health}/{corner.health}
         </span>
         {blown ? <span style={{ marginLeft: "auto", color: "#c86a5a" }}>BLOWN</span> : null}
       </div>
@@ -542,7 +542,7 @@ export function FightViewer({
       >
         <Plate
           corner={timeline.corners[0]}
-          wind={beat.after.wind[0]}
+          health={beat.after.health[0]}
           blown={beat.after.blown[0]}
           side={0}
           drains={beat.kind === "turn"}
@@ -550,7 +550,7 @@ export function FightViewer({
         />
         <Plate
           corner={timeline.corners[1]}
-          wind={beat.after.wind[1]}
+          health={beat.after.health[1]}
           blown={beat.after.blown[1]}
           side={1}
           drains={beat.kind === "turn"}
