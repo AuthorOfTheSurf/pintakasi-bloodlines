@@ -1213,7 +1213,11 @@ export function AdminTabs({
     fetch(`/api/fight/by-bird/${encodeURIComponent(openBird)}`, { signal: ac.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The archive answered ${res.status} for this bird's fights.`);
-        setHistory({ status: "ok", fights: (await res.json()) as BirdFightRowUI[] });
+        const fights = (await res.json()) as BirdFightRowUI[];
+        // Clicking another bird between the body arriving and this line
+        // running would file this bird's career under that one.
+        if (ac.signal.aborted) return;
+        setHistory({ status: "ok", fights });
       })
       .catch((err: unknown) => {
         if (ac.signal.aborted) return;
