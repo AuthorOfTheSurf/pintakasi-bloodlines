@@ -363,9 +363,9 @@ export const PHASES = {
 
 // ── Battle (2d6) ────────────────────────────────────────────────────────────
 export const BATTLE = {
-  // CALLED "HEALTH" UNTIL ROUND 51, and the ledgers (RULINGS, BALANCE, PROGRESS)
-  // still say health for everything ruled before then. Zane, on watching the
-  // first animated fights: "'Health' as HP still confuses me." It read as
+  // CALLED "WIND" UNTIL ROUND 51, and the ledgers (RULINGS, BALANCE, PROGRESS)
+  // still say wind for everything ruled before then. Zane, on watching the
+  // first animated fights: "'Wind' as HP still confuses me." It read as
   // breath, and so did the fuel tank's "blown", so two different meters
   // sounded like one. Health is the pool a hit takes from; blown stays the
   // tank's word.
