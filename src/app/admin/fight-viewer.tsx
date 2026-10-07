@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, type CSSProperties, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useReducer,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { FORMATS } from "@/engine/config";
 import type { BirdLook, Stable } from "@/engine/replay";
 import type { Corner, FightTimeline, Pair, Side } from "@/engine/fight-timeline";
 import { reelOf, type Beat } from "./fight-reel";
@@ -22,6 +30,13 @@ import { BirdSprite, ElementSprite } from "./sprites";
  *
  * The health bars are the one thing NOT keyed. They persist across beats so a
  * width change is a transition from where the bar already was.
+ *
+ * THE FIRST AND LAST BEATS ARE CARDS, NOT ACTION. The title beat is the game's
+ * name alone in the ring, with no bird and no plate, so the walk-in on the next
+ * beat is the first time anyone sees them. The summary beat is where the reel
+ * comes to rest: the birds hold the pose the outro left them in and a recap
+ * card sits over the ring. Neither card shows a die or a roll total. The owner
+ * ruled those out of the picture, so the card counts blows and health.
  */
 
 interface Playback {
@@ -45,8 +60,8 @@ type Action =
 function step(state: Playback, action: Action): Playback {
   switch (action.type) {
     case "advance":
-      // The outro's timeout lands here too. It parks the reel instead of
-      // wrapping, so the result stays on screen until somebody asks again.
+      // The summary's timeout lands here too. It parks the reel instead of
+      // wrapping, so the recap stays on screen until somebody asks again.
       if (state.cursor >= action.last) return { ...state, playing: false };
       return { ...state, cursor: state.cursor + 1 };
     case "toggle":
@@ -66,7 +81,13 @@ function step(state: Playback, action: Action): Playback {
 /** What one bird is doing during one beat. Exactly one, so it is a name and not a set of flags. */
 type Act = "enter" | "lunge" | "flinch" | "circle" | "flee" | "drop" | "crow" | "stand";
 
-function actOf(beat: Beat, side: Side): Act {
+/** A beat with birds in the ring, which is every beat but the title card. */
+type Staged = Exclude<Beat, { kind: "title" }>;
+
+// The summary names the SAME act as the outro, on purpose: the recap has to
+// show where the ending left each bird, and a second answer here could put a
+// bird that ran back on its feet.
+function actOf(beat: Staged, side: Side): Act {
   if (beat.kind === "intro") return "enter";
   if (beat.kind === "turn") {
     if (beat.exchange.kind === "tie") return "circle";
@@ -148,6 +169,14 @@ const KEYFRAMES = `
   15%, 45% { opacity: 0.15; }
   100% { opacity: 0; }
 }
+@keyframes pit-title {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pit-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes pit-result {
   0%, 42% { opacity: 0; transform: translate(-50%, 8px); }
   52%, 100% { opacity: 1; transform: translate(-50%, 0); }
@@ -161,6 +190,8 @@ const FLOOR_HEIGHT = 78;
 // perched on the pit wall.
 const FEET_FROM_BOTTOM = 26;
 const MONO = "ui-monospace, Menlo, monospace";
+
+const SIDES: Pair<Side> = [0, 1];
 
 /** Where a bird stands, as a share of the ring's width. Side A left, side B right. */
 const STANCE: Pair<string> = ["33.33%", "66.67%"];
@@ -221,7 +252,7 @@ function Splat({ tone, children }: { tone: SplatTone; children: ReactNode }) {
 }
 
 /** The splat over this bird this beat, if it was the one struck. */
-function splatFor(beat: Beat, side: Side): ReactNode {
+function splatFor(beat: Staged, side: Side): ReactNode {
   if (beat.kind !== "turn" || beat.exchange.kind !== "hit" || beat.exchange.by === side)
     return null;
   return <Splat tone={beat.exchange.crit ? "crit" : "hit"}>{beat.exchange.damage}</Splat>;
@@ -251,6 +282,7 @@ function Plate({
   blown,
   side,
   drains,
+  enters,
   stable,
 }: {
   corner: Corner;
@@ -260,6 +292,8 @@ function Plate({
   side: Side;
   /** A turn is on screen, so a change in width is a blow landing and is shown landing. */
   drains: boolean;
+  /** The birds are walking in, so the plates arrive with them instead of popping. */
+  enters: boolean;
 }) {
   const share = corner.health > 0 ? Math.max(0, Math.min(1, health / corner.health)) : 0;
   return (
@@ -278,6 +312,9 @@ function Plate({
         fontSize: 11.5,
         color: "#e8e0d0",
         zIndex: 2,
+        // Opacity only. The plate is centred with a transform, and a keyframe
+        // that set one would knock it off its mark for the length of the fade.
+        animation: enters ? "pit-fade calc(var(--beat) * 0.3) ease-out both" : undefined,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
@@ -345,7 +382,7 @@ function Bird({
   side,
   look,
 }: {
-  beat: Beat;
+  beat: Staged;
   cursor: number;
   side: Side;
   look: BirdLook;
@@ -353,7 +390,8 @@ function Bird({
   const stood = beat.kind === "turn" && beat.exchange.kind === "hit" && beat.exchange.stood;
   const struck = actOf(beat, side) === "flinch";
   const blewNow = beat.kind === "turn" && beat.blewNow[side];
-  const dimmed = beat.after.blown[side] && beat.kind !== "outro";
+  const called = beat.kind === "outro" || beat.kind === "summary";
+  const dimmed = beat.after.blown[side] && !called;
   // Side A walks right toward its opponent, side B walks left. Every keyframe
   // multiplies by this, so there is one set of motions and not a mirrored pair.
   const dir = side === 0 ? 1 : -1;
@@ -373,12 +411,21 @@ function Bird({
     >
       <div
         key={`act-${cursor}`}
-        style={{
-          width: "100%",
-          height: "100%",
-          transformOrigin: "50% 100%",
-          animation: ACT_ANIMATION[actOf(beat, side)],
-        }}
+        style={
+          {
+            width: "100%",
+            height: "100%",
+            transformOrigin: "50% 100%",
+            animation: ACT_ANIMATION[actOf(beat, side)],
+            // The summary shows the END of the outro's act without playing it
+            // again. Every act is timed in `--beat` and fills both ways, so a
+            // beat of no length lands it on its last frame at once: a bird
+            // that ran stays gone, a bird that dropped stays down. That is one
+            // override instead of a second table of resting poses that would
+            // have to be kept in step with the keyframes.
+            "--beat": beat.kind === "summary" ? "0ms" : undefined,
+          } as CSSProperties
+        }
       >
         {/* The shake is its own layer: two animations on one element would
             fight over `transform`, and the flinch would lose. */}
@@ -393,8 +440,8 @@ function Bird({
               transform: side === 1 ? "scaleX(-1)" : undefined,
               // Dimmed, not ghosted: a gaff fight spends most of its length with
               // both birds blown, and the hit flash still has to read through it.
-              // Lifted for the outro, where a grey bird reads as the beaten one
-              // and the winner of a long fight is usually blown too.
+              // Lifted once the fight is called, where a grey bird reads as the
+              // beaten one and the winner of a long fight is usually blown too.
               opacity: dimmed ? 0.72 : 1,
               filter: dimmed ? "grayscale(0.5)" : undefined,
               transition: "opacity 200ms linear, filter 200ms linear",
@@ -433,13 +480,60 @@ function Bird({
   );
 }
 
-function Result({
-  beat,
-  corners,
-}: {
-  beat: Extract<Beat, { kind: "outro" }>;
-  corners: Pair<Corner>;
-}) {
+const GOLD = "#e8b64c";
+
+function Title({ timeline }: { timeline: FightTimeline }) {
+  const blade = FORMATS[timeline.format].label;
+  // Every card the archive replays already ends in its blade ("OPEN · B1"),
+  // and the header is the caller's to word, so the blade is added only when
+  // the header left it out. Printed blind it read "OPEN · B1 · B1".
+  const card = timeline.header.includes(blade) ? timeline.header : `${timeline.header} · ${blade}`;
+  // Letter-spacing trails every letter, the last one too, which pushes a
+  // centred word left by half a gap. The same indent on the left squares it.
+  const spaced = (gap: string): CSSProperties => ({ letterSpacing: gap, paddingLeft: gap });
+  // Three lines, each a little after the one above, so the name is read
+  // before the card. They rise and STAY: a splash that faded out again would
+  // leave an empty ring under a paused scrubber.
+  const rise = (delay: number): CSSProperties => ({
+    animation: `pit-title calc(var(--beat) * 0.3) ease-out calc(var(--beat) * ${delay}) both`,
+  });
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 16px",
+        background: "#171410",
+        color: GOLD,
+        fontFamily: MONO,
+        textAlign: "center",
+        zIndex: 5,
+      }}
+    >
+      {/* Sized off the ring, so the name fills a narrow panel instead of spilling out of it. */}
+      <div
+        style={{
+          fontSize: "min(46px, 9cqw)",
+          fontWeight: 700,
+          ...spaced("0.18em"),
+          ...rise(0),
+        }}
+      >
+        PINTAKASI
+      </div>
+      <div style={{ fontSize: "min(18px, 3.6cqw)", ...spaced("0.6em"), ...rise(0.15) }}>
+        BLOODLINES
+      </div>
+      <div style={{ marginTop: 16, fontSize: 12, color: "#b8ad96", ...rise(0.35) }}>{card}</div>
+    </div>
+  );
+}
+
+function Result({ name }: { name: string }) {
   return (
     <div
       style={{
@@ -448,31 +542,137 @@ function Result({
         top: 94,
         padding: "6px 14px",
         background: "#171410",
-        border: "2px solid #e8b64c",
-        color: "#e8e0d0",
+        border: `2px solid ${GOLD}`,
+        color: GOLD,
         fontFamily: MONO,
+        fontWeight: 700,
+        fontSize: 15,
         textAlign: "center",
         whiteSpace: "nowrap",
         animation: "pit-result var(--beat) ease-out both",
         zIndex: 5,
       }}
     >
-      <div style={{ color: "#e8b64c", fontWeight: 700, fontSize: 15 }}>
+      {name} WINS
+    </div>
+  );
+}
+
+const TALLY_CELL: CSSProperties = { padding: "0 4px", textAlign: "right", fontWeight: 400 };
+const TALLY_NAME: CSSProperties = {
+  ...TALLY_CELL,
+  fontWeight: 700,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+function Summary({
+  beat,
+  timeline,
+}: {
+  beat: Extract<Beat, { kind: "summary" }>;
+  timeline: FightTimeline;
+}) {
+  const { corners } = timeline;
+  const perBird = (cell: (side: Side) => ReactNode): Pair<ReactNode> => [cell(0), cell(1)];
+  const rows: readonly (readonly [string, Pair<ReactNode>])[] = [
+    ["hits landed", perBird((side) => beat.tally[side].hits)],
+    ["damage dealt", perBird((side) => beat.tally[side].damage)],
+    ["Tari Strikes", perBird((side) => beat.tally[side].tari)],
+    ["biggest hit", perBird((side) => beat.tally[side].biggest)],
+    ["health left", perBird((side) => `${beat.after.health[side]}/${corners[side].health}`)],
+    ["Pit Figure", perBird((side) => beat.figures[side])],
+  ];
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 4,
+        // Centred by margins, not a transform, so the fade can be the same
+        // opacity-only keyframe the plates use.
+        left: 0,
+        right: 0,
+        margin: "0 auto",
+        // As wide as the two plates together, and solid, so it REPLACES them.
+        // The card repeats what they say, and a narrower or see-through one
+        // left their names and bars poking out from behind the tally.
+        width: "min(max(66%, 340px), calc(100% - 16px))",
+        boxSizing: "border-box",
+        padding: "3px 8px 4px",
+        background: "#171410",
+        border: `2px solid ${GOLD}`,
+        color: "#e8e0d0",
+        fontFamily: MONO,
+        fontSize: 11,
+        // Tight on purpose. Every line here is a line lower the card reaches,
+        // and it has to stop above the head of the bird left standing.
+        lineHeight: "13px",
+        textAlign: "center",
+        animation: "pit-fade calc(var(--beat) * 0.6) ease-out both",
+        zIndex: 5,
+      }}
+    >
+      <div style={{ color: GOLD, fontWeight: 700, fontSize: 14, lineHeight: "17px" }}>
         {corners[beat.winner].name} WINS
       </div>
-      <div style={{ fontSize: 11.5, marginTop: 2 }}>
-        Pit Figures · {corners[0].name} <b>{beat.figures[0]}</b> · {corners[1].name}{" "}
-        <b>{beat.figures[1]}</b>
-      </div>
+      <div>{beat.headline}</div>
+      <table
+        style={{
+          width: "100%",
+          margin: "3px 0 0",
+          borderCollapse: "collapse",
+          // Fixed, so a long name is cut with an ellipsis instead of pushing
+          // the other bird's column out of the card.
+          tableLayout: "fixed",
+        }}
+      >
+        <thead>
+          <tr style={{ borderBottom: "1px solid #3a342a" }}>
+            <td style={{ ...TALLY_CELL, width: "34%", textAlign: "left", color: "#9a8f78" }}>
+              {timeline.turns.length} of {FORMATS[timeline.format].maxTurns} turns
+            </td>
+            {corners.map((corner, side) => (
+              <th
+                key={side}
+                scope="col"
+                style={{ ...TALLY_NAME, color: side === beat.winner ? GOLD : "#e8e0d0" }}
+              >
+                {corner.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, cells]) => (
+            <tr key={label}>
+              <th scope="row" style={{ ...TALLY_CELL, textAlign: "left", color: "#9a8f78" }}>
+                {label}
+              </th>
+              <td style={TALLY_CELL}>{cells[0]}</td>
+              <td style={TALLY_CELL}>{cells[1]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 /** Where the reel is, in words that never say who is ahead. */
 function beatLabel(beat: Beat): string {
-  if (beat.kind === "intro") return "the scale";
-  if (beat.kind === "turn") return `T${beat.n} · ${beat.phase}`;
-  return "the call";
+  switch (beat.kind) {
+    case "title":
+      return "the bill";
+    case "intro":
+      return "the scale";
+    case "turn":
+      return `T${beat.n} · ${beat.phase}`;
+    case "outro":
+      return "the call";
+    case "summary":
+      return "the tally";
+  }
 }
 
 const BUTTON: CSSProperties = {
@@ -487,7 +687,7 @@ const BUTTON: CSSProperties = {
 };
 // `border` whole, not `borderColor`: React warns when a rerender swaps a
 // shorthand for one of its longhands on the same element.
-const BUTTON_ON: CSSProperties = { ...BUTTON, border: "2px solid #e8b64c", color: "#e8b64c" };
+const BUTTON_ON: CSSProperties = { ...BUTTON, border: `2px solid ${GOLD}`, color: GOLD };
 
 export function FightViewer({
   timeline,
@@ -540,24 +740,26 @@ export function FightViewer({
             #1c1914 ${FLOOR_HEIGHT + 26}px)`,
         }}
       >
-        <Plate
-          corner={timeline.corners[0]}
-          health={beat.after.health[0]}
-          blown={beat.after.blown[0]}
-          side={0}
-          drains={beat.kind === "turn"}
-          stable={stables[0]}
-        />
-        <Plate
-          corner={timeline.corners[1]}
-          health={beat.after.health[1]}
-          blown={beat.after.blown[1]}
-          side={1}
-          drains={beat.kind === "turn"}
-          stable={stables[1]}
-        />
-        <Bird beat={beat} cursor={cursor} side={0} look={looks[0]} />
-        <Bird beat={beat} cursor={cursor} side={1} look={looks[1]} />
+        {beat.kind === "title" ? (
+          <Title timeline={timeline} />
+        ) : (
+          // One branch for every staged beat, so the plates stay mounted from
+          // the walk-in to the tally and their bars keep transitioning.
+          SIDES.map((side) => (
+            <Fragment key={side}>
+              <Plate
+                corner={timeline.corners[side]}
+                health={beat.after.health[side]}
+                blown={beat.after.blown[side]}
+                side={side}
+                drains={beat.kind === "turn"}
+                enters={beat.kind === "intro"}
+                stable={stables[side]}
+              />
+              <Bird beat={beat} cursor={cursor} side={side} look={looks[side]} />
+            </Fragment>
+          ))
+        )}
         {tie ? (
           <div
             key={`miss-${cursor}`}
@@ -573,8 +775,9 @@ export function FightViewer({
           </div>
         ) : null}
         {beat.kind === "outro" ? (
-          <Result key={`result-${cursor}`} beat={beat} corners={timeline.corners} />
+          <Result key={`result-${cursor}`} name={timeline.corners[beat.winner].name} />
         ) : null}
+        {beat.kind === "summary" ? <Summary beat={beat} timeline={timeline} /> : null}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "6px 0" }}>
