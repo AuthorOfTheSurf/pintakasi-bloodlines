@@ -1234,10 +1234,18 @@ export function AdminTabs({
     fetch(`/api/fight/${logId}`, { signal: ac.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => null);
+        // An abort that lands AFTER the headers fails the body read, not the
+        // fetch, and the catch above turns that into a null body on a 200.
+        // Without this check the fight that was clicked away from wrote
+        // `replay: null` over the one that was asked for, and the panel
+        // crashed reading it.
+        if (ac.signal.aborted) return;
         // A 404 here is the replay's "unavailable" — the fight cannot be
         // reconstructed at all — and the route sends the reason with it.
         if (!res.ok)
           throw new Error(body?.error ?? `The archive answered ${res.status} for fight #${logId}.`);
+        if (body === null)
+          throw new Error(`The archive sent no readable replay for fight #${logId}.`);
         setReplay({ status: "ok", replay: body as FightReplay });
       })
       .catch((err: unknown) => {
