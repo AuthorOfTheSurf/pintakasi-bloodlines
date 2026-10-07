@@ -130,7 +130,7 @@ export default function BirdsPage() {
               <td>
                 Sets how many turns the bird fights at full power: {BATTLE.FUEL.BASE_TURNS} turns
                 plus {BATTLE.FUEL.TURNS_PER_STAMINA} per point of stamina. When the tank empties the
-                bird hits the wall — agility and sight drop to{" "}
+                bird is gassed — agility and sight drop to{" "}
                 {Math.round(BATTLE.FUEL.WALL_FACTOR * 100)}% for the rest of the fight. It also
                 carries its own weight on every roll, heaviest at B4. A sprint never empties a tank;
                 a marathon is decided by it.

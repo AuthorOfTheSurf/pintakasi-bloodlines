@@ -95,7 +95,7 @@ morale check) that equal weights had left ~4 points loud.
 ### 4. Stamina is a real distance stat (was: a decorative decay knob + secret HP)
 
 The old plumbing — wind pool per stamina point, per-turn decay — is gone.
-Uniform 100 wind, and stamina's two new routes measured separately (`fuel`):
+Uniform 100 health, and stamina's two new routes measured separately (`fuel`):
 
 | blade | whole lift | direct weight alone | fuel wall alone |
 | ----- | ---------- | ------------------- | --------------- |
