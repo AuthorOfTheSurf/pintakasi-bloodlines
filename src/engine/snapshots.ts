@@ -214,8 +214,9 @@ export interface StakingBook {
 export function stakingBook(db: DB): StakingBook {
   const byFarm = new Map<string, { cents: number; days: number; lastDay: number }>();
   const days = new Set<number>();
-  for (const e of db.select().from(events).all()) {
-    if (e.type !== "staking_payout" || !e.farmId) continue;
+  // Filtered in SQLite: payouts are under 1% of a table that holds every fight.
+  for (const e of db.select().from(events).where(eq(events.type, "staking_payout")).all()) {
+    if (!e.farmId) continue;
     days.add(e.dayIndex);
     const acc = byFarm.get(e.farmId) ?? { cents: 0, days: 0, lastDay: e.dayIndex };
     byFarm.set(e.farmId, {
