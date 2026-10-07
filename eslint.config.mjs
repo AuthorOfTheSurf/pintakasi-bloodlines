@@ -55,7 +55,9 @@ export default tseslint.config(
   {
     ignores: [
       ".next/**",
-      ".next-sim/**",
+      // PINTAKASI_DIST names the build folder, and every side-by-side dev server
+      // picks its own. One pattern, so a new name cannot flood lint again.
+      ".next-*/**",
       "data/**",
       "runs/**",
       "node_modules/**",

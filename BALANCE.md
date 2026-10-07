@@ -55,6 +55,8 @@ count amplifies stats, and one divisor can't fix five blades. `statScale`
 | B4     | 84.9% (87.5)         | 97.6% (98.8)         | ✓                             |
 | B5     | 84.6% (—)            | 98.0% (—)            | ✓                             |
 
+_(Round 67 moved B1 to 7 turns and damage 10: it now measures 78.1% / 92.7%. See "Round 67" at the end of this file. The B1 figures in the tables below are the round-27 measurements at 5 turns and damage 13.)_
+
 B1's +200 miss (91.8 vs 98) is a variance floor, not a tuning error: five
 turns of 2d6 plus a 2.5× Tari Strike simply cannot deliver 98% — pushing
 statScale high enough to force it would overshoot the +100 target badly. The
@@ -669,3 +671,68 @@ The blade intent IS now tuned to — round 27 reversed round 26's "measure,
 don't tune" stance deliberately, because the dial now has its middle and the
 odd count the tuning philosophy required. A future B6/B7 pair (if ever)
 re-opens the outer ends, not the middle.
+
+## Round 67 — B1 goes to 7 turns and damage 10
+
+Zane watched the first animated fights and noticed how many ended in one or
+two exchanges. Measured, that was a B1 trait and it was the blade working as
+ruled: a Tari Strike on B1 had a median of 105 damage against 100 health.
+The ruling was to try the pair `maxTurns` 5 → 7 and `damageMult` 13 → 10.
+
+**Why a pair.** Refighting the 3,641 B1 pairings of a 92-day world under each
+option (4 seeds each, 3 disjoint windows, spread ≤ 0.5 points per cell):
+
+| option                 | over in 1 | 2 or fewer | bell  | better bird wins |
+| ---------------------- | --------- | ---------- | ----- | ---------------- |
+| as it was (5, 13)      | 14.3%     | 36.8%      | 11.0% | 64.5%            |
+| damage 10 alone        | 8.8%      | 24.4%      | 23.9% | 64.6%            |
+| 7 turns alone          | 14.3%     | 36.8%      | 1.7%  | 64.7%            |
+| **7 turns, damage 10** | **8.8%**  | **24.4%**  | 6.3%  | 65.1%            |
+
+Lower damage alone turns the sprint into a points fight. More turns alone
+only removes the bell. Together each cancels the other's cost. Who wins does
+not move, so this is a ruling about how a sprint looks.
+
+**The balance suite, B1, 4,000 runs, before → after.** No verdict changed and
+the three standing warnings are the same three.
+
+| row                       | before | after |
+| ------------------------- | ------ | ----- |
+| grade +100 (target 80)    | 76.3   | 78.1  |
+| grade +200 (target 98)    | 91.8   | 92.7  |
+| agility +200              | 75.5   | 77.3  |
+| sight +200                | 65.9   | 67.6  |
+| stamina +200              | 56.1   | 56.5  |
+| gameness +200             | 55.1   | 55.7  |
+| specialist vs flat        | 65.9   | 67.3  |
+| crit tax on the favourite | 3.1    | 4.2   |
+| outcomes flipped by crits | 8.0%   | 11.7% |
+| mean turns (even birds)   | 3.3    | 4.2   |
+
+B1 moves toward its own grade targets, stays the agility blade, and stays
+the shortest by a distance (B2's median is 6 turns). The one cost is the
+crit tax: two more turns are two more chances at doubles.
+
+**In whole worlds, seed 1, same code either side of the two knobs.**
+
+| world    | B1 fights       | over in 1   | 2 or fewer   | median | ran          | bell        |
+| -------- | --------------- | ----------- | ------------ | ------ | ------------ | ----------- |
+| 91 days  | 3,568 → 3,431   | 14.5 → 9.4% | 37.5 → 25.4% | 3 → 4  | 17.5 → 21.6% | 10.5 → 6.4% |
+| 182 days | 29,011 → 30,855 | 14.9 → 9.3% | 38.8 → 26.3% | 3 → 4  | 17.1 → 21.1% | 10.1 → 5.6% |
+
+The doctor reported 0 warnings and 0 invariant failures on all four worlds,
+and on a second 91-day pair at seed 2. B1's share of all fights held (18.0%
+→ 18.7% at 182 days). The other four blades' lengths and endings did not
+move. Generations 0 to 3 bred to within 4 stat points of each other across
+the two 182-day worlds.
+
+**Two things in the doctor's report that are NOT this change.** "Under the
+door 24 winners" appeared on the new numbers at seed 1 and on the OLD numbers
+at seed 2, so it follows the world and not the knob. Generation 4 differs
+sharply between the two 182-day worlds and is 14 and 15 birds.
+
+**Not measured.** One seed at 182 days. The LLM barns. Whether seven turns
+reads better in the viewer, which is what the ruling was for.
+
+**Old worlds.** Any B1 fight archived before this round replays under the
+new numbers and may show as drifted. Sim worlds are disposable; remake them.
