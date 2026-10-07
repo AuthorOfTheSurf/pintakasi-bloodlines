@@ -259,7 +259,7 @@ describe("duel's bookkeeping is self-consistent", () => {
   });
 
   test("meanTurns tracks the blade's length", () => {
-    // b1 caps at 5 turns, b4 at 30. A meanTurns that did not count the
+    // b1 caps at 7 turns, b4 at 30. A meanTurns that did not count the
     // turns actually fought would flatten these into each other.
     const [a, b] = twins();
     const sprint = duel(a, b, { format: "b1", runs: QUICK }).meanTurns;
