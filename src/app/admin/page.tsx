@@ -258,8 +258,10 @@ function buildBracket(
   bracketSize: number,
   totalRounds: number,
   field: EntryRow[],
-  log: LogRow[],
-  tournamentId: number,
+  // This tournament's Pit Figure for one side of one pairing, or null when
+  // that fight has no log row. Single elimination means any two birds meet at
+  // most once, so (bird, opponent) names the row without round bookkeeping.
+  figureOf: (birdId: string, oppId: string) => number | null,
   birdCard: (id: string) => { name: string; grade: Grade; element: string; stars: number },
   career: (id: string) => { wins: number; losses: number; netCents: number },
   // How many fights this bird actually FOUGHT in this tournament — the
@@ -277,13 +279,6 @@ function buildBracket(
   // seedPlacement's doc), so this array never needs a "two ghosts" case.
   let alive: (EntryRow | null)[] = placement.map((seat) => seeded[seat - 1] ?? null);
 
-  // Single elimination means any two birds meet at most once — so a
-  // (birdId, opponentBirdId) pair is enough to find the log row unambiguously,
-  // no round bookkeeping in battle_log required.
-  const figureOf = (birdId: string, oppId: string): number | null =>
-    log.find(
-      (r) => r.tournamentId === tournamentId && r.birdId === birdId && r.opponentBirdId === oppId
-    )?.pitFigure ?? null;
   // No `round` argument any more (round 42): the only thing that ever needed
   // one was the cumulative crown-land total, and land no longer accrues round
   // by round. `showAwards` alone says whether this is the bird's settle-up card.
@@ -586,6 +581,33 @@ export default function Admin() {
   const allBirds = d.select().from(birds).all();
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
   const log = d.select().from(battleLog).all();
+  // ── ONE PASS OVER THE LOG, THEN LOOKUPS ───────────────────────────────────
+  // The log is two rows per fight and a 182-day world holds 330,000 of them.
+  // Until this was indexed, the card scanned the whole log once per lobby and
+  // again per bout, the Fights grid scanned it per row and every bracket per
+  // fighter: 9 of the page's 17 seconds on that world, measured by CPU
+  // profile. Anything below that needs "the rows of one lobby" or "the other
+  // side of this fight" reads these maps instead of calling log.filter/find.
+  //
+  // A fight belongs to exactly one lobby or one tournament, and inside either
+  // a pair of birds meets at most once (the group stage deals each pairing
+  // once, a bracket is single elimination), so scope + bird + opponent names
+  // one row.
+  const winsByLobby = new Map<number, LogRow[]>();
+  const figureByPairing = new Map<string, number>();
+  const lobbyScope = (id: number) => `L${id}`;
+  const crownScope = (id: number) => `T${id}`;
+  const scopeOf = (r: LogRow) =>
+    r.tournamentId ? crownScope(r.tournamentId) : lobbyScope(r.lobbyId ?? 0);
+  for (const r of log) {
+    figureByPairing.set(`${scopeOf(r)}|${r.birdId}|${r.opponentBirdId}`, r.pitFigure);
+    if (r.lobbyId === null || r.result !== "win") continue;
+    const wins = winsByLobby.get(r.lobbyId);
+    if (wins) wins.push(r);
+    else winsByLobby.set(r.lobbyId, [r]);
+  }
+  const figureOf = (scope: string, birdId: string, oppId: string): number | null =>
+    figureByPairing.get(`${scope}|${birdId}|${oppId}`) ?? null;
   const allEntries = d.select().from(lobbyEntries).all();
   const allClaims = d.select().from(claims).all();
   const allEvents = d.select().from(events).all();
@@ -660,23 +682,25 @@ export default function Admin() {
       // the bouts below be filed under the room that produced them, which is
       // the whole point of showing a group stage rather than a list of fights.
       const groupOfBird = new Map(entries.map((e) => [e.birdId, e.groupNo]));
-      const bouts = log
-        .filter((r) => r.lobbyId === l.id && r.result === "win")
-        .map((w) => ({
-          group: groupOfBird.get(w.birdId) ?? 0,
-          winner: birdCard(w.birdId),
-          winnerFarm: fname(w.farmId),
-          winnerFarmP: fcolors(w.farmId).P,
-          winnerFarmS: fcolors(w.farmId).S,
-          loser: birdCard(w.opponentBirdId),
-          loserFarm: fname(w.opponentFarmId),
-          loserFarmP: fcolors(w.opponentFarmId).P,
-          loserFarmS: fcolors(w.opponentFarmId).S,
-          figures: [
-            w.pitFigure,
-            log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0,
-          ] as const,
-        }));
+      const bouts = (winsByLobby.get(l.id) ?? []).map((w) => ({
+        group: groupOfBird.get(w.birdId) ?? 0,
+        winner: birdCard(w.birdId),
+        winnerFarm: fname(w.farmId),
+        winnerFarmP: fcolors(w.farmId).P,
+        winnerFarmS: fcolors(w.farmId).S,
+        loser: birdCard(w.opponentBirdId),
+        loserFarm: fname(w.opponentFarmId),
+        loserFarmP: fcolors(w.opponentFarmId).P,
+        loserFarmS: fcolors(w.opponentFarmId).S,
+        // The loser's figure FOR THIS BOUT. This used to take the loser's first
+        // row in the lobby, which is a different fight whenever the bird fought
+        // more than once that night, so most group-stage bouts showed a figure
+        // from another bout.
+        figures: [
+          w.pitFigure,
+          figureOf(lobbyScope(l.id), w.opponentBirdId, w.birdId) ?? 0,
+        ] as const,
+      }));
       // Bouts filed by room, rooms in dealt order. A group with no bouts at
       // all can exist — two barn-mates alone together — and it is worth
       // showing empty, because a silent gap in the numbering reads as a bug.
@@ -834,8 +858,7 @@ export default function Admin() {
               t.bracketSize,
               totalRounds,
               fieldEntries,
-              log,
-              t.id,
+              (birdId, oppId) => figureOf(crownScope(t.id), birdId, oppId),
               birdCard,
               birdCareer,
               (birdId) => crownFightsByBird.get(`${t.id}|${birdId}`) ?? 0,
@@ -1054,13 +1077,6 @@ export default function Admin() {
   });
 
   const fightRows: FightRowUI[] = winRows.slice(-FIGHT_LIMIT).map((w) => {
-    const mirror = log.find(
-      (r) =>
-        r.lobbyId === w.lobbyId &&
-        r.tournamentId === w.tournamentId &&
-        r.birdId === w.opponentBirdId &&
-        r.opponentBirdId === w.birdId
-    );
     return {
       day: w.dayIndex,
       card:
@@ -1075,7 +1091,7 @@ export default function Admin() {
       loserFarmP: fcolors(w.opponentFarmId).P ?? "",
       loserFarmS: fcolors(w.opponentFarmId).S ?? "",
       winFigure: w.pitFigure,
-      loseFigure: mirror?.pitFigure ?? 0,
+      loseFigure: figureOf(scopeOf(w), w.opponentBirdId, w.birdId) ?? 0,
       // The POT for this one fight, net of the staker rake — derived from the
       // winner's signed delta rather than from a fee, which is what keeps it
       // honest after round 34: a daily-card pot is now TWO STAKES (a third of
