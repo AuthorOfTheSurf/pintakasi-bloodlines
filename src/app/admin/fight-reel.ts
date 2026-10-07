@@ -8,6 +8,7 @@ import {
   type FightTimeline,
   type Pair,
   type Side,
+  type Turn,
 } from "@/engine/fight-timeline";
 
 /**
@@ -27,16 +28,29 @@ import {
  * held on screen for five seconds reads as a frozen page, so it simply ends
  * sooner.
  *
+ * THE REEL IS BOOKENDED: title, intro, the turns, outro, summary. The title
+ * card puts the game's name up before either bird is in the ring, and the
+ * summary is where a finished fight comes to rest, so the last thing on screen
+ * is what happened and not just who won. All four bookends are fixed lengths
+ * and count against the ceiling, which leaves the turns what is left of it.
+ *
  * The speed control is not here. It divides wall clock in the viewer; it
  * never rebuilds the reel, so these numbers are the whole rule.
  */
 export const PACING = {
   /** The ceiling at 1×. Long gaff fights compress their turns to fit under it. */
   MAX_MS: 40_000,
+  /** The game's name and the card, alone in the ring. Long enough to read, short enough to sit through forty times. */
+  TITLE_MS: 1_400,
   /** Both birds walk in; the wheel, the weather and the underdog are read out. */
   INTRO_MS: 2_000,
-  /** The ending plays, then the winner and both Pit Figures. */
-  OUTRO_MS: 3_000,
+  /** The ending plays, then the winner's name. The figures moved to the summary, so this is shorter than it was. */
+  OUTRO_MS: 2_400,
+  /**
+   * The recap card fading in. The reel parks on its last beat, so this times
+   * the fade and nothing else: the card stays up until somebody asks again.
+   */
+  SUMMARY_MS: 1_200,
   /** What one exchange gets when nothing compresses it. */
   TURN_MS: 1_600,
 } as const;
@@ -52,14 +66,20 @@ export interface PitState {
  * straight from the narrator, so a caption under the picture is the same
  * string the play-by-play prints.
  *
- * ONLY THE OUTRO CARRIES THE RESULT. A viewer that must not spoil a fight
- * plays from beat 0 and has nothing to hide until the last one.
+ * THE RESULT LIVES ON THE LAST TWO BEATS, the outro and the summary, and on
+ * nothing before them. A viewer that must not spoil a fight plays from beat 0
+ * and has nothing to hide until the outro.
+ *
+ * The title and the summary reveal no lines. Every transcript line is already
+ * spoken once by the intro, the turns and the outro, and the summary's own
+ * sentence is a field, not a caption, so it is never printed twice.
  */
 export type Beat = {
   readonly ms: number;
   readonly lines: readonly string[];
   readonly after: PitState;
 } & (
+  | { readonly kind: "title" }
   | { readonly kind: "intro" }
   | {
       readonly kind: "turn";
@@ -73,12 +93,55 @@ export type Beat = {
       readonly kind: "outro";
       readonly ending: Ending;
       readonly winner: Side;
+    }
+  | {
+      readonly kind: "summary";
+      readonly ending: Ending;
+      readonly winner: Side;
       readonly figures: Pair<number>;
+      readonly tally: Pair<Tally>;
+      /**
+       * How it ended, in the narrator's words: the first line of the close.
+       * Carried here so the card never grows a second way of saying "ran".
+       */
+      readonly headline: string;
     }
 );
 
+/** One bird's fight, counted. Everything here is read off the exchanges, so it cannot disagree with them. */
+export interface Tally {
+  /** Exchanges this bird won. */
+  readonly hits: number;
+  /**
+   * Health it took off the other bird, as the blade dealt it. The last blow of
+   * a damage race usually overshoots an almost-empty bar, so this can be more
+   * than the bar lost.
+   */
+  readonly damage: number;
+  /** Hits that were Tari Strikes. */
+  readonly tari: number;
+  /** Its largest single hit, 0 if it never landed one. */
+  readonly biggest: number;
+}
+
+function tallyFor(turns: readonly Turn[], side: Side): Tally {
+  const landed = turns.flatMap(({ exchange }) =>
+    exchange.kind === "hit" && exchange.by === side ? [exchange] : []
+  );
+  return {
+    hits: landed.length,
+    damage: landed.reduce((sum, hit) => sum + hit.damage, 0),
+    tari: landed.filter((hit) => hit.crit).length,
+    biggest: landed.reduce((most, hit) => Math.max(most, hit.damage), 0),
+  };
+}
+
+export function tallyOf(turns: readonly Turn[]): Pair<Tally> {
+  return [tallyFor(turns, 0), tallyFor(turns, 1)];
+}
+
 export interface Reel {
-  /** intro, one beat per fought turn, outro — so never empty. */
+  /** title, intro, one beat per fought turn, outro, summary — so never empty. */
   readonly beats: readonly Beat[];
   /** The whole fight at 1×. */
   readonly totalMs: number;
@@ -86,7 +149,7 @@ export interface Reel {
 
 export function reelOf(t: FightTimeline): Reel {
   const transcript = transcriptOf(t);
-  const fixed = PACING.INTRO_MS + PACING.OUTRO_MS;
+  const fixed = PACING.TITLE_MS + PACING.INTRO_MS + PACING.OUTRO_MS + PACING.SUMMARY_MS;
   const turnMs = Math.min(PACING.TURN_MS, (PACING.MAX_MS - fixed) / Math.max(1, t.turns.length));
 
   let pit: PitState = {
@@ -94,6 +157,7 @@ export function reelOf(t: FightTimeline): Reel {
     blown: [false, false],
   };
   const beats: Beat[] = [
+    { kind: "title", ms: PACING.TITLE_MS, lines: [], after: pit },
     { kind: "intro", ms: PACING.INTRO_MS, lines: transcript.opening, after: pit },
   ];
 
@@ -123,7 +187,17 @@ export function reelOf(t: FightTimeline): Reel {
     after: pit,
     ending: t.ending,
     winner: winnerOf(t.ending),
+  });
+  beats.push({
+    kind: "summary",
+    ms: PACING.SUMMARY_MS,
+    lines: [],
+    after: pit,
+    ending: t.ending,
+    winner: winnerOf(t.ending),
     figures: t.figures,
+    tally: tallyOf(t.turns),
+    headline: transcript.close[0],
   });
   return { beats, totalMs: fixed + turnMs * t.turns.length };
 }

@@ -67,7 +67,7 @@ function step(state: Playback, action: Action): Playback {
 type Act = "enter" | "lunge" | "flinch" | "circle" | "flee" | "drop" | "crow" | "stand";
 
 function actOf(beat: Beat, side: Side): Act {
-  if (beat.kind === "intro") return "enter";
+  if (beat.kind === "title" || beat.kind === "intro") return "enter";
   if (beat.kind === "turn") {
     if (beat.exchange.kind === "tie") return "circle";
     return beat.exchange.by === side ? "lunge" : "flinch";
@@ -459,10 +459,6 @@ function Result({
     >
       <div style={{ color: "#e8b64c", fontWeight: 700, fontSize: 15 }}>
         {corners[beat.winner].name} WINS
-      </div>
-      <div style={{ fontSize: 11.5, marginTop: 2 }}>
-        Pit Figures · {corners[0].name} <b>{beat.figures[0]}</b> · {corners[1].name}{" "}
-        <b>{beat.figures[1]}</b>
       </div>
     </div>
   );
