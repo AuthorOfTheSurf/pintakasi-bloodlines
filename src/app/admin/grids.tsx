@@ -1213,7 +1213,11 @@ export function AdminTabs({
     fetch(`/api/fight/by-bird/${encodeURIComponent(openBird)}`, { signal: ac.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The archive answered ${res.status} for this bird's fights.`);
-        setHistory({ status: "ok", fights: (await res.json()) as BirdFightRowUI[] });
+        const fights = (await res.json()) as BirdFightRowUI[];
+        // Clicking another bird between the body arriving and this line
+        // running would file this bird's career under that one.
+        if (ac.signal.aborted) return;
+        setHistory({ status: "ok", fights });
       })
       .catch((err: unknown) => {
         if (ac.signal.aborted) return;
@@ -1234,10 +1238,18 @@ export function AdminTabs({
     fetch(`/api/fight/${logId}`, { signal: ac.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => null);
+        // An abort that lands AFTER the headers fails the body read, not the
+        // fetch, and the catch above turns that into a null body on a 200.
+        // Without this check the fight that was clicked away from wrote
+        // `replay: null` over the one that was asked for, and the panel
+        // crashed reading it.
+        if (ac.signal.aborted) return;
         // A 404 here is the replay's "unavailable" — the fight cannot be
         // reconstructed at all — and the route sends the reason with it.
         if (!res.ok)
           throw new Error(body?.error ?? `The archive answered ${res.status} for fight #${logId}.`);
+        if (body === null)
+          throw new Error(`The archive sent no readable replay for fight #${logId}.`);
         setReplay({ status: "ok", replay: body as FightReplay });
       })
       .catch((err: unknown) => {
