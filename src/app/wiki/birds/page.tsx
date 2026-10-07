@@ -142,7 +142,7 @@ export default function BirdsPage() {
               <td>
                 Grit in the deep water — the key stat of B5, and it never hits the wall: heart
                 doesn&apos;t get tired. It also decides whether a badly hurt bird keeps fighting or
-                runs: once per fight, a bird below a quarter of its wind checks its nerve, and low
+                runs: once per fight, a bird below a quarter of its health checks its nerve, and low
                 gameness means a real chance it breaks and quits.
               </td>
             </tr>
@@ -382,8 +382,8 @@ export default function BirdsPage() {
         <b>Not wired into fights yet.</b> Carriage is tracked, rolled, and inherited, but
         tonight&apos;s fight engine doesn&apos;t read it — every bout today still runs on stats,
         element, and stars alone. The intended hook: the sim already runs in phases (see below), and
-        Air is meant to pay early — over the top of a low fighter before anyone&apos;s wind is gone
-        — while Ground pays late, once the flyer is blown and the shuffler grinds it down. That
+        Air is meant to pay early — over the top of a low fighter before anyone&apos;s health is
+        gone — while Ground pays late, once the flyer is blown and the shuffler grinds it down. That
         would tie carriage straight to blade choice, since a B1 bout lives almost entirely in the
         early phase and a B5 bout spends most of its turns in the late one. Until that lands, treat
         carriage as a trait you&apos;re breeding <em>for</em>, not one that changes tonight&apos;s

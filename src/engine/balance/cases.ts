@@ -134,7 +134,7 @@ const symmetry: BalanceCase = {
           rate(r),
           pct(r.meanTurns),
           pct(r.endings.ran),
-          pct(r.endings.windOut),
+          pct(r.endings.healthOut),
           pct(r.endings.bell),
           pct(r.ranRateA),
           pct(r.meanFigureA),
@@ -154,7 +154,7 @@ const symmetry: BalanceCase = {
           "A win% ±95",
           "mean turns",
           "end: ran%",
-          "end: wind%",
+          "end: health%",
           "end: bell%",
           "A ran%",
           "mean figure",
@@ -163,7 +163,7 @@ const symmetry: BalanceCase = {
         findings: [
           // The endings mix is the real content of this table. A blade is not
           // characterised by its damage multiplier, it is characterised by how
-          // its fights STOP: a knife that ends on an empty wind pool and a gaff
+          // its fights STOP: a knife that ends on an empty health pool and a gaff
           // that ends on the bell are different games even at the same win rate.
           "The endings mix characterises each blade: which way fights STOP is the blade's identity, not its damage multiplier.",
         ],
@@ -284,7 +284,7 @@ const elements: BalanceCase = {
         rows,
         findings: [
           // ELEMENT_EDGE is flat, but the blades are not: a flat bonus is worth
-          // more where more turns compound it against the wind pool.
+          // more where more turns compound it against the health pool.
           "A flat roll bonus is not worth the same at every distance — the blades weigh the same edge differently.",
           "Mirror and neutral rows are a second read on symmetry: they should sit at the control's 50%.",
         ],
@@ -631,7 +631,7 @@ const condition: BalanceCase = {
         cells: [
           pct(avg((r) => r.meanTurns)),
           pct(avg((r) => r.endings.ran)),
-          pct(avg((r) => r.endings.windOut)),
+          pct(avg((r) => r.endings.healthOut)),
           pct(avg((r) => r.endings.bell)),
           pct(avg((r) => r.meanFigureA)),
           // Spread of the mean figure ACROSS blades is not the point; the
@@ -661,7 +661,7 @@ const condition: BalanceCase = {
           "condition",
           "mean turns",
           "end: ran%",
-          "end: wind%",
+          "end: health%",
           "end: bell%",
           "mean figure",
           "figure spread",
@@ -1342,8 +1342,8 @@ const reach: BalanceCase = {
 // ── 12. FUEL — stamina's two routes, separated ──────────────────────────────
 
 /**
- * Round 27 rebuilt stamina's plumbing: the wind pool is gone (uniform
- * BATTLE.WIND for everyone) and stamina now reaches a fight through exactly
+ * Round 27 rebuilt stamina's plumbing: the per-stamina health pool is gone (uniform
+ * BATTLE.HEALTH for everyone) and stamina now reaches a fight through exactly
  * two doors — its DIRECT WEIGHT in the blade's blend, and the FUEL WALL
  * (fuelTurns = BASE_TURNS + stamina × TURNS_PER_STAMINA; past it, agility
  * and sight deliver only WALL_FACTOR of themselves). The split still

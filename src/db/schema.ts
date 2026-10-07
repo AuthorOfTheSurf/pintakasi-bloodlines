@@ -79,7 +79,7 @@ export const birds = sqliteTable("birds", {
   // Six stats on the 0–2000 PFL scale — all visible in the MVP (letter-grade
   // display and hiding come later; the raw number is stored forever).
   // Phase quartet: agility (the break) · sight (open exchange) · stamina
-  // (wind + decay resistance) · gameness (the deep fight). Behavioral
+  // (the fuel tank) · gameness (the deep fight). Behavioral
   // anchors: station (clutch vs. superior builds) · condition (consistency).
   agility: integer("agility").notNull(),
   sight: integer("sight").notNull(),

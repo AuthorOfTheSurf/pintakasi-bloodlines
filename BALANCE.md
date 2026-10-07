@@ -32,7 +32,7 @@ warning (item 1 under "Still open").
 
 Every turn roll blends ALL FOUR distance stats by the blade's `weights`
 (B1 keys agility, B2 sight, B3 nobody — dead flat — B4 stamina, B5 gameness).
-Wind is a uniform 100 for every bird; no stat buys hit points. Stamina sets
+Health (called wind until round 51) is a uniform 100 for every bird; no stat buys hit points. Stamina sets
 the FUEL TANK (`8 + stamina × 0.014` turns of full output; past it the bird
 hits the wall and its agility/sight halve). A per-blade `statScale` makes a
 stat gap worth roughly the same win rate whether the fight samples it 5 times

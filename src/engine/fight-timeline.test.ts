@@ -54,7 +54,7 @@ describe("the timeline agrees with itself", () => {
       // Only a fight that went the distance can be decided at the bell.
       if (ending.kind === "bell") expect(turns.length).toBe(FORMATS[format].maxTurns);
     }
-    expect([...seen].sort()).toEqual(["bell", "ran", "windOut"]);
+    expect([...seen].sort()).toEqual(["bell", "healthOut", "ran"]);
   });
 
   test("the ending is what the last turn did", () => {
@@ -65,24 +65,24 @@ describe("the timeline agrees with itself", () => {
       // A run and an emptied pool both happen TO the bird that was just hit.
       if (last.kind !== "hit") throw new Error(`a ${ending.kind} ending followed a tie`);
       expect(last.by).not.toBe(ending.side);
-      if (ending.kind === "windOut") expect(last.windAfter).toBe(0);
-      // A bird that ran did not stand, and still had wind to run with.
+      if (ending.kind === "healthOut") expect(last.healthAfter).toBe(0);
+      // A bird that ran did not stand, and still had health to run with.
       if (ending.kind === "ran") {
         expect(last.stood).toBe(false);
-        expect(last.windAfter).toBeGreaterThan(0);
+        expect(last.healthAfter).toBeGreaterThan(0);
       }
     }
   });
 
-  test("wind only falls, and only for the bird that was hit", () => {
+  test("health only falls, and only for the bird that was hit", () => {
     for (const { sim } of sweep(a, b, 10)) {
-      const wind = [sim.timeline.corners[0].wind, sim.timeline.corners[1].wind];
+      const health = [sim.timeline.corners[0].health, sim.timeline.corners[1].health];
       for (const { exchange } of sim.timeline.turns) {
         if (exchange.kind === "tie") continue;
         const struck = exchange.by === 0 ? 1 : 0;
         expect(exchange.damage).toBeGreaterThan(0);
-        expect(exchange.windAfter).toBe(Math.max(0, wind[struck] - exchange.damage));
-        wind[struck] = exchange.windAfter;
+        expect(exchange.healthAfter).toBe(Math.max(0, health[struck] - exchange.damage));
+        health[struck] = exchange.healthAfter;
       }
     }
   });
@@ -168,14 +168,14 @@ describe("the play-by-play is the timeline, rendered", () => {
   });
 
   test("an emptied pool and a bell", () => {
-    const out = find(a, b, (s) => s.timeline.ending.kind === "windOut");
+    const out = find(a, b, (s) => s.timeline.ending.kind === "healthOut");
     expect(out.playByPlay).toMatch(
-      /: 0\n(Uno|Dos) is out of wind — the sentensyador calls it\.\n🏆/
+      /: 0\n(Uno|Dos) is out of health — the sentensyador calls it\.\n🏆/
     );
 
     const bell = find(a, b, (s) => s.timeline.ending.kind === "bell");
     const winner = bell.timeline.corners[bell.winner].name;
-    expect(bell.playByPlay).toContain(`\nTime is called — ${winner} kept more wind.\n🏆`);
+    expect(bell.playByPlay).toContain(`\nTime is called — ${winner} kept more health.\n🏆`);
   });
 
   test("a tie, which only two birds with nothing to add can roll", () => {

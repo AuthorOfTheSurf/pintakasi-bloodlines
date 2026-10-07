@@ -456,7 +456,7 @@ describe("daily Element weather (round 24)", () => {
     // is meant to rule out).
     // The `+0.57wx` annotation is stripped: the day IS on both rolls and the
     // narration correctly says so. Everything else on the line — who struck,
-    // for how much wind, and what each side had left — is what must be
+    // for how much health, and what each side had left — is what must be
     // identical, and that is what the cancellation actually promises.
     const turnsOf = (pbp: string) =>
       pbp
@@ -469,7 +469,7 @@ describe("daily Element weather (round 24)", () => {
       const withWx = simulatePair(a, b, "b2", mulberry32(seed), "T", "Fire");
       const without = simulatePair(a, b, "b2", mulberry32(seed), "T");
       expect(withWx.winner).toBe(without.winner);
-      // Every turn resolves identically — same striker, same wind, same order.
+      // Every turn resolves identically — same striker, same health, same order.
       expect(turnsOf(withWx.playByPlay)).toEqual(turnsOf(without.playByPlay));
       // Neither bird is ever marked DOWN for its own weather, and the pair
       // moves together, so the ordering the figures teach cannot invert.

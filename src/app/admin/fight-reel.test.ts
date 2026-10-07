@@ -69,25 +69,25 @@ describe("the reel carries what a viewer draws", () => {
     }
   });
 
-  test("wind bars start full, follow each hit, and end where the fight ended", () => {
+  test("health bars start full, follow each hit, and end where the fight ended", () => {
     for (const { sim } of fights(20)) {
       const { beats } = reelOf(sim.timeline);
       const { corners } = sim.timeline;
-      expect(beats[0].after.wind).toEqual([corners[0].wind, corners[1].wind]);
+      expect(beats[0].after.health).toEqual([corners[0].health, corners[1].health]);
       let before = beats[0].after;
       for (const beat of beats) {
         if (beat.kind === "turn" && beat.exchange.kind === "hit") {
           const struck = beat.exchange.by === 0 ? 1 : 0;
-          expect(beat.after.wind[struck]).toBe(
-            Math.max(0, before.wind[struck] - beat.exchange.damage)
+          expect(beat.after.health[struck]).toBe(
+            Math.max(0, before.health[struck] - beat.exchange.damage)
           );
-          expect(beat.after.wind[beat.exchange.by]).toBe(before.wind[beat.exchange.by]);
-        } else expect(beat.after.wind).toEqual(before.wind);
+          expect(beat.after.health[beat.exchange.by]).toBe(before.health[beat.exchange.by]);
+        } else expect(beat.after.health).toEqual(before.health);
         before = beat.after;
       }
       // An emptied pool ends on an empty bar for the bird it happened to.
-      if (sim.timeline.ending.kind === "windOut")
-        expect(before.wind[sim.timeline.ending.side]).toBe(0);
+      if (sim.timeline.ending.kind === "healthOut")
+        expect(before.health[sim.timeline.ending.side]).toBe(0);
     }
   });
 

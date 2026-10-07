@@ -48,8 +48,8 @@ export interface Corner {
   readonly name: string;
   readonly element: Element;
   readonly halfStars: number;
-  /** Wind at the opening bell — also the full width of a viewer's wind bar. */
-  readonly wind: number;
+  /** Health at the opening bell — also the full width of a viewer's health bar. */
+  readonly health: number;
   /** Station's per-roll clawback, before form. 0 for the bird that is ahead on paper. */
   readonly claw: number;
   /** The wheel edge this bird's rolls carry, already star- and blade-scaled. null = none. */
@@ -76,8 +76,8 @@ export type Exchange =
       readonly damage: number;
       /** The winning roll was doubles — a Tari Strike, and the blade's critMult applied. */
       readonly crit: boolean;
-      /** The STRUCK bird's wind afterwards, floored at 0 exactly as the transcript prints it. */
-      readonly windAfter: number;
+      /** The STRUCK bird's health afterwards, floored at 0 exactly as the transcript prints it. */
+      readonly healthAfter: number;
       /**
        * This hit triggered the struck bird's one morale check and it HELD. A
        * check that failed is not recorded here: it ends the fight, so it is
@@ -95,13 +95,13 @@ export interface Turn {
 /**
  * Three endings, and they are not interchangeable (the balance lab counts them
  * separately for exactly this reason): a bird that RAN is a gameness failure,
- * an emptied wind pool is a damage race, the bell is a fight nobody finished.
+ * an emptied health pool is a damage race, the bell is a fight nobody finished.
  * `side` is the bird it happened TO. A bell has no such bird, so it names its
  * winner and says whether the judges had to flip for it.
  */
 export type Ending =
   | { readonly kind: "ran"; readonly side: Side }
-  | { readonly kind: "windOut"; readonly side: Side }
+  | { readonly kind: "healthOut"; readonly side: Side }
   | { readonly kind: "bell"; readonly winner: Side; readonly coinFlip: boolean };
 
 export interface FightTimeline {
@@ -172,7 +172,7 @@ function openingLines(t: FightTimeline): string[] {
   const [a, b] = t.corners;
   const lines = [
     `⚔ ${t.header} · ${FORMATS[t.format].label} — ${a.name} (${a.halfStars / 2}★ ${a.element}) vs ${b.name} (${b.halfStars / 2}★ ${b.element})`,
-    `Wind: ${a.name} ${a.wind} · ${b.name} ${b.wind}`,
+    `Health: ${a.name} ${a.health} · ${b.name} ${b.health}`,
   ];
   if (t.wheel !== null) {
     const adv = t.corners[t.wheel];
@@ -224,7 +224,7 @@ function turnLines(t: FightTimeline, turn: Turn, n: number): string[] {
   const struck = otherSide(exchange.by);
   const move = moveName(turn.rolls[exchange.by].dice, exchange.crit);
   lines.push(
-    `T${n} [${phase}] ${t.corners[exchange.by].name} lands a ${move} — ${exchange.damage} wind. (${details[exchange.by]} vs ${details[struck]}) ${t.corners[struck].name}: ${exchange.windAfter}`
+    `T${n} [${phase}] ${t.corners[exchange.by].name} lands a ${move} — ${exchange.damage} damage. (${details[exchange.by]} vs ${details[struck]}) ${t.corners[struck].name}: ${exchange.healthAfter}`
   );
   if (exchange.stood) lines.push(`${t.corners[struck].name} is badly hurt but stands its ground.`);
   return lines;
@@ -237,9 +237,9 @@ function closeLines(t: FightTimeline): string[] {
   const lines: string[] = [];
   if (ending.kind === "ran")
     lines.push(`${t.corners[ending.side].name} breaks and RUNS — no gameness left in it.`);
-  else if (ending.kind === "windOut")
-    lines.push(`${t.corners[ending.side].name} is out of wind — the sentensyador calls it.`);
-  else lines.push(`Time is called — ${winner.name} kept more wind.`);
+  else if (ending.kind === "healthOut")
+    lines.push(`${t.corners[ending.side].name} is out of health — the sentensyador calls it.`);
+  else lines.push(`Time is called — ${winner.name} kept more health.`);
   lines.push(`🏆 ${winner.name} WINS.`);
   lines.push(
     `Pit Figures: ${a.name} ${t.figures[0]} · ${b.name} ${t.figures[1]} (${FORMATS[t.format].label})`

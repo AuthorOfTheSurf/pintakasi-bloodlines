@@ -232,7 +232,7 @@ export const STARS = {
 //
 // THE INTENDED HOME, when it does land: the sim already runs in PHASES
 // (fight-sim.ts — break turns, open turns, then the deep water). Air should
-// pay in the EARLY phase (over the top of a low fighter before anyone's wind
+// pay in the EARLY phase (over the top of a low fighter before anyone's health
 // is gone); Ground should pay LATE (once the flyer is blown, the shuffler
 // grinds him down). That hooks into blades for free, because each blade has
 // its own maxTurns: a short knife is decided early — Air country — while a
@@ -293,7 +293,7 @@ export const FORMATS = {
     label: "B1",
     flavor: "Long Knife — 4.5″ Filipino Slasher, the sprint",
     maxTurns: 5, //          fights end in the opening frames
-    damageMult: 13, //       one clean hit takes a big bite of 100 wind
+    damageMult: 13, //       one clean hit takes a big bite of 100 health
     critMult: 2.5, //        a Tari Strike here is usually the fight
     weights: { agility: 0.5, sight: 0.3, stamina: 0.12, gameness: 0.08 },
     statScale: 1.5, //       5 turns hear the least evidence — loudest stats
@@ -363,14 +363,21 @@ export const PHASES = {
 
 // ── Battle (2d6) ────────────────────────────────────────────────────────────
 export const BATTLE = {
-  // "Wind" is the fight's HP pool — UNIFORM at 100 for every bird since
+  // CALLED "WIND" UNTIL ROUND 51, and the ledgers (RULINGS, BALANCE, PROGRESS)
+  // still say wind for everything ruled before then. Zane, on watching the
+  // first animated fights: "'Wind' as HP still confuses me." It read as
+  // breath, and so did the fuel tank's "blown", so two different meters
+  // sounded like one. Health is the pool a hit takes from; blown stays the
+  // tank's word.
+  //
+  // "Health" is the fight's HP pool — UNIFORM at 100 for every bird since
   // round 27 (Zane: "I'd make HP uniform across all birds (e.g. 100 HP), and
   // then build the stats from there"). Stamina used to buy hit points here,
   // which quietly made it a defense stat; now a bird's toughness is the same
-  // everywhere and stamina's whole job is the FUEL tank below. Uniform wind
-  // also makes "beaten lengths" (wind left at the end) mean the same thing
+  // everywhere and stamina's whole job is the FUEL tank below. Uniform health
+  // also makes "beaten lengths" (health left at the end) mean the same thing
   // in every fight, which the Pit Figure math leans on.
-  WIND: 100,
+  HEALTH: 100,
   // THE FUEL TANK (round 27) — stamina's real job, Zane's PFL theory made
   // mechanical: there is a hidden gas resource, and when it runs out the
   // bird HITS THE WALL. A bird fights at full book for
@@ -468,12 +475,12 @@ export const BATTLE = {
   // At parity station still does nothing — that stays true until the Crowd
   // Noise mechanic gives station its per-fight stage role (planned).
   UNDERDOG_CLAWBACK: 0.5,
-  // Gameness — the deep-fight anchor: below QUIT_WIND_FRACTION of max wind,
+  // Gameness — the deep-fight anchor: below QUIT_HEALTH_FRACTION of max health,
   // gameness/GAMENESS_DIVISOR joins every roll… and ONCE per fight the hurt
   // bird checks morale: quit chance = QUIT_BASE_CHANCE × (1 − gameness/2000).
   // A 300-gameness bird runs ~42% of the time it gets badly hurt. Marathon
   // formats are where this stat is the whole game.
-  QUIT_WIND_FRACTION: 0.25,
+  QUIT_HEALTH_FRACTION: 0.25,
   QUIT_BASE_CHANCE: 0.5,
   GAMENESS_DIVISOR: 400,
   // Condition — the Temper analog (re-ruled 2026-08-04; the lab caught the
@@ -514,22 +521,22 @@ export const BATTLE = {
 // clock cannot drift.
 //
 // Rounds 20–29 only LOOKED like that. `pace / GHOST_PACE × 100` reads as
-// "percent of a maxed bird", but `pace` was wind DEALT, and how much wind you
+// "percent of a maxed bird", but `pace` was damage DEALT, and how much damage you
 // deal depends on who you were fighting. So it was never measured against a
 // fixed thing at all, and it showed twice:
-//   · it DRIFTED — round 27 rescaled the wind pools and every figure in the
+//   · it DRIFTED — round 27 rescaled the health pools and every figure in the
 //     game moved ~20 points, silently, because nothing pinned it
 //   · we already patched around it — CLASS_BASE/CLASS_DIVISOR existed only
 //     because pace lost the quality signal (every turn rolls on the
 //     DIFFERENCE between two books, so two maxed birds trade exactly as much
-//     wind as two starters, and pace alone cannot tell them apart)
+//     health as two starters, and pace alone cannot tell them apart)
 // The ghost was never a bird. It was a divisor named after one.
 //
 // THE REBUILD — spine × night:
 //
 //  1. THE SPINE is absolute and dice-free: the bird's weighted stat blend at
 //     this blade, on a fixed scale. PEG_STAT flat = PEG_FIGURE at every
-//     blade. Nothing in it depends on the opponent, the wind pool, damageMult
+//     blade. Nothing in it depends on the opponent, the health pool, damageMult
 //     or ROLL_DIVISOR, so no future combat rebalance can move the scale
 //     again. This is the target dummy, taken seriously: a dummy with no
 //     defence and no dice, which is the only kind whose reading never drifts.
@@ -676,7 +683,7 @@ export const SCOUT = {
   //
   // Round 29 re-measured this and it was badly wrong. It was set to 50
   // because GHOST_PACE's comment claims an even fight between starters
-  // figures ~50 — but round 27 rescaled the wind and every damageMult, and
+  // figures ~50 — but round 27 rescaled the health and every damageMult, and
   // the calibration went with it. The `symmetry` control now reads 26.9–31.5
   // across the five blades and the live world's mean normalized figure is
   // 32.1. A prior of 50 therefore sat ~18 points ABOVE reality, which means
