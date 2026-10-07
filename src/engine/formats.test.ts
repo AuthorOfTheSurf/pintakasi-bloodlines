@@ -98,7 +98,7 @@ describe("the weapon dial (blade = distance)", () => {
     // weather tests below were built to stop repeating.
     const meanTurns = (format: (typeof FORMAT_NAMES)[number]) => (seedFrom: number) =>
       duel(bird("A", 350), bird("B", 350, "Water"), { format, seedFrom }).meanTurns;
-    const sprint = converge(meanTurns("b1")); // 3.35 / 3.29 / 3.35
+    const sprint = converge(meanTurns("b1")); // about 4.2 at round 67's 7 turns (was 3.3 at 5)
     const marathon = converge(meanTurns("b4")); // 16.80 / 16.87 / 16.68
     expect(Math.max(...sprint.values)).toBeLessThan(Math.min(...marathon.values));
   });

@@ -282,3 +282,12 @@ before assuming "current value = only value this ever was":
 - **BLOWN IS NOW GASSED.** The fuel tank emptying. The viewer flashes it, and "blown" beside a health bar read as the bird being finished. Not ruled by Zane word for word: he approved renaming it and the word was chosen for him. Change it back with one script if it is wrong.
 - **EVERYTHING ABOVE THIS ENTRY STILL SAYS WIND AND BLOWN.** This file and PROGRESS.md record what was ruled under the names of the day and were not rewritten. BALANCE.md is different: where it describes the engine as it stands, it now says health and gassed, and where it tells the history of a round it keeps the old words.
 - **THE CAPTION UNDER THE PICTURE IS PLAIN.** Zane: _"we kinda want to hide that sort of thing."_ `transcriptOf(t, "plain")` drops the dice, the bonuses and the die face of a Tari Strike. The steward's transcript in the office keeps them, and `narrate` is unchanged.
+
+**Round 67** (2026-10-07) — **THE SPRINT GETS TWO MORE TURNS AND A LIGHTER KNIFE.** `FORMATS.b1.maxTurns` 5 → **7**, `FORMATS.b1.damageMult` 13 → **10**. Nothing else moved.
+
+- **WHAT ZANE SAW.** _"There's quite a lot of fights that end in like one shot or two shots. I wasn't so aware of that."_ Measured: 14.5% of B1 fights were over in one exchange and 37.6% in two or fewer, against 8.7% in two or fewer across all blades. It was B1 and only B1.
+- **IT WAS THE DESIGN, NOT A BUG.** The config said of B1 "a Tari Strike here is usually the fight", and it was: two thirds of one-exchange fights were a Tari Strike and a quarter were a bird running. Zane's ruling on the options: _"Turns 7 and damage 10 — let's try."_
+- **THE TWO KNOBS ARE A PAIR.** Lower damage alone sends 24% of B1 fights to the bell. More turns alone changes nothing but the bell. Together, one-exchange fights fall to about 9% and two-or-fewer to about 25%, and the bell falls from 11% to 6%. Retune them together or not at all.
+- **WHO WINS DID NOT MOVE.** The better bird took 64.5% before and 65.1% after. The sprint is still the upset blade, slightly more so: the crit tax on a favourite went from 3.1 to 4.2 points.
+- **VERIFIED:** the balance suite's B1 cases at 4,000 runs, no verdict changed; 91-day worlds at seeds 1 and 2 and a 182-day world at seed 1, each beside the same seed on the old numbers, **0 warnings, 0 invariant failures** on all of them. The tables are in BALANCE.md under "Round 67".
+- **A TRY, NOT A SETTLEMENT.** The ruling was made to see how it looks in the viewer. If it reads wrong, the two numbers go back together.

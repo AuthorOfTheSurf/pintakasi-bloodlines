@@ -292,11 +292,23 @@ export const FORMATS = {
   b1: {
     label: "B1",
     flavor: "Long Knife — 4.5″ Filipino Slasher, the sprint",
-    maxTurns: 5, //          fights end in the opening frames
-    damageMult: 13, //       one clean hit takes a big bite of 100 health
+    // TWO KNOBS MOVED TOGETHER IN ROUND 67: maxTurns 5 → 7, damageMult 13 → 10.
+    // Zane, watching the first animated fights: "quite a lot of fights that
+    // end in like one shot or two shots." Measured over the 3,641 B1 pairings
+    // of a 92-day world: 14% over in one exchange, 37% in two or fewer.
+    //   · Lower damage ALONE makes B1 a points fight (the bell ends 24%).
+    //   · More turns ALONE changes nothing but the bell.
+    //   · Together, one-exchange fights fall to ~9%, two-or-fewer to ~24%,
+    //     and the bell FALLS to ~6%.
+    // Who wins does not move (the better bird took 64.5% before and 65.1%
+    // after), so this is a ruling about how a sprint LOOKS, not who it favors.
+    // Still the shortest blade by a distance, and 7 turns still ends before
+    // any fuel tank empties. Retune these two as a PAIR.
+    maxTurns: 7, //          fights end in the opening frames
+    damageMult: 10, //       one clean hit takes a big bite of 100 health
     critMult: 2.5, //        a Tari Strike here is usually the fight
     weights: { agility: 0.5, sight: 0.3, stamina: 0.12, gameness: 0.08 },
-    statScale: 1.5, //       5 turns hear the least evidence — loudest stats
+    statScale: 1.5, //       7 turns hear the least evidence — loudest stats
   },
   b2: {
     label: "B2",
@@ -386,7 +398,7 @@ export const BATTLE = {
   // turns; every turn after that, its agility and sight deliver only
   // WALL_FACTOR of themselves. Gameness never walls — grit is mental, and
   // the gassed bird "running on heart" is the whole deep-water story.
-  // The dial does the rest for free: a B1 bout (5 turns) ends before ANY
+  // The dial does the rest for free: a B1 bout (7 turns) ends before ANY
   // tank empties, so stamina is nearly decorative there by construction; at
   // B4/B5 the wall decides who is still fighting at book when it matters.
   // A starter (~350) carries ~13 turns of fuel; a 2000-stamina monster ~36 —
@@ -413,8 +425,8 @@ export const BATTLE = {
   // ~84% and +200 ~97% — both inside a few points of target. The blade-end
   // deviation this note used to carry (±10 points, turn count amplifying
   // stats) was CLOSED by round 27's per-blade statScale: the ends now sit
-  // within a point or two of the middle (B1 76 / B5 85 at +100), with only
-  // B1's +200 still short (92 vs 98 — five turns of dice have a variance
+  // within a point or two of the middle (B1 78 / B5 85 at +100), with only
+  // B1's +200 still short (93 vs 98 — seven turns of dice have a variance
   // floor no knob clears; the sprint stays the upset blade, recorded in
   // BALANCE.md). Note the station clawback is DEFINED via ROLL_DIVISOR
   // (a fraction of the gap's roll value), so this retune could not
