@@ -133,8 +133,8 @@ export function phaseOf(turn: number): "break" | "open" | "deep" {
 
 /**
  * The narration, cut where a viewer reveals it: `turns[i]` is every line turn
- * i+1 produced, so a caption under the picture is the same string the
- * play-by-play prints, found by index instead of by counting lines.
+ * i+1 produced, so a caption under the picture comes from the same function
+ * as the play-by-play, found by index instead of by counting lines.
  *
  * `close` carries the result. A reader that must not spoil a fight shows
  * `opening` and `turns` and holds `close` back.
@@ -145,13 +145,31 @@ export interface Transcript {
   readonly close: readonly string[];
 }
 
+/**
+ * How much of the arithmetic a transcript shows (round 51).
+ *
+ * "rolls" is the steward's record: both dice and every bonus beside each
+ * exchange, so a result can be checked by hand. It is what `narrate` prints
+ * and what the play-by-play has always been.
+ *
+ * "plain" is what a spectator reads under the picture: who struck, with
+ * what, for how much. Zane, on the viewer: "we kinda want to hide that sort
+ * of thing." A caption that prints 5+1+station next to every blow turns a
+ * cockfight into a spreadsheet, and tells the player exactly which hidden
+ * bonuses the other barn's bird carries.
+ *
+ * Only the turn lines differ. The opening and the close have no dice in them.
+ */
+export type Detail = "rolls" | "plain";
+
 // Narration only — the clawback itself has no threshold. 0.05 per roll is
 // where it stops being rounding error and starts being a story.
 const OUTMATCHED_CLAW = 0.05;
 
 /** What the winning roll looked like from the stands — doubles first, then the pip sum. */
-function moveName(dice: Pair<number>, crit: boolean): string {
-  if (crit) return `TARI STRIKE (double ${dice[0]}s!)`;
+function moveName(dice: Pair<number>, crit: boolean, detail: Detail): string {
+  // The name is the same call either way. Only the die face is held back.
+  if (crit) return detail === "rolls" ? `TARI STRIKE (double ${dice[0]}s!)` : "TARI STRIKE";
   const pips = dice[0] + dice[1];
   if (pips >= 10) return "high slash";
   if (pips <= 4) return "quick feint";
@@ -205,7 +223,7 @@ function weatherLine(t: FightTimeline, weather: NonNullable<FightTimeline["weath
   return `Today's element is ${weather.element} — neither bird calls it home.`;
 }
 
-function turnLines(t: FightTimeline, turn: Turn, n: number): string[] {
+function turnLines(t: FightTimeline, turn: Turn, n: number, detail: Detail): string[] {
   const lines: string[] = [];
   for (const corner of t.corners)
     if (corner.blownOn === n)
@@ -218,13 +236,16 @@ function turnLines(t: FightTimeline, turn: Turn, n: number): string[] {
   ] as const;
   const { exchange } = turn;
   if (exchange.kind === "tie") {
-    lines.push(`T${n} [${phase}] Both circle — ${details[0]} vs ${details[1]}. No blood.`);
+    const circle =
+      detail === "rolls" ? `Both circle — ${details[0]} vs ${details[1]}.` : "Both circle.";
+    lines.push(`T${n} [${phase}] ${circle} No blood.`);
     return lines;
   }
   const struck = otherSide(exchange.by);
-  const move = moveName(turn.rolls[exchange.by].dice, exchange.crit);
+  const move = moveName(turn.rolls[exchange.by].dice, exchange.crit, detail);
+  const rolls = detail === "rolls" ? ` (${details[exchange.by]} vs ${details[struck]})` : "";
   lines.push(
-    `T${n} [${phase}] ${t.corners[exchange.by].name} lands a ${move} — ${exchange.damage} damage. (${details[exchange.by]} vs ${details[struck]}) ${t.corners[struck].name}: ${exchange.healthAfter}`
+    `T${n} [${phase}] ${t.corners[exchange.by].name} lands a ${move} — ${exchange.damage} damage.${rolls} ${t.corners[struck].name}: ${exchange.healthAfter}`
   );
   if (exchange.stood) lines.push(`${t.corners[struck].name} is badly hurt but stands its ground.`);
   return lines;
@@ -247,10 +268,10 @@ function closeLines(t: FightTimeline): string[] {
   return lines;
 }
 
-export function transcriptOf(t: FightTimeline): Transcript {
+export function transcriptOf(t: FightTimeline, detail: Detail = "rolls"): Transcript {
   return {
     opening: openingLines(t),
-    turns: t.turns.map((turn, i) => turnLines(t, turn, i + 1)),
+    turns: t.turns.map((turn, i) => turnLines(t, turn, i + 1, detail)),
     close: closeLines(t),
   };
 }

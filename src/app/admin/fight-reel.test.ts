@@ -82,11 +82,26 @@ describe("the reel carries what a viewer draws", () => {
     }
   });
 
-  test("every beat's captions, in order, are the play-by-play", () => {
+  test("every beat's captions, in order, are the plain transcript", () => {
     for (const { sim } of fights(10)) {
       const lines = reelOf(sim.timeline).beats.flatMap((beat) => beat.lines);
-      expect(lines.join("\n")).toBe(sim.playByPlay);
+      const { opening, turns, close } = transcriptOf(sim.timeline, "plain");
+      expect(lines).toEqual([...opening, ...turns.flat(), ...close]);
     }
+  });
+
+  test("no caption shows a die, a bonus or a roll", () => {
+    let turnLines = 0;
+    for (const { sim } of fights(10)) {
+      for (const beat of reelOf(sim.timeline).beats) {
+        if (beat.kind !== "turn") continue;
+        for (const line of beat.lines) {
+          turnLines++;
+          expect(line).not.toMatch(/\d\+\d| vs |station|gameness|elem|wx|double/);
+        }
+      }
+    }
+    expect(turnLines).toBeGreaterThan(50);
   });
 
   test("the bookends caption nothing, and the summary's headline is the narrator's", () => {

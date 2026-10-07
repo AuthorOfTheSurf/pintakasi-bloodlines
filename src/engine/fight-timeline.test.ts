@@ -109,6 +109,34 @@ describe("the play-by-play is the timeline, rendered", () => {
   const a = shaped({ gameness: 60, stamina: 20 }, { name: "Uno", base: 400 });
   const b = shaped({ gameness: 900, stamina: 20 }, { name: "Dos", base: 420 });
 
+  test("the plain transcript is the play-by-play with the arithmetic taken out, and nothing else", () => {
+    // Put the dice back and the two must be the same line. If plain ever
+    // dropped a blow, a name or a damage figure, this is where it would show.
+    const strip = (line: string) =>
+      line
+        .replace(/ \(double \d+s!\)/, "")
+        .replace(/ \([^()]* vs [^()]*\)/, "")
+        .replace(/Both circle — .* vs .*\. No blood\./, "Both circle. No blood.");
+    let ties = 0;
+    let crits = 0;
+    // Two birds with nothing on the sheet roll bare dice, which is the only
+    // way a sweep reaches a tie.
+    const bare = sweep(flat(0, { name: "Uno" }), flat(0, { name: "Dos" }));
+    for (const { sim } of [...sweep(a, b), ...bare]) {
+      const rolls = transcriptOf(sim.timeline, "rolls");
+      const plain = transcriptOf(sim.timeline, "plain");
+      expect(plain.opening).toEqual(rolls.opening);
+      expect(plain.close).toEqual(rolls.close);
+      expect(plain.turns).toEqual(rolls.turns.map((lines) => lines.map(strip)));
+      for (const turn of sim.timeline.turns) {
+        if (turn.exchange.kind === "tie") ties++;
+        else if (turn.exchange.crit) crits++;
+      }
+    }
+    expect(ties).toBeGreaterThan(0);
+    expect(crits).toBeGreaterThan(0);
+  });
+
   test("playByPlay is narrate(timeline), and the transcript is the same lines cut by turn", () => {
     for (const { sim } of sweep(a, b, 10)) {
       expect(sim.playByPlay).toBe(narrate(sim.timeline));

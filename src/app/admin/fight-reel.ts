@@ -63,8 +63,9 @@ export interface PitState {
 
 /**
  * One step of playback. `lines` are the transcript lines this beat reveals,
- * straight from the narrator, so a caption under the picture is the same
- * string the play-by-play prints.
+ * straight from the narrator in its PLAIN voice: the same lines the
+ * play-by-play prints, minus the dice and bonuses beside each exchange. The
+ * steward's record keeps the arithmetic; the picture does not show it.
  *
  * THE RESULT LIVES ON THE LAST TWO BEATS, the outro and the summary, and on
  * nothing before them. A viewer that must not spoil a fight plays from beat 0
@@ -148,7 +149,7 @@ export interface Reel {
 }
 
 export function reelOf(t: FightTimeline): Reel {
-  const transcript = transcriptOf(t);
+  const transcript = transcriptOf(t, "plain");
   const fixed = PACING.TITLE_MS + PACING.INTRO_MS + PACING.OUTRO_MS + PACING.SUMMARY_MS;
   const turnMs = Math.min(PACING.TURN_MS, (PACING.MAX_MS - fixed) / Math.max(1, t.turns.length));
 
