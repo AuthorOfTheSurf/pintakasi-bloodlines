@@ -19,7 +19,7 @@ export function cardLabel(mode: string, classType: string): string {
 }
 
 /**
- * ── ONE BIRD'S WHOLE CAREER, READ WHEN IT IS ASKED FOR (round 50) ──────────
+ * ── ONE BIRD'S WHOLE CAREER, READ WHEN IT IS ASKED FOR (round 65) ──────────
  *
  * The Birds grid's detail panel used to be fed from the page itself: every
  * bird's fights serialized into one array, capped at the newest 6,000 rows to

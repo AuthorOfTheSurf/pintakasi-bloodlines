@@ -15,7 +15,7 @@ import { reelOf, type Beat } from "./fight-reel";
 import { BirdSprite, ElementSprite } from "./sprites";
 
 /**
- * ── THE PIT: A FIGHT, WATCHED FROM THE RAIL (round 50) ─────────────────────
+ * ── THE PIT: A FIGHT, WATCHED FROM THE RAIL (round 65) ─────────────────────
  *
  * A side view of the ring. This file decides what a beat LOOKS like and
  * nothing about how long it lasts: every duration below is a fraction of
@@ -164,7 +164,7 @@ const KEYFRAMES = `
   44% { transform: scale(1); opacity: 1; }
   100% { transform: translateY(-26px) scale(1); opacity: 1; }
 }
-@keyframes pit-blown {
+@keyframes pit-gassed {
   0%, 30%, 60% { opacity: 1; }
   15%, 45% { opacity: 0.15; }
   100% { opacity: 0; }
@@ -279,7 +279,7 @@ function healthColor(share: number): string {
 function Plate({
   corner,
   health,
-  blown,
+  gassed,
   side,
   drains,
   enters,
@@ -288,7 +288,7 @@ function Plate({
   corner: Corner;
   stable: Stable;
   health: number;
-  blown: boolean;
+  gassed: boolean;
   side: Side;
   /** A turn is on screen, so a change in width is a blow landing and is shown landing. */
   drains: boolean;
@@ -370,7 +370,7 @@ function Plate({
         <span>
           health {health}/{corner.health}
         </span>
-        {blown ? <span style={{ marginLeft: "auto", color: "#c86a5a" }}>BLOWN</span> : null}
+        {gassed ? <span style={{ marginLeft: "auto", color: "#c86a5a" }}>GASSED</span> : null}
       </div>
     </div>
   );
@@ -389,9 +389,9 @@ function Bird({
 }) {
   const stood = beat.kind === "turn" && beat.exchange.kind === "hit" && beat.exchange.stood;
   const struck = actOf(beat, side) === "flinch";
-  const blewNow = beat.kind === "turn" && beat.blewNow[side];
+  const gassedNow = beat.kind === "turn" && beat.gassedNow[side];
   const called = beat.kind === "outro" || beat.kind === "summary";
-  const dimmed = beat.after.blown[side] && !called;
+  const dimmed = beat.after.gassed[side] && !called;
   // Side A walks right toward its opponent, side B walks left. Every keyframe
   // multiplies by this, so there is one set of motions and not a mirrored pair.
   const dir = side === 0 ? 1 : -1;
@@ -439,9 +439,9 @@ function Bird({
               // BirdSprite draws facing right, so only side B is turned around.
               transform: side === 1 ? "scaleX(-1)" : undefined,
               // Dimmed, not ghosted: a gaff fight spends most of its length with
-              // both birds blown, and the hit flash still has to read through it.
+              // both birds gassed, and the hit flash still has to read through it.
               // Lifted once the fight is called, where a grey bird reads as the
-              // beaten one and the winner of a long fight is usually blown too.
+              // beaten one and the winner of a long fight is usually gassed too.
               opacity: dimmed ? 0.72 : 1,
               filter: dimmed ? "grayscale(0.5)" : undefined,
               transition: "opacity 200ms linear, filter 200ms linear",
@@ -453,7 +453,7 @@ function Bird({
       </div>
       <div key={`fx-${cursor}`}>
         {splatFor(beat, side)}
-        {blewNow ? (
+        {gassedNow ? (
           <div
             style={{
               position: "absolute",
@@ -468,11 +468,11 @@ function Bird({
               fontSize: 12,
               fontWeight: 700,
               letterSpacing: 1,
-              animation: "pit-blown var(--beat) linear both",
+              animation: "pit-gassed var(--beat) linear both",
               zIndex: 4,
             }}
           >
-            BLOWN
+            GASSED
           </div>
         ) : null}
       </div>
@@ -750,7 +750,7 @@ export function FightViewer({
               <Plate
                 corner={timeline.corners[side]}
                 health={beat.after.health[side]}
-                blown={beat.after.blown[side]}
+                gassed={beat.after.gassed[side]}
                 side={side}
                 drains={beat.kind === "turn"}
                 enters={beat.kind === "intro"}

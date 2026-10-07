@@ -88,7 +88,7 @@ describe("a fought card replays exactly", () => {
     // recomputed tonight, one read off the archive. Equal is the whole point.
     expect(replay.figures).toEqual(replay.archivedFigures);
     expect(replay.figures).toEqual(fight.figures);
-    // What a viewer draws from (round 50): the fight as facts, and each side's
+    // What a viewer draws from (round 65): the fight as facts, and each side's
     // coat in the same [A, B] order as the timeline's corners.
     if (replay.drifted) throw new Error("a clean replay reported drift");
     expect(replay.timeline.figures).toEqual(fight.figures);

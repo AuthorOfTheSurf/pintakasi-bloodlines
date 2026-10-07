@@ -3,7 +3,7 @@ import { birdFightRows } from "@/app/admin/bird-fights";
 import { db } from "@/db/client";
 
 /**
- * ── ONE BIRD'S FIGHT HISTORY (round 50) ────────────────────────────────────
+ * ── ONE BIRD'S FIGHT HISTORY (round 65) ────────────────────────────────────
  *
  * The office asks for a career when a bird is opened, instead of carrying
  * every bird's fights in the page (see `birdFightRows` for what that cost).

@@ -990,7 +990,7 @@ function replayBody(state: ReplayState, logId: number) {
  * fight's seed on request — so a fight, like the career it belongs to, is
  * asked of the server after the page loads.
  *
- * It opens OVER the office as a modal (round 50), and the fight list stays
+ * It opens OVER the office as a modal (round 65), and the fight list stays
  * where it was underneath. It used to replace the list, which was right while
  * a fight was a hundred lines of text that wanted the room — but a fight is
  * now something you watch, and watching a bird's career means one fight after
@@ -1202,7 +1202,7 @@ export function AdminTabs({
     return next ? () => setOpenFight(next) : undefined;
   };
 
-  // A bird's career is fetched when the bird is opened (round 50). It used to
+  // A bird's career is fetched when the bird is opened (round 65). It used to
   // arrive with the page — every bird's fights in one capped array — and the
   // cap silently dropped the history of any bird that had not fought lately.
   // Aborted on the next click for the same reason the replay below is.

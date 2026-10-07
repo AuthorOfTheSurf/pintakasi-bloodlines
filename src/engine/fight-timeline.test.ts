@@ -6,7 +6,7 @@ import { narrate, transcriptOf, winnerOf } from "./fight-timeline";
 import { mulberry32 } from "./rng";
 
 /**
- * ── THE TIMELINE IS THE RECORD (round 50) ──────────────────────────────────
+ * ── THE TIMELINE IS THE RECORD (round 65) ──────────────────────────────────
  *
  * The play-by-play is no longer written by the fight; it is rendered from the
  * fight's timeline. Two things have to hold for that to be safe, and neither
@@ -33,7 +33,7 @@ function* sweep(a: Combatant, b: Combatant, seeds = 40) {
 
 describe("the timeline agrees with itself", () => {
   // Quitters with small tanks, so one sweep reaches runs, emptied pools,
-  // bells and blown tanks.
+  // bells and gassed tanks.
   const a = shaped({ gameness: 60, stamina: 20 }, { name: "Uno", base: 400 });
   const b = shaped({ gameness: 900, stamina: 20 }, { name: "Dos", base: 420 });
 
@@ -87,7 +87,7 @@ describe("the timeline agrees with itself", () => {
     }
   });
 
-  test("a bird stands its ground at most once, and a tank blows on a fought turn", () => {
+  test("a bird stands its ground at most once, and a tank empties on a fought turn", () => {
     for (const { sim } of sweep(a, b)) {
       const { corners, turns } = sim.timeline;
       for (const side of [0, 1] as const) {
@@ -95,10 +95,10 @@ describe("the timeline agrees with itself", () => {
           (t) => t.exchange.kind === "hit" && t.exchange.stood && t.exchange.by !== side
         );
         expect(stands.length).toBeLessThanOrEqual(1);
-        const blownOn = corners[side].blownOn;
-        if (blownOn !== null) {
-          expect(blownOn).toBeGreaterThanOrEqual(1);
-          expect(blownOn).toBeLessThanOrEqual(turns.length);
+        const gassedOn = corners[side].gassedOn;
+        if (gassedOn !== null) {
+          expect(gassedOn).toBeGreaterThanOrEqual(1);
+          expect(gassedOn).toBeLessThanOrEqual(turns.length);
         }
       }
     }
@@ -179,9 +179,9 @@ describe("the play-by-play is the timeline, rendered", () => {
     throw new Error("no fight in the sweep produced the case under test");
   };
 
-  test("a blown tank, a bird that stands, and a bird that runs", () => {
-    const blown = find(a, b, (s) => s.timeline.corners[0].blownOn !== null);
-    expect(blown.playByPlay).toContain("Uno is blown — the tank is empty, running on heart now.");
+  test("a gassed tank, a bird that stands, and a bird that runs", () => {
+    const gassed = find(a, b, (s) => s.timeline.corners[0].gassedOn !== null);
+    expect(gassed.playByPlay).toContain("Uno is gassed — the tank is empty, running on heart now.");
 
     const stood = find(a, b, (s) =>
       s.timeline.turns.some((t) => t.exchange.kind === "hit" && t.exchange.stood)

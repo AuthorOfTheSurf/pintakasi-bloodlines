@@ -58,7 +58,7 @@ interface ReplayCommon {
   /** The archived figures, in the same order — what actually happened. */
   archivedFigures: [number, number];
   /**
-   * What each bird looks like, [side A, side B] (round 50). Cosmetic: it feeds
+   * What each bird looks like, [side A, side B] (round 65). Cosmetic: it feeds
    * no roll, and like a name it is today's coat, not the night's.
    */
   looks: Pair<BirdLook>;
@@ -80,7 +80,7 @@ export type BirdLook = Pick<typeof birds.$inferSelect, "sex" | "baseCoat" | "tri
  * `drifted: true` = the engine no longer reproduces the archived result.
  * Trust the archive, not the transcript.
  *
- * A drifted replay carries NO TIMELINE (round 50). The transcript of a fight
+ * A drifted replay carries NO TIMELINE (round 65). The transcript of a fight
  * that contradicts its own archive is demoted and flagged; an ANIMATION of it
  * would be a confident picture of something that did not happen. So "drifted
  * fights are not animated" is not a rule a viewer has to remember — there is

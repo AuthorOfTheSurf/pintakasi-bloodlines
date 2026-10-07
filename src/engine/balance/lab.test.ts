@@ -268,7 +268,7 @@ describe("duel's bookkeeping is self-consistent", () => {
   });
 
   test("two birds with the same name are measured side by side, not by name", () => {
-    // Runs and endings are read off the fight's timeline by SIDE (round 50).
+    // Runs and endings are read off the fight's timeline by SIDE (round 65).
     // They used to be parsed out of name-keyed narration, where identical
     // names credited both birds' runs to one side — a fabricated gameness
     // asymmetry — and `duel` had to refuse the pair outright.

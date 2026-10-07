@@ -8,7 +8,7 @@ import { PACING, reelOf } from "./fight-reel";
 
 const FORMAT_IDS = Object.keys(FORMATS) as FightFormat[];
 // Quitters with small tanks: one sweep reaches runs, emptied pools, bells and
-// blown tanks, and fights of every length from one turn to the blade's cap.
+// gassed tanks, and fights of every length from one turn to the blade's cap.
 const a = shaped({ gameness: 60, stamina: 20 }, { name: "Uno", base: 400 });
 const b = shaped({ gameness: 900, stamina: 20 }, { name: "Dos", base: 420 });
 const BOOKENDS_MS = PACING.TITLE_MS + PACING.INTRO_MS + PACING.OUTRO_MS + PACING.SUMMARY_MS;
@@ -172,18 +172,18 @@ describe("the reel carries what a viewer draws", () => {
     }
   });
 
-  test("a tank flashes once, on the turn it blew, and stays blown", () => {
+  test("a tank flashes once, on the turn it emptied, and stays gassed", () => {
     let flashes = 0;
     for (const { sim } of fights(20)) {
       const { beats } = reelOf(sim.timeline);
       for (const side of [0, 1] as const) {
-        const blew = beats.filter((beat) => beat.kind === "turn" && beat.blewNow[side]);
-        flashes += blew.length;
-        expect(blew.length).toBe(sim.timeline.corners[side].blownOn === null ? 0 : 1);
-        const firstBlown = beats.findIndex((beat) => beat.after.blown[side]);
-        if (firstBlown === -1) continue;
-        expect(beats[firstBlown]).toBe(blew[0]);
-        expect(beats.slice(firstBlown).every((beat) => beat.after.blown[side])).toBe(true);
+        const emptied = beats.filter((beat) => beat.kind === "turn" && beat.gassedNow[side]);
+        flashes += emptied.length;
+        expect(emptied.length).toBe(sim.timeline.corners[side].gassedOn === null ? 0 : 1);
+        const firstGassed = beats.findIndex((beat) => beat.after.gassed[side]);
+        if (firstGassed === -1) continue;
+        expect(beats[firstGassed]).toBe(emptied[0]);
+        expect(beats.slice(firstGassed).every((beat) => beat.after.gassed[side])).toBe(true);
       }
     }
     expect(flashes).toBeGreaterThan(0);

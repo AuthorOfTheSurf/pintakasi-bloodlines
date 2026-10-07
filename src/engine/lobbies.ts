@@ -1299,7 +1299,7 @@ export class Lobbies {
       groupNo,
       stake,
       forcedRetirements,
-      // Forwarded, not copied (round 50): the text is built only if somebody
+      // Forwarded, not copied (round 65): the text is built only if somebody
       // reads it, and a night's card reads none.
       get playByPlay() {
         return sim.playByPlay;

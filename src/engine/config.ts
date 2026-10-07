@@ -233,7 +233,7 @@ export const STARS = {
 // THE INTENDED HOME, when it does land: the sim already runs in PHASES
 // (fight-sim.ts — break turns, open turns, then the deep water). Air should
 // pay in the EARLY phase (over the top of a low fighter before anyone's health
-// is gone); Ground should pay LATE (once the flyer is blown, the shuffler
+// is gone); Ground should pay LATE (once the flyer is gassed, the shuffler
 // grinds him down). That hooks into blades for free, because each blade has
 // its own maxTurns: a short knife is decided early — Air country — while a
 // long gaff goes deep, which is Ground country. Elements tell you WHO a bird
@@ -363,12 +363,13 @@ export const PHASES = {
 
 // ── Battle (2d6) ────────────────────────────────────────────────────────────
 export const BATTLE = {
-  // CALLED "WIND" UNTIL ROUND 51, and the ledgers (RULINGS, BALANCE, PROGRESS)
+  // CALLED "WIND" UNTIL ROUND 66, and the ledgers (RULINGS, BALANCE, PROGRESS)
   // still say wind for everything ruled before then. Zane, on watching the
   // first animated fights: "'Wind' as HP still confuses me." It read as
   // breath, and so did the fuel tank's "blown", so two different meters
-  // sounded like one. Health is the pool a hit takes from; blown stays the
-  // tank's word.
+  // sounded like one. Health is the pool a hit takes from. The tank's word
+  // changed in the same round for the same reason: a bird whose tank is
+  // empty is GASSED, where the ledgers say blown.
   //
   // "Health" is the fight's HP pool — UNIFORM at 100 for every bird since
   // round 27 (Zane: "I'd make HP uniform across all birds (e.g. 100 HP), and
@@ -384,12 +385,12 @@ export const BATTLE = {
   //   FUEL.BASE_TURNS + stamina × FUEL.TURNS_PER_STAMINA
   // turns; every turn after that, its agility and sight deliver only
   // WALL_FACTOR of themselves. Gameness never walls — grit is mental, and
-  // the blown bird "running on heart" is the whole deep-water story.
+  // the gassed bird "running on heart" is the whole deep-water story.
   // The dial does the rest for free: a B1 bout (5 turns) ends before ANY
   // tank empties, so stamina is nearly decorative there by construction; at
   // B4/B5 the wall decides who is still fighting at book when it matters.
   // A starter (~350) carries ~13 turns of fuel; a 2000-stamina monster ~36 —
-  // which still blows before a 45-turn B5 ends, so the deep water tests
+  // which still empties before a 45-turn B5 ends, so the deep water tests
   // heart in EVERY bout, by design.
   FUEL: {
     BASE_TURNS: 8,
@@ -546,7 +547,7 @@ export const BATTLE = {
 //     NOMINAL_CONDITION bird would have rolled. That captures condition
 //     (form is drawn fresh every turn), the element wheel, the day's weather,
 //     station's clawback and — the good one — the FUEL WALL: a bird that
-//     blows its tank spends the rest of the fight delivering WALL_FACTOR of
+//     empties its tank spends the rest of the fight delivering WALL_FACTOR of
 //     its speed stats, and now that shows in its number. The dice are
 //     deliberately NOT in here; they are what the track variant is for.
 //

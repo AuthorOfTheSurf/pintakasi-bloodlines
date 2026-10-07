@@ -1,7 +1,7 @@
 import { FORMATS, PHASES, type Element, type FightFormat } from "./config";
 
 /**
- * ── THE FIGHT, AS FACTS (round 50) ─────────────────────────────────────────
+ * ── THE FIGHT, AS FACTS (round 65) ─────────────────────────────────────────
  *
  * Until this round a fight's only turn-by-turn record was PROSE: `simulatePair`
  * pushed narration lines as it went, and anything that wanted to know what
@@ -15,7 +15,7 @@ import { FORMATS, PHASES, type Element, type FightFormat } from "./config";
  * the replay guard makes about the archive.
  *
  * THE SHAPE IS A TREE, NOT AN EVENT STREAM, on purpose. A flat list of events
- * would let a reader meet "blown" twice for one bird, or a morale check with
+ * would let a reader meet "gassed" twice for one bird, or a morale check with
  * no hit before it, and would leave every reader to regroup events into turns.
  * Here a turn is one entry, a bird's once-per-fight facts live on its corner,
  * and the places a fight genuinely branches are unions: tie-or-hit, and the
@@ -57,7 +57,7 @@ export interface Corner {
   /** The same for the day's weather. null = not its element, or no stars to voice it. */
   readonly wxEdge: number | null;
   /** The turn this bird's tank ran dry, or null if the fight ended first. At most once. */
-  readonly blownOn: number | null;
+  readonly gassedOn: number | null;
 }
 
 export interface Roll {
@@ -146,7 +146,7 @@ export interface Transcript {
 }
 
 /**
- * How much of the arithmetic a transcript shows (round 51).
+ * How much of the arithmetic a transcript shows (round 66).
  *
  * "rolls" is the steward's record: both dice and every bonus beside each
  * exchange, so a result can be checked by hand. It is what `narrate` prints
@@ -226,8 +226,8 @@ function weatherLine(t: FightTimeline, weather: NonNullable<FightTimeline["weath
 function turnLines(t: FightTimeline, turn: Turn, n: number, detail: Detail): string[] {
   const lines: string[] = [];
   for (const corner of t.corners)
-    if (corner.blownOn === n)
-      lines.push(`${corner.name} is blown — the tank is empty, running on heart now.`);
+    if (corner.gassedOn === n)
+      lines.push(`${corner.name} is gassed — the tank is empty, running on heart now.`);
 
   const phase = phaseOf(n);
   const details = [
