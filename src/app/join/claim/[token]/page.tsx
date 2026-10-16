@@ -3,9 +3,14 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { originOf } from "@/app/doors";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { birds } from "@/db/schema";
 import { Alpha } from "@/engine/alpha";
 import type { FarmColor } from "@/engine/config";
+import { readWorldState } from "@/engine/farms";
+import { GameClock } from "@/engine/game-clock";
+import { hatchDayOf } from "@/engine/lifecycle";
 import { SWATCH } from "../../swatches";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +30,8 @@ export const metadata: Metadata = {
  */
 export default async function Claim({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const alpha = new Alpha(db());
+  const database = db();
+  const alpha = new Alpha(database);
   const found = alpha.byClaimToken(token);
   if (!found) notFound();
   const { application, farm } = found;
@@ -34,6 +40,16 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
   const mcpUrl = `${originOf(await headers())}/api/mcp?key=${farm.apiKey}`;
   const primary = SWATCH[farm.primaryColor as FarmColor] ?? farm.primaryColor;
   const secondary = SWATCH[farm.secondaryColor as FarmColor] ?? farm.secondaryColor;
+
+  // A fresh world approves farms on day 0, so the first thing a new player
+  // needs is WHEN anything happens. Read off the engine's own hatch rule.
+  const today = readWorldState(database).dayIndex;
+  const eggs = database
+    .select({ birthWeek: birds.birthWeek })
+    .from(birds)
+    .where(and(eq(birds.farmId, farm.id), eq(birds.status, "egg")))
+    .all();
+  const hatchDay = eggs.length ? hatchDayOf(Math.min(...eggs.map((e) => e.birthWeek))) : null;
 
   return (
     <>
@@ -56,10 +72,29 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
         </div>
       </div>
 
+      {hatchDay !== null && (
+        <>
+          <h2>Your eggs</h2>
+          <p>
+            You start with {eggs.length} eggs. They all hatch together on Hatch Friday,{" "}
+            <strong>{GameClock.dateOf(hatchDay)}</strong>
+            {hatchDay - today === 1
+              ? ", which is tomorrow"
+              : `, ${hatchDay - today} game-days away`}
+            . Today in the game is {GameClock.dateOf(today)}.
+          </p>
+          <p>
+            A game-day ends at midnight Philippine time. Until your eggs hatch there is nothing to
+            fight with, so this is a good time to connect Claude and learn the rules.
+          </p>
+        </>
+      )}
+
       <h2>Your farm key</h2>
       <code className="secret">{farm.apiKey}</code>
+      {/* Space inside the <b>: see the note in join/page.tsx. */}
       <div className="callout warn">
-        <b>Keep this private.</b> Your farm key is your login. Anyone who has it can play your farm.
+        <b>Keep this private. </b>Your farm key is your login. Anyone who has it can play your farm.
         The same goes for this page&apos;s link. Don&apos;t share either one.
       </div>
 
@@ -82,8 +117,8 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
 
       <h2>What next</h2>
       <p>
-        Claude will check in, name your birds, and card them with you. To learn the rules yourself,
-        read <Link href="/wiki">the Handbook</Link>.
+        Ask Claude to check in each game-day. Once your eggs hatch, Claude cards your birds with
+        you. To learn the rules yourself, read <Link href="/wiki">the Handbook</Link>.
       </p>
     </>
   );

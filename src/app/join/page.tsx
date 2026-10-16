@@ -15,9 +15,13 @@ export default function Join() {
       </p>
 
       <h2>How it works</h2>
+      {/* The space sits INSIDE each lead-in's tag on purpose: the compiled
+          output dropped the leading space of a text run that holds an
+          &apos; entity, so "</strong> Tell us your farm&apos;s" rendered as
+          "below.Tell". Prettier won't keep an explicit {" "} there. */}
       <ol>
         <li>
-          <strong>Apply below.</strong> Tell us your farm&apos;s name, its colors, and how to reach
+          <strong>Apply below. </strong>Tell us your farm&apos;s name, its colors, and how to reach
           you. Seats are limited, so not everyone gets in right away.
         </li>
         <li>
@@ -25,7 +29,7 @@ export default function Join() {
           happens person to person, not on this site.
         </li>
         <li>
-          <strong>You get your farm.</strong> Once you&apos;re in, we send you a private link. It
+          <strong>You get your farm. </strong>Once you&apos;re in, we send you a private link. It
           shows your farm and your farm key.
         </li>
         <li>

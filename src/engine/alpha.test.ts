@@ -5,6 +5,7 @@ import { Alpha, type ApplyInput } from "./alpha";
 import { APPLICATION_LIMITS, BARN, ECONOMY } from "./config";
 import { diagnose } from "./doctor";
 import { Farms } from "./farms";
+import { hatchDayOf } from "./lifecycle";
 import { expectConserved, world } from "./testkit";
 
 const APPLICANT: ApplyInput = {
@@ -140,6 +141,31 @@ describe("deciding", () => {
     expect(db.select().from(farms).all().length).toBe(farmsBefore);
     expect(db.select().from(birds).all().length).toBe(birdsBefore);
     expectConserved(db);
+  });
+});
+
+describe("day zero", () => {
+  test("the welcome page's hatch day is the day the starter eggs really hatch", () => {
+    // A fresh live world is approved on day 0, so the claim page tells the
+    // player when their eggs hatch. That date has to be the engine's, not a
+    // second opinion about it.
+    const { db, game, alpha } = setup();
+    const { farm } = alpha.approve(alpha.apply(APPLICANT).id);
+    const eggs = () =>
+      db
+        .select()
+        .from(birds)
+        .where(eq(birds.farmId, farm.id))
+        .all()
+        .filter((b) => b.status === "egg");
+    const hatchDay = hatchDayOf(Math.min(...eggs().map((b) => b.birthWeek)));
+    expect(hatchDay).toBeGreaterThan(0);
+
+    while (game.clock.currentDay() < hatchDay - 1) game.tickDay();
+    expect(eggs().length).toBe(BARN.STARTER_EGGS);
+    game.tickDay();
+    expect(game.clock.currentDay()).toBe(hatchDay);
+    expect(eggs().length).toBe(0);
   });
 });
 
