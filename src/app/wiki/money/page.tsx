@@ -9,6 +9,7 @@ import {
   LT_CENTS,
   PINTAKASI,
   STAKER_FLOWS,
+  STUD_PRICE,
   feeFor,
   stakePerFight,
 } from "@/engine/config";
@@ -47,10 +48,13 @@ export default function MoneyPage() {
   const exampleClaimTagCents = exampleClaimTag * 100;
   const exampleClaimRakeCents = Math.round(exampleClaimTagCents * STAKER_FLOWS.CLAIM_RAKE);
 
-  // The breed fee, split three ways — computed by the same function the
-  // engine uses to pay it out, so this page can never drift from reality.
-  const breedSplit = splitBreedFee(ECONOMY.BREED_FEE);
-  const breedFeeCents = ECONOMY.BREED_FEE * 100;
+  // A cover at the floor price, split three ways — computed by the same
+  // function the engine uses to pay it out, so this page can never drift.
+  // Above the floor the premium splits per STUD_PRICE.PREMIUM_SPLIT instead.
+  const breedSplit = splitBreedFee(STUD_PRICE.FLOOR);
+  const breedFeeCents = STUD_PRICE.FLOOR * 100;
+  const premiumOwnerPct = Math.round(STUD_PRICE.PREMIUM_SPLIT.STUD_OWNER * 100);
+  const premiumJuicePct = Math.round(STUD_PRICE.PREMIUM_SPLIT.JUICE * 100);
   const breedStakerPct = ((breedSplit.stakerPoolCents / breedFeeCents) * 100).toFixed(1);
   const breedJuicePct = ((breedSplit.juicePoolCents / breedFeeCents) * 100).toFixed(1);
   const breedOwnerPct = ((breedSplit.studOwnerCents / breedFeeCents) * 100).toFixed(1);
@@ -215,9 +219,14 @@ export default function MoneyPage() {
               </tr>
             ))}
             <tr>
-              <td>A breeding cover</td>
-              <td className="num">{ECONOMY.BREED_FEE}</td>
-              <td className="num">${usd(ECONOMY.BREED_FEE)}</td>
+              <td>A breeding cover, at the floor price (the least a stud can ask)</td>
+              <td className="num">{STUD_PRICE.FLOOR}</td>
+              <td className="num">${usd(STUD_PRICE.FLOOR)}</td>
+            </tr>
+            <tr>
+              <td>A breeding cover, at the cap (the most a stud can ask)</td>
+              <td className="num">{STUD_PRICE.CAP.toLocaleString()}</td>
+              <td className="num">${usd(STUD_PRICE.CAP)}</td>
             </tr>
             <tr>
               <td>A paid gacha roll</td>
@@ -268,8 +277,8 @@ export default function MoneyPage() {
             crowns&apos; own entrants pay ({PINTAKASI.ENTRY_FEE} GP at a Major,{" "}
             {JUVENILE_MAJOR.ENTRY_FEE} GP at a Juvenile Championship, added to that crown&apos;s
             purse whole). It fills from three places: every check-in adds {ECONOMY.DRIP_TO_PURSES}{" "}
-            GP, {breedJuicePct}% of every breeding cover goes in (the other half of what&apos;s left
-            after the staker cut goes to the stud&apos;s owner), and so does{" "}
+            GP, {breedJuicePct}% of the floor part of every breeding cover goes in (plus{" "}
+            {premiumJuicePct}% of anything a stud&apos;s owner asks above the floor), and so does{" "}
             {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. The
             check-ins matter most: they add up every day, whether or not anyone breeds or rolls, so
             a busy world always has crowns worth fighting for. Wednesday&apos;s Juvenile
@@ -286,10 +295,10 @@ export default function MoneyPage() {
             Pays everyone with staked land, pro-rata, every single day — see{" "}
             <Link href="/wiki/land">Land Tokens</Link>. It skims from nearly every fee in the game:{" "}
             {(STAKER_FLOWS.CLAIM_RAKE * 100).toFixed(0)}% of every claim tag,{" "}
-            {(STAKER_FLOWS.GACHA_SHARE * 100).toFixed(0)}% of gacha spend, {breedStakerPct}% of
-            every breeding cover, and the entire GP price of every land purchase. The one thing it
-            does <em>not</em> skim any more is the daily-card fight pot — round 23 zeroed that rake
-            back to nothing, so a fight&apos;s pot is pure winner-takes-it-all.
+            {(STAKER_FLOWS.GACHA_SHARE * 100).toFixed(0)}% of gacha spend, {breedStakerPct}% of the
+            floor part of every breeding cover, and the entire GP price of every land purchase. The
+            one thing it does <em>not</em> skim any more is the daily-card fight pot — round 23
+            zeroed that rake back to nothing, so a fight&apos;s pot is pure winner-takes-it-all.
           </p>
         </div>
       </div>
@@ -322,9 +331,14 @@ export default function MoneyPage() {
               <td className="num">—</td>
             </tr>
             <tr>
-              <td>Breeding cover ({ECONOMY.BREED_FEE} GP)</td>
+              <td>Breeding cover, the first {STUD_PRICE.FLOOR} GP (the floor)</td>
               <td className="num">{breedStakerPct}%</td>
               <td className="num">{breedJuicePct}%</td>
+            </tr>
+            <tr>
+              <td>Breeding cover, anything the owner asks above the floor</td>
+              <td className="num">—</td>
+              <td className="num">{premiumJuicePct}%</td>
             </tr>
             <tr>
               <td>Paid gacha roll ({ECONOMY.GACHA_ROLL_PRICE} GP)</td>
@@ -347,9 +361,11 @@ export default function MoneyPage() {
       <div className="callout tip">
         <b>The rest of a breeding cover</b> — the piece that isn&apos;t the {breedStakerPct}% staker
         cut or the {breedJuicePct}% juice share — goes straight to the stud&apos;s owner,{" "}
-        {breedOwnerPct}% of the fee. On the {ECONOMY.BREED_FEE} GP cover that&apos;s{" "}
+        {breedOwnerPct}% of the floor. On a cover at the {STUD_PRICE.FLOOR} GP floor that&apos;s{" "}
         {fmtGp(breedSplit.stakerPoolCents)} GP staker / {fmtGp(breedSplit.juicePoolCents)} GP juice
-        / {fmtGp(breedSplit.studOwnerCents)} GP to whoever owns the stud. See{" "}
+        / {fmtGp(breedSplit.studOwnerCents)} GP to whoever owns the stud. The stud&apos;s owner sets
+        his own price, and of anything he asks above the floor he keeps {premiumOwnerPct}% (the
+        other {premiumJuicePct}% goes to the juice pool). See{" "}
         <Link href="/wiki/breeding">Breeding</Link>.
       </div>
       <p className="dim">

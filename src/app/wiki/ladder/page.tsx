@@ -246,9 +246,10 @@ export default function LadderPage() {
 
       <h2>Priced against the cost of a bird</h2>
       <p>
-        Every number above was set against one anchor: the {ECONOMY.BREED_FEE} GP it costs to breed
-        a bird (see <Link href="/wiki/breeding">Breeding</Link>). The rule the designer wanted is
-        short — <strong>a body is cheap and a night is dear</strong>.
+        Every number above was set against one anchor: the {ECONOMY.BREED_FEE} GP floor price of a
+        breed cover, the least it can cost to make a bird (see{" "}
+        <Link href="/wiki/breeding">Breeding</Link>; a stud&apos;s owner may ask more). The rule the
+        designer wanted is short — <strong>a body is cheap and a night is dear</strong>.
       </p>
       <div className="tablewrap">
         <table>
@@ -256,7 +257,7 @@ export default function LadderPage() {
             <tr>
               <th>What</th>
               <th className="num">GP</th>
-              <th>Against the {ECONOMY.BREED_FEE} GP cost of making a bird</th>
+              <th>Against the {ECONOMY.BREED_FEE} GP floor price of a cover</th>
             </tr>
           </thead>
           <tbody>

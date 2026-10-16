@@ -44,7 +44,8 @@ export default function GachaPage() {
       <p className="lede">
         The gacha is a roll, a token, and sometimes a mystery egg. It is not the cheap way to fill a
         barn any more — that job belongs to breeding. Read this page before you spend GP on it, and
-        compare it honestly to what a cover costs (see <Link href="/wiki/breeding">Breeding</Link>).
+        compare it honestly to what a cover costs at the floor price (see{" "}
+        <Link href="/wiki/breeding">Breeding</Link>).
       </p>
 
       <h2>What a roll gives you</h2>
@@ -154,17 +155,17 @@ export default function GachaPage() {
         roll price by the chance of an egg. At {ECONOMY.GACHA_ROLL_PRICE} GP a roll and a{" "}
         {(eggChance * 100).toFixed((eggChance * 100) % 1 === 0 ? 0 : 1)}% combined egg rate, a
         mystery egg costs about <strong>{costPerEgg.toFixed(0)} GP</strong> on average — against a{" "}
-        <strong>{ECONOMY.BREED_FEE} GP</strong> breed cover.
+        <strong>{ECONOMY.BREED_FEE} GP</strong> breed cover at the floor price.
       </p>
       <div className="callout warn">
         <b>The gacha egg is now the dear way in — on purpose.</b> At roughly{" "}
-        {eggVsBreedRatio.toFixed(1)}× the price of a cover ({dearerThanBreed.toFixed(0)} GP more, on
-        average), a mystery egg costs more than breeding one, not less. Round 22 had briefly pushed
-        the gacha the other way — it repriced to 16 GP a roll, and it worked so well that gacha
-        out-supplied the breeding barn eight to one. Round 23 walked that back: the gacha isn&apos;t
-        the cheap way to a <strong>body</strong> any more. What it sells now is a shot at{" "}
-        <strong>stars</strong> — the {eggTokenNames} tiers carry 2★–4★ birds, well above anything a
-        starter or an ordinary breeding pair produces in one generation (see{" "}
+        {eggVsBreedRatio.toFixed(1)}× the floor price of a cover ({dearerThanBreed.toFixed(0)} GP
+        more, on average), a mystery egg costs more than breeding one on a floor-priced stud, not
+        less. Round 22 had briefly pushed the gacha the other way — it repriced to 16 GP a roll, and
+        it worked so well that gacha out-supplied the breeding barn eight to one. Round 23 walked
+        that back: the gacha isn&apos;t the cheap way to a <strong>body</strong> any more. What it
+        sells now is a shot at <strong>stars</strong> — the {eggTokenNames} tiers carry 2★–4★ birds,
+        well above anything a starter or an ordinary breeding pair produces in one generation (see{" "}
         <Link href="/wiki/birds">Birds &amp; stats</Link>). Breeding is still how a stable
         compounds. The gacha is the luxury lane straight into the breeding material that makes that
         compounding possible.
