@@ -72,12 +72,14 @@ export function playHonestDay(
 
   // Studs first, THEN staking: a stud seat costs 100 LT since round 23, and
   // a barn that has already staked every token has nothing liquid to pay it.
+  // Price them the way the bots do (economy round 3), at the roster's middle
+  // appetite: an absent player neither gouges nor sells at the floor. Price
+  // BEFORE listing (round 70, third pass), so a new stud's ask posts at once
+  // instead of waiting a day at the floor.
+  quietly(() => priceStuds(db, farmId, day, STUD_MARKET.AUTO_PLAY.greed));
   const breeding = new Breeding(db, farmId, mulberry32(500 + day));
   for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
     quietly(() => breeding.listStud(rooster.id));
-  // …and price them the way the bots do (economy round 3), at the roster's
-  // middle appetite: an absent player neither gouges nor sells at the floor.
-  quietly(() => priceStuds(db, farmId, day, STUD_MARKET.AUTO_PLAY.greed));
 
   // Expand the barn before it chokes (round 43) — same competence rule as the
   // bots (see bots.ts step 1b2): near the ceiling, unstake the shortfall and

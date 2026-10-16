@@ -192,6 +192,14 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(readWikiPage("breeding/page.tsx")).toMatch(/next day/i);
   });
 
+  // Round 70's third pass: a rooster not listed takes his price at once, so
+  // the "price before you list" advice is what keeps a new stud off the floor.
+  test("a price set before listing posts at once", () => {
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toMatch(/NOT listed yet it takes effect at once/);
+    expect(TOOL_DESCRIPTIONS.list_stud).toMatch(/BEFORE listing/);
+    expect(readWikiPage("breeding/page.tsx")).toMatch(/before you list him/i);
+  });
+
   // Missing entirely #1: the Juvenile Championship (JUVENILE_MAJOR) — the
   // non-hardcore crown that runs the day before the Majors.
   test("the Juvenile Championship is documented, including that it isn't hardcore", () => {

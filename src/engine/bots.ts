@@ -429,14 +429,17 @@ export class Bots {
       const short = COVERS.STUD_LISTING_LT - row.landTokensCents;
       if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
     }
+    // Price BEFORE listing (round 70, third pass): an unlisted rooster's ask
+    // posts at once, a listed one's waits for the tick. Listing first stood
+    // every new stud at the floor for his first day, and the 182-day world
+    // sold 223 floor covers on listing day that way. priceStuds also runs the
+    // weekly demand read on the studs already standing. Draws no rng, so it
+    // does not shift the day's stream.
+    const appetite = STUD_MARKET.STYLE[bot.style];
+    priceStuds(db, bot.id, today, appetite.greed);
     for (const rooster of unlisted) {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
     }
-    // 1b'. Price the barn's studs (economy round 3): an opening ask on the
-    //      ones listed today, and the weekly demand read on all of them.
-    //      Draws no rng, so it does not shift the day's stream.
-    const appetite = STUD_MARKET.STYLE[bot.style];
-    priceStuds(db, bot.id, today, appetite.greed);
 
     // 1c. …and only THEN stake what's left over.
     //
@@ -976,9 +979,9 @@ function snapPrice(raw: number, direction: "up" | "down"): number {
 }
 
 /**
- * The opening ask for newly listed studs, from public evidence only: where
+ * The opening ask for studs about to list, from public evidence only: where
  * each one's revealed sheet and career earnings rank among the studs standing
- * today, plus a bonus per crown. See STUD_MARKET for the formula and why it
+ * today and the ones being priced with him, plus a bonus per crown. See STUD_MARKET for the formula and why it
  * ranks rather than reading raw numbers. One grouped read for the market.
  */
 function openingAsks(db: DB, studIds: string[], greed: number): Map<string, number> {
@@ -991,7 +994,11 @@ function openingAsks(db: DB, studIds: string[], greed: number): Map<string, numb
                (SELECT COUNT(*) FROM tournament_entries t
                  WHERE t.bird_id = b.id AND t.status = 'champion') AS crowns
           FROM birds b
-         WHERE b.sex = 'male' AND b.status = 'retired' AND b.listed_stud = 1`
+         WHERE b.sex = 'male' AND b.status = 'retired'
+           AND (b.listed_stud = 1 OR b.id IN (${sql.join(
+             studIds.map((id) => sql`${id}`),
+             sql`, `
+           )}))`
   );
   const span = Math.max(1, market.length - 1);
   const rank = (pick: (r: (typeof market)[number]) => number, v: number) =>
@@ -1013,38 +1020,44 @@ function openingAsks(db: DB, studIds: string[], greed: number): Map<string, numb
 
 /**
  * HOW AN OWNER PRICES HIS STUDS (economy round 3), shared by the bots and
- * auto-play. A stud with no price yet gets an opening ask from his record.
+ * auto-play. A retired rooster with no price yet gets an opening ask from his
+ * record, listed or not. Call it BEFORE listing: an unlisted rooster's price
+ * posts at once (round 70, third pass), so he stands at his ask from the
+ * first cover instead of selling a day at the floor.
  * On the first day of each week every listed stud is repriced on last week's
  * PUBLIC covers: sold out or hot → raise by greed, cold → give back part of
  * the premium, anything else → hold. Own-hen covers are not demand: the
  * owner buys them at his own price, so they say nothing about the market.
  *
- * Every price here is written as PENDING, through the same column a human
- * owner's set_stud_price writes, so bots and players follow one rule: a new
- * price posts at the next day tick.
+ * Every price here follows the rule a human owner's set_stud_price follows:
+ * on a listed stud it is pending until the next day tick, on an unlisted
+ * rooster it posts at once.
  */
 export function priceStuds(db: DB, farmId: string, today: number, greed: number): void {
   const mine = db
-    .select({ id: birds.id, studPrice: birds.studPrice, studPriceNext: birds.studPriceNext })
+    .select({
+      id: birds.id,
+      studPrice: birds.studPrice,
+      studPriceNext: birds.studPriceNext,
+      listedStud: birds.listedStud,
+    })
     .from(birds)
-    .where(
-      and(
-        eq(birds.farmId, farmId),
-        eq(birds.sex, "male"),
-        eq(birds.status, "retired"),
-        eq(birds.listedStud, 1)
-      )
-    )
+    .where(and(eq(birds.farmId, farmId), eq(birds.sex, "male"), eq(birds.status, "retired")))
     .all();
   if (mine.length === 0) return;
   // A direct write, not Breeding.setStudPrice: that door validates through
   // flock.byId, which builds a whole bird view, and a Friday repricing every
   // stud in the world through it cost ~0.25 s of sim time. The rows above are
-  // this farm's retired, listed roosters, and snapPrice keeps every price
-  // inside the floor and cap, which is all setStudPrice would check. It writes
-  // the same pending column setStudPrice does.
+  // this farm's retired roosters, and snapPrice keeps every price inside the
+  // floor and cap, which is all setStudPrice would check. It writes the
+  // column setStudPrice would: pending on a listed stud, posted on the rest.
+  const listed = new Set(mine.filter((b) => b.listedStud).map((b) => b.id));
   const setPrice = (id: string, price: number) =>
-    db.update(birds).set({ studPriceNext: price }).where(eq(birds.id, id)).run();
+    db
+      .update(birds)
+      .set(listed.has(id) ? { studPriceNext: price } : { studPrice: price, studPriceNext: null })
+      .where(eq(birds.id, id))
+      .run();
 
   // An opening ask already pending (set earlier today, posting at the tick)
   // is not unpriced: a second pass the same day must not ask again.
@@ -1071,6 +1084,7 @@ export function priceStuds(db: DB, farmId: string, today: number, greed: number)
       .map((r) => [r.fatherId, r.n])
   );
   for (const stud of mine) {
+    if (!listed.has(stud.id)) continue; // not standing: no market to read
     if (stud.studPrice === null) continue; // his opening ask has not posted; no demand yet
     const now = studPriceOf(stud);
     const covers = sold.get(stud.id) ?? 0;
