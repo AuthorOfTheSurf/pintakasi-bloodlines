@@ -370,10 +370,16 @@ export class Breeding {
    * may price a rooster before opening his seat. Covers already sold stand at
    * the price they were bought at.
    *
-   * The new price is PENDING until the next day tick posts it (round 70,
-   * second pass), like the card: every buyer sees one price all game-day, and
-   * an owner cannot reprice between a buyer's browse and his cover. Setting
-   * it again the same day replaces the pending price.
+   * On a LISTED stud the new price is PENDING until the next day tick posts
+   * it (round 70, second pass), like the card: every buyer sees one price all
+   * game-day, and an owner cannot reprice between a buyer's browse and his
+   * cover. Setting it again the same day replaces the pending price.
+   *
+   * On a rooster NOT listed it posts at once (round 70, third pass): no buyer
+   * can see him, so there is nothing to protect. Pending, it made a new
+   * stud's opening ask wait a day while he stood at the floor, and the
+   * listing-day covers sold there (51 → 282 floor sales in the 182-day
+   * world). Price first, then list, and he stands at his price from cover one.
    */
   setStudPrice(
     birdId: string,
@@ -386,7 +392,13 @@ export class Breeding {
       throw new Error(
         `A cover price is a whole number of GP from ${STUD_PRICE.FLOOR} to ${STUD_PRICE.CAP} — got ${priceGp}`
       );
-    this.database.update(birds).set({ studPriceNext: priceGp }).where(eq(birds.id, birdId)).run();
+    this.database
+      .update(birds)
+      .set(
+        bird.listedStud ? { studPriceNext: priceGp } : { studPrice: priceGp, studPriceNext: null }
+      )
+      .where(eq(birds.id, birdId))
+      .run();
     return { stud: bird.name, ...this.pricesOf(birdId) };
   }
 

@@ -110,10 +110,17 @@ export default function BreedingPage() {
           every cover pays whoever owns him on the day the cover is bought.
         </li>
         <li>
-          <strong>A new price goes up at the next day.</strong> When an owner changes his price, it
-          waits until the day turns, the same way the card does. So everyone sees one price for the
-          whole game-day, and the price you see when you browse is the price you pay. The owner sees
-          his waiting price in the barn until it goes up.
+          <strong>A new price goes up at the next day.</strong> When an owner changes the price on a
+          rooster that is already standing, it waits until the day turns, the same way the card
+          does. So everyone sees one price for the whole game-day, and the price you see when you
+          browse is the price you pay. The owner sees his waiting price in the barn until it goes
+          up.
+        </li>
+        <li>
+          <strong>Price him before you list him.</strong> A rooster that is not standing yet takes
+          his price at once, because no buyer can see him. So set the price first (or name it when
+          you list him), and he stands at that price from his very first cover. Why: if a new price
+          always waited a day, every new stud would sell his first day at the floor.
         </li>
         <li>
           <strong>A cover already bought keeps its price.</strong> A buyer can also name the most he

@@ -4,6 +4,7 @@ import { createDb } from "@/db/client";
 import { birds, events, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { STUD_MARKET } from "./bot-config";
+import { playHonestDay } from "./auto-play";
 import { coverNet, priceStuds } from "./bots";
 import { studMarket } from "./doctor";
 import { Breeding, postStudPrices, splitBreedFee } from "./breeding";
@@ -168,6 +169,30 @@ describe("a posted price", () => {
     postStudPrices(db);
     const stud = buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-stud");
     expect(stud?.price).toBe(240);
+  });
+
+  test("a rooster not yet listed takes his price at once, and stands at it from the first cover", () => {
+    const { db, rival, buyer } = market();
+    retired(db, "rival-new", "rival", "male");
+    expect(rival.setStudPrice("rival-new", 600)).toEqual({
+      stud: "rival-new",
+      price: 600,
+      pendingPrice: null,
+    });
+    rival.listStud("rival-new");
+    expect(buyer.breed("starter-2", "rival-new").feePaid).toBe(600);
+  });
+
+  test("auto-play prices a new stud before listing him, so his listing day sells at his ask", () => {
+    const { db, buyer } = market();
+    retired(db, "rival-ace", "rival", "male", 900);
+    playHonestDay(db, "rival");
+    const ace = buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-ace");
+    expect(ace?.price).toBeGreaterThan(STUD_PRICE.FLOOR);
+    expect(ace?.pendingPrice).toBeNull();
+    // Listed first and priced after, his ask waited for the tick and this
+    // cover sold at the floor: 223 of them in round 70's 182-day world.
+    expect(buyer.breed("starter-2", "rival-ace").feePaid).toBe(ace?.price ?? 0);
   });
 
   test("the game's day tick posts it", () => {

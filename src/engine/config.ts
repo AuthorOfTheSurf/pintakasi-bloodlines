@@ -1110,8 +1110,11 @@ export const BREED_SPLIT = {
 // so he pays the stakers' and juice's part of the floor plus 20% of the
 // premium: the same house share every buyer pays, and no more.
 //
-// A price is POSTED, like the card: setStudPrice stores it as pending and the
-// next day tick puts it up, so every buyer sees one price all game-day.
+// A price is POSTED, like the card: on a listed stud setStudPrice stores it as
+// pending and the next day tick puts it up, so every buyer sees one price all
+// game-day. On a rooster not yet listed it posts at once (round 70, third
+// pass): no buyer can see him, and waiting stood every new stud at the floor
+// on his listing day.
 const STUD_FLOOR = ECONOMY.BREED_FEE;
 const STUD_CAP_MULTIPLE = 10;
 export const STUD_PRICE = {
