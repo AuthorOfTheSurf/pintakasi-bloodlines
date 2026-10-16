@@ -128,7 +128,7 @@ The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-de
 A live world is one `next start` with these set:
 
 - `PINTAKASI_DB=<path>` is the world's own database file.
-- `PINTAKASI_LIVE_START=YYYY-MM-DD` is the Manila date of day 0. It turns on the live clock: one game-day per real day, ending at midnight Philippine time. The server checks every minute and catches up any days it missed while down. Live ticks play only the house stables, never a player's farm. A steward can nudge it with `POST /api/tick/live`. Unset, there is no clock.
+- `PINTAKASI_LIVE_START=YYYY-MM-DD` is the UTC date of day 0. It turns on the live clock: one game-day per real day, ending at midnight UTC (8:00 in the morning Philippine time). The server checks every minute and catches up any days it missed while down. Live ticks play only the house stables, never a player's farm. A steward can nudge it with `POST /api/tick/live`. Unset, there is no clock.
 - `PINTAKASI_WORLD=<name>` (for example `alpha-1`) names the world on the `/admin` badge.
 - `PINTAKASI_STEWARD_KEY=<secret>` gates `/admin`, the application queue and `/api/tick/live`.
 - `PINTAKASI_PUBLIC_ORIGIN=https://<host>` builds claim links and MCP URLs from this origin, never from request headers.
