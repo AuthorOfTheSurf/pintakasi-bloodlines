@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
@@ -773,12 +773,19 @@ export function cardHealth(db: DB): {
   lobbies: number;
   unmatchedRate: number;
 } {
-  const entries = db.select().from(lobbyEntries).all();
+  // Counted in SQLite. This runs on every load of the Stewards' Office, and
+  // building every entry the world ever took to tally three buckets grew with
+  // the world's whole history.
   const byStatus = { pending: 0, fought: 0, unmatched: 0 };
-  for (const e of entries) byStatus[e.status]++;
+  for (const row of db
+    .select({ status: lobbyEntries.status, n: count() })
+    .from(lobbyEntries)
+    .groupBy(lobbyEntries.status)
+    .all())
+    byStatus[row.status] = row.n;
   const settled = byStatus.fought + byStatus.unmatched;
   return {
-    entries: entries.length,
+    entries: byStatus.pending + settled,
     fought: byStatus.fought,
     unmatched: byStatus.unmatched,
     pending: byStatus.pending,

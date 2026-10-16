@@ -1,4 +1,5 @@
 import path from "node:path";
+import { count, desc, eq, gt, inArray, isNotNull, or, sum } from "drizzle-orm";
 import { db, defaultDbPath } from "@/db/client";
 import { cardLabel } from "./bird-fights";
 import { TickControls } from "./tick-controls";
@@ -258,8 +259,10 @@ function buildBracket(
   bracketSize: number,
   totalRounds: number,
   field: EntryRow[],
-  log: LogRow[],
-  tournamentId: number,
+  // This tournament's Pit Figure for one side of one pairing, or null when
+  // that fight has no log row. Single elimination means any two birds meet at
+  // most once, so (bird, opponent) names the row without round bookkeeping.
+  figureOf: (birdId: string, oppId: string) => number | null,
   birdCard: (id: string) => { name: string; grade: Grade; element: string; stars: number },
   career: (id: string) => { wins: number; losses: number; netCents: number },
   // How many fights this bird actually FOUGHT in this tournament — the
@@ -277,13 +280,6 @@ function buildBracket(
   // seedPlacement's doc), so this array never needs a "two ghosts" case.
   let alive: (EntryRow | null)[] = placement.map((seat) => seeded[seat - 1] ?? null);
 
-  // Single elimination means any two birds meet at most once — so a
-  // (birdId, opponentBirdId) pair is enough to find the log row unambiguously,
-  // no round bookkeeping in battle_log required.
-  const figureOf = (birdId: string, oppId: string): number | null =>
-    log.find(
-      (r) => r.tournamentId === tournamentId && r.birdId === birdId && r.opponentBirdId === oppId
-    )?.pitFigure ?? null;
   // No `round` argument any more (round 42): the only thing that ever needed
   // one was the cumulative crown-land total, and land no longer accrues round
   // by round. `showAwards` alone says whether this is the bird's settle-up card.
@@ -585,10 +581,118 @@ export default function Admin() {
   const farmById = new Map(allFarms.map((f) => [f.id, f]));
   const allBirds = d.select().from(birds).all();
   const birdById = new Map(allBirds.map((b) => [b.id, b]));
-  const log = d.select().from(battleLog).all();
-  const allEntries = d.select().from(lobbyEntries).all();
+  // ── READ WHAT THE PAGE SHOWS, NOT THE WORLD'S HISTORY ──────────────────────
+  // This page used to open with `.all()` on battle_log, lobby_entries and
+  // events and fold them in JS. On a 182-day world that is 330,000 + 111,000 +
+  // 473,000 rows turned into objects on every request: 5 of the 7 seconds the
+  // page still took after the log scans were indexed, measured by CPU profile.
+  // The page only ever shows the last card, the last FIGHT_LIMIT fights, two
+  // weeks of brackets and the last LEDGER_LIMIT ledger lines in full. Everything
+  // else it wants from those tables is a total, and SQLite adds those up
+  // without building a row. computeTopline learned the same thing in round 35.
+  const allLobbies = d.select().from(lobbies).all();
+  const cardDay = allLobbies.length ? Math.max(...allLobbies.map((l) => l.dayOpened)) : null;
+  const cardLobbyRows = allLobbies.filter((l) => l.dayOpened === cardDay);
+  const allTournaments = d.select().from(tournaments).all();
+  const allTEntries = d.select().from(tournamentEntries).all();
+  const pintakasiWeek = allTournaments.length
+    ? Math.max(...allTournaments.map((t) => t.weekIndex))
+    : null;
+  // Show the two most recent weeks: last week's crowns stay visible
+  // while the new week's registrations gather.
+  const shownTournaments = allTournaments.filter(
+    (t) => pintakasiWeek !== null && t.weekIndex >= pintakasiWeek - 1
+  );
+  // One row per fight, newest FIGHT_LIMIT, back in the order they were fought.
+  const lastWins = d
+    .select()
+    .from(battleLog)
+    .where(eq(battleLog.result, "win"))
+    .orderBy(desc(battleLog.id))
+    .limit(FIGHT_LIMIT)
+    .all()
+    .reverse();
+  // Both sides of every fight the page draws: the card's lobbies, the shown
+  // brackets, and whichever lobbies and crowns the Fights grid's rows came from.
+  const shownLobbyIds = new Set(cardLobbyRows.map((l) => l.id));
+  const shownCrownIds = new Set(shownTournaments.map((t) => t.id));
+  for (const w of lastWins) {
+    if (w.tournamentId) shownCrownIds.add(w.tournamentId);
+    else if (w.lobbyId !== null) shownLobbyIds.add(w.lobbyId);
+  }
+  const shownLog = d
+    .select()
+    .from(battleLog)
+    .where(
+      or(
+        inArray(battleLog.lobbyId, [...shownLobbyIds]),
+        inArray(battleLog.tournamentId, [...shownCrownIds])
+      )
+    )
+    .orderBy(battleLog.id)
+    .all();
+  // A fight belongs to exactly one lobby or one tournament, and inside either
+  // a pair of birds meets at most once (the group stage deals each pairing
+  // once, a bracket is single elimination), so scope + bird + opponent names
+  // one row. The card, the Fights grid and the brackets all find "the other
+  // side of this fight" here. Before these maps each of them scanned the log
+  // per bout, which was 9 of the page's 17 seconds.
+  const winsByLobby = new Map<number, LogRow[]>();
+  const figureByPairing = new Map<string, number>();
+  const lobbyScope = (id: number) => `L${id}`;
+  const crownScope = (id: number) => `T${id}`;
+  const scopeOf = (r: LogRow) =>
+    r.tournamentId ? crownScope(r.tournamentId) : lobbyScope(r.lobbyId ?? 0);
+  for (const r of shownLog) {
+    figureByPairing.set(`${scopeOf(r)}|${r.birdId}|${r.opponentBirdId}`, r.pitFigure);
+    if (r.lobbyId === null || r.result !== "win") continue;
+    const wins = winsByLobby.get(r.lobbyId);
+    if (wins) wins.push(r);
+    else winsByLobby.set(r.lobbyId, [r]);
+  }
+  const figureOf = (scope: string, birdId: string, oppId: string): number | null =>
+    figureByPairing.get(`${scope}|${birdId}|${oppId}`) ?? null;
+  // Each bird's signed GP across every fight it ever had, rake already out.
+  const fightGpByBird = new Map(
+    d
+      .select({ birdId: battleLog.birdId, cents: sum(battleLog.gpDeltaCents).mapWith(Number) })
+      .from(battleLog)
+      .groupBy(battleLog.birdId)
+      .all()
+      .map((r) => [r.birdId, r.cents])
+  );
+  const cardEntries = d
+    .select()
+    .from(lobbyEntries)
+    .where(inArray(lobbyEntries.lobbyId, [...shownLobbyIds]))
+    .orderBy(lobbyEntries.id)
+    .all();
   const allClaims = d.select().from(claims).all();
-  const allEvents = d.select().from(events).all();
+  // The event types the charts and the Gacha and GP grids are built from. The
+  // other 80% of the table is per-fight and per-entry lines that only the
+  // ledger's tail ever shows.
+  const bookEvents = d
+    .select()
+    .from(events)
+    .where(
+      inArray(events.type, [
+        "breed",
+        "pool_accrual",
+        "gacha",
+        "farm_registered",
+        "check_in",
+        "staking_payout",
+      ])
+    )
+    .orderBy(events.id)
+    .all();
+  const ledgerEvents = d
+    .select()
+    .from(events)
+    .orderBy(desc(events.id))
+    .limit(LEDGER_LIMIT)
+    .all()
+    .reverse();
   // Wall-clock ms per simulated day — written by scripts/simulate.ts only, so
   // this is empty (and its chart absent) on a live world.
   const timingRows = d.select().from(simTimings).all();
@@ -617,7 +721,6 @@ export default function Admin() {
   // The last snapshot BEFORE today — the deltas span whatever the last tick
   // covered: one day, or one +1-Week jump.
   const base = baselineBefore(d, state.dayIndex);
-  const winRows = log.filter((r) => r.result === "win"); // one per fight
   const bred = allBirds.filter((b) => b.motherId !== null);
 
   /**
@@ -645,107 +748,100 @@ export default function Admin() {
   // Between manual ticks the board is empty (auto-play + resolve both happen
   // inside the tick), so this is usually the card that WENT OFF at the last
   // tick — the place to spot gaps: thin lobbies, odd fields, farm clumps.
-  const allLobbies = d.select().from(lobbies).all();
-  const cardDay = allLobbies.length ? Math.max(...allLobbies.map((l) => l.dayOpened)) : null;
   // One element for the whole card — every lobby below ran under it.
   const cardWeather = cardDay === null ? null : weatherOfDay(cardDay);
   const bname = (id: string) => birdCard(id).name;
-  const cardLobbies = allLobbies
-    .filter((l) => l.dayOpened === cardDay)
-    .map((l) => {
-      const entries = allEntries.filter((e) => e.lobbyId === l.id);
-      // THE GROUP STAGE (round 34). `group_no` is stamped on the entry at
-      // CLOSE, so it is the only thing that says which room a fight came out
-      // of — battle_log never learned about groups. The bird → group map lets
-      // the bouts below be filed under the room that produced them, which is
-      // the whole point of showing a group stage rather than a list of fights.
-      const groupOfBird = new Map(entries.map((e) => [e.birdId, e.groupNo]));
-      const bouts = log
-        .filter((r) => r.lobbyId === l.id && r.result === "win")
-        .map((w) => ({
-          group: groupOfBird.get(w.birdId) ?? 0,
-          winner: birdCard(w.birdId),
-          winnerFarm: fname(w.farmId),
-          winnerFarmP: fcolors(w.farmId).P,
-          winnerFarmS: fcolors(w.farmId).S,
-          loser: birdCard(w.opponentBirdId),
-          loserFarm: fname(w.opponentFarmId),
-          loserFarmP: fcolors(w.opponentFarmId).P,
-          loserFarmS: fcolors(w.opponentFarmId).S,
-          figures: [
-            w.pitFigure,
-            log.find((r) => r.lobbyId === l.id && r.birdId === w.opponentBirdId)?.pitFigure ?? 0,
-          ] as const,
-        }));
-      // Bouts filed by room, rooms in dealt order. A group with no bouts at
-      // all can exist — two barn-mates alone together — and it is worth
-      // showing empty, because a silent gap in the numbering reads as a bug.
-      const groupNos = [
-        ...new Set(entries.map((e) => e.groupNo).filter((g): g is number => g !== null)),
-      ].sort((a, b) => a - b);
-      const groups = groupNos.map((n) => ({
-        no: n,
-        size: entries.filter((e) => e.groupNo === n).length,
-        bouts: bouts.filter((b) => b.group === n),
+  const cardLobbies = cardLobbyRows.map((l) => {
+    const entries = cardEntries.filter((e) => e.lobbyId === l.id);
+    // THE GROUP STAGE (round 34). `group_no` is stamped on the entry at
+    // CLOSE, so it is the only thing that says which room a fight came out
+    // of — battle_log never learned about groups. The bird → group map lets
+    // the bouts below be filed under the room that produced them, which is
+    // the whole point of showing a group stage rather than a list of fights.
+    const groupOfBird = new Map(entries.map((e) => [e.birdId, e.groupNo]));
+    const bouts = (winsByLobby.get(l.id) ?? []).map((w) => ({
+      group: groupOfBird.get(w.birdId) ?? 0,
+      winner: birdCard(w.birdId),
+      winnerFarm: fname(w.farmId),
+      winnerFarmP: fcolors(w.farmId).P,
+      winnerFarmS: fcolors(w.farmId).S,
+      loser: birdCard(w.opponentBirdId),
+      loserFarm: fname(w.opponentFarmId),
+      loserFarmP: fcolors(w.opponentFarmId).P,
+      loserFarmS: fcolors(w.opponentFarmId).S,
+      // The loser's figure FOR THIS BOUT. This used to take the loser's first
+      // row in the lobby, which is a different fight whenever the bird fought
+      // more than once that night, so most group-stage bouts showed a figure
+      // from another bout.
+      figures: [w.pitFigure, figureOf(lobbyScope(l.id), w.opponentBirdId, w.birdId) ?? 0] as const,
+    }));
+    // Bouts filed by room, rooms in dealt order. A group with no bouts at
+    // all can exist — two barn-mates alone together — and it is worth
+    // showing empty, because a silent gap in the numbering reads as a bug.
+    const groupNos = [
+      ...new Set(entries.map((e) => e.groupNo).filter((g): g is number => g !== null)),
+    ].sort((a, b) => a - b);
+    const groups = groupNos.map((n) => ({
+      no: n,
+      size: entries.filter((e) => e.groupNo === n).length,
+      bouts: bouts.filter((b) => b.group === n),
+    }));
+    // HOW THE NIGHT ADDED UP, one line per entry — the round-34 shape. A
+    // full card is FIGHTS_PER_GROUP_BIRD fights; anything less refunds the
+    // unfought share of the fee (stakePerFight × the fights it missed), and
+    // zero refunds all of it. The SHORT card is the number to watch: it is
+    // what a barn-mate collision or a group of two or three actually costs,
+    // and it did not exist as a category before this round.
+    const settled = entries.filter((e) => e.status !== "pending");
+    const short = settled
+      .filter((e) => e.fights > 0 && e.fights < FIGHTS_PER_GROUP_BIRD)
+      .map((e) => ({
+        bird: bname(e.birdId),
+        farm: fname(e.farmId),
+        group: e.groupNo,
+        fights: e.fights,
+        refunded: e.fee - stakePerFight(e.fee) * e.fights,
       }));
-      // HOW THE NIGHT ADDED UP, one line per entry — the round-34 shape. A
-      // full card is FIGHTS_PER_GROUP_BIRD fights; anything less refunds the
-      // unfought share of the fee (stakePerFight × the fights it missed), and
-      // zero refunds all of it. The SHORT card is the number to watch: it is
-      // what a barn-mate collision or a group of two or three actually costs,
-      // and it did not exist as a category before this round.
-      const settled = entries.filter((e) => e.status !== "pending");
-      const short = settled
-        .filter((e) => e.fights > 0 && e.fights < FIGHTS_PER_GROUP_BIRD)
+    return {
+      id: l.id,
+      tags: [
+        ...(l.mode === "juvenile" ? [{ label: "JUVENILE", kind: "juvenile" }] : []),
+        { label: l.classType.toUpperCase(), kind: l.classType },
+      ],
+      label: `${l.price ? `${l.price} GP tag · ` : ""}${FORMATS[l.format as FightFormat].label}`,
+      // No capacity any more (round 31): one unbounded lobby per posted key,
+      // so the fill count is a bare number with nothing to divide it by.
+      filled: entries.length,
+      bouts,
+      groups,
+      full: settled.filter((e) => e.fights >= FIGHTS_PER_GROUP_BIRD).length,
+      short,
+      unmatched: entries
+        .filter((e) => e.status === "unmatched")
+        // Nothing was risked, so the whole fee comes home — `fee`, not a
+        // share of it. (Kept as the refund rather than the fee so the line
+        // says what the barn was PAID, same as the short-card line above.)
+        .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId), refunded: e.fee })),
+      pending: entries
+        .filter((e) => e.status === "pending")
         .map((e) => ({
           bird: bname(e.birdId),
           farm: fname(e.farmId),
           group: e.groupNo,
-          fights: e.fights,
-          refunded: e.fee - stakePerFight(e.fee) * e.fights,
-        }));
-      return {
-        id: l.id,
-        tags: [
-          ...(l.mode === "juvenile" ? [{ label: "JUVENILE", kind: "juvenile" }] : []),
-          { label: l.classType.toUpperCase(), kind: l.classType },
-        ],
-        label: `${l.price ? `${l.price} GP tag · ` : ""}${FORMATS[l.format as FightFormat].label}`,
-        // No capacity any more (round 31): one unbounded lobby per posted key,
-        // so the fill count is a bare number with nothing to divide it by.
-        filled: entries.length,
-        bouts,
-        groups,
-        full: settled.filter((e) => e.fights >= FIGHTS_PER_GROUP_BIRD).length,
-        short,
-        unmatched: entries
-          .filter((e) => e.status === "unmatched")
-          // Nothing was risked, so the whole fee comes home — `fee`, not a
-          // share of it. (Kept as the refund rather than the fee so the line
-          // says what the barn was PAID, same as the short-card line above.)
-          .map((e) => ({ bird: bname(e.birdId), farm: fname(e.farmId), refunded: e.fee })),
-        pending: entries
-          .filter((e) => e.status === "pending")
-          .map((e) => ({
-            bird: bname(e.birdId),
-            farm: fname(e.farmId),
-            group: e.groupNo,
-            // THE REVEAL, once the lobby has closed: the bird's group minus
-            // itself and minus its own barn-mates — i.e. exactly who it fights
-            // tonight, which is what EntryCard.drew reports to a player. An
-            // EMPTY list is meaningful (alone in the room, refunds at post)
-            // and must not render as an empty bullet.
-            drew:
-              e.groupNo === null
-                ? null
-                : entries
-                    .filter(
-                      (o) => o.groupNo === e.groupNo && o.id !== e.id && o.farmId !== e.farmId
-                    )
-                    .map((o) => ({ bird: bname(o.birdId), farm: fname(o.farmId) })),
-          })),
-      };
-    });
+          // THE REVEAL, once the lobby has closed: the bird's group minus
+          // itself and minus its own barn-mates — i.e. exactly who it fights
+          // tonight, which is what EntryCard.drew reports to a player. An
+          // EMPTY list is meaningful (alone in the room, refunds at post)
+          // and must not render as an empty bullet.
+          drew:
+            e.groupNo === null
+              ? null
+              : entries
+                  .filter((o) => o.groupNo === e.groupNo && o.id !== e.id && o.farmId !== e.farmId)
+                  .map((o) => ({ bird: bname(o.birdId), farm: fname(o.farmId) })),
+        })),
+    };
+  });
   const cardFights = cardLobbies.reduce((s, l) => s + l.bouts.length, 0);
   const cardGroups = cardLobbies.reduce((s, l) => s + l.groups.length, 0);
   const cardFull = cardLobbies.reduce((s, l) => s + l.full, 0);
@@ -757,23 +853,16 @@ export default function Admin() {
   const card = cardHealth(d);
 
   // ── The Pintakasi (round 18) — the latest week's blade championships ──────
-  const allTournaments = d.select().from(tournaments).all();
-  const allTEntries = d.select().from(tournamentEntries).all();
-  const pintakasiWeek = allTournaments.length
-    ? Math.max(...allTournaments.map((t) => t.weekIndex))
-    : null;
   const FORMAT_LABEL = (f: string) => FORMATS[f as FightFormat]?.label ?? f;
-  // CAREER LOOKUPS for the bracket (round 40) — built ONCE by folding the two
-  // ledgers already in memory, never per bird: a 32-bracket asking for its own
+  // CAREER LOOKUPS for the bracket (round 40) — built ONCE from the two
+  // ledgers, never per bird: a 32-bracket asking for its own
   // rows would be ~64 round trips per championship and there are several on
   // this page. The two sources are disjoint by construction — battle_log
   // carries the per-fight stake swing (signed, so a loser's row is negative),
   // tournament_entries carries the crown award, which is settled on the entry
   // and never written as a battle_log delta — so summing both is the bird's
   // whole GP life and double-counts nothing.
-  const careerNetByBird = new Map<string, number>();
-  for (const r of log)
-    careerNetByBird.set(r.birdId, (careerNetByBird.get(r.birdId) ?? 0) + r.gpDeltaCents);
+  const careerNetByBird = new Map(fightGpByBird);
   // ⚠ THE FEE IS PART OF THE NET, and round 41 is the round that starts to
   // matter: the Majors were free from round 22 until now, so `- e.fee * 100`
   // was a no-op and its absence here was invisible. With an entry fee it is
@@ -811,16 +900,16 @@ export default function Admin() {
   // signed rows. Round 42 stopped emitting them — the pot is one settlement
   // and rides `purse_payout`'s `lt`, mirrored onto the entry row as
   // `landGranted`, which is where every land figure below now reads from.)
-  const crownFightsByBird = new Map<string, number>();
-  for (const r of log) {
-    if (!r.tournamentId) continue;
-    const key = `${r.tournamentId}|${r.birdId}`;
-    crownFightsByBird.set(key, (crownFightsByBird.get(key) ?? 0) + 1);
-  }
-  // Show the two most recent weeks: last week's crowns stay visible
-  // while the new week's registrations gather.
-  const pintakasiBoxes = allTournaments
-    .filter((t) => pintakasiWeek !== null && t.weekIndex >= pintakasiWeek - 1)
+  const crownFightsByBird = new Map(
+    d
+      .select({ tournamentId: battleLog.tournamentId, birdId: battleLog.birdId, n: count() })
+      .from(battleLog)
+      .where(isNotNull(battleLog.tournamentId))
+      .groupBy(battleLog.tournamentId, battleLog.birdId)
+      .all()
+      .map((r) => [`${r.tournamentId}|${r.birdId}`, r.n])
+  );
+  const pintakasiBoxes = shownTournaments
     .map((t) => {
       const entries = allTEntries.filter((e) => e.tournamentId === t.id);
       const fieldEntries = entries.filter((e) => e.status !== "bumped" && e.status !== "refunded");
@@ -834,8 +923,7 @@ export default function Admin() {
               t.bracketSize,
               totalRounds,
               fieldEntries,
-              log,
-              t.id,
+              (birdId, oppId) => figureOf(crownScope(t.id), birdId, oppId),
               birdCard,
               birdCareer,
               (birdId) => crownFightsByBird.get(`${t.id}|${birdId}`) ?? 0,
@@ -890,14 +978,21 @@ export default function Admin() {
     return series.map((v) => (total += v));
   };
 
-  const fightsPerDay = perDay(winRows.map((r) => ({ day: r.dayIndex, amount: 1 })));
+  const fightsPerDay = perDay(
+    d
+      .select({ day: battleLog.dayIndex, amount: count() })
+      .from(battleLog)
+      .where(eq(battleLog.result, "win")) // one row per fight
+      .groupBy(battleLog.dayIndex)
+      .all()
+  );
 
   // COVERS, off the events rather than off the bird rows: `breed` is emitted
   // once per cover with the buyer's signed GP on it, so the count and the
   // money come from the same row and cannot disagree. (A bird's own birthDay
   // would count the same covers, but its price would have to be re-derived
   // from config — and a fee change would then rewrite history.)
-  const breedEvents = allEvents.filter((e) => e.type === "breed");
+  const breedEvents = bookEvents.filter((e) => e.type === "breed");
   const breedsPerDay = perDay(breedEvents.map((e) => ({ day: e.dayIndex, amount: 1 })));
   // The breeder's whole outlay — stud share + pool cuts together, i.e. the GP
   // that actually left a wallet. gpCents is negative on a purchase.
@@ -926,7 +1021,7 @@ export default function Admin() {
   // Note the sources genuinely differ per pool: land purchases and the claim
   // rake feed ONLY the stakers, the genesis seed fed ONLY the juice — a
   // shared source list would draw four permanent zero-layers.
-  const accrualRows = eventsWithData(allEvents, "pool_accrual").map((e) => {
+  const accrualRows = eventsWithData(bookEvents, "pool_accrual").map((e) => {
     const d = JSON.parse(e.data) as {
       stakerPoolCents?: number;
       juicePoolCents?: number;
@@ -1053,14 +1148,7 @@ export default function Admin() {
     };
   });
 
-  const fightRows: FightRowUI[] = winRows.slice(-FIGHT_LIMIT).map((w) => {
-    const mirror = log.find(
-      (r) =>
-        r.lobbyId === w.lobbyId &&
-        r.tournamentId === w.tournamentId &&
-        r.birdId === w.opponentBirdId &&
-        r.opponentBirdId === w.birdId
-    );
+  const fightRows: FightRowUI[] = lastWins.map((w) => {
     return {
       day: w.dayIndex,
       card:
@@ -1075,7 +1163,7 @@ export default function Admin() {
       loserFarmP: fcolors(w.opponentFarmId).P ?? "",
       loserFarmS: fcolors(w.opponentFarmId).S ?? "",
       winFigure: w.pitFigure,
-      loseFigure: mirror?.pitFigure ?? 0,
+      loseFigure: figureOf(scopeOf(w), w.opponentBirdId, w.birdId) ?? 0,
       // The POT for this one fight, net of the staker rake — derived from the
       // winner's signed delta rather than from a fee, which is what keeps it
       // honest after round 34: a daily-card pot is now TWO STAKES (a third of
@@ -1125,13 +1213,12 @@ export default function Admin() {
   // Both maps accumulate the engine's own integers — cents of GP, hundredths
   // of a token (round 36). Summing before scaling is the point: scale first
   // and a column of thousands of awards accretes float error a cent at a time.
-  const netGpCents = new Map<string, number>();
+  // 0 on Pintakasi rows, so the fight total is the daily card alone and the
+  // purse settles in the tournament pass below.
+  const netGpCents = new Map(fightGpByBird);
   const netLt = new Map<string, number>();
   const bump = (map: Map<string, number>, key: string, by: number) =>
     map.set(key, (map.get(key) ?? 0) + by);
-  for (const r of log) {
-    bump(netGpCents, r.birdId, r.gpDeltaCents); // 0 on Pintakasi rows — the purse settles below
-  }
   // ⚠ THE CROWN HALF OF THIS COLUMN IS NOW A SINGLE TERM — `e.landGranted` in
   // the tournament pass below, and nothing else. It took three tries to get
   // there, and the history is the argument for reading state instead of
@@ -1141,10 +1228,20 @@ export default function Admin() {
   // rows plus the elimination grant; round 42 deleted the per-fight mint and
   // the grant ladder together, so there is one number, the pot share, and the
   // engine writes it onto the entry row.
-  for (const e of allEntries) {
-    if (e.fights === 0) continue; // unmatched, or not posted yet — land is for FIGHTING
-    bump(netLt, e.birdId, landForFight(stakePerFight(e.fee) * e.fights));
-  }
+  // Grouped by what decides the award. An entry's land is a function of its
+  // fee and its fight count alone, so every entry in a group minted the same.
+  for (const e of d
+    .select({
+      birdId: lobbyEntries.birdId,
+      fee: lobbyEntries.fee,
+      fights: lobbyEntries.fights,
+      n: count(),
+    })
+    .from(lobbyEntries)
+    .where(gt(lobbyEntries.fights, 0)) // unmatched, or not posted yet: land is for FIGHTING
+    .groupBy(lobbyEntries.birdId, lobbyEntries.fee, lobbyEntries.fights)
+    .all())
+    bump(netLt, e.birdId, landForFight(stakePerFight(e.fee) * e.fights) * e.n);
   for (const e of allTEntries) {
     if (e.status === "refunded" || e.status === "bumped") continue; // fee came back
     bump(netGpCents, e.birdId, e.gpWonCents - e.fee * 100);
@@ -1217,7 +1314,7 @@ export default function Admin() {
     };
   });
 
-  const gachaRows: GachaRowUI[] = eventsWithData(allEvents, "gacha").map((e, i) => {
+  const gachaRows: GachaRowUI[] = eventsWithData(bookEvents, "gacha").map((e, i) => {
     const data = JSON.parse(e.data) as {
       token: string;
       price: number;
@@ -1239,7 +1336,7 @@ export default function Admin() {
   });
 
   const gpRows: GpRowUI[] = [];
-  for (const e of allEvents) {
+  for (const e of bookEvents) {
     const base = {
       day: e.dayIndex,
       farm: fname(e.farmId),
@@ -1334,7 +1431,7 @@ export default function Admin() {
   // kind of small confusion that costs somebody ten minutes.
   const ledgerType = (type: string, lt: number | null) =>
     type === "purse_payout" && lt ? "land pot" : (TYPE_LABELS[type] ?? type);
-  const ledgerRows: LedgerRowUI[] = allEvents.slice(-LEDGER_LIMIT).map((e) => ({
+  const ledgerRows: LedgerRowUI[] = ledgerEvents.map((e) => ({
     id: e.id,
     day: e.dayIndex,
     type: ledgerType(e.type, e.lt),
