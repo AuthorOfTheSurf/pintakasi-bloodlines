@@ -703,6 +703,7 @@ export default async function Admin({
       const bouts = log
         .filter((r) => r.lobbyId === l.id && r.result === "win")
         .map((w) => ({
+          logId: w.id,
           group: groupOfBird.get(w.birdId) ?? 0,
           winner: birdCard(w.birdId),
           winnerFarm: fname(w.farmId),
@@ -1102,6 +1103,7 @@ export default async function Admin({
         r.opponentBirdId === w.birdId
     );
     return {
+      logId: w.id,
       day: w.dayIndex,
       card:
         (w.tournamentId ? "🏆 PINTAKASI" : cardLabel(w.mode, w.lobby)) +
@@ -1644,7 +1646,17 @@ export default async function Admin({
                         </div>
                         <div className="card-bouts">
                           {g.bouts.map((b, i) => (
-                            <div className="card-bout" key={i}>
+                            // Clickable through AdminTabs' delegated handler,
+                            // which reads these two attributes: this tree is
+                            // server-rendered, so it can carry no onClick.
+                            <div
+                              className="card-bout"
+                              key={i}
+                              role="button"
+                              tabIndex={0}
+                              data-fight-id={b.logId}
+                              data-fight-title={`${l.tags.map((t) => t.label).join(" ")} · ${l.label} · ${b.winner.name} beat ${b.loser.name}`}
+                            >
                               <div className="card-fighter winner">
                                 <div className="card-birdline">
                                   <span className="card-bird">
@@ -1876,6 +1888,10 @@ const CSS = `
     gap: .45rem; margin-top: .3rem; }
   .card-bout { background: #171410; border: 1px solid #3a342a; border-radius: 5px;
     padding: .3rem .45rem; }
+  .card-bout[data-fight-id] { cursor: pointer; }
+  .card-bout[data-fight-id]:hover, .card-bout[data-fight-id]:focus-visible { border-color: #6b5527; background: #1f1a12; outline: none; }
+  /* The Fights grid's rows open the replay, so they have to look it. */
+  .ag-row.opens-fight { cursor: pointer; }
   .card-fighter { padding: .2rem .35rem; }
   .card-fighter + .card-fighter { border-top: 1px solid #2b271f; margin-top: .15rem; padding-top: .35rem; }
   .card-fighter.winner { border-left: 2px solid #e8b64c; }

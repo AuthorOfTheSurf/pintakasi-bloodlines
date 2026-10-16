@@ -90,6 +90,7 @@ export interface FarmRowUI {
 }
 
 export interface FightRowUI {
+  logId: number; // the winner's battle-log row, never shown: what opens the replay
   day: number;
   card: string;
   pintakasiRound: string;
@@ -899,6 +900,37 @@ type HistoryState =
   | { status: "error"; message: string }
   | { status: "ok"; fights: BirdFightRowUI[] };
 
+/**
+ * The fight the replay modal is open on, and where it was opened from. The
+ * source decides what "earlier" and "later" step through: a bird's career, the
+ * rows the Fights grid is showing, or nothing at all for a bout on the card.
+ */
+type OpenFight = { logId: number; title: string; from: "bird" | "pit" | "card" };
+
+const birdFight = (f: BirdFightRowUI): OpenFight => ({
+  logId: f.logId,
+  title: `day ${f.day} · ${f.card} · vs ${f.opponent}`,
+  from: "bird",
+});
+const pitFight = (f: FightRowUI): OpenFight => ({
+  logId: f.logId,
+  title: `day ${f.day} · ${f.card} · ${f.winner} beat ${f.loser}`,
+  from: "pit",
+});
+
+/**
+ * A bout on The Card, read off the attributes page.tsx puts on it. That tree
+ * is server-rendered, so the click arrives here by delegation instead of
+ * through a handler of its own.
+ */
+function cardFight(target: EventTarget): OpenFight | null {
+  if (!(target instanceof Element)) return null;
+  const bout = target.closest<HTMLElement>("[data-fight-id]");
+  const logId = Number(bout?.dataset.fightId);
+  if (!bout || !Number.isInteger(logId)) return null;
+  return { logId, title: bout.dataset.fightTitle ?? `fight #${logId}`, from: "card" };
+}
+
 /** What the replay panel is currently showing. */
 type ReplayState =
   | { status: "loading" }
@@ -1009,10 +1041,10 @@ function FightReplayModal({
   onEarlier,
   onLater,
 }: {
-  fight: BirdFightRowUI;
+  fight: OpenFight;
   state: ReplayState;
   onClose: () => void;
-  /** Undefined at either end of the career, which is what disables the arrow. */
+  /** Undefined at either end of the list, which is what disables the arrow. */
   onEarlier: (() => void) | undefined;
   onLater: (() => void) | undefined;
 }) {
@@ -1045,7 +1077,7 @@ function FightReplayModal({
     <dialog
       ref={dialog}
       className="fight-modal"
-      aria-label={`Fight on day ${fight.day} against ${fight.opponent}`}
+      aria-label={`Fight ${fight.title}`}
       // Escape and any other browser-initiated close arrive here.
       onClose={onClose}
       // The dialog element itself is only ever the click target on its
@@ -1063,7 +1095,7 @@ function FightReplayModal({
             later →
           </button>
           <span className="world" style={{ alignSelf: "center", marginLeft: ".4rem" }}>
-            day {fight.day} · {fight.card} · vs {fight.opponent}
+            {fight.title}
           </span>
           <button onClick={onClose} style={{ ...CHIP, marginLeft: "auto" }}>
             close ✕
@@ -1192,10 +1224,11 @@ export function AdminTabs({
   // same row again closes it, so the click that opened the pane is also the way
   // out of it.
   const [openBird, setOpenBird] = useState<string | null>(null);
-  // …and which of that bird's fights is being read. The whole ROW is held, not
-  // just the id, so the panel can title itself from data already in hand while
-  // the transcript is still in flight.
-  const [openFight, setOpenFight] = useState<BirdFightRowUI | null>(null);
+  // …and which fight is being watched, from that bird's career, the Fights
+  // grid or the card. The title rides along with the id so the panel can head
+  // itself from data already in hand while the replay is still in flight.
+  const [openFight, setOpenFight] = useState<OpenFight | null>(null);
+  const fightsGrid = useRef<AgGridReact<FightRowUI>>(null);
   const [replay, setReplay] = useState<ReplayState>({ status: "loading" });
   const selectedBird = openBird ? (birds.find((b) => b.id === openBird) ?? null) : null;
   const [history, setHistory] = useState<HistoryState>({ status: "loading" });
@@ -1204,11 +1237,27 @@ export function AdminTabs({
   // or undefined when there is none, so the modal can grey the arrow out.
   // Career order (oldest first) is the order the history arrives in, whatever
   // the grid happens to be sorted by.
+  //
+  // From the Fights grid it steps through the rows the grid is SHOWING, so a
+  // filter on one farm keeps the arrows on that farm — but in fight order, not
+  // in whatever order the grid is sorted by, so "earlier" stays true. Log ids
+  // rise with time, which is what makes that order free.
   const stepFight = (by: -1 | 1) => {
-    if (!openFight || history.status !== "ok") return undefined;
-    const at = history.fights.findIndex((f) => f.logId === openFight.logId);
-    const next = at === -1 ? undefined : history.fights[at + by];
-    return next ? () => setOpenFight(next) : undefined;
+    if (openFight?.from === "bird" && history.status === "ok") {
+      const at = history.fights.findIndex((f) => f.logId === openFight.logId);
+      const next = at === -1 ? undefined : history.fights[at + by];
+      return next ? () => setOpenFight(birdFight(next)) : undefined;
+    }
+    const api = fightsGrid.current?.api;
+    if (openFight?.from === "pit" && api) {
+      const shown: FightRowUI[] = [];
+      api.forEachNodeAfterFilter((n) => n.data && shown.push(n.data));
+      shown.sort((a, b) => a.logId - b.logId);
+      const at = shown.findIndex((f) => f.logId === openFight.logId);
+      const next = at === -1 ? undefined : shown[at + by];
+      return next ? () => setOpenFight(pitFight(next)) : undefined;
+    }
+    return undefined;
   };
 
   // A bird's career is fetched when the bird is opened (round 65). It used to
@@ -1314,11 +1363,20 @@ export function AdminTabs({
         "Fights",
         640,
         <AgGridReact<FightRowUI>
+          ref={fightsGrid}
           theme={officeTheme}
           rowData={fights}
           columnDefs={FIGHT_COLS}
           defaultColDef={{ ...base, floatingFilter: true }}
           autoSizeStrategy={AUTOSIZE}
+          rowClass="opens-fight"
+          onRowClicked={(e) => e.data && setOpenFight(pitFight(e.data))}
+          // Enter on a focused cell watches its fight, for anyone arrowing
+          // down the grid instead of reaching for the mouse.
+          onCellKeyDown={(e) => {
+            if (e.event instanceof KeyboardEvent && e.event.key === "Enter" && e.data)
+              setOpenFight(pitFight(e.data));
+          }}
         />
       )}
       {/*
@@ -1375,17 +1433,8 @@ export function AdminTabs({
               birdName={selectedBird.name}
               state={history}
               defaultColDef={base}
-              onOpen={setOpenFight}
+              onOpen={(f) => setOpenFight(birdFight(f))}
             />
-            {openFight ? (
-              <FightReplayModal
-                fight={openFight}
-                state={replay}
-                onClose={closeFight}
-                onEarlier={stepFight(-1)}
-                onLater={stepFight(1)}
-              />
-            ) : null}
           </div>
         ) : null}
       </div>
@@ -1447,9 +1496,32 @@ export function AdminTabs({
         />
       )}
       <div style={{ display: tab === "Charts" ? "block" : "none" }}>{charts}</div>
-      <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
+      <div
+        style={{ display: tab === "The Card" ? "block" : "none" }}
+        onClick={(e) => {
+          const fight = cardFight(e.target);
+          if (fight) setOpenFight(fight);
+        }}
+        onKeyDown={(e) => {
+          const fight = e.key === "Enter" ? cardFight(e.target) : null;
+          if (fight) setOpenFight(fight);
+        }}
+      >
+        {card}
+      </div>
       <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>
       <div style={{ display: tab === "Applications" ? "block" : "none" }}>{applications}</div>
+      {/* One modal for the whole office, outside every pane: a dialog inside a
+          display:none tab would open into nothing. */}
+      {openFight ? (
+        <FightReplayModal
+          fight={openFight}
+          state={replay}
+          onClose={closeFight}
+          onEarlier={stepFight(-1)}
+          onLater={stepFight(1)}
+        />
+      ) : null}
     </section>
   );
 }
