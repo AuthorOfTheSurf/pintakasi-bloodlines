@@ -79,7 +79,7 @@ The voice is for someone who has never played: short sentences, roughly a 5th-gr
 ```sh
 PINTAKASI_DB=/tmp/staging.db bun run db:seed --live
 PINTAKASI_DIST=.next-live next build
-PINTAKASI_DIST=.next-live PINTAKASI_DB=/tmp/staging.db PINTAKASI_LIVE_START=<Manila date 3 days ago> \
+PINTAKASI_DIST=.next-live PINTAKASI_DB=/tmp/staging.db PINTAKASI_LIVE_START=<UTC date 3 days ago> \
   PINTAKASI_WORLD=alpha-1 PINTAKASI_STEWARD_KEY=<any> PINTAKASI_PUBLIC_ORIGIN=https://staging.example \
   next start -p 3452
 bun run alpha-e2e http://localhost:3452 <same steward key> --world=alpha-1

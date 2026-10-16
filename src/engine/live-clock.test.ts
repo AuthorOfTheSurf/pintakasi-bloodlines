@@ -5,28 +5,29 @@ import { claims, farms, lobbyEntries } from "@/db/schema";
 import { DEV_FARM_ID, seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
 import { GameClock } from "./game-clock";
-import { catchUp, liveTargetDay, parseLiveStart } from "./live-clock";
+import { catchUp, DAY_TURNS_PH_HOUR, liveTargetDay, parseLiveStart } from "./live-clock";
 import { expectConserved } from "./testkit";
 
 const START = "2026-10-13";
-/** A Manila wall-clock time, as the instant it is everywhere else. */
-const manila = (local: string) => new Date(`${local}+08:00`);
+const utc = (iso: string) => new Date(`${iso}Z`);
 
 describe("the live calendar", () => {
-  test("day 0 is the whole start date in Manila; each Manila midnight adds one", () => {
-    expect(liveTargetDay(START, manila("2026-10-13T00:00:00"))).toBe(0);
-    expect(liveTargetDay(START, manila("2026-10-13T23:59:59"))).toBe(0);
-    expect(liveTargetDay(START, manila("2026-10-14T00:00:00"))).toBe(1);
-    expect(liveTargetDay(START, manila("2026-10-16T12:00:00"))).toBe(3);
+  test("day 0 is the whole start date in UTC; each UTC midnight adds one", () => {
+    expect(liveTargetDay(START, utc("2026-10-13T00:00:00"))).toBe(0);
+    expect(liveTargetDay(START, utc("2026-10-13T23:59:59"))).toBe(0);
+    expect(liveTargetDay(START, utc("2026-10-14T00:00:00"))).toBe(1);
+    expect(liveTargetDay(START, utc("2026-10-16T12:00:00"))).toBe(3);
   });
 
-  test("midnight is Manila's, not UTC's: 16:00 UTC is already tomorrow", () => {
-    expect(liveTargetDay(START, new Date("2026-10-13T15:59:59Z"))).toBe(0);
-    expect(liveTargetDay(START, new Date("2026-10-13T16:00:00Z"))).toBe(1);
+  test("midnight is UTC's, not Manila's: the day turns at DAY_TURNS_PH_HOUR in the Philippines", () => {
+    const hh = String(DAY_TURNS_PH_HOUR).padStart(2, "0");
+    const before = String(DAY_TURNS_PH_HOUR - 1).padStart(2, "0");
+    expect(liveTargetDay(START, new Date(`2026-10-14T${before}:59:59+08:00`))).toBe(0);
+    expect(liveTargetDay(START, new Date(`2026-10-14T${hh}:00:00+08:00`))).toBe(1);
   });
 
   test("a start date in the future holds the world at day 0", () => {
-    expect(liveTargetDay(START, manila("2026-10-01T12:00:00"))).toBe(0);
+    expect(liveTargetDay(START, utc("2026-10-01T12:00:00"))).toBe(0);
   });
 
   test("a malformed or impossible start date is refused", () => {
@@ -50,7 +51,7 @@ function liveWorld() {
 describe("catchUp", () => {
   test("missed days run back to back, in order, and a second call does nothing", () => {
     const db = liveWorld();
-    const now = manila("2026-10-16T09:30:00");
+    const now = utc("2026-10-16T09:30:00");
     const first = catchUp(db, START, now);
     expect(first.ticks.map((t) => t.clock.dayIndex)).toEqual([1, 2, 3]);
     expect(new GameClock(db).currentDay()).toBe(3);
@@ -63,8 +64,8 @@ describe("catchUp", () => {
 
   test("a world ahead of the calendar is never ticked backwards or further", () => {
     const db = liveWorld();
-    catchUp(db, START, manila("2026-10-16T09:30:00"));
-    const early = catchUp(db, START, manila("2026-10-14T09:30:00"));
+    catchUp(db, START, utc("2026-10-16T09:30:00"));
+    const early = catchUp(db, START, utc("2026-10-14T09:30:00"));
     expect(early.ticks).toEqual([]);
     expect(new GameClock(db).currentDay()).toBe(3);
   });
@@ -72,7 +73,7 @@ describe("catchUp", () => {
   test("the bots play; the owner's farm and every other player farm are left alone", () => {
     const db = liveWorld();
     const before = db.select().from(farms).where(eq(farms.id, DEV_FARM_ID)).get();
-    const { ticks } = catchUp(db, START, manila("2026-10-16T09:30:00"));
+    const { ticks } = catchUp(db, START, utc("2026-10-16T09:30:00"));
 
     expect(ticks.flatMap((t) => t.bots).length).toBe(ROSTER.length * 3);
     const botEntries = db.select().from(lobbyEntries).all();
