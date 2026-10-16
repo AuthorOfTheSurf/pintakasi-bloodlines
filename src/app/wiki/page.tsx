@@ -53,7 +53,8 @@ export default function WikiHome() {
       <ol>
         <li>
           <strong>Check in</strong> every game-day. It pays {ECONOMY.DAILY_DRIP.toLocaleString()} GP
-          and {ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull.
+          and {ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull, and adds {ECONOMY.DRIP_TO_PURSES}{" "}
+          GP to the crown purses.
         </li>
         <li>
           <strong>Name your birds.</strong> A bird cannot fight while it&apos;s still called

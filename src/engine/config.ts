@@ -752,12 +752,37 @@ export const SCOUT = {
 // The subsidy is Land Tokens, not GP. If GP ever gets printed, it happens
 // at tournaments/championships only. Rakes/drains are deferred on purpose —
 // a scalar that adds nothing to the beta.
+//
+// THE CHECK-IN DRIP IS SPLIT AT THE SOURCE (ruled for the economy rounds,
+// 2026-10). Zane: "Each check-in still puts 800 GP in the wallet; the house
+// adds 200 GP to the crown pot at the same moment." So a check-in prints a
+// GROSS of 1,000 GP: the barn's 800 lands in its wallet exactly as before, and
+// the other 200 goes straight into the juice pool that funds Wednesday's
+// Juvenile crowns and Thursday's Majors. With ~21 barns checking in daily that
+// is ~29,400 GP a week into the purses, roughly doubling the juice the world
+// made from gacha and breed fees alone.
+//
+// It is NOT a tax and must never be presented as one: nothing comes out of the
+// barn's 800. Player-facing copy says "every check-in adds 200 GP to the crown
+// purses". The wallet figure is DERIVED from the gross and the share so the
+// two cannot drift apart; whole GP by construction (rounded share, remainder to
+// the wallet), because the drip is credited as whole GP.
+const DRIP_GROSS = 1_000;
+const DRIP_HOUSE_SHARE = 0.2;
+const DRIP_TO_PURSES = Math.round(DRIP_GROSS * DRIP_HOUSE_SHARE);
 export const ECONOMY = {
   GP_PER_DOLLAR: 80,
   STARTING_GP: 8_000, // every new farm opens with $100 — plenty to play with
+  // What one check-in prints in total, wallet and crown pot together.
+  DRIP_GROSS,
+  // The slice of that gross the house routes to the crown purses (juice pool).
+  DRIP_HOUSE_SHARE,
+  // GP each check-in adds to the juice pool — the crown purses' daily top-up.
+  DRIP_TO_PURSES,
   // The daily drip ($10/day, claimed via check-in) — accounts can't be
-  // funded yet, so the faucet keeps testers liquid.
-  DAILY_DRIP: 800,
+  // funded yet, so the faucet keeps testers liquid. The gross minus the
+  // purse share, so it stays 800 at the ruled 1,000 × 0.2.
+  DAILY_DRIP: DRIP_GROSS - DRIP_TO_PURSES,
   // The breed price ($2) — for now BOTH the minimum AND the maximum (ruled
   // 2026-08-03): player-set stud pricing comes later; today every cover
   // costs exactly this, and it SPLITS (see BREED_SPLIT below).
@@ -1946,6 +1971,21 @@ export function purseShareOf(
     // the multiplier is 1 and 2^wins − 1 at the old doubling.
     (purse.ADVANCEMENT * (m === 1 ? wins : (m ** wins - 1) / (m - 1))) / totalWeight + bonusPay
   );
+}
+
+/**
+ * THE SMALLEST PURSE AT WHICH A FINISH REPAYS ITS ENTRY FEE, in whole GP:
+ * fee ÷ share, rounded up. 0 when there is no fee (nothing to repay) or no
+ * share (no purse repays it — the caller decides how to say that).
+ *
+ * Shared because two readers ask the same question from opposite ends: the
+ * MCP tool descriptions tell a player "a first-round win repays the door once
+ * the purse reaches N", and the doctor's ECONOMY block checks how often the
+ * real purses actually got there. One formula, so the advice and the audit
+ * cannot disagree.
+ */
+export function breakEvenPurse(fee: number, share: number): number {
+  return share > 0 && fee > 0 ? Math.ceil(fee / share) : 0;
 }
 
 // ⚠ `landForTournamentFight` LIVED HERE AND IS GONE (round 42). It was the

@@ -537,6 +537,7 @@ const SOURCE_LABELS: Record<string, string> = {
   fight_rake: "fight rake",
   claim_rake: "claim rake",
   land_purchase: "land bought",
+  drip: "check-in drip",
 };
 
 const TYPE_LABELS: Record<string, string> = {

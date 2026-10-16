@@ -23,7 +23,7 @@ export type EventType =
   | "retire" // manual, age cap, or hardcore loss (data.by)
   | "breed" // hen's farm buys a cover (fee out)
   | "stud_income" // rooster's farm banks the stud share
-  | "pool_accrual" // staker + juice pool cuts of a breed fee (world)
+  | "pool_accrual" // money into the staker or juice pool; data.source names the door (breed, gacha, drip …)
   | "stud_listed"
   | "stud_unlisted"
   | "entry" // a bird onto tonight's card (fee escrowed)

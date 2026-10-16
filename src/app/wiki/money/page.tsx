@@ -108,6 +108,11 @@ export default function MoneyPage() {
               <td className="num">${usd(ECONOMY.DAILY_DRIP)}</td>
             </tr>
             <tr>
+              <td>…and what the same check-in adds to the crown purses</td>
+              <td className="num">{ECONOMY.DRIP_TO_PURSES}</td>
+              <td className="num">${usd(ECONOMY.DRIP_TO_PURSES)}</td>
+            </tr>
+            <tr>
               <td>A grown maiden entry (a night of up to {FIGHTS_PER_GROUP_BIRD} fights)</td>
               <td className="num">{maidenFee}</td>
               <td className="num">${usd(maidenFee)}</td>
@@ -147,19 +152,22 @@ export default function MoneyPage() {
 
       <h2>The one rule</h2>
       <div className="callout">
-        <b>GP is never printed, and never burned.</b> Two moments mint new GP into the game, and
-        exactly two: <strong>genesis</strong> — every farm&apos;s starting stake, plus a small seed
-        of championship juice so the first Thursday has something worth winning — and the{" "}
-        <strong>daily drip</strong>, forever after, because farms can&apos;t fund real accounts yet
-        and the drip keeps everyone able to play. That&apos;s it. Every other GP movement in this
-        game — a fight pot, a claim, a cover, a gacha roll, a land purchase — is just GP moving from
-        one farm (or pool) to another. Nothing else creates it, and nothing destroys it.
+        <b>New GP comes from two moments only, and nothing burns it.</b> The first is{" "}
+        <strong>genesis</strong>: every farm&apos;s starting stake, plus a small seed of
+        championship juice so the first Thursday has something worth winning. The second is the{" "}
+        <strong>daily check-in</strong>, forever after, because farms can&apos;t fund real accounts
+        yet and the drip keeps everyone able to play. Every check-in puts {ECONOMY.DAILY_DRIP} GP in
+        your wallet, and at the same moment adds {ECONOMY.DRIP_TO_PURSES} GP to the crown purses.
+        That second part is new money from the house. It does not come out of your{" "}
+        {ECONOMY.DAILY_DRIP}. That&apos;s it. Every other GP movement in this game — a fight pot, a
+        claim, a cover, a gacha roll, a land purchase — is just GP moving from one farm (or pool) to
+        another. Nothing else creates it, and nothing destroys it.
       </div>
       <p>
         The game proves this to itself, every tick. GP in circulation is defined as one number:
         every farm&apos;s wallet, plus everything currently held in escrow, plus the two shared
-        pools you&apos;ll meet below. That total can only move by a drip or a genesis mint — if it
-        ever moved for any other reason, that would mean GP leaked out of the game somewhere, and
+        pools you&apos;ll meet below. That total can only move by a check-in or a genesis mint — if
+        it ever moved for any other reason, that would mean GP leaked out of the game somewhere, and
         the books would stop balancing to the cent. They don&apos;t. This is the trust story
         underneath everything else on this page: your GP is never quietly worth less because the
         house needed some.
@@ -259,14 +267,17 @@ export default function MoneyPage() {
             <Link href="/wiki/pintakasi">The Pintakasi</Link>. The other part is the entry fees the
             crowns&apos; own entrants pay ({PINTAKASI.ENTRY_FEE} GP at a Major,{" "}
             {JUVENILE_MAJOR.ENTRY_FEE} GP at a Juvenile Championship, added to that crown&apos;s
-            purse whole). It fills from two places: {breedJuicePct}% of every breeding cover (the
-            other half of what&apos;s left after the staker cut goes to the stud&apos;s owner), and{" "}
-            {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll.
-            Wednesday&apos;s Juvenile Championship takes its slice first — the pool sends it a fixed
-            share, split across its two crowns — and Thursday&apos;s Pintakasi Majors take the
-            entire remainder, split evenly across however many Majors run. Each crown then pays its
-            purse out on <em>fights won</em>: every win in the bracket takes a share, and a win in
-            each round is worth {PINTAKASI.PURSE.ROUND_MULTIPLIER}× a win in the round before.
+            purse whole). It fills from three places: every check-in adds {ECONOMY.DRIP_TO_PURSES}{" "}
+            GP, {breedJuicePct}% of every breeding cover goes in (the other half of what&apos;s left
+            after the staker cut goes to the stud&apos;s owner), and so does{" "}
+            {((gachaJuiceCents / gachaCents) * 100).toFixed(0)}% of every paid gacha roll. The
+            check-ins matter most: they add up every day, whether or not anyone breeds or rolls, so
+            a busy world always has crowns worth fighting for. Wednesday&apos;s Juvenile
+            Championship takes its slice first — the pool sends it a fixed share, split across its
+            two crowns — and Thursday&apos;s Pintakasi Majors take the entire remainder, split
+            evenly across however many Majors run. Each crown then pays its purse out on{" "}
+            <em>fights won</em>: every win in the bracket takes a share, and a win in each round is
+            worth {PINTAKASI.PURSE.ROUND_MULTIPLIER}× a win in the round before.
           </p>
         </div>
         <div className="minicard">
@@ -325,6 +336,11 @@ export default function MoneyPage() {
               <td className="num">{(STAKER_FLOWS.LAND_PURCHASE_SHARE * 100).toFixed(0)}%</td>
               <td className="num">—</td>
             </tr>
+            <tr>
+              <td>Each check-in (new GP from the house, not from your wallet)</td>
+              <td className="num">—</td>
+              <td className="num">+{ECONOMY.DRIP_TO_PURSES} GP</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -340,7 +356,7 @@ export default function MoneyPage() {
         A marketplace rake is reserved in the settings (
         {(STAKER_FLOWS.MARKET_RAKE * 100).toFixed(0)}%) for a farm-to-farm bird market that
         isn&apos;t built yet. Fight pots and claim tags don&apos;t feed the juice pool at all today
-        — that pool is fed only by breeding and the gacha.
+        — that pool is fed only by check-ins, breeding and the gacha.
       </p>
 
       <h2>Escrow</h2>
