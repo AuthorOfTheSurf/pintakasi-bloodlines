@@ -375,7 +375,11 @@ function FarmCell(props: {
     <span className="farm-chip">
       <span className="dot" style={{ background: primary, borderColor: secondary }} />
       {props.value}
-      {isBot ? <span className="bot">BOT</span> : null}
+      {isBot ? (
+        <span className="bot" title="A house stable: a scripted barn, not a player">
+          HOUSE
+        </span>
+      ) : null}
     </span>
   );
 }

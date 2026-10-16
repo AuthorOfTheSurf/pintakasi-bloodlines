@@ -32,6 +32,12 @@ export default function WikiHome() {
         <strong>judging</strong> birds from how they fight, <strong>placing</strong> them, and{" "}
         <strong>breeding</strong> better ones. Not grinding them stronger.
       </p>
+      <p>
+        Not every rival is a person. The world also runs <strong>house stables</strong>: farms that
+        play every day by a fixed script, under the same rules as you. They keep the pit busy while
+        the game is small, and they are always labelled as house stables, so you know who you are up
+        against.
+      </p>
 
       <h2>Joining</h2>
       <p>

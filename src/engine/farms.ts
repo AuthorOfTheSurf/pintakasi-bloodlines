@@ -29,6 +29,10 @@ export interface FarmView {
   // The FARM's own career record (real + hardcore), stamped at fight time.
   wins: number;
   losses: number;
+  // A scripted house stable (farms.isBot), not a person. The live world
+  // labels them wherever players see farms (alpha-1 ruling: "Yes, label
+  // them"), so nobody mistakes a bot's barn for a rival they could talk to.
+  houseStable: boolean;
 }
 
 /**
@@ -457,6 +461,7 @@ export class Farms {
       checkedInToday: row.lastCheckInDay === this.today(),
       wins: row.wins,
       losses: row.losses,
+      houseStable: row.isBot === 1,
     };
   }
 
