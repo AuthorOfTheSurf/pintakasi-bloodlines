@@ -106,7 +106,12 @@ const stewardAdminUrl = url(`/admin?steward=${encodeURIComponent(stewardKey)}`);
 const stewardAdmin = unescape(await (await fetch(stewardAdminUrl)).text());
 check("steward /admin shows the application", stewardAdmin.includes(contact));
 check("honeypot left no application row", !stewardAdmin.includes(spamName));
-check("steward /admin labels house stables", stewardAdmin.includes(">HOUSE<"));
+// The Farms grid renders in the browser, so the HOUSE chip is not in the HTML;
+// the row data the grid draws it from is.
+check(
+  "steward /admin marks house stables in the Farms rows",
+  /"name":"[^"]+","bot":true/.test(stewardAdmin) && /"name":"[^"]+","bot":false/.test(stewardAdmin)
+);
 if (world)
   check(
     `admin badge reads ${world.toUpperCase()}`,
