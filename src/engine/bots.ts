@@ -1002,7 +1002,23 @@ function openingAsks(db: DB, studIds: string[], greed: number): Map<string, numb
  * the premium, anything else → hold. Own-hen covers are not demand; they
  * always pay the floor.
  */
+let __pt = 0;
+let __bt = 0;
+process.on("exit", () =>
+  console.log(`PROF priceStuds ${__pt.toFixed(0)} ms · browse+score ${__bt.toFixed(0)} ms`)
+);
 export function priceStuds(db: DB, farmId: string, today: number, greed: number): void {
+  const __t = performance.now();
+  try {
+    return priceStudsInner(db, farmId, today, greed);
+  } finally {
+    __pt += performance.now() - __t;
+  }
+}
+export function __addBrowse(ms: number) {
+  __bt += ms;
+}
+function priceStudsInner(db: DB, farmId: string, today: number, greed: number): void {
   const mine = db
     .select({ id: birds.id, studPrice: birds.studPrice })
     .from(birds)
@@ -1016,12 +1032,17 @@ export function priceStuds(db: DB, farmId: string, today: number, greed: number)
     )
     .all();
   if (mine.length === 0) return;
-  // The seed rng is never drawn: pricing touches no genetics.
-  const breeding = new Breeding(db, farmId, mulberry32(0));
+  // A direct write, not Breeding.setStudPrice: that door validates through
+  // flock.byId, which builds a whole bird view, and a Friday repricing every
+  // stud in the world through it cost ~0.25 s of sim time. The rows above are
+  // this farm's retired, listed roosters, and snapPrice keeps every price
+  // inside the floor and cap, which is all setStudPrice would check.
+  const setPrice = (id: string, price: number) =>
+    db.update(birds).set({ studPrice: price }).where(eq(birds.id, id)).run();
 
   const unpriced = mine.filter((b) => b.studPrice === null).map((b) => b.id);
   if (unpriced.length > 0)
-    for (const [id, ask] of openingAsks(db, unpriced, greed)) breeding.setStudPrice(id, ask);
+    for (const [id, ask] of openingAsks(db, unpriced, greed)) setPrice(id, ask);
 
   const week = GameClock.weekOf(today);
   if (today === 0 || GameClock.weekOf(today - 1) === week) return;
@@ -1050,7 +1071,7 @@ export function priceStuds(db: DB, farmId: string, today: number, greed: number)
       next = snapPrice(now * (1 + STUD_MARKET.RAISE_HOT * greed), "up");
     else if (covers <= STUD_MARKET.COLD_COVERS)
       next = snapPrice(now - (now - STUD_PRICE.FLOOR) * STUD_MARKET.CUT_COLD, "down");
-    if (next !== now) breeding.setStudPrice(stud.id, next);
+    if (next !== now) setPrice(stud.id, next);
   }
 }
 

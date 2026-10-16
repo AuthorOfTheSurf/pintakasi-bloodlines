@@ -14,7 +14,7 @@ import {
   weatherOrder,
 } from "./bots";
 import { STUD_MARKET } from "./bot-config";
-import { Breeding } from "./breeding";
+import { Breeding, type StudView } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
@@ -108,16 +108,22 @@ export function playHonestDay(
   // One cover a day, first hen whose nest is empty (one egg per hen). Since
   // economy round 3 she gets the stud a bot buyer would pick: the best
   // expected foal on her own grain, net of what his premium costs this wallet.
-  // Pick order falls through on a refusal, so a dear stud the barn cannot
-  // afford hands the cover to the next one down.
+  // ONE attempt per hen, as before the round: browseStuds has already dropped
+  // kin and covered-out studs, so a refusal here is about the HEN (carrying,
+  // barn full, broke) and every other stud would be refused too. Falling
+  // through the whole ranked list on a pregnant hen cost ~20 s per 92-day
+  // sim. A dear stud the barn cannot afford is skipped before the attempt.
   for (const hen of flock.filter((b) => b.status === "retired" && b.sex === "female")) {
     let bred = false;
     quietly(() => {
       const wallet = farmsApi.rowById(farmId).gp;
       const { shape } = bestShape(hen);
-      const ranked = breeding
+      const best = breeding
         .browseStuds(hen.id)
-        .studs.map((stud) => ({
+        // The reserve guards the premium only: a floor cover was always
+        // bought down to the last 160 GP, and that habit is not this round's.
+        .studs.filter((s) => s.price <= STUD_PRICE.FLOOR || wallet >= s.price + AUTO_RESERVE)
+        .map((stud) => ({
           stud,
           net: coverNet(
             foalScore(hen, stud, shape),
@@ -126,16 +132,13 @@ export function playHonestDay(
             wallet
           ),
         }))
-        .sort((a, b) => b.net - a.net);
-      for (const { stud } of ranked) {
-        // The reserve guards the premium only: a floor cover was always
-        // bought down to the last 160 GP, and that habit is not this round's.
-        if (stud.price > STUD_PRICE.FLOOR && wallet < stud.price + AUTO_RESERVE) continue;
-        if (quietly(() => breeding.breed(hen.id, stud.birdId))) {
-          bred = true;
-          return;
-        }
-      }
+        .reduce<{ stud: StudView; net: number } | null>(
+          (top, c) => (top === null || c.net > top.net ? c : top),
+          null
+        );
+      if (best === null) return;
+      breeding.breed(hen.id, best.stud.birdId);
+      bred = true;
     });
     if (bred) break;
   }
