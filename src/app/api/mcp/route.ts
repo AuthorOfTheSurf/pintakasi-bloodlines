@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { CLOSED_REGISTRATION_MESSAGE, openRegistrationEnabled } from "@/app/doors";
 import { publicTicksEnabled } from "@/app/ticks";
 import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
@@ -285,7 +286,7 @@ const juvenileOpenBlades = `${CARD.juvenile.open} of the ${FORMAT_NAMES.length}`
  */
 export const MCP_INSTRUCTIONS: string[] = [
   "Pintakasi: Bloodlines — a digital sabong game. YOU are the game client: narrate fights and hatch days with color, present choices clearly, and let the player decide.",
-  "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. No farm on this connection? register_farm, save the key, and reconnect with ?key=… on the MCP URL. (When only one farm exists, the key is optional.)",
+  "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. On the live server a farm comes from an approved alpha application (apply at /join on the website); approval opens a welcome page with the farm key and an MCP URL that already carries ?key=…. register_farm only works on dev worlds. No farm on this connection? Reconnect with ?key=… on the MCP URL. (When only one farm exists, the key is optional.)",
   `THE DAILY RITUAL: check_in once per game-day — it pays the GP drip ($${usd(ECONOMY.DAILY_DRIP)} = ${ECONOMY.DAILY_DRIP} GP) and ${ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull. Do it first thing.`,
   "THE LOOP: breed retired birds → the hen is pregnant NOW, the egg is LAID next Friday (freeing her for another cover) and HATCHES the Friday after as an age-1 chick → juvenile through the discovery year → real fights from age 2 → at age 3 the fork opens: the Pintakasi Majors (hardcore, and the only hardcore left in the game) AND safe retirement → retire (or lose in the Majors) → the retiree becomes breeding stock → a better bird.",
   `AGE GATES: ${AGE.EGG} = egg · ${AGE.CHICK} = juvenile only · ${AGE.REAL_STAKES}+ = real fights · ${AGE.FORK}+ = the Majors + manual retirement · ${AGE.FIGHTING_CAP} = force-retired. Ages advance every Hatch Friday (tick_week); one game-week = one bird-year.`,
@@ -335,7 +336,7 @@ export const MCP_INSTRUCTIONS: string[] = [
  */
 export const TOOL_DESCRIPTIONS = {
   register_farm:
-    `Create your farm: name (required), country flag (encouraged — pick one!), and two colors from the palette: ` +
+    `DEV WORLDS ONLY: on the live server registration is closed for the alpha, and a farm comes from an approved application at /join on the website (the key arrives on the player's welcome page). On a dev world: create your farm: name (required), country flag (encouraged — pick one!), and two colors from the palette: ` +
     FARM_COLORS.join(", ") +
     `. Returns your farm key (fk_…) — SAVE IT and reconnect with ?key=… on the MCP URL. Seeds ${BARN.STARTER_EGGS} starter eggs, hatching together on the first Friday, and a $${usd(ECONOMY.STARTING_GP)} (${ECONOMY.STARTING_GP.toLocaleString()} GP) stake.`,
 
@@ -406,7 +407,7 @@ function createServer(farmId: string | null): McpServer {
   const game = (): Game => {
     if (!farmId)
       throw new Error(
-        "No farm on this connection — register_farm first, then add ?key=fk_… to the MCP URL"
+        "No farm on this connection. Add your farm key (?key=fk_…) to the MCP URL; on the live server the key comes from an approved application at /join"
       );
     return new Game(database, farmId);
   };
@@ -430,6 +431,7 @@ function createServer(farmId: string | null): McpServer {
     },
     async (input) =>
       ruled(() => {
+        if (!openRegistrationEnabled()) throw new Error(CLOSED_REGISTRATION_MESSAGE);
         const { farm, apiKey } = farmsApi.register(input);
         seedStarterFlock(database, farm.id, { seed: freshSeed() });
         return {

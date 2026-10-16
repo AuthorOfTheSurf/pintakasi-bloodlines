@@ -1142,6 +1142,7 @@ const TABS = [
   "The Ledger",
   "The Card",
   "🏆 The Pintakasi",
+  "Applications",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -1161,6 +1162,8 @@ export function AdminTabs({
   cardCount,
   pintakasi,
   pintakasiCount,
+  applications,
+  applicationsCount,
 }: {
   farms: FarmRowUI[];
   fights: FightRowUI[];
@@ -1177,6 +1180,8 @@ export function AdminTabs({
   pintakasiCount: number;
   charts: React.ReactNode; // the trend strip, server-rendered SVG (charts.tsx)
   chartsCount: number;
+  applications: React.ReactNode; // the alpha's queue, gated server-side (applications.tsx)
+  applicationsCount: number;
 }) {
   const [tab, setTab] = useState<Tab>("Charts");
   // Which bird's fight history is open under the Birds grid, by id. Clicking the
@@ -1273,6 +1278,7 @@ export function AdminTabs({
     "The Ledger": ledger.length,
     "The Card": cardCount,
     "🏆 The Pintakasi": pintakasiCount,
+    Applications: applicationsCount,
   };
 
   const base = { sortable: true, filter: true, resizable: true };
@@ -1439,6 +1445,7 @@ export function AdminTabs({
       <div style={{ display: tab === "Charts" ? "block" : "none" }}>{charts}</div>
       <div style={{ display: tab === "The Card" ? "block" : "none" }}>{card}</div>
       <div style={{ display: tab === "🏆 The Pintakasi" ? "block" : "none" }}>{pintakasi}</div>
+      <div style={{ display: tab === "Applications" ? "block" : "none" }}>{applications}</div>
     </section>
   );
 }

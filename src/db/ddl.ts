@@ -228,6 +228,26 @@ CREATE TABLE IF NOT EXISTS brain_log (
   menu_json TEXT
 );
 
+-- The alpha's applications (see schema.ts) -- additive, so the live world
+-- gains the table at boot without a reseed. The CHECK keeps the state machine
+-- to its three states even if something other than engine/alpha.ts writes.
+CREATE TABLE IF NOT EXISTS alpha_applications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL,
+  farm_name TEXT NOT NULL,
+  handler TEXT NOT NULL,
+  contact TEXT NOT NULL,
+  country TEXT,
+  primary_color TEXT NOT NULL,
+  secondary_color TEXT NOT NULL,
+  background TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','declined')),
+  farm_id TEXT,
+  claim_token TEXT UNIQUE,
+  decided_at TEXT,
+  claimed_at TEXT
+);
+
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────
 -- There were NONE until now, on any table, and it had quietly become the
 -- single biggest cost in the project. Every lookup on a non-key column was a

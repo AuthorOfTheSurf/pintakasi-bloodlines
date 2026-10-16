@@ -33,6 +33,16 @@ export default function WikiHome() {
         <strong>breeding</strong> better ones. Not grinding them stronger.
       </p>
 
+      <h2>Joining</h2>
+      <p>
+        The game is in alpha, and seats are limited. To get a farm, apply on the{" "}
+        <Link href="/join">join page</Link>. A steward will reach out to you about the buy-in. Once
+        you&apos;re approved, you get a private welcome page with your <strong>farm key</strong>.
+        That key is your login, so keep it to yourself. Every farm starts even, with{" "}
+        {ECONOMY.STARTING_GP.toLocaleString()} GP and {BARN.STARTER_EGGS} starter eggs. You play by
+        connecting Claude to the game, and the welcome page shows you how.
+      </p>
+
       <h2>The five-minute version</h2>
       <ol>
         <li>
