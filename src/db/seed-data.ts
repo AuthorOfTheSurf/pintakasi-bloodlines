@@ -152,8 +152,11 @@ function rollStats(rng: Rng) {
 
 export function seedGame(
   db: DB,
-  opts: { seed?: number; startingGp?: number; flock?: "eggs" | "legacy" } = {}
+  opts: { seed?: number; startingGp?: number; flock?: "eggs" | "legacy"; apiKey?: string } = {}
 ): { farmId: string; apiKey: string } {
+  // fk_dev unless told otherwise: tests and local play depend on the fixed
+  // key, and a live seed passes a random one (see db/seed.ts --live).
+  const apiKey = opts.apiKey ?? DEV_FARM_KEY;
   // The world opens with juice in the pot (ruled round 20) — the first
   // championships need a purse worth dying for before breed fees have had
   // a month to fill the pool. Printed once, at genesis, like starting purses.
@@ -177,7 +180,7 @@ export function seedGame(
       primaryColor: "green",
       secondaryColor: "yellow",
       handler: "Zane",
-      apiKey: DEV_FARM_KEY,
+      apiKey,
       gp: opts.startingGp ?? ECONOMY.STARTING_GP,
       landTokensCents: 0,
       createdDay: 0,
@@ -191,7 +194,7 @@ export function seedGame(
     message: `Bukidnon Farms registered — starting purse ${opts.startingGp ?? ECONOMY.STARTING_GP} GP`,
   });
   seedStarterFlock(db, DEV_FARM_ID, { seed: opts.seed, idPrefix: "starter", shape: opts.flock });
-  return { farmId: DEV_FARM_ID, apiKey: DEV_FARM_KEY };
+  return { farmId: DEV_FARM_ID, apiKey };
 }
 
 /**
