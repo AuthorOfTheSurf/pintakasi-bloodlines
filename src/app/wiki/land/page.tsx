@@ -417,9 +417,9 @@ export default function LandPage() {
       <p>
         Why a stud, of everything in the game: it&apos;s the best asset there is. It earns on every
         outside cover, it makes the birds, and its own owner still breeds through it on the reserved
-        slots at the floor price, whatever he asks of everyone else. A gate that desirable is worth
-        paying land for — and it puts every barn in the same choice: stake land for yield, or spend
-        it to open an income stream. That choice is exactly what a sink is for.
+        slots, and gets his own share of those covers back. A gate that desirable is worth paying
+        land for — and it puts every barn in the same choice: stake land for yield, or spend it to
+        open an income stream. That choice is exactly what a sink is for.
       </p>
 
       <h2>The second sink — expanding the barn</h2>

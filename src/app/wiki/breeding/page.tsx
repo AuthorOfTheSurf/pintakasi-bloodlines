@@ -27,6 +27,9 @@ export default function BreedingPage() {
   // A worked example above the floor: twice the floor, so it moves with the knob.
   const examplePrice = STUD_PRICE.FLOOR * 2;
   const exampleSplit = splitBreedFee(examplePrice);
+  // On his own stud the owner's share comes back, so what he really pays is
+  // the stakers' and the juice pool's part.
+  const ownNetCents = exampleSplit.stakerPoolCents + exampleSplit.juicePoolCents;
   const premiumOwnerPct = Math.round(STUD_PRICE.PREMIUM_SPLIT.STUD_OWNER * 100);
   const premiumJuicePct = Math.round(STUD_PRICE.PREMIUM_SPLIT.JUICE * 100);
   const stakerPct = Math.round(BREED_SPLIT.STAKER * 100);
@@ -96,19 +99,26 @@ export default function BreedingPage() {
       </p>
       <ul>
         <li>
-          <strong>Your own hens always pay the floor</strong> on your own rooster, whatever price
-          you ask of everyone else. Charging yourself more would just send part of your own money to
-          the juice pool.
+          <strong>Your own hens pay your price too.</strong> The owner&apos;s share of the cover
+          comes straight back to you, so on your own {examplePrice} GP rooster a cover really costs
+          you {fmtGp(ownNetCents)} GP: the stakers&apos; and the juice pool&apos;s part. Why: an
+          owner should face the price he sets for everyone else. What he loses is the same house
+          share any buyer pays, and no more.
         </li>
         <li>
           <strong>The price lives on the bird.</strong> It goes with him if he changes hands, and
           every cover pays whoever owns him on the day the cover is bought.
         </li>
         <li>
-          <strong>A cover already bought keeps its price.</strong> A new price only applies to the
-          next cover. A buyer playing through the AI tools can also name the most he will pay. If
-          the owner raised his price after he looked, the cover is refused instead of charging him
-          more.
+          <strong>A new price goes up at the next day.</strong> When an owner changes his price, it
+          waits until the day turns, the same way the card does. So everyone sees one price for the
+          whole game-day, and the price you see when you browse is the price you pay. The owner sees
+          his waiting price in the barn until it goes up.
+        </li>
+        <li>
+          <strong>A cover already bought keeps its price.</strong> A buyer can also name the most he
+          will pay. If the day turned and the price went up after he looked, the cover is refused
+          instead of charging him more.
         </li>
       </ul>
       <p>
@@ -146,11 +156,10 @@ export default function BreedingPage() {
         not staked, not refundable. Pulling him from the barn and re-listing him later is free; the
         land bought the seat, not a subscription. Why this door: a stud is the best asset in the
         game — it earns on every outside cover, and its own owner still breeds through it on the
-        reserved slots at the floor price. A gate that desirable is worth paying land for, and
-        it&apos;s the first thing in the game that takes Land Tokens <em>out</em> of the world
-        rather than just paying them out (barn expansion is the second) — see{" "}
-        <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into a
-        price.
+        reserved slots. A gate that desirable is worth paying land for, and it&apos;s the first
+        thing in the game that takes Land Tokens <em>out</em> of the world rather than just paying
+        them out (barn expansion is the second) — see <Link href="/wiki/land">Land Tokens</Link> for
+        why a sink is what turns a yield into a price.
       </div>
 
       <h2>The fee split</h2>

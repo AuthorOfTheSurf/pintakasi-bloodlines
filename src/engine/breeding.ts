@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState, type BirdRow } from "@/db/schema";
@@ -57,9 +57,12 @@ export interface StudView {
   career: { wins: number; losses: number };
   sheet: Record<StatName, number>; // the revealed stats — what you're buying half of
   overallGrade: Grade; //             one glanceable letter for shoppers
-  /** What THIS hen's farm pays for the cover: the owner's ask for an outside
-   *  hen, the floor for the owner's own (see STUD_PRICE). */
+  /** What THIS hen's farm pays for the cover: the stud's POSTED price, the
+   *  same for every hen including the owner's own (see STUD_PRICE). */
   price: number;
+  /** The owner's own repricing, waiting for the next day tick. Only the owner
+   *  sees it; null for everyone else and when nothing is pending. */
+  pendingPrice: number | null;
   coversLeft: number; // public slots left this week (owner slots tracked apart)
   mine: boolean;
 }
@@ -104,6 +107,20 @@ export function splitBreedFee(feeGp: number): FeeSplit {
   };
 }
 
+/**
+ * The day tick posts every pending stud price (round 70, second pass). Run
+ * once per tick, after the clock turns, so a price set during day D is the
+ * posted price from day D+1 on. One UPDATE for the whole world: only
+ * repriced roosters carry a pending price, and posting clears it.
+ */
+export function postStudPrices(database: DB): void {
+  database
+    .update(birds)
+    .set({ studPrice: sql`${birds.studPriceNext}`, studPriceNext: null })
+    .where(isNotNull(birds.studPriceNext))
+    .run();
+}
+
 export class Breeding {
   private flock: Flock;
 
@@ -122,10 +139,10 @@ export class Breeding {
    * 0, hatches next Hatch Friday). The fee SPLITS: staker pool / juice
    * pool / the stud's owner. Covers are capped per rooster per week.
    *
-   * The fee is the stud's ASK (economy round 3), the floor on the owner's own
-   * hens. `maxPrice` is the buyer's guard for a live world: an owner can
-   * reprice between browse_studs and the cover, and a buyer who read 200 GP
-   * must not be charged 1,600 without seeing it.
+   * The fee is the stud's POSTED price (economy round 3), for every hen,
+   * the owner's own included. A reprice waits for the next day tick, so the
+   * price a buyer browsed is the price all game-day; `maxPrice` stays as the
+   * backstop for a browse that straddles the tick.
    */
   breed(
     motherId: string,
@@ -192,7 +209,10 @@ export class Breeding {
         `${fatherRow.name} is covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`
       );
 
-    const price = ownStud ? STUD_PRICE.FLOOR : studPriceOf(fatherRow);
+    // The owner's own hen pays his posted price too (round 70, second pass):
+    // an owner should face the price he sets for others. He gets the owner
+    // share back, so his net is the same house share any buyer pays.
+    const price = studPriceOf(fatherRow);
     if (opts.maxPrice !== undefined && price > opts.maxPrice)
       throw new Error(
         `${fatherRow.name}'s cover is ${price} GP now, above your limit of ${opts.maxPrice} — browse_studs again`
@@ -269,9 +289,9 @@ export class Breeding {
       farmId: this.farmId,
       birdId: egg.id,
       gpCents: -price * 100,
-      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? " (own stud)" : ` (${studFarm.name}'s stud, ${price} GP)`} → ${egg.name} (lays Friday, hatches the Friday after)`,
+      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? ` (own stud, ${price} GP)` : ` (${studFarm.name}'s stud, ${price} GP)`} → ${egg.name} (lays Friday, hatches the Friday after)`,
       // `ownStud` lets the doctor's stud market separate sales from a barn
-      // breeding its own hens at the floor, without parsing the message.
+      // breeding its own hens, without parsing the message.
       data: { ...split, ownStud },
     });
     emit(this.database, {
@@ -300,7 +320,13 @@ export class Breeding {
 
   /** List a retired rooster for covers from any farm. Idempotent. A listing
    *  keeps whatever price he already carries; `setStudPrice` changes it. */
-  listStud(birdId: string): { stud: string; listed: true; price: number; landSpent: number } {
+  listStud(birdId: string): {
+    stud: string;
+    listed: true;
+    price: number;
+    pendingPrice: number | null;
+    landSpent: number;
+  } {
     const bird = this.flock.byId(birdId); // own birds only
     if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — the barn lists roosters`);
     if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
@@ -330,12 +356,12 @@ export class Breeding {
         birdId,
         lt: -COVERS.STUD_LISTING_LT,
         message:
-          `${bird.name} stands at stud — ${this.askOf(birdId)} GP a cover ` +
+          `${bird.name} stands at stud — ${this.pricesOf(birdId).price} GP a cover ` +
           `(${COVERS.STUD_LISTING_LT / LT_CENTS} LT paid for the seat)`,
       });
     }
     this.database.update(birds).set({ listedStud: 1 }).where(eq(birds.id, birdId)).run();
-    return { stud: bird.name, listed: true, price: this.askOf(birdId), landSpent };
+    return { stud: bird.name, listed: true, ...this.pricesOf(birdId), landSpent };
   }
 
   /**
@@ -343,8 +369,16 @@ export class Breeding {
    * Whole GP, from STUD_PRICE.FLOOR to STUD_PRICE.CAP. Listed or not: an owner
    * may price a rooster before opening his seat. Covers already sold stand at
    * the price they were bought at.
+   *
+   * The new price is PENDING until the next day tick posts it (round 70,
+   * second pass), like the card: every buyer sees one price all game-day, and
+   * an owner cannot reprice between a buyer's browse and his cover. Setting
+   * it again the same day replaces the pending price.
    */
-  setStudPrice(birdId: string, priceGp: number): { stud: string; price: number } {
+  setStudPrice(
+    birdId: string,
+    priceGp: number
+  ): { stud: string; price: number; pendingPrice: number | null } {
     const bird = this.flock.byId(birdId); // own birds only
     if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — only roosters stand at stud`);
     if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
@@ -352,18 +386,18 @@ export class Breeding {
       throw new Error(
         `A cover price is a whole number of GP from ${STUD_PRICE.FLOOR} to ${STUD_PRICE.CAP} — got ${priceGp}`
       );
-    this.database.update(birds).set({ studPrice: priceGp }).where(eq(birds.id, birdId)).run();
-    return { stud: bird.name, price: priceGp };
+    this.database.update(birds).set({ studPriceNext: priceGp }).where(eq(birds.id, birdId)).run();
+    return { stud: bird.name, ...this.pricesOf(birdId) };
   }
 
-  private askOf(birdId: string): number {
+  private pricesOf(birdId: string): { price: number; pendingPrice: number | null } {
     const row = this.database
-      .select({ studPrice: birds.studPrice })
+      .select({ studPrice: birds.studPrice, studPriceNext: birds.studPriceNext })
       .from(birds)
       .where(eq(birds.id, birdId))
       .get();
     if (!row) throw new Error(`No bird with id ${birdId}`);
-    return studPriceOf(row);
+    return { price: studPriceOf(row), pendingPrice: row.studPriceNext };
   }
 
   /** Pull a rooster from the barn. Covers already sold this week stand. */
@@ -525,7 +559,8 @@ export class Breeding {
             condition: rooster.condition,
           },
           overallGrade: overallGradeOf(total),
-          price: mine ? STUD_PRICE.FLOOR : studPriceOf(rooster),
+          price: studPriceOf(rooster),
+          pendingPrice: mine ? rooster.studPriceNext : null,
           coversLeft,
           mine,
         });

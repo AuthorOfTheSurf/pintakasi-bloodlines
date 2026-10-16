@@ -129,7 +129,8 @@ export function playHonestDay(
             foalScore(hen, stud, shape),
             stud.price,
             STUD_MARKET.AUTO_PLAY.spend,
-            wallet
+            wallet,
+            stud.mine
           ),
         }))
         .reduce<{ stud: StudView; net: number } | null>(

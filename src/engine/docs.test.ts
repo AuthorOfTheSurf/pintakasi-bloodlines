@@ -178,6 +178,20 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(readWikiPage("breeding/page.tsx")).toContain("STUD_PRICE.PREMIUM_SPLIT");
   });
 
+  // Round 70's second pass reversed two things the first pass documented: the
+  // owner's own hens paid the floor, and a new price applied at once. Either
+  // sentence left standing teaches a player the wrong bill.
+  test("own hens pay the posted price, and a price posts at the next day", () => {
+    const ownFloor = [/own hens always pay the floor/i, /floor on your own rooster/i];
+    for (const stale of ownFloor) {
+      expect(everything).not.toMatch(stale);
+      expect(readWikiPage("breeding/page.tsx")).not.toMatch(stale);
+    }
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toMatch(/next day tick/i);
+    expect(TOOL_DESCRIPTIONS.browse_studs).toMatch(/pendingPrice/);
+    expect(readWikiPage("breeding/page.tsx")).toMatch(/next day/i);
+  });
+
   // Missing entirely #1: the Juvenile Championship (JUVENILE_MAJOR) — the
   // non-hardcore crown that runs the day before the Majors.
   test("the Juvenile Championship is documented, including that it isn't hardcore", () => {

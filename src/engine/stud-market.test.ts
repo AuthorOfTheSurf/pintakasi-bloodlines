@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { birds, farms, gameState } from "@/db/schema";
+import { birds, events, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { STUD_MARKET } from "./bot-config";
 import { coverNet, priceStuds } from "./bots";
 import { studMarket } from "./doctor";
-import { Breeding, splitBreedFee } from "./breeding";
+import { Breeding, postStudPrices, splitBreedFee } from "./breeding";
 import { BREED_SPLIT, COVERS, ECONOMY, STUD_PRICE } from "./config";
+import { Game } from "./game";
 import { mulberry32 } from "./rng";
 
 type DB = ReturnType<typeof createDb>;
@@ -71,6 +72,12 @@ function market() {
   return { db, rival, buyer: new Breeding(db, "farm-1", mulberry32(1)) };
 }
 
+/** Set a price and let the day tick post it, as an owner who priced yesterday. */
+function priced(db: DB, owner: Breeding, studId: string, price: number) {
+  owner.setStudPrice(studId, price);
+  postStudPrices(db);
+}
+
 const gpOf = (db: DB, id: string) => {
   const f = db.select().from(farms).where(eq(farms.id, id)).get();
   if (!f) throw new Error(`no farm ${id}`);
@@ -118,7 +125,7 @@ describe("the premium split", () => {
 describe("setting the price", () => {
   test("whole GP between floor and cap, on your own retired rooster only", () => {
     const { rival, buyer } = market();
-    expect(rival.setStudPrice("rival-stud", STUD_PRICE.CAP).price).toBe(STUD_PRICE.CAP);
+    expect(rival.setStudPrice("rival-stud", STUD_PRICE.CAP).pendingPrice).toBe(STUD_PRICE.CAP);
     expect(() => rival.setStudPrice("rival-stud", STUD_PRICE.FLOOR - 1)).toThrow(/from/);
     expect(() => rival.setStudPrice("rival-stud", STUD_PRICE.CAP + 1)).toThrow(/from/);
     expect(() => rival.setStudPrice("rival-stud", 200.5)).toThrow(/whole/);
@@ -126,20 +133,56 @@ describe("setting the price", () => {
     expect(() => buyer.setStudPrice("rival-stud", 200)).toThrow();
   });
 
-  test("browse_studs shows the ask to an outside hen and the floor to the owner's own", () => {
-    const { rival, buyer } = market();
-    rival.setStudPrice("rival-stud", 500);
+  test("browse_studs shows every hen the one posted price, the owner's own included", () => {
+    const { db, rival, buyer } = market();
+    priced(db, rival, "rival-stud", 500);
     const outside = buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-stud");
     expect(outside?.price).toBe(500);
     const own = rival.browseStuds("rival-hen").studs.find((s) => s.birdId === "rival-stud");
-    expect(own?.price).toBe(STUD_PRICE.FLOOR);
+    expect(own?.price).toBe(500);
+  });
+});
+
+describe("a posted price", () => {
+  test("a reprice waits for the day tick, and only the owner sees it pending", () => {
+    const { db, rival, buyer } = market();
+    priced(db, rival, "rival-stud", 300);
+    const set = rival.setStudPrice("rival-stud", 900);
+    expect(set).toEqual({ stud: "rival-stud", price: 300, pendingPrice: 900 });
+    const outside = () =>
+      buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-stud");
+    const own = () => rival.browseStuds("rival-hen").studs.find((s) => s.birdId === "rival-stud");
+    expect(outside()).toMatchObject({ price: 300, pendingPrice: null });
+    expect(own()).toMatchObject({ price: 300, pendingPrice: 900 });
+    // Bought the same day, the cover is charged the price the buyer browsed.
+    expect(buyer.breed("starter-2", "rival-stud").feePaid).toBe(300);
+    postStudPrices(db);
+    expect(outside()).toMatchObject({ price: 900, pendingPrice: null });
+    expect(own()).toMatchObject({ price: 900, pendingPrice: null });
+  });
+
+  test("the last price set in a day is the one that posts", () => {
+    const { db, rival, buyer } = market();
+    rival.setStudPrice("rival-stud", 900);
+    rival.setStudPrice("rival-stud", 240);
+    postStudPrices(db);
+    const stud = buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-stud");
+    expect(stud?.price).toBe(240);
+  });
+
+  test("the game's day tick posts it", () => {
+    const { db, rival, buyer } = market();
+    rival.setStudPrice("rival-stud", 700);
+    new Game(db, "farm-1").tickDay({ players: "hands-off" });
+    const stud = buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-stud");
+    expect(stud?.price).toBe(700);
   });
 });
 
 describe("buying a priced cover", () => {
   test("an outside hen pays the ask, split to owner and juice, and no GP is made or lost", () => {
     const { db, rival, buyer } = market();
-    rival.setStudPrice("rival-stud", 800);
+    priced(db, rival, "rival-stud", 800);
     const before = worldCents(db);
     const buyerBefore = gpOf(db, "farm-1");
     const ownerBefore = gpOf(db, "rival");
@@ -151,21 +194,39 @@ describe("buying a priced cover", () => {
     expect(worldCents(db)).toBe(before);
   });
 
-  test("the owner's own hen pays the floor whatever he asks", () => {
+  test("the owner's own hen pays his posted price, and nets the house share", () => {
     const { db, rival } = market();
-    rival.setStudPrice("rival-stud", STUD_PRICE.CAP);
+    priced(db, rival, "rival-stud", 660);
     const before = gpOf(db, "rival");
-    const { feePaid } = rival.breed("rival-hen", "rival-stud");
-    expect(feePaid).toBe(STUD_PRICE.FLOOR);
-    // Own stud: the owner share comes straight back.
-    expect(gpOf(db, "rival")).toBe(
-      before - STUD_PRICE.FLOOR * 100 + splitBreedFee(STUD_PRICE.FLOOR).studOwnerCents
-    );
+    const world = worldCents(db);
+    const { feePaid, split } = rival.breed("rival-hen", "rival-stud");
+    expect(feePaid).toBe(660);
+    // He pays 660 and the owner share comes straight back: his net is the
+    // stakers' and juice's part of the floor plus 20% of the 500 premium.
+    const floor = splitBreedFee(STUD_PRICE.FLOOR);
+    const net =
+      floor.stakerPoolCents + floor.juicePoolCents + 500 * 100 * STUD_PRICE.PREMIUM_SPLIT.JUICE;
+    expect(gpOf(db, "rival")).toBe(before - net);
+    expect(split.stakerPoolCents + split.juicePoolCents).toBe(net);
+    expect(worldCents(db)).toBe(world);
+  });
+
+  test("a priced stud's owner-reserved covers stay the owner's, and leave public slots alone", () => {
+    const { db, rival, buyer } = market();
+    priced(db, rival, "rival-stud", 400);
+    for (let i = 0; i < COVERS.OWNER_RESERVED; i++) {
+      retired(db, `rival-hen-${i}`, "rival", "female");
+      expect(rival.breed(`rival-hen-${i}`, "rival-stud").feePaid).toBe(400);
+    }
+    retired(db, "rival-hen-extra", "rival", "female");
+    expect(() => rival.breed("rival-hen-extra", "rival-stud")).toThrow(/owner covers/);
+    const outside = buyer.browseStuds("starter-2").studs.find((s) => s.birdId === "rival-stud");
+    expect(outside?.coversLeft).toBe(COVERS.PER_WEEK);
   });
 
   test("maxPrice refuses a cover repriced above what the buyer read", () => {
-    const { rival, buyer } = market();
-    rival.setStudPrice("rival-stud", 900);
+    const { db, rival, buyer } = market();
+    priced(db, rival, "rival-stud", 900);
     expect(() => buyer.breed("starter-2", "rival-stud", { maxPrice: 400 })).toThrow(
       /above your limit/
     );
@@ -174,7 +235,7 @@ describe("buying a priced cover", () => {
 
   test("income goes to whoever owns the stud NOW, and his price travels with him", () => {
     const { db, rival, buyer } = market();
-    rival.setStudPrice("rival-stud", 400);
+    priced(db, rival, "rival-stud", 400);
     addFarm(db, "new-owner");
     // A change of hands (the marketplace is coming; today only the row moves).
     db.update(birds).set({ farmId: "new-owner" }).where(eq(birds.id, "rival-stud")).run();
@@ -198,24 +259,32 @@ describe("how bots price and buy", () => {
     retired(db, "rival-ace", "rival", "male", 900);
     new Breeding(db, "rival", mulberry32(3)).listStud("rival-ace");
     priceStuds(db, "rival", 3, 1);
-    const ask = (id: string) => db.select().from(birds).where(eq(birds.id, id)).get()?.studPrice;
+    const row = (id: string) => db.select().from(birds).where(eq(birds.id, id)).get();
+    // A bot's ask goes up the same way a player's does: pending, then posted.
+    expect(row("rival-ace")?.studPrice).toBeNull();
+    const opening = STUD_PRICE.FLOOR * (1 + STUD_MARKET.OPENING_SPREAD * 0.5);
+    expect(row("rival-ace")?.studPriceNext).toBe(opening);
+    postStudPrices(db);
     // Two studs: the ace tops the sheet rank (1) and ties on earnings (0).
-    expect(ask("rival-ace")).toBe(STUD_PRICE.FLOOR * (1 + STUD_MARKET.OPENING_SPREAD * 0.5));
-    expect(ask("rival-stud")).toBe(STUD_PRICE.FLOOR);
+    expect(row("rival-ace")?.studPrice).toBe(opening);
+    expect(row("rival-stud")?.studPrice).toBe(STUD_PRICE.FLOOR);
   });
 
   test("on the week's first day: sold out raises, cold cuts toward the floor", () => {
     const { db, rival } = market();
     retired(db, "rival-cold", "rival", "male");
     rival.listStud("rival-cold");
-    rival.setStudPrice("rival-stud", 400);
-    rival.setStudPrice("rival-cold", 400);
+    priced(db, rival, "rival-stud", 400);
+    priced(db, rival, "rival-cold", 400);
     for (let i = 0; i < COVERS.PER_WEEK; i++) egg(db, `e${i}`, "rival-stud", 2);
     // Mid-week: nothing moves.
     priceStuds(db, "rival", 9, 1);
+    postStudPrices(db);
     const ask = (id: string) => db.select().from(birds).where(eq(birds.id, id)).get()?.studPrice;
     expect(ask("rival-stud")).toBe(400);
     priceStuds(db, "rival", 7, 1);
+    expect(ask("rival-stud")).toBe(400); // pending until the tick
+    postStudPrices(db);
     expect(ask("rival-stud")).toBe(400 * (1 + STUD_MARKET.RAISE_SOLD_OUT));
     const cut = 400 - (400 - STUD_PRICE.FLOOR) * STUD_MARKET.CUT_COLD;
     expect(ask("rival-cold")).toBe(
@@ -224,19 +293,25 @@ describe("how bots price and buy", () => {
   });
 
   test("a buyer weighs the premium, and a rich wallet feels it less", () => {
-    expect(coverNet(300, STUD_PRICE.FLOOR, 1, 8_000)).toBe(300);
-    const poor = coverNet(300, 800, 1, 8_000);
-    const rich = coverNet(300, 800, 1, 128_000);
+    expect(coverNet(300, STUD_PRICE.FLOOR, 1, 8_000, false)).toBe(300);
+    const poor = coverNet(300, 800, 1, 8_000, false);
+    const rich = coverNet(300, 800, 1, 128_000, false);
     expect(poor).toBeLessThan(rich);
     expect(rich).toBeLessThan(300);
-    expect(coverNet(300, 800, 0.4, 8_000)).toBeLessThan(poor);
+    expect(coverNet(300, 800, 0.4, 8_000, false)).toBeLessThan(poor);
+  });
+
+  test("on his own stud a barn weighs only the juice share of the premium", () => {
+    const outside = 300 - coverNet(300, 800, 1, 8_000, false);
+    const own = 300 - coverNet(300, 800, 1, 8_000, true);
+    expect(own).toBeCloseTo(outside * STUD_PRICE.PREMIUM_SPLIT.JUICE, 9);
   });
 });
 
 describe("the doctor's stud market", () => {
   test("counts sales apart from own covers, and reads prices and premiums off the ledger", () => {
     const { db, rival, buyer } = market();
-    rival.setStudPrice("rival-stud", 660);
+    priced(db, rival, "rival-stud", 660);
     buyer.breed("starter-2", "rival-stud"); // a sale at 660
     buyer.breed("starter-4", "starter-1"); // farm-1's own stud: floor, not a sale
     const m = studMarket(db);
@@ -249,5 +324,41 @@ describe("the doctor's stud market", () => {
     expect(m.premiumJuiceCents).toBe(split.premiumJuiceCents);
     expect(m.saleIncomeCents).toBe(split.studOwnerCents);
     expect(m.top3).toEqual([{ farm: "rival", cents: split.studOwnerCents }]);
+  });
+
+  test("price against outcome bands each old-enough cover and nets its chick's earnings", () => {
+    const { db, rival, buyer } = market();
+    priced(db, rival, "rival-stud", 660);
+    const sale = buyer.breed("starter-2", "rival-stud").egg.id; // 501+
+    buyer.breed("starter-4", "starter-1"); // farm-1's own stud, at the floor
+    db.insert(events)
+      .values({ dayIndex: 0, type: "purse_payout", birdId: sale, gpCents: 100_000, message: "x" })
+      .run();
+    const at = (day: number) => {
+      db.update(gameState).set({ dayIndex: day }).where(eq(gameState.id, 1)).run();
+      return studMarket(db);
+    };
+    // The covers were bought on day 0. The window is the doctor's own knob.
+    const window = 500 - at(500).outcomeCutoffDay;
+    expect(window).toBeGreaterThan(0);
+    const tooSoon = at(window - 1).outcome;
+    expect(tooSoon.reduce((s, r) => s + r.chicks, 0)).toBe(0);
+    const rows = at(window).outcome;
+    const band = (name: string) => rows.find((r) => r.band === name);
+    expect(band("501+")).toMatchObject({
+      chicks: 1,
+      own: 0,
+      avgEarnedCents: 100_000,
+      avgNetCents: 100_000 - 66_000,
+      paidBack: 1,
+    });
+    expect(band(`${STUD_PRICE.FLOOR} own`)).toMatchObject({
+      chicks: 1,
+      own: 1,
+      avgEarnedCents: 0,
+      avgNetCents: -STUD_PRICE.FLOOR * 100,
+      paidBack: 0,
+    });
+    expect(band(`${STUD_PRICE.FLOOR} outside`)?.chicks).toBe(0);
   });
 });

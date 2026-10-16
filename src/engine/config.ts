@@ -1103,18 +1103,24 @@ export const BREED_SPLIT = {
 // at the moment the cover is bought, so a stud listing travels with the bird
 // when ownership changes (the marketplace is coming).
 //
-// Own-stud covers always pay the FLOOR. The owner's own hen paying his own
-// ask would hand 80% of the premium straight back and push 20% into the
-// juice pool: a self-tax on raising the price, which is the opposite of what
-// the unlock is for.
+// Own-stud covers pay the POSTED price like anyone else's (round 70, second
+// pass, reversing the first cut, which charged the owner's own hens the
+// floor). Zane: an owner should face the price he sets for others. He gets
+// back the owner's share of the floor (BREED_SPLIT) and 80% of the premium,
+// so he pays the stakers' and juice's part of the floor plus 20% of the
+// premium: the same house share every buyer pays, and no more.
+//
+// A price is POSTED, like the card: setStudPrice stores it as pending and the
+// next day tick puts it up, so every buyer sees one price all game-day.
 const STUD_FLOOR = ECONOMY.BREED_FEE;
+const STUD_CAP_MULTIPLE = 10;
 export const STUD_PRICE = {
   // Every cover costs at least this; it is the old fixed price.
   FLOOR: STUD_FLOOR,
   // The most an owner may ask. A v1 guard while we watch how bots price,
   // ruled as 10× the floor rather than as a number, so it follows the floor.
-  CAP_MULTIPLE: 10,
-  CAP: STUD_FLOOR * 10,
+  CAP_MULTIPLE: STUD_CAP_MULTIPLE,
+  CAP: STUD_FLOOR * STUD_CAP_MULTIPLE,
   // How the PREMIUM (price − FLOOR) splits. The floor part still splits per
   // BREED_SPLIT. Zane's reason for a different split on the premium: at 40%
   // to the owner nobody would ever raise a price, because more than half of
@@ -1127,7 +1133,7 @@ export const STUD_PRICE = {
   },
 } as const;
 
-/** What a cover on this rooster costs an outside hen: his ask, clamped to the
+/** What a cover on this rooster costs any hen: his posted ask, clamped to the
  *  current floor and cap, the floor when he has never been priced. Clamped at
  *  READ time so a later change to either bound can never strand a stud at a
  *  price the rule no longer allows. */

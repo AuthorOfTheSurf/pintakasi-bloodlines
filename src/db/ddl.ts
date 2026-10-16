@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS birds (
   retired_week INTEGER,
   listed_stud INTEGER NOT NULL DEFAULT 0,
   stud_price INTEGER,
+  stud_price_next INTEGER,
   mother_id TEXT,
   father_id TEXT,
   named INTEGER NOT NULL DEFAULT 0,

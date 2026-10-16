@@ -563,7 +563,13 @@ export class Bots {
             henId: hen.id,
             studId: stud.birdId,
             price: stud.price,
-            score: coverNet(foalScore(dam, stud, shape), stud.price, appetite.spend, wallet),
+            score: coverNet(
+              foalScore(dam, stud, shape),
+              stud.price,
+              appetite.spend,
+              wallet,
+              stud.mine
+            ),
           });
         }
       }
@@ -938,9 +944,20 @@ function breedTarget(bot: BotProfile, hens: number): number {
  * the buyer's style appetite; a fatter wallet feels the same premium less, by
  * the square root (see STUD_MARKET.WALLET_REF). A floor cover is worth its
  * score, so a world of floor studs buys exactly what it bought before.
+ *
+ * On his OWN stud a barn pays the posted price and gets the owner's share of
+ * the premium back, so the premium costs him only the juice slice of it
+ * (round 70, second pass). That is what `ownStud` prices: a barn breeding to
+ * its own dear stud weighs 20% of the premium, an outside hen all of it.
  */
-export function coverNet(score: number, price: number, spend: number, walletGp: number): number {
-  const premium = price - STUD_PRICE.FLOOR;
+export function coverNet(
+  score: number,
+  price: number,
+  spend: number,
+  walletGp: number,
+  ownStud: boolean
+): number {
+  const premium = (price - STUD_PRICE.FLOOR) * (ownStud ? STUD_PRICE.PREMIUM_SPLIT.JUICE : 1);
   if (premium <= 0) return score;
   const [lo, hi] = STUD_MARKET.WALLET_EASE_RANGE;
   const ease = Math.min(
@@ -999,28 +1016,16 @@ function openingAsks(db: DB, studIds: string[], greed: number): Map<string, numb
  * auto-play. A stud with no price yet gets an opening ask from his record.
  * On the first day of each week every listed stud is repriced on last week's
  * PUBLIC covers: sold out or hot → raise by greed, cold → give back part of
- * the premium, anything else → hold. Own-hen covers are not demand; they
- * always pay the floor.
+ * the premium, anything else → hold. Own-hen covers are not demand: the
+ * owner buys them at his own price, so they say nothing about the market.
+ *
+ * Every price here is written as PENDING, through the same column a human
+ * owner's set_stud_price writes, so bots and players follow one rule: a new
+ * price posts at the next day tick.
  */
-let __pt = 0;
-let __bt = 0;
-process.on("exit", () =>
-  console.log(`PROF priceStuds ${__pt.toFixed(0)} ms · browse+score ${__bt.toFixed(0)} ms`)
-);
 export function priceStuds(db: DB, farmId: string, today: number, greed: number): void {
-  const __t = performance.now();
-  try {
-    return priceStudsInner(db, farmId, today, greed);
-  } finally {
-    __pt += performance.now() - __t;
-  }
-}
-export function __addBrowse(ms: number) {
-  __bt += ms;
-}
-function priceStudsInner(db: DB, farmId: string, today: number, greed: number): void {
   const mine = db
-    .select({ id: birds.id, studPrice: birds.studPrice })
+    .select({ id: birds.id, studPrice: birds.studPrice, studPriceNext: birds.studPriceNext })
     .from(birds)
     .where(
       and(
@@ -1036,11 +1041,16 @@ function priceStudsInner(db: DB, farmId: string, today: number, greed: number): 
   // flock.byId, which builds a whole bird view, and a Friday repricing every
   // stud in the world through it cost ~0.25 s of sim time. The rows above are
   // this farm's retired, listed roosters, and snapPrice keeps every price
-  // inside the floor and cap, which is all setStudPrice would check.
+  // inside the floor and cap, which is all setStudPrice would check. It writes
+  // the same pending column setStudPrice does.
   const setPrice = (id: string, price: number) =>
-    db.update(birds).set({ studPrice: price }).where(eq(birds.id, id)).run();
+    db.update(birds).set({ studPriceNext: price }).where(eq(birds.id, id)).run();
 
-  const unpriced = mine.filter((b) => b.studPrice === null).map((b) => b.id);
+  // An opening ask already pending (set earlier today, posting at the tick)
+  // is not unpriced: a second pass the same day must not ask again.
+  const unpriced = mine
+    .filter((b) => b.studPrice === null && b.studPriceNext === null)
+    .map((b) => b.id);
   if (unpriced.length > 0)
     for (const [id, ask] of openingAsks(db, unpriced, greed)) setPrice(id, ask);
 
@@ -1061,7 +1071,7 @@ function priceStudsInner(db: DB, farmId: string, today: number, greed: number): 
       .map((r) => [r.fatherId, r.n])
   );
   for (const stud of mine) {
-    if (stud.studPrice === null) continue; // opened today; demand has not spoken yet
+    if (stud.studPrice === null) continue; // his opening ask has not posted; no demand yet
     const now = studPriceOf(stud);
     const covers = sold.get(stud.id) ?? 0;
     let next = now;
