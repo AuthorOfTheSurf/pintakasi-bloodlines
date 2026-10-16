@@ -174,6 +174,17 @@ const DOCTOR = {
   // career behind it before its earnings mean anything; a cover bought last
   // month would read every dear stud as a loss. The owner set 82.
   STUD_OUTCOME_CAREER_DAYS: 82,
+  // ── COHORTS (simulate --latecomers) ───────────────────────────────────────
+  // The farm ages, in whole weeks since joining, the same-age table compares
+  // at. Doubling early, where the gap opens fastest, then every four weeks.
+  COHORT_AGES: [1, 2, 4, 8, 12, 16, 20, 24],
+  // Joining-week bands. A month of lag, a season of lag, and later: the
+  // owner's question is whether how late you join decides how far you get.
+  COHORT_BANDS: [
+    { label: "joined wk 1-4", lo: 1, hi: 4 },
+    { label: "joined wk 5-12", lo: 5, hi: 12 },
+    { label: "joined wk 13+", lo: 13, hi: Infinity },
+  ],
   OFFENDER_SAMPLE: 5,
   // How many archived fights the replay check rebuilds (round 38).
   //
@@ -280,6 +291,8 @@ export interface DoctorReport {
   economy: EconomyReport;
   /** The open stud market: prices, premiums and who earns (STUD MARKET). */
   studs: StudMarketReport;
+  /** Null unless a player farm joined after day 0. */
+  cohorts: CohortReport | null;
   ok: boolean;
 }
 
@@ -2204,6 +2217,308 @@ function studMarketSection(m: StudMarketReport): HealthSection {
 }
 
 /**
+ * COHORTS (simulate --latecomers): can a stable that joins late catch up?
+ * Printed only when a player farm joined after day 0, which on a sim means
+ * the flag was on and on the live world means somebody signed up late.
+ *
+ * Three kinds of farm, by when and how they joined: the HOUSE stables (bots,
+ * day 0), the GENESIS PLAYERS (player farms from day 0; on a sim that is the
+ * dev farm, which auto-play runs exactly as it runs a latecomer, so it is the
+ * control), and the LATECOMERS.
+ *
+ * Wealth is GP plus land at the price the game sells it for
+ * (LAND.GP_PER_100_TOKENS), staked or not. The core answer is the SAME-AGE
+ * comparison: a latecomer N weeks after joining against the genesis players
+ * N weeks after day 0, and against the median house stable at week N. Both
+ * started from the same stake, so a ratio under 1 is what joining late cost.
+ * Comparing at the same CALENDAR day instead would only say that older farms
+ * are older.
+ *
+ * Wealth at an age is rebuilt from the ledgers, since no table keeps a
+ * per-farm history: a wallet is the sum of its events' gp_cents, plus the pot
+ * of every card fight it won. A card win pays both stakes into the winner's
+ * wallet with no event of its own (the entry event already took the fee),
+ * and battle_log books it as one stake net of the rake, so the pot is twice
+ * that while the rake is zero. Land is the sum of the events' lt. The block
+ * checks the rebuilt wallets against farms.gp and names any farm it misses.
+ *
+ * COST: two grouped queries over events and battle_log for the history, and
+ * two small grouped queries for the standings.
+ */
+export interface CohortFarm {
+  id: string;
+  name: string;
+  kind: "house" | "genesis player" | "latecomer";
+  joinWeek: number;
+  walletCents: number;
+  ltCents: number;
+  wealthCents: number;
+  /** 1 = the wealthiest farm in the world. */
+  rank: number;
+  purseCents: number;
+  crowns: number;
+  activeBirds: number;
+  /** The best career, card fights plus purses, among the birds it holds now. */
+  bestBirdCents: number;
+  /** [n - 1] is the farm's wealth at the end of its n-th complete week. */
+  wealthByAge: number[];
+}
+
+/** One farm's wealth at one age, over the genesis player and house medians at that age. */
+export interface CohortRatio {
+  age: number;
+  vsPlayer: number | null;
+  vsHouse: number | null;
+}
+
+export interface CohortBand {
+  label: string;
+  members: number;
+  /** Medians across the band's members old enough to have reached each age. */
+  ratios: (CohortRatio & { n: number })[];
+  /** The band's median wealth today over the house median today. */
+  nowVsHouse: number | null;
+}
+
+export interface CohortReport {
+  farms: CohortFarm[];
+  /** The control curves the ratios divide by, at each age any farm has reached. */
+  control: { age: number; playerCents: number | null; houseCents: number | null }[];
+  latecomers: { id: string; ratios: CohortRatio[] }[];
+  bands: CohortBand[];
+  /** Farms whose rebuilt wallet disagrees with farms.gp: their history is not trustworthy. */
+  unreconciled: string[];
+}
+
+type WeekMove = { gp: number; lt: number };
+
+export function cohorts(db: DB): CohortReport | null {
+  const perWeek = CALENDAR.DAYS_PER_WEEK;
+  const allFarms = db.select().from(farms).all();
+  const kindOf = (f: (typeof allFarms)[number]): CohortFarm["kind"] => {
+    if (f.isBot) return "house";
+    return f.createdDay === 0 ? "genesis player" : "latecomer";
+  };
+  if (!allFarms.some((f) => kindOf(f) === "latecomer")) return null;
+
+  const ltGp = LAND.GP_PER_100_TOKENS / LT_CENTS;
+  const lastFullWeek = Math.floor((stateRow(db).dayIndex + 1) / perWeek) - 1;
+
+  const ledger = db.all<{ farm: string; week: number; gp: number; lt: number }>(
+    sql`SELECT farm_id AS farm, day_index / ${perWeek} AS week,
+               COALESCE(SUM(gp_cents), 0) AS gp, COALESCE(SUM(lt), 0) AS lt
+        FROM events WHERE farm_id IS NOT NULL GROUP BY farm, week`
+  );
+  const pots = db.all<{ farm: string; week: number; gp: number }>(
+    sql`SELECT farm_id AS farm, day_index / ${perWeek} AS week, SUM(2 * gp_delta_cents) AS gp
+        FROM battle_log WHERE result = 'win' AND lobby_id IS NOT NULL GROUP BY farm, week`
+  );
+  const moved = new Map<string, Map<number, WeekMove>>();
+  const cellOf = (farm: string, week: number): WeekMove => {
+    const weeks = moved.get(farm) ?? new Map<number, WeekMove>();
+    moved.set(farm, weeks);
+    const cell = weeks.get(week) ?? { gp: 0, lt: 0 };
+    weeks.set(week, cell);
+    return cell;
+  };
+  for (const r of ledger) {
+    const cell = cellOf(r.farm, r.week);
+    cell.gp += r.gp;
+    cell.lt += r.lt;
+  }
+  for (const r of pots) cellOf(r.farm, r.week).gp += r.gp;
+
+  const purses = new Map(
+    db
+      .all<{ farm: string; cents: number; crowns: number }>(
+        sql`SELECT farm_id AS farm, SUM(gp_won_cents) AS cents,
+                   SUM(status = 'champion') AS crowns
+            FROM tournament_entries GROUP BY farm_id`
+      )
+      .map((r) => [r.farm, r])
+  );
+  const flocks = new Map(
+    db
+      .all<{ farm: string; active: number; best: number }>(
+        sql`WITH purse AS (
+              SELECT bird_id, SUM(gp_cents) AS cents FROM events
+               WHERE type = 'purse_payout' AND gp_cents IS NOT NULL GROUP BY bird_id),
+            card AS (SELECT bird_id, SUM(gp_delta_cents) AS cents FROM battle_log GROUP BY bird_id)
+            SELECT b.farm_id AS farm, SUM(b.status = 'active') AS active,
+                   MAX(COALESCE(c.cents, 0) + COALESCE(p.cents, 0)) AS best
+            FROM birds b
+            LEFT JOIN card c ON c.bird_id = b.id
+            LEFT JOIN purse p ON p.bird_id = b.id
+            GROUP BY b.farm_id`
+      )
+      .map((r) => [r.farm, r])
+  );
+
+  const unreconciled: string[] = [];
+  const rows: CohortFarm[] = allFarms.map((f) => {
+    const weeks = moved.get(f.id) ?? new Map<number, WeekMove>();
+    const joinWeek = Math.floor(f.createdDay / perWeek);
+    let gpSoFar = 0;
+    let ltSoFar = 0;
+    const wealthByAge: number[] = [];
+    // Weeks before joining hold nothing, so the walk can start at the join.
+    for (let week = joinWeek; week <= lastFullWeek; week++) {
+      const cell = weeks.get(week);
+      gpSoFar += cell?.gp ?? 0;
+      ltSoFar += cell?.lt ?? 0;
+      wealthByAge.push(gpSoFar + ltSoFar * ltGp);
+    }
+    const walletCents = f.gp * 100 + f.gpCents;
+    const rebuilt = [...weeks.values()].reduce((s, c) => s + c.gp, 0);
+    if (rebuilt !== walletCents) unreconciled.push(f.name);
+    const ltCents = f.landTokensCents + f.stakedLandCents;
+    return {
+      id: f.id,
+      name: f.name,
+      kind: kindOf(f),
+      joinWeek,
+      walletCents,
+      ltCents,
+      wealthCents: walletCents + ltCents * ltGp,
+      rank: 0,
+      purseCents: purses.get(f.id)?.cents ?? 0,
+      crowns: purses.get(f.id)?.crowns ?? 0,
+      activeBirds: flocks.get(f.id)?.active ?? 0,
+      bestBirdCents: flocks.get(f.id)?.best ?? 0,
+      wealthByAge,
+    };
+  });
+  const ranked = [...rows].sort((a, b) => b.wealthCents - a.wealthCents);
+  ranked.forEach((r, i) => (r.rank = i + 1));
+
+  const ofKind = (kind: CohortFarm["kind"]) => rows.filter((r) => r.kind === kind);
+  const medianOrNull = (xs: number[]) => (xs.length ? median(xs) : null);
+  const wealthAt = (members: CohortFarm[], age: number) =>
+    medianOrNull(
+      members.filter((m) => m.wealthByAge.length >= age).map((m) => m.wealthByAge[age - 1])
+    );
+  const oldest = Math.max(...rows.map((r) => r.wealthByAge.length));
+  const control = Array.from({ length: oldest }, (_, i) => ({
+    age: i + 1,
+    playerCents: wealthAt(ofKind("genesis player"), i + 1),
+    houseCents: wealthAt(ofKind("house"), i + 1),
+  }));
+  const over = (x: number | null, by: number | null) => (x !== null && by ? x / by : null);
+  const ratiosOf = (f: CohortFarm): CohortRatio[] =>
+    f.wealthByAge.map((w, i) => ({
+      age: i + 1,
+      vsPlayer: over(w, control[i].playerCents),
+      vsHouse: over(w, control[i].houseCents),
+    }));
+
+  const late = ofKind("latecomer").sort((a, b) => a.joinWeek - b.joinWeek);
+  const houseNow = medianOrNull(ofKind("house").map((f) => f.wealthCents));
+  const bands = DOCTOR.COHORT_BANDS.map((b): CohortBand => {
+    const members = late.filter((f) => f.joinWeek >= b.lo && f.joinWeek <= b.hi);
+    const ratios = members.map(ratiosOf);
+    const bandMedian = (i: number, key: "vsPlayer" | "vsHouse") =>
+      medianOrNull(
+        ratios.flatMap((rs) => {
+          const v = rs[i]?.[key];
+          return v === undefined || v === null ? [] : [v];
+        })
+      );
+    const reached = Math.max(0, ...members.map((m) => m.wealthByAge.length));
+    return {
+      label: b.label,
+      members: members.length,
+      ratios: Array.from({ length: reached }, (_, i) => ({
+        age: i + 1,
+        n: members.filter((m) => m.wealthByAge.length > i).length,
+        vsPlayer: bandMedian(i, "vsPlayer"),
+        vsHouse: bandMedian(i, "vsHouse"),
+      })),
+      nowVsHouse: over(medianOrNull(members.map((m) => m.wealthCents)), houseNow),
+    };
+  });
+
+  return {
+    farms: ranked,
+    control,
+    latecomers: late.map((f) => ({ id: f.id, ratios: ratiosOf(f) })),
+    bands,
+    unreconciled,
+  };
+}
+
+const KIND_LABEL: Record<CohortFarm["kind"], string> = {
+  house: "house",
+  "genesis player": "genesis",
+  latecomer: "late",
+};
+
+function cohortsSection(c: CohortReport): HealthSection {
+  const kGp = (cents: number | null) => (cents === null ? "—" : `${(cents / 100_000).toFixed(1)}k`);
+  const ratio = (x: number | null) => (x === null ? "—" : x.toFixed(2));
+  const pair = (r: CohortRatio | undefined) =>
+    (r ? `${ratio(r.vsPlayer)}·${ratio(r.vsHouse)}` : "").padStart(11);
+  const ages = DOCTOR.COHORT_AGES.filter((a) => a <= c.control.length);
+  const players = c.farms.filter((f) => f.kind === "genesis player");
+  const controlName = players.length === 1 ? players[0].name : "genesis player median";
+  const byId = new Map(c.farms.map((f) => [f.id, f]));
+  const count = (kind: CohortFarm["kind"]) => c.farms.filter((f) => f.kind === kind).length;
+  return {
+    title: "COHORTS",
+    lines: [
+      `${count("house")} house · ${count("genesis player")} genesis player · ` +
+        `${count("latecomer")} latecomer farms · wealth = GP + ` +
+        `${LAND.GP_PER_100_TOKENS / LT_CENTS} GP per LT · GP and LT in thousands`,
+      `${"rank farm".padEnd(36)}${"kind".padEnd(9)}${"wk".padStart(3)}${"wallet".padStart(8)}` +
+        `${"LT".padStart(8)}${"wealth".padStart(8)}${"purses".padStart(8)}${"crowns".padStart(7)}` +
+        `${"birds".padStart(6)}${"best bird".padStart(10)}`,
+      ...c.farms.map(
+        (f) =>
+          `${String(f.rank).padStart(4)} ${f.name.slice(0, 30).padEnd(31)}` +
+          `${KIND_LABEL[f.kind].padEnd(9)}${String(f.joinWeek).padStart(3)}` +
+          `${kGp(f.walletCents).padStart(8)}${kGp(f.ltCents).padStart(8)}` +
+          `${kGp(f.wealthCents).padStart(8)}${kGp(f.purseCents).padStart(8)}` +
+          `${String(f.crowns).padStart(7)}${String(f.activeBirds).padStart(6)}` +
+          `${kGp(f.bestBirdCents).padStart(10)}`
+      ),
+      `SAME AGE: wealth N weeks after joining. Control rows in thousands of GP; ` +
+        `each latecomer as a ratio to them (${controlName} · house median)`,
+      `${"".padEnd(36)}${ages.map((a) => `wk${a}`.padStart(11)).join("")}`,
+      `${controlName.slice(0, 34).padEnd(36)}` +
+        ages.map((a) => kGp(c.control[a - 1].playerCents).padStart(11)).join(""),
+      `${"house median".padEnd(36)}` +
+        ages.map((a) => kGp(c.control[a - 1].houseCents).padStart(11)).join(""),
+      // The floor every farm reaches by checking in and nothing else. Early
+      // ratios sit near 1 because both sides are mostly this; a ratio says
+      // something about play only once the controls pull clear of it.
+      `${"stake + drip only".padEnd(36)}` +
+        ages
+          .map((a) =>
+            kGp(
+              (ECONOMY.STARTING_GP + a * CALENDAR.DAYS_PER_WEEK * ECONOMY.DAILY_DRIP) * 100
+            ).padStart(11)
+          )
+          .join(""),
+      ...c.latecomers.map((l) => {
+        const f = byId.get(l.id);
+        const label = `wk ${String(f?.joinWeek ?? "?").padStart(2)} ${(f?.name ?? l.id).slice(0, 28)}`;
+        return `${label.padEnd(36)}${ages.map((a) => pair(l.ratios[a - 1])).join("")}`;
+      }),
+      `BY JOINING WEEK: median ratio (${controlName} · house median) · now = median wealth ` +
+        "today over the house median today",
+      ...c.bands.map(
+        (b) =>
+          `${`${b.label} (${b.members})`.padEnd(36)}${ages.map((a) => pair(b.ratios[a - 1])).join("")}` +
+          `   now ${ratio(b.nowVsHouse)}`
+      ),
+    ],
+    warn: c.unreconciled.length
+      ? `rebuilt wallets miss farms.gp for ${c.unreconciled.slice(0, DOCTOR.OFFENDER_SAMPLE).join(", ")}: ` +
+        "the same-age history is not trustworthy"
+      : undefined,
+  };
+}
+
+/**
  * Did anyone walk through each door? This is the tripwire AGENTS.md asks for:
  * twice a shipped feature measured exactly ZERO because no bot had an
  * appetite for it (claiming in round 19, paid gacha in round 22), and both
@@ -2778,6 +3093,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
   const created = gpFlowsByDay(db, GP_FAUCETS);
   const money = economy(db, topline, created);
   const studs = studMarket(db);
+  const cohortReport = cohorts(db);
   // Two things can be wrong with the card at once — too few opponents and
   // nobody playing the going — and a section carries one warn, so they share
   // it. Reading "A · B" beats losing one of them to the other.
@@ -2828,6 +3144,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // Right after ECONOMY: that block says where GP was made and where it
     // went in bulk, this one says whether breeders are earning from the rich.
     studMarketSection(studs),
+    // After the money blocks: those say how the economy moves GP in bulk,
+    // this one says who ends up with it, by when they joined.
+    ...(cohortReport ? [cohortsSection(cohortReport)] : []),
     adoption(db, allEvents),
     discovery(discoveryAudit),
   ];
@@ -2843,6 +3162,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     discovery: discoveryAudit,
     economy: money,
     studs,
+    cohorts: cohortReport,
     ok: invariants.every((i) => i.passed),
   };
 }

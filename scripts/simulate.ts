@@ -25,6 +25,9 @@
  *          is what makes an A/B of two code paths honest. Omit for live-style
  *          randomness. See seedWorld in engine/rng.
  * --discovery-policy=current|end-first  simulation-only blade policy A/B.
+ * --latecomers  one new player stable joins on every Hatch Friday after day 0,
+ *          played by auto-play like the dev farm (engine/latecomers.ts); the
+ *          doctor's COHORTS block then asks whether they catch up.
  */
 import { eq } from "drizzle-orm";
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -51,6 +54,7 @@ import { BOT_FARMS } from "@/engine/bot-config";
 import { createClient } from "rivetkit/client";
 import type { DiscoveryPolicy } from "@/engine/bots";
 import { Game } from "@/engine/game";
+import { admitLatecomer } from "@/engine/latecomers";
 import { seedWorld } from "@/engine/rng";
 
 const args = process.argv.slice(2);
@@ -94,6 +98,8 @@ if (seedArg !== undefined) {
   }
   seedWorld(Number(seedArg));
 }
+
+const latecomers = args.includes("--latecomers");
 
 const policyArg = flagValue("discovery-policy") ?? "current";
 const discoveryPolicy: DiscoveryPolicy = oneOf(
@@ -455,6 +461,13 @@ let weekDays = 0;
 
 for (let day = 1; day <= days; day++) {
   const dayStart = performance.now();
+
+  // ── A latecomer signs up before the day's play, so it plays it ───────
+  const joined = latecomers ? admitLatecomer(db) : null;
+  if (joined) {
+    const farm = db.select().from(farms).where(eq(farms.id, joined)).get();
+    console.log(`        ${farm?.name ?? joined} joins the world`);
+  }
 
   // ── Every player-owned stable plays its honest day ───────────────────
   playAllHonestDays(db, discoveryPolicy);

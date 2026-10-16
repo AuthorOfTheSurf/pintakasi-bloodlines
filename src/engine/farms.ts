@@ -155,14 +155,21 @@ export class Farms {
     return readWorldState(this.database).dayIndex;
   }
 
-  register(input: RegisterInput): { farm: FarmView; apiKey: string } {
+  /**
+   * `opts.id` is for the simulator's latecomers only, and it sits outside
+   * RegisterInput so the HTTP route, which hands its request body straight
+   * in, can never let a caller pick an id. A random id never touches the
+   * seeded stream and every event row carries it, so a seeded world with
+   * farms joining mid-run would stop replaying (engine/latecomers.ts).
+   */
+  register(input: RegisterInput, opts: { id?: string } = {}): { farm: FarmView; apiKey: string } {
     const name = input.name.trim();
     if (!name) throw new Error("A farm needs a name");
     assertFarmColors(input.primaryColor, input.secondaryColor);
     if (farmNameTaken(this.database, name))
       throw new Error(`A farm named "${name}" already exists`);
 
-    const id = randomUUID();
+    const id = opts.id ?? randomUUID();
     const apiKey = newFarmKey();
     this.database
       .insert(farms)
