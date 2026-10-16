@@ -1503,8 +1503,11 @@ export function AdminTabs({
           if (fight) setOpenFight(fight);
         }}
         onKeyDown={(e) => {
-          const fight = e.key === "Enter" ? cardFight(e.target) : null;
-          if (fight) setOpenFight(fight);
+          // role="button" promises both activators; Space would otherwise scroll the page.
+          const fight = e.key === "Enter" || e.key === " " ? cardFight(e.target) : null;
+          if (!fight) return;
+          e.preventDefault();
+          setOpenFight(fight);
         }}
       >
         {card}
