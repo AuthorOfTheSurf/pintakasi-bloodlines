@@ -2,19 +2,24 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
 import {
+  bestShape,
   chaseCrowns,
   chaseJuvenileCrowns,
+  coverNet,
+  foalScore,
   pickOffering,
+  priceStuds,
   type DiscoveryPolicy,
   weatherCardsToday,
   weatherOrder,
 } from "./bots";
+import { STUD_MARKET } from "./bot-config";
 import { Breeding } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies } from "./lobbies";
-import { LT_CENTS, barnCapacity, nextExpansionCost } from "./config";
+import { LT_CENTS, STUD_PRICE, barnCapacity, nextExpansionCost } from "./config";
 import { drawStarterNames } from "./naming";
 import { mulberry32 } from "./rng";
 
@@ -70,6 +75,9 @@ export function playHonestDay(
   const breeding = new Breeding(db, farmId, mulberry32(500 + day));
   for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
     quietly(() => breeding.listStud(rooster.id));
+  // …and price them the way the bots do (economy round 3), at the roster's
+  // middle appetite: an absent player neither gouges nor sells at the floor.
+  quietly(() => priceStuds(db, farmId, day, STUD_MARKET.AUTO_PLAY.greed));
 
   // Expand the barn before it chokes (round 43) — same competence rule as the
   // bots (see bots.ts step 1b2): near the ceiling, unstake the shortfall and
@@ -97,14 +105,36 @@ export function playHonestDay(
     if (whole > 0) farmsApi.stake(farmId, whole);
   });
 
-  // One cover a day, first hen whose nest is empty (one egg per hen).
+  // One cover a day, first hen whose nest is empty (one egg per hen). Since
+  // economy round 3 she gets the stud a bot buyer would pick: the best
+  // expected foal on her own grain, net of what his premium costs this wallet.
+  // Pick order falls through on a refusal, so a dear stud the barn cannot
+  // afford hands the cover to the next one down.
   for (const hen of flock.filter((b) => b.status === "retired" && b.sex === "female")) {
     let bred = false;
     quietly(() => {
-      const barn = breeding.browseStuds(hen.id);
-      if (barn.studs.length > 0) {
-        breeding.breed(hen.id, barn.studs[0].birdId);
-        bred = true;
+      const wallet = farmsApi.rowById(farmId).gp;
+      const { shape } = bestShape(hen);
+      const ranked = breeding
+        .browseStuds(hen.id)
+        .studs.map((stud) => ({
+          stud,
+          net: coverNet(
+            foalScore(hen, stud, shape),
+            stud.price,
+            STUD_MARKET.AUTO_PLAY.spend,
+            wallet
+          ),
+        }))
+        .sort((a, b) => b.net - a.net);
+      for (const { stud } of ranked) {
+        // The reserve guards the premium only: a floor cover was always
+        // bought down to the last 160 GP, and that habit is not this round's.
+        if (stud.price > STUD_PRICE.FLOOR && wallet < stud.price + AUTO_RESERVE) continue;
+        if (quietly(() => breeding.breed(hen.id, stud.birdId))) {
+          bred = true;
+          return;
+        }
       }
     });
     if (bred) break;

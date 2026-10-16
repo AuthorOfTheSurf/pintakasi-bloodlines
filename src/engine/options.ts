@@ -298,19 +298,25 @@ export function buildOptions(view: BotView): OptionsPlan {
   // Breed — pre-paired, so "unknown mother #1" is unrepresentable. Own studs
   // first (no cross-farm fee narrative needed), then the market's best.
   if (hens.length > 0 && barnSpace > 0 && ECONOMY.BREED_FEE <= spendable) {
-    const sires: { id: string; name: string; label: string; halfStars: number }[] = [
+    // Own studs cover at the floor; a market stud at his owner's ask
+    // (economy round 3), and one the barn cannot afford is not offered.
+    const sires: { id: string; name: string; label: string; halfStars: number; fee: number }[] = [
       ...ownStuds.map((s) => ({
         id: s.id,
         name: s.name,
         label: "your stud",
         halfStars: s.halfStars,
+        fee: ECONOMY.BREED_FEE,
       })),
-      ...view.studMarket.map((s) => ({
-        id: s.id,
-        name: s.name,
-        label: `stud of ${s.farm}`,
-        halfStars: s.stars * 2,
-      })),
+      ...view.studMarket
+        .filter((s) => s.price <= spendable)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          label: `stud of ${s.farm}`,
+          halfStars: s.stars * 2,
+          fee: s.price,
+        })),
     ].sort((a, b) => b.halfStars - a.halfStars);
     const pairs: [(typeof hens)[number], (typeof sires)[number]][] = [];
     for (const hen of hens.slice(0, 2))
@@ -321,7 +327,7 @@ export function buildOptions(view: BotView): OptionsPlan {
     for (const [i, [hen, sire]] of pairs.entries())
       barn.push({
         do: `breed ${hen.name} × ${sire.name} (${sire.label})`,
-        fee: ECONOMY.BREED_FEE,
+        fee: sire.fee,
         value: i === 0 ? 8 : 7,
         why:
           i === 0

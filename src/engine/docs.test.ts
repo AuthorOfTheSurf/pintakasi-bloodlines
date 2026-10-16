@@ -29,6 +29,7 @@ import {
   PINTAKASI,
   purseShareOf,
   STAKER_FLOWS,
+  STUD_PRICE,
   WEATHER,
 } from "./config";
 
@@ -157,6 +158,24 @@ describe("MCP docs carry the CURRENT config values", () => {
     // Whole tokens, not the hundredths the constant now holds (round 36) — a
     // stud seat is ruled at 100 LT and must read as 100 LT.
     expect(TOOL_DESCRIPTIONS.list_stud).toContain(`${COVERS.STUD_LISTING_LT / LT_CENTS} LT`);
+  });
+
+  // Economy round 3 unlocked stud pricing. Until then every doc said a cover
+  // was one flat price, "min AND max for now — player pricing later". An
+  // agent that keeps reading that never prices its studs and never checks a
+  // buyer's price, so the old claim is pinned out and the new door pinned in.
+  test("stud pricing is documented as owner-set, not as a fixed price", () => {
+    const fixedPrice = [/min(imum)? AND max/i, /player pricing later/i, /no matter whose stud/i];
+    for (const stale of fixedPrice) {
+      expect(everything).not.toMatch(stale);
+      expect(readWikiPage("breeding/page.tsx")).not.toMatch(stale);
+    }
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toBeDefined();
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toContain(`${STUD_PRICE.CAP}`);
+    expect(TOOL_DESCRIPTIONS.browse_studs).toMatch(/price/i);
+    // The premium's owner share is the reason anyone raises a price; the
+    // breeding page has to say it, computed from the knob.
+    expect(readWikiPage("breeding/page.tsx")).toContain("STUD_PRICE.PREMIUM_SPLIT");
   });
 
   // Missing entirely #1: the Juvenile Championship (JUVENILE_MAJOR) — the

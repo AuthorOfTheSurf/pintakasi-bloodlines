@@ -107,7 +107,7 @@ describe("the unified ledger", () => {
     expect(breed.farmId).toBe(w.devId);
     expect(breed.gpCents).toBe(-ECONOMY.BREED_FEE * 100);
     expect(breed.message).toContain("Dalisay × Tandang Pula");
-    expect(JSON.parse(breed.data!)).toEqual(split);
+    expect(JSON.parse(breed.data!)).toEqual({ ...split, ownStud: true });
 
     const [income] = ofType(w.db, "stud_income");
     expect(income.farmId).toBe(w.devId); // own stud — the share comes home

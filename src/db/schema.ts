@@ -134,6 +134,11 @@ export const birds = sqliteTable("birds", {
   // The breeding barn: a retired rooster LISTED here is open for covers
   // from any farm's hens (14/week public + 2 owner-reserved).
   listedStud: integer("listed_stud").notNull().default(0),
+  // The cover price his owner asks, in whole GP (economy round 3). Null =
+  // never priced = the floor. Read it through config's studPriceOf, which
+  // clamps to the live floor and cap. It lives on the BIRD so the listing
+  // travels with him if he changes hands.
+  studPrice: integer("stud_price"),
   motherId: text("mother_id"),
   fatherId: text("father_id"),
   // The naming law (round 14): a bird must be given a real name before its

@@ -31,6 +31,7 @@ import {
   LAND,
   LT_CENTS,
   SCOUT,
+  STUD_PRICE,
   landForFight,
   stakePerFight,
   weatherOfDay,
@@ -271,6 +272,8 @@ export interface DoctorReport {
   discovery: BladeDiscovery;
   /** The money: faucets, sinks, supply, wallets, purses (the ECONOMY section). */
   economy: EconomyReport;
+  /** The open stud market: prices, premiums and who earns (STUD MARKET). */
+  studs: StudMarketReport;
   ok: boolean;
 }
 
@@ -1978,6 +1981,109 @@ function economySection(e: EconomyReport): HealthSection {
 }
 
 /**
+ * THE OPEN STUD MARKET (economy round 3). Owners set cover prices from the
+ * floor to the cap, and the owner's question is circulation: does the market
+ * move GP from rich barns to good breeders? So this reads three things: did
+ * anyone price above the floor (adoption), what the prices look like, and
+ * who earns the stud income (the top 3 farms against everyone else), beside
+ * how concentrated the wallets are.
+ *
+ * A SALE is a cover on another farm's stud. An own-stud cover always pays the
+ * floor and pays the owner's share back to himself, so it is counted apart:
+ * it is breeding, not trade. Worlds from before the round carry no `ownStud`
+ * flag on the breed row; the message's "(own stud)" marks those.
+ *
+ * Stud income is attributed through the egg to its sire's CURRENT farm. Studs
+ * cannot change hands yet, so that is the farm that was paid; when the
+ * marketplace lands this should read the stud_income rows instead.
+ *
+ * COST: two grouped queries over `events` and one over `farms`.
+ */
+export interface StudMarketReport {
+  covers: number;
+  sold: number;
+  soldAboveFloor: number;
+  /** Over sales, in whole GP. Zero when nothing has sold. */
+  price: { median: number; p90: number; max: number };
+  premiumOwnerCents: number;
+  premiumJuiceCents: number;
+  /** The stud owner's share of every SALE, all farms. */
+  saleIncomeCents: number;
+  /** The three farms that earned the most from sales, best first. */
+  top3: { farm: string; cents: number }[];
+  /** Share of all wallet GP held by the three richest farms. */
+  walletTop3Share: number;
+}
+
+export function studMarket(db: DB): StudMarketReport {
+  const own = sql.raw("COALESCE(json_extract(e.data, '$.ownStud'), e.message LIKE '%(own stud)%')");
+  const rows = db.all<{ price: number; own: number; n: number; po: number; pj: number }>(
+    sql`SELECT -e.gp_cents / 100 AS price, ${own} AS own, COUNT(*) AS n,
+               COALESCE(SUM(json_extract(e.data, '$.premiumOwnerCents')), 0) AS po,
+               COALESCE(SUM(json_extract(e.data, '$.premiumJuiceCents')), 0) AS pj
+        FROM events e WHERE e.type = 'breed' GROUP BY price, own ORDER BY price`
+  );
+  const sales = rows.filter((r) => !r.own);
+  const sold = sales.reduce((s, r) => s + r.n, 0);
+  // The histogram is sorted by price, so a percentile is a walk up it.
+  const at = (p: number) => {
+    const target = Math.max(1, Math.ceil(p * sold));
+    let seen = 0;
+    for (const r of sales) if ((seen += r.n) >= target) return r.price;
+    return 0;
+  };
+  const earners = db.all<{ farm: string; cents: number }>(
+    sql`SELECT f.name AS farm, SUM(json_extract(e.data, '$.studOwnerCents')) AS cents
+        FROM events e
+        JOIN birds egg ON egg.id = e.bird_id
+        JOIN birds sire ON sire.id = egg.father_id
+        JOIN farms f ON f.id = sire.farm_id
+        WHERE e.type = 'breed' AND NOT ${own}
+        GROUP BY sire.farm_id ORDER BY cents DESC`
+  );
+  const wallets = db
+    .all<{ cents: number }>(sql`SELECT gp * 100 + gp_cents AS cents FROM farms ORDER BY cents DESC`)
+    .map((r) => r.cents);
+  const walletTotal = wallets.reduce((s, c) => s + c, 0);
+  return {
+    covers: rows.reduce((s, r) => s + r.n, 0),
+    sold,
+    soldAboveFloor: sales.filter((r) => r.price > STUD_PRICE.FLOOR).reduce((s, r) => s + r.n, 0),
+    price: { median: at(0.5), p90: at(0.9), max: sales.at(-1)?.price ?? 0 },
+    premiumOwnerCents: sales.reduce((s, r) => s + r.po, 0),
+    premiumJuiceCents: sales.reduce((s, r) => s + r.pj, 0),
+    saleIncomeCents: earners.reduce((s, r) => s + r.cents, 0),
+    top3: earners.slice(0, 3),
+    walletTop3Share:
+      walletTotal > 0 ? wallets.slice(0, 3).reduce((s, c) => s + c, 0) / walletTotal : 0,
+  };
+}
+
+function studMarketSection(m: StudMarketReport): HealthSection {
+  const top3Cents = m.top3.reduce((s, r) => s + r.cents, 0);
+  return {
+    title: "STUD MARKET",
+    lines: [
+      `${m.covers} covers · ${m.sold} sold to other farms · ` +
+        `${pct(m.soldAboveFloor, m.sold)} of sales above the ${STUD_PRICE.FLOOR} GP floor`,
+      `sale price  median ${m.price.median} · p90 ${m.price.p90} · max ${m.price.max} GP ` +
+        `(cap ${STUD_PRICE.CAP})`,
+      `premiums    ${gp(m.premiumOwnerCents)} GP to owners · ${gp(m.premiumJuiceCents)} GP to the juice pool`,
+      `sale income ${gp(m.saleIncomeCents)} GP · top 3 farms ${pct(top3Cents, m.saleIncomeCents)} ` +
+        `(${m.top3.map((r) => `${r.farm} ${gp(r.cents)}`).join(" · ") || "none"}) · ` +
+        `the rest ${pct(m.saleIncomeCents - top3Cents, m.saleIncomeCents)}`,
+      `wallets     the 3 richest farms hold ${(m.walletTop3Share * 100).toFixed(1)}% of all wallet GP`,
+    ],
+    // The door this round opened. Sales with none above the floor means no
+    // owner priced, or no buyer would pay: either way the round measured zero.
+    warn:
+      m.sold > 0 && m.soldAboveFloor === 0
+        ? "no cover sold above the floor: nobody is pricing studs"
+        : undefined,
+  };
+}
+
+/**
  * Did anyone walk through each door? This is the tripwire AGENTS.md asks for:
  * twice a shipped feature measured exactly ZERO because no bot had an
  * appetite for it (claiming in round 19, paid gacha in round 22), and both
@@ -2551,6 +2657,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
   // Read once: the land valuation and the ECONOMY block both price the faucet.
   const created = gpFlowsByDay(db, GP_FAUCETS);
   const money = economy(db, topline, created);
+  const studs = studMarket(db);
   // Two things can be wrong with the card at once — too few opponents and
   // nobody playing the going — and a section carries one warn, so they share
   // it. Reading "A · B" beats losing one of them to the other.
@@ -2598,6 +2705,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // paid, ECONOMY says where that money was printed and whether it cleared
     // the door.
     economySection(money),
+    // Right after ECONOMY: that block says where GP was made and where it
+    // went in bulk, this one says whether breeders are earning from the rich.
+    studMarketSection(studs),
     adoption(db, allEvents),
     discovery(discoveryAudit),
   ];
@@ -2612,6 +2722,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     health,
     discovery: discoveryAudit,
     economy: money,
+    studs,
     ok: invariants.every((i) => i.passed),
   };
 }
