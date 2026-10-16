@@ -11,6 +11,7 @@ import type { FarmColor } from "@/engine/config";
 import { readWorldState } from "@/engine/farms";
 import { GameClock } from "@/engine/game-clock";
 import { hatchDayOf } from "@/engine/lifecycle";
+import { DAY_TURNS_PH_HOUR } from "@/engine/live-clock";
 import { SWATCH } from "../../swatches";
 
 export const dynamic = "force-dynamic";
@@ -84,8 +85,9 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
             . Today in the game is {GameClock.dateOf(today)}.
           </p>
           <p>
-            A game-day ends at midnight Philippine time. Until your eggs hatch there is nothing to
-            fight with, so this is a good time to connect Claude and learn the rules.
+            A game-day ends at {DAY_TURNS_PH_HOUR}:00 in the morning, Philippine time (midnight
+            GMT). Until your eggs hatch there is nothing to fight with, so this is a good time to
+            connect Claude and learn the rules.
           </p>
         </>
       )}

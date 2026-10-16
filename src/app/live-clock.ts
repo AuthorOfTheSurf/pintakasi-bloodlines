@@ -4,7 +4,7 @@ import type { TickView } from "@/engine/game";
 
 /**
  * The server side of the live clock (engine/live-clock.ts has the rule). One
- * env var turns it on: PINTAKASI_LIVE_START, the Manila date of day 0. Unset
+ * env var turns it on: PINTAKASI_LIVE_START, the UTC date of day 0. Unset
  * means no clock at all, so `bun dev`, `bun dev:sim`, sims and tests behave
  * exactly as before.
  */
@@ -69,7 +69,7 @@ export function startLiveClock(): void {
       console.error("[live-clock] catch-up failed:", err);
     }
   };
-  console.log(`[live-clock] on: day 0 = ${start} (Manila), checking every 60 s`);
+  console.log(`[live-clock] on: day 0 = ${start} (UTC), checking every 60 s`);
   tick();
   state.timer = setInterval(tick, LIVE_CLOCK_INTERVAL_MS);
 }

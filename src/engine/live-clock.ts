@@ -5,8 +5,10 @@ import { GameClock } from "./game-clock";
 
 /**
  * THE LIVE CLOCK (alpha-1, 2026-10). A sim world turns when someone presses a
- * button; the live world turns once per real day, at midnight Philippine time,
- * which is what the Handbook and the claim page already promise players.
+ * button; the live world turns once per real day, at midnight UTC. The owner
+ * ruled UTC over Manila midnight (2026-10-16): it is 8:00 in the morning in
+ * the Philippines, which suits the owner, and one UTC clock is simpler than an
+ * offset.
  *
  * ⚠ THE TARGET IS A PURE FUNCTION OF NOW, never "one tick per timer fire".
  * A timer that ticks when it fires double-ticks after a restart and skips
@@ -17,11 +19,17 @@ import { GameClock } from "./game-clock";
  */
 
 const DAY_MS = 86_400_000;
-/** Asia/Manila is UTC+8 all year; the Philippines keeps no daylight saving. */
-const MANILA_OFFSET_MS = 8 * 3_600_000;
 
 /**
- * Parse PINTAKASI_LIVE_START: the Manila calendar date of day 0. Returns the
+ * The hour the live day turns, on a Philippine clock: UTC midnight is 08:00 in
+ * Manila, which is UTC+8 all year with no daylight saving. The clock itself
+ * never reads this; it exists so player-facing copy can name the hour, and the
+ * tests pin it to the clock's real boundary.
+ */
+export const DAY_TURNS_PH_HOUR = 8;
+
+/**
+ * Parse PINTAKASI_LIVE_START: the UTC calendar date of day 0. Returns the
  * date as a UTC-midnight timestamp, the unit `liveTargetDay` counts from.
  * Throws on anything that is not a real YYYY-MM-DD date, because a typo here
  * would otherwise tick a world years forward on boot.
@@ -38,13 +46,13 @@ export function parseLiveStart(value: string): number {
 }
 
 /**
- * The dayIndex the world should be on at `now`: how many Manila midnights have
+ * The dayIndex the world should be on at `now`: how many UTC midnights have
  * passed since the start date began. Day 0 runs through the start date and
  * ends at the first midnight. Never negative, so a start date in the future
  * holds the world at day 0 rather than erroring.
  */
 export function liveTargetDay(start: string, now: Date): number {
-  const elapsed = now.getTime() + MANILA_OFFSET_MS - parseLiveStart(start);
+  const elapsed = now.getTime() - parseLiveStart(start);
   return Math.max(0, Math.floor(elapsed / DAY_MS));
 }
 
