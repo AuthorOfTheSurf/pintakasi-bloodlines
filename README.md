@@ -73,7 +73,7 @@ To play manually, open the **Stewards' Office** at `/admin` and use **+1 Day** o
 
 To play through an MCP client, `.mcp.json` in the repo root already does this for Claude Code — start `bun dev` first, since the endpoint _is_ the server.
 
-**Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get _"Multiple farms exist — pass your farm key"_, which is the server being careful, not broken. Playing as somebody new instead? `register_farm` over MCP hands you a fresh key; put that in the URL.
+**Every call identifies a farm by key**, because the seeded world holds 20 of them (yours plus 19 bot stables). The seed's own farm is `fk_dev`, which is why `.mcp.json` ends in `?key=fk_dev` and the REST examples here carry `?key=fk_dev` (an `x-farm-key` header works too). Without it you get _"Multiple farms exist — pass your farm key"_, which is the server being careful, not broken. Playing as somebody new instead? On a dev world `register_farm` over MCP hands you a fresh key; put that in the URL. In production registration is closed for the alpha: players apply at `/join`, a steward approves them from the Applications tab on `/admin` (with `?steward=$PINTAKASI_STEWARD_KEY`), and the player's welcome page carries the key. `PINTAKASI_OPEN_REGISTRATION=1` reopens the old door.
 
 Tests: `bun test` · Types: `bun run typecheck` · Health of a world: `bun run doctor` · The combat lab: `bun run balance`
 

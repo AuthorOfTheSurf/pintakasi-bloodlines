@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { CLOSED_REGISTRATION_MESSAGE, openRegistrationEnabled } from "@/app/doors";
 import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
 import { Farms } from "@/engine/farms";
 import { freshSeed } from "@/engine/rng";
 
-// The one route that needs NO key — how a farm comes to exist.
+// The keyless way a farm comes to exist, on dev worlds. Production closes it
+// for the alpha (see app/doors.ts); there a farm comes from an approved
+// application instead (engine/alpha.ts).
 export async function POST(req: Request) {
+  if (!openRegistrationEnabled())
+    return NextResponse.json({ error: CLOSED_REGISTRATION_MESSAGE }, { status: 403 });
   try {
     const body = await req.json();
     const database = db();

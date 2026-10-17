@@ -455,6 +455,42 @@ export const brainLog = sqliteTable("brain_log", {
   menuJson: text("menu_json"),
 });
 
+// The ALPHA's front door (2026-10). Registration closed in production: a
+// person applies on /join, the owner takes the buy-in off-platform, then a
+// steward approves the application and THAT is what creates the farm (through
+// the same Farms.register + starter flock every other farm gets, so the
+// starting stake still comes from the one faucet). The row is a small state
+// machine, pending -> approved | declined, driven only by engine/alpha.ts.
+//
+// Additive on purpose: the DDL is CREATE TABLE IF NOT EXISTS, so the live
+// world picks this table up at boot with no reseed. Not world state either
+// (no money, no birds), so worldhash's identity check sees it empty on both
+// sides of a sim.
+export const alphaApplications = sqliteTable("alpha_applications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  createdAt: text("created_at").notNull(), // ISO wall-clock, not a game-day
+  farmName: text("farm_name").notNull(),
+  handler: text("handler").notNull(),
+  // How the stewards reach them about the buy-in: email, phone, a handle.
+  // Never rendered on the public office, only behind the steward key.
+  contact: text("contact").notNull(),
+  country: text("country"),
+  primaryColor: text("primary_color").notNull(), // from FARM_COLORS
+  secondaryColor: text("secondary_color").notNull(),
+  background: text("background"), // their breeding background, free text
+  status: text("status", { enum: ["pending", "approved", "declined"] })
+    .notNull()
+    .default("pending"),
+  farmId: text("farm_id"), // set on approve
+  // The player's welcome-page credential: it shows them their farm key, so it
+  // is as secret as the key itself. Null until approved; minted once.
+  claimToken: text("claim_token").unique(),
+  decidedAt: text("decided_at"),
+  claimedAt: text("claimed_at"), // first view of /join/claim/<token>
+});
+
+export type AlphaApplicationRow = typeof alphaApplications.$inferSelect;
+
 export type BirdRow = typeof birds.$inferSelect;
 export type NewBird = typeof birds.$inferInsert;
 export type GameStateRow = typeof gameState.$inferSelect;

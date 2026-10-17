@@ -1,9 +1,13 @@
+import { headers } from "next/headers";
 import path from "node:path";
 import { count, desc, eq, gt, inArray, isNotNull, or, sum } from "drizzle-orm";
 import { db, defaultDbPath } from "@/db/client";
 import { cardLabel } from "./bird-fights";
 import { TickControls } from "./tick-controls";
+import { Applications, type ApplicationRowUI } from "./applications";
+import { originOf, stewardAllowed } from "@/app/doors";
 import { publicTicksEnabled } from "@/app/ticks";
+import { Alpha } from "@/engine/alpha";
 import {
   battleLog,
   birds,
@@ -559,10 +563,24 @@ const TYPE_LABELS: Record<string, string> = {
   champion: "champion",
 };
 
-export default function Admin() {
+export default async function Admin({
+  searchParams,
+}: {
+  searchParams: Promise<{ steward?: string | string[] }>;
+}) {
   const d = db();
   const dbPath = defaultDbPath();
   const ticksEnabled = publicTicksEnabled();
+  // The alpha's queue holds applicants' contact details and claim links, so
+  // the public office only ever learns how many are waiting. A steward loads
+  // the page with ?steward=<PINTAKASI_STEWARD_KEY> (no key needed off
+  // production, like the tick gate) and gets the rows and the buttons.
+  const { steward } = await searchParams;
+  const stewardKey = typeof steward === "string" ? steward : null;
+  const isSteward = stewardAllowed(stewardKey);
+  const alphaQueue = new Alpha(d).list();
+  const alphaPending = alphaQueue.filter((a) => a.status === "pending").length;
+  const origin = originOf(await headers());
   // The two offices render identically — this badge is the only loud
   // difference between inspecting a sim and staring at the live world.
   const isSimWorld = path.basename(dbPath).startsWith("sim-");
@@ -1784,6 +1802,32 @@ export default function Admin() {
             </section>
           )
         }
+        applicationsCount={alphaPending}
+        applications={
+          isSteward ? (
+            <Applications
+              stewardKey={stewardKey}
+              rows={alphaQueue.map((a): ApplicationRowUI => ({
+                id: a.id,
+                createdAt: a.createdAt,
+                farmName: a.farmName,
+                handler: a.handler,
+                contact: a.contact,
+                country: a.country,
+                colors: `${a.primaryColor} / ${a.secondaryColor}`,
+                background: a.background,
+                status: a.status,
+                claimUrl: a.claimToken ? `${origin}/join/claim/${a.claimToken}` : null,
+                claimedAt: a.claimedAt,
+              }))}
+            />
+          ) : (
+            <p className="cardsum">
+              {alphaPending} alpha application{alphaPending === 1 ? "" : "s"} waiting. Stewards load
+              this page with their steward key to review them.
+            </p>
+          )
+        }
         pintakasiCount={pintakasiBoxes.filter((t) => t.weekIndex === pintakasiWeek).length}
         pintakasi={
           pintakasiWeek === null ? (
@@ -1868,6 +1912,16 @@ const CSS = `
     border: 1px solid #3a342a; border-radius: 4px; padding: .35rem .9rem; }
   .tabs button.on { color: #12100d; background: #e8b64c; border-color: #e8b64c; }
   .tabs .count { opacity: .7; font-size: .85em; margin-left: .3em; }
+  .apps { overflow-x: auto; }
+  .apps table { border-collapse: collapse; width: 100%; font-size: .9em; }
+  .apps th, .apps td { border: 1px solid #3a342a; padding: .4rem .6rem; text-align: left;
+    vertical-align: top; }
+  .apps th { color: #9a8f78; font-weight: 500; }
+  .apps-bg { max-width: 22rem; white-space: pre-wrap; }
+  .apps button { font: inherit; cursor: pointer; color: #e8e0d0; background: #1c1914;
+    border: 1px solid #3a342a; border-radius: 4px; padding: .2rem .6rem; margin: .1rem 0; }
+  .apps button:hover { border-color: #e8b64c; }
+  .apps-note { color: #e8b64c; word-break: break-all; }
   .ticks { margin-top: .75rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
   .ticks button { font: inherit; cursor: pointer; color: #12100d; background: #e8b64c;
     border: 1px solid #e8b64c; border-radius: 4px; padding: .35rem .9rem; font-weight: 600; }

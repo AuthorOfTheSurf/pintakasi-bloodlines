@@ -2029,6 +2029,20 @@ export const FARM_COLORS = [
 ] as const;
 export type FarmColor = (typeof FARM_COLORS)[number];
 
+/**
+ * Caps on what a stranger can write through the alpha's open application
+ * form (engine/alpha.ts, app/join). The farm-name cap is the one a player
+ * sees wherever the farm is listed; the rest only bound the row. Here rather
+ * than in alpha.ts so the browser-side form can read them too.
+ */
+export const APPLICATION_LIMITS = {
+  farmName: 40,
+  handler: 60,
+  contact: 120,
+  country: 40,
+  background: 1000,
+} as const;
+
 // NOTE: there is deliberately NO training mechanic (ruled 2026-08-03 round
 // 13): a bird's stats are FIXED AT BIRTH — the game is discovering what it's
 // good at and using it well. PFL-style aging curves (peak form mid-career)

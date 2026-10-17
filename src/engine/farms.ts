@@ -105,6 +105,32 @@ export interface RegisterInput {
   country?: string; // flag emoji or country name — encouraged
   primaryColor: FarmColor;
   secondaryColor: FarmColor;
+  handler?: string; // the person behind the barn; the alpha's approve path sets it
+}
+
+/**
+ * The palette rule, shared by Farms.register and the alpha application
+ * (engine/alpha.ts), so an application that passes here cannot fail on its
+ * colors at approve time.
+ */
+export function assertFarmColors(primaryColor: string, secondaryColor: string): void {
+  for (const [label, color] of [
+    ["primaryColor", primaryColor],
+    ["secondaryColor", secondaryColor],
+  ] as const) {
+    if (!(FARM_COLORS as readonly string[]).includes(color))
+      throw new Error(`${label} must be one of: ${FARM_COLORS.join(", ")}`);
+  }
+}
+
+/** Case-insensitive, the same comparison register refuses a duplicate on. */
+export function farmNameTaken(database: DB, name: string): boolean {
+  const wanted = name.trim().toLowerCase();
+  return database
+    .select({ name: farms.name })
+    .from(farms)
+    .all()
+    .some((f) => f.name.toLowerCase() === wanted);
 }
 
 /**
@@ -123,15 +149,8 @@ export class Farms {
   register(input: RegisterInput): { farm: FarmView; apiKey: string } {
     const name = input.name.trim();
     if (!name) throw new Error("A farm needs a name");
-    for (const [label, color] of [
-      ["primaryColor", input.primaryColor],
-      ["secondaryColor", input.secondaryColor],
-    ] as const) {
-      if (!FARM_COLORS.includes(color))
-        throw new Error(`${label} must be one of: ${FARM_COLORS.join(", ")}`);
-    }
-    const existing = this.database.select().from(farms).all();
-    if (existing.some((f) => f.name.toLowerCase() === name.toLowerCase()))
+    assertFarmColors(input.primaryColor, input.secondaryColor);
+    if (farmNameTaken(this.database, name))
       throw new Error(`A farm named "${name}" already exists`);
 
     const id = randomUUID();
@@ -144,6 +163,7 @@ export class Farms {
         country: input.country?.trim() || null,
         primaryColor: input.primaryColor,
         secondaryColor: input.secondaryColor,
+        handler: input.handler?.trim() || null,
         apiKey,
         gp: ECONOMY.STARTING_GP,
         landTokensCents: 0,

@@ -1,5 +1,5 @@
 import type { BirdRow } from "@/db/schema";
-import { AGE } from "./config";
+import { AGE, CALENDAR } from "./config";
 
 /**
  * Age gates as pure functions. Age is always DERIVED: currentWeek - birthWeek
@@ -27,6 +27,15 @@ export function ageOf(
 
 export function isEggAge(age: number): boolean {
   return age < AGE.CHICK;
+}
+
+/**
+ * The game-day an egg laid in `birthWeek` hatches: the Hatch Friday (the
+ * week's first day) of the week it stops being egg-age. The same rule
+ * Flock.processHatchFriday applies, stated as a day so a page can print it.
+ */
+export function hatchDayOf(birthWeek: number): number {
+  return (birthWeek + AGE.CHICK) * CALENDAR.DAYS_PER_WEEK;
 }
 
 /**
