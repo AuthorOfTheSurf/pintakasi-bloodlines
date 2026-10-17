@@ -1398,8 +1398,8 @@ export const PAR = {
 // Zane: the game's simple, public estimate of a bird's net worth, shown to
 // players and used by the bots, and free to disagree with ("the game thinks
 // this one is undervalued, but I know it's just misplayed"). It is aimed at
-// the lower end of the field, where the claimers live; pedigree and crowns are
-// not in it yet.
+// the lower end of the field, where the claimers live. Pedigree is not in it
+// yet; crowns came in as the CROWN term (issue #36, step 5 below).
 //
 // The recipe, in order (value.ts does the arithmetic):
 //   1. FORM: the bird's recent Pit Figure, recent fights weighted most, pulled
@@ -1414,6 +1414,7 @@ export const PAR = {
 //      at the tag, so a bird whose only winning class is a claimer is worth
 //      about that claimer's tag.
 //   4. The best rung wins, and the value never drops under FLOOR.
+//   5. Plus the CROWN term: what the bird's chance at a Major final is worth.
 export const VALUE = {
   // A body's worth when it will never earn: half a breed cover. A bird that
   // cannot win anywhere is still a hen to breed or a cock to sell, but nobody
@@ -1463,6 +1464,67 @@ export const VALUE = {
   // Shown to the nearest 10 GP. Figures are posted in bands of five, so the
   // last digit of a value would be noise dressed up as precision.
   ROUND_TO: 10,
+
+  // ── THE CROWN TERM (issue #36) — what a shot at the Majors is worth ────────
+  // The card value above prices a career of daily cards and nothing else, so a
+  // bird with a real chance at a Major final read the same as a grinder of the
+  // same form. The crown term adds the expected Major winnings:
+  //
+  //   crown = min(P, CROWN_P_CAP) × K × the going Major purse
+  //
+  // P is the bird's chance of reaching at least one Major final over the rest
+  // of its career, a logistic on public numbers only (figures, earnings,
+  // grade, the juvenile-crown record, and how many birds it shares the finals
+  // with). K is the Major net a final is worth counting everyone who fell
+  // short, in purses, so the term follows the juice pool when it moves.
+  //
+  // FITTED 2026-10-17 on five 182-day latecomer worlds (seeds 1–4 trained,
+  // seed 5 held out), code at bd65586. Holdout AUC: adult branch 0.879 pooled
+  // over ages 3–7, juvenile branch 0.813; the hatch-day public info alone
+  // (grade, stars, parents' crowns) scores 0.62. Stars and parents' titles
+  // fitted to about zero and stay out.
+  //
+  // Over-confident at the very top: on the holdout the model's top 1% at age
+  // 3 predicted 8.0k GP of crown net and realized 3.4k. The cap is that
+  // correction — nobody's chance of a final is priced over a quarter.
+  CROWN_P_CAP: 0.25,
+  // How far back the going Major purse looks: the mean purse of the Majors
+  // completed in the last this-many weeks. With none (a young world), it is
+  // the juice pool split across the week's Major blades, which is what the
+  // next Thursday would pay before entry fees.
+  CROWN_PURSE_WEEKS: 4,
+  // The figure read for P: at each Major blade, the bird's average figure
+  // shrunk toward SCOUT.PRIOR_FIGURE (SCOUT.PRIOR_WEIGHT pseudo-fights), read
+  // only with at least this many fights at the blade. The best blade's read
+  // minus the open par is `vsPar`. With no read at any Major blade, vsPar is
+  // CROWN_NO_READ, about what the median bird shows (the fit's no-read flag
+  // came out at zero once this stood in).
+  CROWN_MIN_BLADE_FIGHTS: 2,
+  CROWN_NO_READ: -5,
+  // ADULT BRANCH, age AGE.FORK through the last Major age:
+  //   z = ln(finals a week × weeks left / field) + INTERCEPT
+  //       + VS_PAR × vsPar + EARNINGS × ln(1 + gross career earnings GP)
+  // The supply term is pinned at coefficient 1, not fitted (a free fit gave
+  // 0.88–0.94 and the pin cost no AUC): six finals a week, shared among
+  // everyone old enough, times the weeks you have left. It is why a crown is
+  // worth less as the world grows. Earnings carry 0.61 because the Selection
+  // Committee seats Majors by gross career earnings: a rich bird gets the seat.
+  CROWN_ADULT: { INTERCEPT: -4.3, VS_PAR: 0.2152, EARNINGS: 0.6061, K: 0.52 },
+  // JUVENILE BRANCH, ages 1–2 (before the first Major):
+  //   z = INTERCEPT + VS_PAR × vsPar + GRADE × grade index (C = 0 … B = 2, A = 4)
+  //       + CROWN_WINS × fights won in the Juvenile Championship
+  //       + SUPPLY × ln(finals a week × Major weeks in a career / field)
+  // Separate on purpose: the adult formula applied to juveniles priced its
+  // top 1% at 13.9k GP on the holdout, and they earned 2.3k. A juvenile has
+  // no earnings worth the name yet, so grade and the juvenile crown say more.
+  CROWN_JUVENILE: {
+    INTERCEPT: -4.734,
+    VS_PAR: 0.1564,
+    GRADE: 0.6597,
+    CROWN_WINS: 0.3168,
+    SUPPLY: 0.3001,
+    K: 0.486,
+  },
 } as const;
 
 // ── THE FEE LADDER (round 42) — the flat rate dies ──────────────────────────

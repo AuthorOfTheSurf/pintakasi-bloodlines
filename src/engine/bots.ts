@@ -923,7 +923,7 @@ function bestEarner(
   base: CardKey | null,
   misjudge: number
 ): CardKey | null {
-  const { value, form } = appraise(db, bird, today);
+  const { value, form, crown } = appraise(db, bird, today);
   if (form === null) return base;
   const book = parBook(db, today);
   // The barn misjudges the bird's FORM, and prices what it thinks it sees.
@@ -931,7 +931,9 @@ function bestEarner(
   // in value.ts) read over it on half the nights for no reason at all.
   const lean = (bot.tagCourage - bot.sellRate) * VALUE_READING.STYLE_LEAN;
   const seen = form + misjudge + lean;
-  const reads = valueAtForm(seen, bird, book);
+  // The crown term is not misjudged: it reads the bird's figures at the Major
+  // blades and its earnings, which the barn sees as plainly as anyone.
+  const reads = valueAtForm(seen, bird, book, crown);
   const ladder =
     base === null
       ? []

@@ -195,7 +195,16 @@ export default function ClaimingPage() {
         <li>
           the fights it has left: about {VALUE.FIGHTS_PER_WEEK} a week until the age cap of{" "}
           {AGE.FIGHTING_CAP}, counted at {(VALUE.DISCOUNT * 100).toFixed(0)}% because the future is
-          never sure.
+          never sure;
+        </li>
+        <li>
+          and its <strong>crown chance</strong>: what a shot at a Major final is worth, at the going
+          Major purse. It grows with the bird&apos;s best figures at the Major blades and with its
+          career earnings, because the committee seats the Majors by earnings. It shrinks with the
+          weeks it has left and with how many birds of Major age share the finals. For a chick, it
+          reads the grade and the juvenile-crown wins instead. No bird is priced over a{" "}
+          {(VALUE.CROWN_P_CAP * 100).toFixed(0)}% chance, and a bird too old for the Majors has
+          none.
         </li>
       </ul>
       <p>

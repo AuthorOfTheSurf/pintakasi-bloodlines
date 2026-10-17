@@ -241,7 +241,7 @@ export interface EntrySettlement {
 interface LobbyLookup {
   birdName: Map<string, string>;
   farms: Map<string, typeof farms.$inferSelect>;
-  flockFor: (farmId: string) => Flock;
+  birdOf: (entry: typeof lobbyEntries.$inferSelect) => ReturnType<Flock["view"]>;
 }
 
 /**
@@ -1579,9 +1579,11 @@ export class Lobbies {
    * papercut per row is still the wrong shape. Two queries now, whatever the
    * lobby holds.
    *
-   * The `Flock` cache is per FARM rather than per entry because `byId` returns
-   * a BirdView with derived fields (age, stars, sexLabel) that the raw row
-   * doesn't carry, and a barn entering five birds should build one Flock.
+   * The card's BirdView (age, stars, sexLabel, value: what the raw row
+   * doesn't carry) is `Flock.view` over these same rows. It used to be a
+   * `Flock.byId` per entry, which re-read the bird row and the world's day for
+   * every card, and since the claim-par round the claim shoppers build a card
+   * for every claimer entry on the board.
    */
   private lookupFor(entries: (typeof lobbyEntries.$inferSelect)[]): LobbyLookup {
     const birdIds = [...new Set(entries.map((e) => e.birdId))];
@@ -1594,16 +1596,17 @@ export class Lobbies {
     const farmRows = farmIds.length
       ? this.database.select().from(farms).where(inArray(farms.id, farmIds)).all()
       : [];
-    const flocks = new Map<string, Flock>();
+    const rows = new Map(birdRows.map((b) => [b.id, b]));
+    const flock = new Flock(this.database, this.farmId);
+    const today = this.today();
     return {
       birdName: new Map(birdRows.map((b) => [b.id, b.name])),
       farms: new Map(farmRows.map((f) => [f.id, f])),
-      flockFor: (farmId: string) => {
-        const cached = flocks.get(farmId);
-        if (cached) return cached;
-        const made = new Flock(this.database, farmId);
-        flocks.set(farmId, made);
-        return made;
+      birdOf: (entry) => {
+        const row = rows.get(entry.birdId);
+        if (!row || row.farmId !== entry.farmId)
+          throw new Error(`No bird with id ${entry.birdId} in its entry's barn`);
+        return flock.view(row, today);
       },
     };
   }
@@ -1615,7 +1618,7 @@ export class Lobbies {
     field?: (typeof lobbyEntries.$inferSelect)[],
     records = true
   ): EntryCard {
-    const bird = lookup.flockFor(entry.farmId).byId(entry.birdId);
+    const bird = lookup.birdOf(entry);
     const farm = must(
       lookup.farms.get(entry.farmId),
       `farm ${entry.farmId} not in the board lookup`

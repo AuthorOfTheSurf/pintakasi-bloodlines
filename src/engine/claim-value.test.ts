@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, gameState } from "@/db/schema";
 import { isBargain, pickOffering } from "./bots";
-import { CLAIMER, FIGURE, PAR, VALUE, cardOfDay, type Lobby } from "./config";
+import { AGE, CLAIMER, FIGURE, PAR, PINTAKASI, VALUE, cardOfDay, type Lobby } from "./config";
 import { Flock } from "./flock";
 import { Lobbies, type EntryCard } from "./lobbies";
 import { parBook } from "./pars";
@@ -11,7 +11,7 @@ import { mulberry32 } from "./rng";
 import { recordFight } from "./scout";
 import { diagnose } from "./doctor";
 import { makeBird, onCard, world as testWorld } from "./testkit";
-import { appraise } from "./value";
+import { appraise, crownTerm, type CrownRead } from "./value";
 
 /**
  * THE CLAIM-PAR ROUND. Before it, every claimer tag drew the same field as the
@@ -42,6 +42,7 @@ function fight(
     figure: number;
     win: boolean;
     tournamentId?: number;
+    gpDeltaCents?: number;
   }
 ) {
   recordFight(db, {
@@ -60,7 +61,7 @@ function fight(
     side: 0,
     result: row.win ? "win" : "loss",
     pitFigure: row.figure,
-    gpDeltaCents: 0,
+    gpDeltaCents: row.gpDeltaCents ?? 0,
     seed: ghost,
   });
 }
@@ -173,6 +174,77 @@ describe("the game value", () => {
     expect(form).toBe(
       parBook(w.db, TODAY).prior(new Flock(w.db, w.devId).byId(row.id).overallGrade)
     );
+  });
+});
+
+describe("the crown term: a shot at a Major final is worth something", () => {
+  const market = { purseGp: 35_000, field: 1_750 };
+  const age3 = (vsPar: number, earningsGp: number): CrownRead => ({
+    age: AGE.FORK,
+    overallGrade: "B+",
+    vsPar,
+    earningsGp,
+    juvenileCrownWins: 0,
+  });
+
+  test("strong figures and big earnings at age 3 price far over a typical bird", () => {
+    const strong = crownTerm(age3(10, 8_000), market);
+    const typical = crownTerm(age3(VALUE.CROWN_NO_READ, 800), market);
+    expect(typical).toBeGreaterThan(0);
+    expect(strong).toBeGreaterThan(10 * typical);
+  });
+
+  test("no bird is priced over a CROWN_P_CAP chance of a final", () => {
+    const sure = crownTerm(age3(40, 1_000_000), { ...market, field: 1 });
+    expect(sure).toBeCloseTo(VALUE.CROWN_P_CAP * VALUE.CROWN_ADULT.K * market.purseGp, 6);
+  });
+
+  test("a bird past the last Major age, or still an egg, has no crown term", () => {
+    expect(crownTerm({ ...age3(40, 1_000_000), age: AGE.FIGHTING_CAP }, market)).toBe(0);
+    expect(crownTerm({ ...age3(40, 1_000_000), age: AGE.EGG }, market)).toBe(0);
+  });
+
+  test("the same bird is worth less to the crowns as the field it shares them with grows", () => {
+    const bird = age3(5, 3_000);
+    expect(crownTerm(bird, { ...market, field: 400 })).toBeGreaterThan(crownTerm(bird, market));
+  });
+
+  test("a juvenile is priced by its grade and its juvenile-crown wins", () => {
+    const chick = { ...age3(0, 0), age: AGE.CHICK, overallGrade: "A" as const };
+    const crowned = crownTerm({ ...chick, juvenileCrownWins: 2 }, market);
+    expect(crowned).toBeGreaterThan(crownTerm(chick, market));
+    expect(crownTerm(chick, market)).toBeGreaterThan(
+      crownTerm({ ...chick, overallGrade: "B" }, market)
+    );
+  });
+
+  test("the game value carries it: Major-blade figures and earnings lift an age-3 bird", () => {
+    const w = paredWorld();
+    // No Major has run, so the going purse is the juice split across the blades.
+    w.db
+      .update(gameState)
+      .set({ juicePoolCents: PINTAKASI.BLADES.length * 35_000 * 100 })
+      .where(eq(gameState.id, 1))
+      .run();
+    const fought = (figure: number, gpDeltaCents: number) => {
+      const row = makeBird(w.db, { age: AGE.FORK, wins: 6, losses: 4, stakesWins: 6 });
+      for (let i = 0; i < VALUE.FORM_FIGHTS; i++)
+        fight(w.db, {
+          birdId: row.id,
+          day: TODAY - 10 + i,
+          classType: "open",
+          figure,
+          win: i % 2 === 0,
+          gpDeltaCents: i % 2 === 0 ? gpDeltaCents : 0,
+        });
+      return appraise(w.db, new Flock(w.db, w.devId).byId(row.id), TODAY);
+    };
+    const strong = fought(60, 100_000);
+    const weak = fought(15, 0);
+    expect(weak.crown).toBeGreaterThan(0);
+    expect(strong.crown).toBeGreaterThan(weak.crown);
+    expect(strong.crown).toBeLessThanOrEqual(VALUE.CROWN_P_CAP * VALUE.CROWN_ADULT.K * 35_000);
+    expect(strong.value % VALUE.ROUND_TO).toBe(0);
   });
 });
 
