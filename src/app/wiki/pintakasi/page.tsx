@@ -228,6 +228,12 @@ export default function PintakasiPage() {
         Thursday&apos;s daily card cannot then declare for that night&apos;s crown. Its crown would
         be a second fight in one night, and it is one card per bird per day in every direction.
       </p>
+      <p>
+        A bird&apos;s last fighting year counts in full. Ages turn on Friday, and the Thursday
+        crowns run before that happens, so an age-{AGE.FIGHTING_CAP - 1} bird may stand in the final
+        Major of its career. If it wins, it retires on the Friday as champion; if it falls, the
+        blade retires it. Either way it fought.
+      </p>
 
       <h3 id="the-entry-fee">What the {fee} GP buys</h3>
       <p>
@@ -625,6 +631,13 @@ export default function PintakasiPage() {
         for age-{AGE.CHICK} birds only, on the two blades the Majors don&apos;t run:{" "}
         {FORMATS[JUVENILE_MAJOR.BLADES[0]].label} and {FORMATS[JUVENILE_MAJOR.BLADES[1]].label},
         every week. Between the two stages, all five blades crown somebody every single week.
+      </p>
+      <p>
+        Declare any day from Friday up to {DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK]} itself. Once that
+        day&apos;s crowns have run, the door is shut for the week: a{" "}
+        {DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK + 1]} entry is refused, and nothing is charged. There
+        is no &ldquo;next week&rdquo; to roll a late chick into, because Friday makes it two, and
+        the discovery year is over.
       </p>
       <div className="tablewrap">
         <table>
