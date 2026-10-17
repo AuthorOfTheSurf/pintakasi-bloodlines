@@ -154,15 +154,14 @@ export class Game {
     // claimer board (round 19) — they run their honest day BEFORE the bots,
     // when the claimer fields are still empty.
     if ((opts.players ?? "auto-play") === "auto-play") shopAllClaimers(this.database);
-    const fridays: HatchFridayEvents[] = [];
-    const onFriday = (week: number) => fridays.push(this.flock.processHatchFriday(week));
-    const result = kind === "day" ? this.clock.tickDay(onFriday) : this.clock.tickWeek(onFriday);
+    const result = kind === "day" ? this.clock.tickDay() : this.clock.tickWeek();
     // The new day's stud prices go up before anyone shops it: whatever an
     // owner set yesterday is the posted price from now until the next tick.
     postStudPrices(this.database);
     // The day has turned — the card goes off (fights first, then claims),
     // then the main event: every departed crown day runs its Pintakasi
-    // (undercard first, crowns second), then the staking pool pays out.
+    // (undercard first, crowns second), then the calendar's own business —
+    // Hatch Friday — and then the staking pool pays out.
     const card = Lobbies.resolve(this.database);
     const pintakasi: TournamentResolution[] = [];
     for (let d = preDay; d < result.state.dayIndex; d++) {
@@ -174,6 +173,15 @@ export class Game {
       if (Tournaments.isCrownDay(d))
         pintakasi.push(...Tournaments.resolveCrownDay(this.database, d));
     }
+    // HATCH FRIDAY RUNS AFTER THE CROWNS (issue #38). It used to fire inside
+    // the clock advance, BEFORE the brackets above — and the tick that
+    // resolves Thursday's Majors is the tick that turns Thursday into Friday.
+    // So a bird in its last fighting year (FIGHTING_CAP − 1) was already
+    // retired for age when its bracket went looking for it and went home
+    // "no longer stands": zero Major fights at that age across five 182-day
+    // worlds, and the Handbook's "age 3+" was really 3 to 7. The card and the
+    // crowns resolve the day that just ended; the calendar turns afterwards.
+    const fridays = result.hatchFridaysCrossed.map((week) => this.flock.processHatchFriday(week));
     const staking = Farms.distributeStaking(this.database);
     // …and only now do the bot barns bank tonight's land. Their day ran before
     // the card did, so everything the pit paid them arrived after they last
