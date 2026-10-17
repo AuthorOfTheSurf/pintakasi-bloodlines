@@ -14,6 +14,7 @@ import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { chaseCrowns, chaseJuvenileCrowns } from "./bots";
 import { CROWN_CHASE } from "./bot-config";
 import {
+  AGE,
   ECONOMY,
   JUVENILE_MAJOR,
   PINTAKASI,
@@ -967,6 +968,66 @@ describe("the crown-day resolution", () => {
         .all()
         .filter((t) => t.status === "completed").length
     ).toBe(1);
+  });
+
+  /**
+   * ISSUE #37 — THE THURSDAY JUVENILE ENTRY. The Juvenile Championship runs
+   * on Wednesday and the week has one more day after it. `targetWeek` put a
+   * Thursday entry in the CURRENT week, whose juvenile crown had already
+   * resolved, so the row sat `pending` in an `open` tournament that nothing
+   * would ever close: 733 entries and 35,184 GP of escrow on a 112-day world,
+   * every one of them entered on a Thursday. Next week is no answer either —
+   * Friday ages the chick to two, and the juvenile stage is age one only. The
+   * door has to refuse, and the wallet has to be untouched.
+   */
+  test("the juvenile door is shut once Wednesday's crown has run — a Thursday entry can never resolve", () => {
+    const w = world();
+    for (let d = 0; d <= JUVENILE_MAJOR.DAY_OF_WEEK; d++) w.game.tickDay();
+    expect(Tournaments.isJuvenileCrownDay(w.game.clock.currentDay() - 1)).toBe(true);
+    const chick = makeBird(w.db, { name: "Huli", age: 1, wins: JUVENILE_MAJOR.QUALIFYING_WINS });
+    const walletBefore = gpOf(w.db, w.devId);
+    expect(() => w.dev.enter(chick.id, "b2", "juvenile")).toThrow(/already run/);
+    expect(gpOf(w.db, w.devId)).toBe(walletBefore);
+    expect(computeTopline(w.db).tournamentEscrowCents).toBe(0);
+    // …and the scripted barns stop knocking on a shut door.
+    expect(chaseJuvenileCrowns(w.db, w.devId, w.game.clock.currentDay())).toEqual([]);
+    expect(w.db.select().from(tournamentEntries).all()).toEqual([]);
+  });
+
+  /**
+   * ISSUE #38 — THE LAST FIGHTING YEAR. Thursday's crowns resolve at the
+   * tick that turns Thursday into Friday, and that tick is also Hatch Friday.
+   * The Friday step ran FIRST, so a bird in its final year (FIGHTING_CAP − 1)
+   * was already retired for age when the bracket went looking for it and went
+   * home "no longer stands" — refunded, never fought. Across five 182-day
+   * worlds that was zero Major fights at the age the Handbook says is the
+   * last one. The bracket runs before the calendar turns.
+   */
+  test("a bird in its last fighting year stands in Thursday's Major before Friday retires it", () => {
+    const w = world();
+    const elder = makeBird(w.db, { name: "Matanda", age: AGE.FIGHTING_CAP - 1 });
+    w.dev.enter(elder.id, "b1");
+    w.rival.enter("rival-7", "b1");
+    const result = tickThroughCrownDay(w.game).pintakasi[0];
+    expect(result.field).toBe(2);
+    const entry = w.db
+      .select()
+      .from(tournamentEntries)
+      .all()
+      .find((e) => e.birdId === elder.id)!;
+    expect(["champion", "eliminated"]).toContain(entry.status);
+    const fought = w.db
+      .select()
+      .from(battleLog)
+      .all()
+      .filter((f) => f.birdId === elder.id && f.tournamentId !== null);
+    expect(fought.length).toBe(1);
+    // The calendar still turned: win or lose, the bird is retired tonight —
+    // by the blade if it fell, by age if it took the crown.
+    const row = w.db.select().from(birds).where(eq(birds.id, elder.id)).get()!;
+    expect(row.status).toBe("retired");
+    expect(row.retiredBy).toBe(entry.status === "champion" ? "age" : "hardcore");
+    expectConserved(w.db);
   });
 
   test("crown day's lobby door refuses a Pintakasi registrant — its crown is its card", () => {

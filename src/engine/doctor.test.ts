@@ -9,6 +9,7 @@ import {
   lobbies,
   lobbyEntries,
   tournamentEntries,
+  tournaments,
 } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
@@ -206,6 +207,124 @@ describe("…and on a broken one", () => {
     const invariant = check(w.db, "purses settle");
     expect(invariant.passed).toBe(false);
     expect(invariant.offenders!.join(" ")).toContain("crown #");
+  });
+
+  /**
+   * ISSUE #37. The round-41 check only looked at RESOLVED crowns, so a pending
+   * entry in a tournament that was never going to resolve — its crown day
+   * behind it, its status still `open` — held real escrow and passed every
+   * invariant on a 112-day world. "Stranded" means pending after the crown
+   * day, whether or not anything ever marked the row.
+   */
+  test("a pending entry on a crown whose day has passed is caught — open or not", () => {
+    const w = world(8);
+    const chick = makeBird(w.db, { age: 1, farmId: w.devId });
+    const crown = w.db
+      .insert(tournaments)
+      .values({ weekIndex: 0, format: "b2", division: "juvenile", seed: 1, entryFee: 0 })
+      .returning()
+      .get()!;
+    w.db
+      .insert(tournamentEntries)
+      .values({
+        tournamentId: crown.id,
+        birdId: chick.id,
+        farmId: w.devId,
+        fee: 0,
+        dayEntered: 6,
+        status: "pending",
+      })
+      .run();
+    const invariant = check(w.db, "no stranded entries");
+    expect(invariant.passed).toBe(false);
+    expect(invariant.detail).toContain("crown day has passed");
+    expect(invariant.offenders!.join(" ")).toContain(`crown #${crown.id}`);
+  });
+
+  /**
+   * ISSUE #38. A refund is only honest when the bird stopped standing on its
+   * own — a hardcore loss, an owner's hand. A bird retired FOR AGE never
+   * stops standing before its crown: ages turn on Friday, and every crown of
+   * the week resolves on or before Thursday. So an age-retirement behind a
+   * crown refund means the calendar ran ahead of the bracket, which is the
+   * ordering bug this check exists to keep dead.
+   */
+  test("a crown entry refunded for a bird the calendar retired is caught", () => {
+    const w = world(8);
+    const elder = makeBird(w.db, {
+      age: 9,
+      farmId: w.devId,
+      status: "retired",
+      retiredBy: "age",
+      retiredWeek: 1,
+    });
+    const crown = w.db
+      .insert(tournaments)
+      .values({
+        weekIndex: 0,
+        format: "b1",
+        division: "major",
+        seed: 1,
+        entryFee: 0,
+        status: "completed",
+        purseCents: 0,
+        dayResolved: 6,
+      })
+      .returning()
+      .get()!;
+    w.db
+      .insert(tournamentEntries)
+      .values({
+        tournamentId: crown.id,
+        birdId: elder.id,
+        farmId: w.devId,
+        fee: 0,
+        dayEntered: 3,
+        status: "refunded",
+      })
+      .run();
+    const invariant = check(w.db, "crowns before Hatch Friday");
+    expect(invariant.passed).toBe(false);
+    expect(invariant.offenders!.join(" ")).toContain(`crown #${crown.id}`);
+    for (const other of others(w.db, "crowns before Hatch Friday")) expect(other.passed).toBe(true);
+  });
+
+  // A cancelled crown refunds every entrant while they still stand; one of them
+  // aging out weeks later is ordinary life, not the ordering bug.
+  test("a cancelled-crown refund for a bird that aged out later passes", () => {
+    const w = world(8);
+    const elder = makeBird(w.db, {
+      age: 9,
+      farmId: w.devId,
+      status: "retired",
+      retiredBy: "age",
+      retiredWeek: 6,
+    });
+    const crown = w.db
+      .insert(tournaments)
+      .values({
+        weekIndex: 0,
+        format: "b1",
+        division: "major",
+        seed: 1,
+        entryFee: 0,
+        status: "cancelled",
+        dayResolved: 6,
+      })
+      .returning()
+      .get()!;
+    w.db
+      .insert(tournamentEntries)
+      .values({
+        tournamentId: crown.id,
+        birdId: elder.id,
+        farmId: w.devId,
+        fee: 0,
+        dayEntered: 3,
+        status: "refunded",
+      })
+      .run();
+    expect(check(w.db, "crowns before Hatch Friday").passed).toBe(true);
   });
 
   test("a bird double-carded on one day is caught", () => {

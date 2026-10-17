@@ -1161,6 +1161,10 @@ export function chaseJuvenileCrowns(db: DB, farmId: string, today: number): stri
   const tournaments = new Tournaments(db, farmId);
   const flock = new Flock(db, farmId);
   const entered: string[] = [];
+  // Thursday: Wednesday's crowns have run and Friday ages every chick out of
+  // the division, so the door is shut (issue #37) — don't price the whole
+  // juvenile field with the scout only to be refused per bird.
+  if (!Tournaments.entriesOpen("juvenile", today)) return entered;
   const blades = Tournaments.juvenileBladesOfWeek(Tournaments.targetWeek(today));
   // Zero today, so this is a no-op and costs one query a day — kept anyway,
   // because the alternative is the silent outage described above.
