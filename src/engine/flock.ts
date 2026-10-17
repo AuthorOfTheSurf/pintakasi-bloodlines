@@ -233,6 +233,11 @@ export class Flock {
    * first fight while still wearing an auto-name.
    */
   rename(id: string, name: string): BirdView {
+    // Ownership first. This used to write the name and only THEN look the bird
+    // up in this barn, so a key for one farm could rename any bird in the world
+    // and merely get an error back afterwards. The farm page made that door a
+    // button, which is when it was noticed.
+    this.byId(id);
     const trimmed = name.trim();
     if (!trimmed) throw new Error("Name cannot be empty");
     if (nameTaken(this.database, trimmed, id))

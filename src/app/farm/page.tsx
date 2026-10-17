@@ -43,12 +43,13 @@ export default async function FarmPage({
   }
   if (!farmId) {
     const { signin } = await searchParams;
-    return <SignIn error={signin ? (SIGNIN_ERRORS[signin] ?? null) : null} />;
+    // Called, not mounted, so the form is plain markup in the tree the server sends.
+    return signInForm(signin ? (SIGNIN_ERRORS[signin] ?? null) : null);
   }
   return <FarmApp data={farmPageData(database, farmId)} />;
 }
 
-function SignIn({ error }: { error: string | null }) {
+function signInForm(error: string | null) {
   return (
     <main className="signin">
       <h1>Open your farm</h1>
