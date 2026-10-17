@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, tournamentEntries, tournaments } from "@/db/schema";
 import { FORMATS } from "@/engine/config";
@@ -45,20 +45,84 @@ export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
 }
 
 /**
- * ── ONE FARM'S FIGHTS — the farm page's Results view ──────────────────────
+ * ── ONE FARM'S FIGHTS — the farm page's Results view, a page at a time ─────
  *
- * Every row a farm's birds wrote while they were that farm's, oldest first,
+ * The rows a farm's birds wrote while they were that farm's, NEWEST first,
  * named. `battle_log.farm_id` is stamped at fight time, so a bird claimed
  * away later still shows here for the fights it fought in these colours, and
- * a bird claimed IN shows only from the day it arrived. Indexed on farm_id.
+ * a bird claimed IN shows only from the day it arrived.
+ *
+ * Paged by log id, for the reason birdFightRows above reads one career: a
+ * farm's history grows with the world (a 182-day barn writes thousands of
+ * rows), so the page ships none of it and the Results view asks for a page.
+ * `before` is the oldest log id the caller already holds; ids rise with time,
+ * so "older than that" is stable while new fights land on top.
  */
-export function farmFightRows(d: DB, farmId: string): FarmFightRowUI[] {
-  const rows = d
+export const FARM_FIGHT_PAGE = { DEFAULT: 200, MAX: 500 } as const;
+
+export function farmFightPage(
+  d: DB,
+  farmId: string,
+  opts: { before?: number; limit: number }
+): { rows: FarmFightRowUI[]; more: boolean } {
+  const limit = Math.min(Math.max(1, Math.floor(opts.limit)), FARM_FIGHT_PAGE.MAX);
+  const page = d
     .select()
     .from(battleLog)
-    .where(eq(battleLog.farmId, farmId))
-    .orderBy(battleLog.id)
+    .where(
+      opts.before === undefined
+        ? eq(battleLog.farmId, farmId)
+        : and(eq(battleLog.farmId, farmId), lt(battleLog.id, opts.before))
+    )
+    .orderBy(desc(battleLog.id))
+    .limit(limit + 1)
     .all();
+  return { rows: namedFightRows(d, page.slice(0, limit)), more: page.length > limit };
+}
+
+/**
+ * The whole history in three numbers, for the Results header: counted by the
+ * database, so it is true of every fight and not just the pages loaded.
+ */
+export function farmFightTotals(
+  d: DB,
+  farmId: string
+): { fights: number; wins: number; netGp: number } {
+  const row = d
+    .select({
+      fights: sql<number>`count(*)`,
+      wins: sql<number>`coalesce(sum(${battleLog.result} = 'win'), 0)`,
+      netCents: sql<number>`coalesce(sum(${battleLog.gpDeltaCents}), 0)`,
+    })
+    .from(battleLog)
+    .where(eq(battleLog.farmId, farmId))
+    .get();
+  return { fights: row?.fights ?? 0, wins: row?.wins ?? 0, netGp: (row?.netCents ?? 0) / 100 };
+}
+
+/**
+ * Each bird's newest `n` Pit Figures in this farm's colours, oldest first, for
+ * the Fighting grid's sparkline. A window over the farm's rows rather than the
+ * whole history shipped and trimmed on the client.
+ */
+export function recentFigures(
+  d: DB,
+  farmId: string,
+  n: number
+): Map<string, { figure: number; result: "win" | "loss" }[]> {
+  const rows = d.all<{ birdId: string; figure: number; result: "win" | "loss" }>(
+    sql`SELECT bird_id AS birdId, pit_figure AS figure, result FROM (
+          SELECT bird_id, pit_figure, result, id,
+                 ROW_NUMBER() OVER (PARTITION BY bird_id ORDER BY id DESC) AS rn
+            FROM battle_log WHERE farm_id = ${farmId}
+        ) WHERE rn <= ${n} ORDER BY id`
+  );
+  const out = new Map<string, { figure: number; result: "win" | "loss" }[]>();
+  for (const r of rows) out.set(r.birdId, [...(out.get(r.birdId) ?? []), r]);
+  return out;
+}
+
+function namedFightRows(d: DB, rows: (typeof battleLog.$inferSelect)[]): FarmFightRowUI[] {
   const ids = [...new Set(rows.map((r) => r.birdId))];
   const names = new Map(
     ids.length

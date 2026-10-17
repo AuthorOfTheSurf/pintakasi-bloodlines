@@ -1,7 +1,19 @@
 import Link from "next/link";
 import { AUTO_RESERVE } from "@/engine/auto-play";
-import { CROWN_CHASE } from "@/engine/bot-config";
-import { AGE, COVERS, ECONOMY, LT_CENTS, PINTAKASI, STATS } from "@/engine/config";
+import { CROWN_CHASE, STUD_MARKET } from "@/engine/bot-config";
+import {
+  AGE,
+  BARN,
+  CALENDAR,
+  COVERS,
+  ECONOMY,
+  LAND,
+  LT_CENTS,
+  PINTAKASI,
+  STATS,
+  STUD_PRICE,
+} from "@/engine/config";
+import { GameClock } from "@/engine/game-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +26,9 @@ export const metadata = {
 export default function FarmPage() {
   // The stud seat is stored in hundredths of a token (round 36), like all land.
   const studSeatLt = COVERS.STUD_LISTING_LT / LT_CENTS;
+  // The Hatch Friday repricing at the house's own appetite (STUD_MARKET.AUTO_PLAY).
+  const greed = STUD_MARKET.AUTO_PLAY.greed;
+  const pct = (share: number) => `${Math.round(share * 100)}%`;
   return (
     <>
       <h1>Your farm page</h1>
@@ -44,8 +59,17 @@ export default function FarmPage() {
       <p>
         At the top is your farm: its name, your GP and Land Tokens, and two buttons,{" "}
         <strong>Check in</strong> and <strong>Play my day for me</strong>. Under that, your birds
-        sit in four tables:
+        sit in four tables.
       </p>
+      <p>
+        The top also shows the <strong>game day</strong>, such as &ldquo;Game Friday&rdquo;. The
+        game keeps its own calendar, set in the year {CALENDAR.START_YEAR}, so it never looks like
+        today&apos;s date. Its weekday is the one that matters: eggs hatch on game Friday, and the
+        Majors run on game
+        {GameClock.weekdayOf(PINTAKASI.DAY_OF_WEEK)}. The game&apos;s Friday is often not your
+        Friday.
+      </p>
+      <p>The four tables:</p>
       <div className="tablewrap">
         <table>
           <thead>
@@ -69,7 +93,11 @@ export default function FarmPage() {
             </tr>
             <tr>
               <td>Results</td>
-              <td>How your birds&apos; fights went</td>
+              <td>
+                How your birds&apos; fights went, newest first. It loads one page of fights at a
+                time; press <strong>Load older fights</strong> for more. The all-time line above it
+                counts every fight, loaded or not.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -101,10 +129,12 @@ export default function FarmPage() {
         door would turn down.
       </p>
       <p>
-        Each drop-down starts on a <strong>suggestion</strong>. That is the fight the house would
-        pick if it played your day (see below). The suggestions are spent down the barn, keeping{" "}
-        {AUTO_RESERVE} GP back, so all of them together cost what your wallet can pay. Sometimes the
-        suggestion is to rest the bird tonight. You can change any of them.
+        Each drop-down starts on a <strong>suggestion</strong>. That is a fight like the one the
+        house would pick if it played your day (see below). It is not always the very same one. The
+        house rolls its own dice, may rest a bird to wait for tomorrow&apos;s weather, and pays for
+        crown entries first. The suggestions are spent down the barn, keeping {AUTO_RESERVE} GP
+        back, so all of them together cost what your wallet can pay. Sometimes the suggestion is to
+        rest the bird tonight. You can change any of them.
       </p>
       <p>
         Some birds have no drop-down. A bird already entered tonight shows its fight, locked. A bird
@@ -143,8 +173,20 @@ export default function FarmPage() {
           LT.
         </li>
         <li>
-          <strong>Grows the barn</strong> when it is close to full, so you never run out of room to
-          breed.
+          <strong>On Hatch Friday, reprices your studs.</strong> It looks at how many covers each
+          standing stud sold last week, out of {COVERS.PER_WEEK}. A stud that sold out goes up about{" "}
+          {pct(STUD_MARKET.RAISE_SOLD_OUT * greed)}. One that sold at least{" "}
+          {pct(STUD_MARKET.HOT_SHARE)} of them goes up about {pct(STUD_MARKET.RAISE_HOT * greed)}.
+          One that sold {STUD_MARKET.COLD_COVERS} or fewer gives up {pct(STUD_MARKET.CUT_COLD)} of
+          what he asks over the {STUD_PRICE.FLOOR} GP floor.{" "}
+          <strong>This replaces a price you set by hand.</strong>
+        </li>
+        <li>
+          <strong>Grows the barn</strong> when it is within {BARN.EXPAND_HEADROOM} slots of full, so
+          you never run out of room to breed. To pay, it takes Land Tokens back out of the pool. If
+          you don&apos;t have enough staked, it buys the land with GP instead, at{" "}
+          {LAND.GP_PER_100_TOKENS} GP per 100 LT. That purchase does not keep the {AUTO_RESERVE} GP
+          back, so a big expansion can take a real bite out of your wallet.
         </li>
         <li>
           <strong>Stakes your loose Land Tokens.</strong> Every whole token goes into the pool,
@@ -176,7 +218,8 @@ export default function FarmPage() {
       </div>
       <p>
         Like Enter card, everything it does is binding. It can&apos;t be undone. When it finishes,
-        the page tells you what it did: GP before and after, pulls spent, studs listed, tokens
+        the page tells you what it did: GP before and after, pulls spent, studs listed, studs
+        repriced (each with its old and new price), land unstaked or bought for the barn, tokens
         staked, covers bought, birds named, crowns entered, and birds carded.
       </p>
       <p>
@@ -185,6 +228,10 @@ export default function FarmPage() {
         day. It plays only <em>your</em> farm, and only when you press it. The game never plays a
         player&apos;s farm on its own.
       </p>
+      <div className="callout tip">
+        <b>Set a stud price on a Hatch Friday? </b>Press Play my day first, then set your price. A
+        price you set after the house has played stays as you set it.
+      </div>
       <div className="callout tip">
         <b>Mix the two. </b>Enter the birds you care about by hand first. Then press Play my day. A
         bird that is already entered keeps its fight, and the house cards the rest.

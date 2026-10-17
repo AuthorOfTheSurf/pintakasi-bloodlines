@@ -35,12 +35,8 @@ export interface CardResult {
 }
 
 export async function POST(req: Request) {
-  const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success)
-    return NextResponse.json(
-      { error: "Send { entries: [{ birdId, key: { mode, classType, format, price? } }] }" },
-      { status: 400 }
-    );
+  // Who is asking before what they sent: a stranger learns nothing about the
+  // body's shape, and gets the same 401 whatever they post.
   let g;
   try {
     g = game(req);
@@ -50,6 +46,12 @@ export async function POST(req: Request) {
       { status: 401 }
     );
   }
+  const parsed = Body.safeParse(await req.json().catch(() => null));
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: "Send { entries: [{ birdId, key: { mode, classType, format, price? } }] }" },
+      { status: 400 }
+    );
   const results: CardResult[] = parsed.data.entries.map(({ birdId, key }) => {
     try {
       g.lobbies.enter(birdId, key);

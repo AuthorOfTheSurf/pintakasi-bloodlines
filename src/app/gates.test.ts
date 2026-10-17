@@ -8,7 +8,9 @@ import { seedGame } from "@/db/seed-data";
 import { Alpha, type ApplyInput } from "@/engine/alpha";
 import { Bots } from "@/engine/bots";
 import { POST as approvePOST } from "./api/alpha/applications/[id]/approve/route";
+import { POST as autoplayPOST } from "./api/autoplay/route";
 import { POST as declinePOST } from "./api/alpha/applications/[id]/decline/route";
+import { GET as fightsGET } from "./api/farm/fights/route";
 import { POST as registerPOST } from "./api/farms/register/route";
 import { POST as mcpPOST } from "./api/mcp/route";
 import { POST as liveTickPOST } from "./api/tick/live/route";
@@ -189,6 +191,26 @@ describe("production gates", () => {
     expect(signedIn).toContain('"gp"');
     expect(signedIn).not.toContain(farmKey);
     farmCookie = undefined;
+  });
+
+  test("a world with one farm does not hand it to a caller with no key", async () => {
+    // Its own world: the shared one has several farms, where the shortcut
+    // never applied and this test could not fail.
+    const file = path.join(dir, "sole.db");
+    seedGame(createDb(file));
+    const sharedDb = env.PINTAKASI_DB;
+    env.PINTAKASI_DB = file;
+    try {
+      expect((await autoplayPOST(post("/api/autoplay"))).status).toBe(401);
+      expect((await fightsGET(new NextRequest(`${BASE}/api/farm/fights`))).status).toBe(401);
+      // …and outside production the same call is let through, so the 401s
+      // above are the gate and not some other refusal.
+      env.NODE_ENV = "development";
+      expect((await fightsGET(new NextRequest(`${BASE}/api/farm/fights`))).status).toBe(200);
+    } finally {
+      env.NODE_ENV = "production";
+      env.PINTAKASI_DB = sharedDb;
+    }
   });
 
   test("POST /api/session sets a secure httpOnly cookie only for a real key", async () => {

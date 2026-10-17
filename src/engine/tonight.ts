@@ -28,7 +28,13 @@ export interface TonightChoice {
   birdId: string;
   /** Already on tonight's card. Entries are binding, so the page shows it locked. */
   entered: CardKey | null;
-  /** What the honest day would enter, or null when it would rest the bird. Always one of `options`. */
+  /**
+   * A fight like the one the honest day would enter, or null to rest the bird.
+   * Always one of `options`. LIKE, not the same: the honest day draws one
+   * random stream down the whole barn, may hold a bird back for tomorrow's
+   * weather (weatherCardsToday), and spends crown fees from the same budget
+   * before it cards. This reads the same picker per bird and changes nothing.
+   */
   suggestion: CardKey | null;
   /** Every posted key this bird may legally enter tonight, with what the night costs. */
   options: { key: CardKey; fee: number }[];

@@ -11,6 +11,7 @@ import type { BirdFightRowUI } from "../admin/grids";
 import { ElementCell, FightReplayModal, GradeCell, useFightReplay } from "../grid-kit";
 import { SWATCH } from "../join/swatches";
 import type { CardResult } from "../api/card/route";
+import type { FarmFightPage } from "../api/farm/fights/route";
 import { BirdDetail } from "./bird-detail";
 import {
   EggNameCell,
@@ -30,6 +31,9 @@ type View = (typeof VIEWS)[number];
 const swatch = (c: string) => (c in SWATCH ? SWATCH[c as FarmColor] : c);
 const record = (p: { data?: { wins: number; losses: number } }) =>
   p.data ? `${p.data.wins}–${p.data.losses}` : "";
+/** A wallet to the hundredth, the way the ledger keeps it. */
+const gp2 = (v: number) =>
+  v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (v: number) => (v === 0 ? "" : `${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`);
 const nameCol = {
   colId: "name",
@@ -209,23 +213,35 @@ const RESULT_SECONDARY = ["opponentFarm", "opponentFigure", "valueBefore", "card
 type OpenFight = { logId: number; title: string };
 type Busy = "idle" | "checkin" | "autoplay" | "card" | "name";
 
-/** The local time the game day turns (00:00 UTC), once the browser knows its own zone. */
-function useDayTurn(): string | null {
-  const [text, setText] = useState<string | null>(null);
+/**
+ * When tonight's card goes off, in words. A live-clock world turns at 00:00
+ * UTC, so the browser can name that moment in its own zone; any other world
+ * (a sim, `bun dev`) turns when someone ticks it, and a clock time there
+ * would be invented.
+ */
+function useCardCloses(liveClock: boolean): string {
+  const [local, setLocal] = useState<string | null>(null);
   useEffect(() => {
+    if (!liveClock) return;
     const now = new Date();
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-    setText(next.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  }, []);
-  return text;
+    setLocal(next.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }, [liveClock]);
+  if (!liveClock) return "card goes off at the next tick";
+  return local ? `card closes ${local} your time` : "card closes at midnight UTC";
 }
 
 async function post<T>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  return readJson<T>(
+    await fetch(url, {
+      method: "POST",
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  );
+}
+
+async function readJson<T>(res: Response): Promise<T> {
   const json: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const error =
@@ -235,6 +251,47 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
     throw new Error(error);
   }
   return json as T;
+}
+
+/**
+ * The Results view's rows, fetched when the view opens and a page at a time
+ * after that (GET /api/farm/fights). Refetched from the top whenever the
+ * server's fight count moves, which is how a tick or a refresh shows up.
+ */
+function useFarmFights(open: boolean, total: number) {
+  const [rows, setRows] = useState<FarmFightRowUI[]>([]);
+  const [more, setMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadedFor, setLoadedFor] = useState<number | null>(null);
+
+  const load = useCallback(async (before?: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const page = await readJson<FarmFightPage>(
+        await fetch(`/api/farm/fights${before === undefined ? "" : `?before=${before}`}`)
+      );
+      setRows((cur) => (before === undefined ? page.rows : [...cur, ...page.rows]));
+      setMore(page.more);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open || loadedFor === total) return;
+    setLoadedFor(total);
+    void load();
+  }, [open, total, loadedFor, load]);
+
+  const oldest = rows.at(-1)?.logId;
+  const older = useCallback(() => {
+    if (oldest !== undefined) void load(oldest);
+  }, [load, oldest]);
+  return { rows, more, loading, error, older };
 }
 
 export function FarmApp({ data }: { data: FarmPageData }) {
@@ -252,7 +309,8 @@ export function FarmApp({ data }: { data: FarmPageData }) {
   const [openFight, setOpenFight] = useState<OpenFight | null>(null);
   const [naming, setNaming] = useState<{ birdId: string; current: string } | null>(null);
   const replay = useFightReplay(openFight?.logId ?? null);
-  const dayTurn = useDayTurn();
+  const cardCloses = useCardCloses(data.liveClock);
+  const fights = useFarmFights(view === "Results", data.results.fights);
   const { farm } = data;
 
   const refresh = useCallback(() => router.refresh(), [router]);
@@ -328,10 +386,7 @@ export function FarmApp({ data }: { data: FarmPageData }) {
 
   // Results "earlier" and "later" step through this farm's fights by log id,
   // which rises with time whatever the grid is sorted by.
-  const byLog = useMemo(
-    () => data.results.slice().sort((a, b) => a.logId - b.logId),
-    [data.results]
-  );
+  const byLog = useMemo(() => fights.rows.slice().sort((a, b) => a.logId - b.logId), [fights.rows]);
   const step = (by: -1 | 1) => {
     if (!openFight) return undefined;
     const at = byLog.findIndex((f) => f.logId === openFight.logId);
@@ -343,7 +398,7 @@ export function FarmApp({ data }: { data: FarmPageData }) {
     Fighting: data.fighting.length,
     Retired: data.retired.length,
     Eggs: data.eggs.length,
-    Results: data.results.length,
+    Results: data.results.fights,
   };
 
   return (
@@ -364,8 +419,11 @@ export function FarmApp({ data }: { data: FarmPageData }) {
             </span>
           </div>
           <div className="clock">
-            Day {data.clock.dayIndex} · {data.clock.date}
-            {dayTurn ? ` · card closes ${dayTurn} your time` : ""}
+            <b>Game {data.gameWeekday}</b> · day {data.clock.dayIndex} · {cardCloses}
+            <br />
+            <span className="dim" title={GAME_CALENDAR_NOTE}>
+              Game calendar: {data.clock.date}
+            </span>
           </div>
         </div>
         <div className="wallet">
@@ -412,11 +470,7 @@ export function FarmApp({ data }: { data: FarmPageData }) {
           </form>
         </div>
         {confirmAuto ? (
-          <AutoPanel
-            reserve={data.autoReserve}
-            onGo={playDay}
-            onCancel={() => setConfirmAuto(false)}
-          />
+          <AutoPanel knobs={data.autoDay} onGo={playDay} onCancel={() => setConfirmAuto(false)} />
         ) : null}
         {busy === "autoplay" ? <p className="world">The house is playing your day…</p> : null}
         {autoReport ? (
@@ -487,19 +541,41 @@ export function FarmApp({ data }: { data: FarmPageData }) {
         />
       ) : null}
       {view === "Results" ? (
-        <FarmGrid<FarmFightRowUI>
-          gridId="results"
-          label="Results"
-          rows={data.results}
-          columns={RESULT_COLS}
-          secondary={RESULT_SECONDARY}
-          searchOf={resultSearch}
-          rowId={byLogId}
-          rowClass="opens-fight"
-          onRowClicked={(r) => watch(r, r.birdName)}
-          summary={resultsSummary}
-          placeholder="Search: a bird, an opponent, a stable, win or loss"
-        />
+        <>
+          <p className="summary">
+            All time: {data.results.fights.toLocaleString()} fights · {data.results.wins}–
+            {data.results.fights - data.results.wins} ·{" "}
+            <span className={data.results.netGp >= 0 ? "up" : "down"}>
+              {signed(data.results.netGp) || "0.00"} GP net
+            </span>
+          </p>
+          <FarmGrid<FarmFightRowUI>
+            gridId="results"
+            label="Results"
+            rows={fights.rows}
+            columns={RESULT_COLS}
+            secondary={RESULT_SECONDARY}
+            searchOf={resultSearch}
+            rowId={byLogId}
+            rowClass="opens-fight"
+            onRowClicked={(r) => watch(r, r.birdName)}
+            summary={resultsSummary}
+            placeholder="Search the loaded fights: a bird, an opponent, a stable, win or loss"
+          />
+          <div className="row">
+            {fights.error ? (
+              <p className="down" role="alert">
+                {fights.error}
+              </p>
+            ) : null}
+            {fights.loading ? <p className="dim">Loading fights…</p> : null}
+            {!fights.loading && fights.more ? (
+              <button type="button" className="btn ghost" onClick={fights.older}>
+                Load older fights
+              </button>
+            ) : null}
+          </div>
+        </>
       ) : null}
 
       {selectedBird && (view === "Fighting" || view === "Retired") ? (
@@ -594,13 +670,20 @@ const byId = (r: { id: string }) => r.id;
 const NONE: string[] = [];
 const byLogId = (r: { logId: number }) => String(r.logId);
 
-/** Recomputed from the rows the grid is showing, so a filter on one bird sums that bird. */
+const GAME_CALENDAR_NOTE =
+  "The game's own calendar, not today's date. Its weekday is the one Hatch Friday and the Majors run on.";
+
+/**
+ * Recomputed from the rows the grid is showing, so a filter on one bird sums
+ * that bird. It says "loaded" because it only knows the pages fetched so far;
+ * the all-time line above the grid is the server's count of every fight.
+ */
 function resultsSummary(shown: FarmFightRowUI[]) {
   const wins = shown.filter((r) => r.result === "win").length;
   const net = shown.reduce((sum, r) => sum + r.gp, 0);
   return (
     <>
-      {shown.length.toLocaleString()} fights · {wins}–{shown.length - wins} ·{" "}
+      Loaded and shown: {shown.length.toLocaleString()} fights · {wins}–{shown.length - wins} ·{" "}
       <span className={net >= 0 ? "up" : "down"}>{signed(net) || "0.00"} GP net</span>
     </>
   );
@@ -612,11 +695,11 @@ function resultsSummary(shown: FarmFightRowUI[]) {
  * this button does things that cannot be taken back.
  */
 function AutoPanel({
-  reserve,
+  knobs,
   onGo,
   onCancel,
 }: {
-  reserve: number;
+  knobs: FarmPageData["autoDay"];
   onGo: () => void;
   onCancel: () => void;
 }) {
@@ -625,8 +708,17 @@ function AutoPanel({
       <h3>The house will play today like a careful beginner:</h3>
       <ul>
         <li>Check in, and spend your free gacha pulls (never a paid roll).</li>
-        <li>Price your retired roosters and list them at stud.</li>
-        <li>Buy the next barn expansion if the barn is nearly full.</li>
+        <li>
+          Price your retired roosters and list them at stud. On Hatch Friday it also reprices every
+          stud you have standing by last week&apos;s demand. That replaces any price you set by
+          hand.
+        </li>
+        <li>
+          Buy the next barn expansion if the barn is within {knobs.expandHeadroom} slots of full. It
+          unstakes Land Tokens to pay. If your staked land is not enough, it buys the rest with GP,
+          at {knobs.landGpPer100} GP per 100 LT. That purchase does not keep {knobs.reserve} GP
+          back.
+        </li>
         <li>Stake all your loose Land Tokens.</li>
         <li>Breed one hen whose nest is empty, to the stud it rates best.</li>
         <li>Give every unnamed bird a name from the house list.</li>
@@ -634,7 +726,10 @@ function AutoPanel({
           Register crown birds for this week&apos;s championships. The Majors are hardcore: a loss
           there retires the bird.
         </li>
-        <li>Enter every fighting bird it can on tonight&apos;s card, keeping {reserve} GP back.</li>
+        <li>
+          Enter every fighting bird it can on tonight&apos;s card, keeping {knobs.reserve} GP back.
+          Its picks are like the Tonight suggestions, but not always the same ones.
+        </li>
       </ul>
       <p className="dim" style={{ margin: 0 }}>
         Birds you already entered stay as they are. Entries are binding: once the house enters a
@@ -662,7 +757,14 @@ function AutoSummary({ report, onClose }: { report: HonestDayReport; onClose: ()
     report.studsListed
       ? `Listed ${report.studsListed} stud${report.studsListed === 1 ? "" : "s"}.`
       : null,
+    report.studsRepriced.length
+      ? `Repriced ${report.studsRepriced.length} stud${report.studsRepriced.length === 1 ? "" : "s"} by last week's demand (Hatch Friday). Any price you had set by hand was replaced.`
+      : null,
     report.barnExpanded ? "Expanded the barn." : null,
+    report.ltUnstaked ? `Unstaked ${report.ltUnstaked} LT to pay for the barn.` : null,
+    report.ltBought
+      ? `Bought ${report.ltBought} LT for ${report.landBoughtGp} GP to pay for the barn.`
+      : null,
     report.ltStaked ? `Staked ${report.ltStaked} LT.` : null,
     report.covers ? `Bred ${report.covers} hen${report.covers === 1 ? "" : "s"}.` : null,
     report.named.length ? `Named ${report.named.map((n) => n.name).join(", ")}.` : null,
@@ -679,9 +781,20 @@ function AutoSummary({ report, onClose }: { report: HonestDayReport; onClose: ()
           <li key={l}>{l}</li>
         ))}
       </ul>
+      {report.studsRepriced.length ? (
+        <details>
+          <summary>New stud prices</summary>
+          <ul className="report">
+            {report.studsRepriced.map((r) => (
+              <li key={r.birdId}>
+                <b>{r.name}</b>: {r.from} → {r.to} GP
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       <p style={{ margin: 0 }}>
-        GP {Math.floor(report.gpBefore).toLocaleString()} →{" "}
-        {Math.floor(report.gpAfter).toLocaleString()}{" "}
+        GP {gp2(report.gpBefore)} → {gp2(report.gpAfter)}{" "}
         <span className={diff >= 0 ? "up" : "down"}>({signed(diff) || "0.00"})</span>
       </p>
       <div className="row">

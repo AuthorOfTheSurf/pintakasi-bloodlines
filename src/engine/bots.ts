@@ -27,6 +27,7 @@ import {
   SCOUT,
   STUD_PRICE,
   VALUE,
+  BARN,
   barnCapacity,
   studPriceOf,
   cardOfDay,
@@ -127,12 +128,6 @@ const RESERVE = 400;
 /** A whale keeps far less back — that's what makes it a whale. */
 const WHALE_RESERVE = 100;
 const MAX_CLAIMS_PER_DAY = 2;
-/**
- * Expand the barn once the flock is within this many slots of the ceiling —
- * roughly one week of covers, so the expansion lands BEFORE `quietly` starts
- * eating refused breeds rather than after (round 43).
- */
-const BARN_EXPAND_HEADROOM = 10;
 
 /**
  * The bot stables' daily play. Called at the top of every tick — the bots
@@ -352,7 +347,7 @@ export class Bots {
       // Headroom of one week's worth of covers: expanding the morning the barn
       // is already full would still lose every cover `quietly` swallowed while
       // the wallet was short — start paying while there is still room to breed.
-      if (flock.barnCount() >= barnCapacity(row.barnExpansions) - BARN_EXPAND_HEADROOM) {
+      if (flock.barnCount() >= barnCapacity(row.barnExpansions) - BARN.EXPAND_HEADROOM) {
         const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
         if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
         // A barn with no land BANK buys the shortfall with GP (round 43,

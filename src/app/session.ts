@@ -30,7 +30,13 @@ export function keyFromCookieHeader(header: string | null): string | null {
   if (!header) return null;
   for (const part of header.split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === FARM_COOKIE) return decodeURIComponent(rest.join("=")) || null;
+    if (name !== FARM_COOKIE) continue;
+    // A mangled cookie (a stray "%") is a signed-out browser, not a 500.
+    try {
+      return decodeURIComponent(rest.join("=")) || null;
+    } catch {
+      return null;
+    }
   }
   return null;
 }

@@ -1,9 +1,12 @@
-import { farmFightRows, type FarmFightRowUI } from "@/app/admin/bird-fights";
+import { farmFightTotals, recentFigures } from "@/app/admin/bird-fights";
+import { liveStart } from "@/app/live-clock";
 import type { DB } from "@/db/client";
 import { AUTO_RESERVE } from "@/engine/auto-play";
 import { keyId } from "@/engine/card-key";
 import {
+  BARN,
   FORMATS,
+  LAND,
   STAT_NAMES,
   cardOfDay,
   weatherOfDay,
@@ -84,10 +87,23 @@ export interface FarmPageData {
   fighting: FightingRowUI[];
   retired: RetiredRowUI[];
   eggs: EggRowUI[];
-  results: FarmFightRowUI[]; // newest first
+  /**
+   * The whole fight history, counted by the database. The rows themselves are
+   * not here: the Results view pages them from GET /api/farm/fights.
+   */
+  results: { fights: number; wins: number; netGp: number };
+  /** The game weekday, e.g. "Friday". Hatch Friday and the Majors run on it. */
+  gameWeekday: string;
+  /**
+   * True when this world turns at real midnight UTC (PINTAKASI_LIVE_START).
+   * Only then does "the card closes at HH:MM your time" mean anything; a sim
+   * or dev world turns when someone ticks it.
+   */
+  liveClock: boolean;
   /** Tonight's card keys by `keyId`, as the board names them. */
   cardLabels: Record<string, string>;
-  autoReserve: number;
+  /** The Play my day knobs the confirm panel quotes, read from the engine. */
+  autoDay: { reserve: number; expandHeadroom: number; landGpPer100: number };
 }
 
 /** How many figures the Fighting grid's sparkline draws. */
@@ -139,15 +155,7 @@ export function farmPageData(db: DB, farmId: string): FarmPageData {
   const farmsApi = new Farms(db);
   const flock = new Flock(db, farmId);
   const all = flock.all();
-  const results = farmFightRows(db, farmId);
-
-  const recent = new Map<string, FightingRowUI["figures"]>();
-  for (const r of results) {
-    const line = recent.get(r.birdId) ?? [];
-    line.push({ figure: r.figure, result: r.result === "win" ? "win" : "loss" });
-    if (line.length > SPARK_FIGHTS) line.shift();
-    recent.set(r.birdId, line);
-  }
+  const recent = recentFigures(db, farmId, SPARK_FIGHTS);
 
   const active = all.filter((b) => b.status === "active");
   const reports = new Lobbies(db, farmId).scoutReports(active.map((b) => b.id));
@@ -203,6 +211,8 @@ export function farmPageData(db: DB, farmId: string): FarmPageData {
   return {
     farm: farmsApi.view(farmsApi.rowById(farmId)),
     clock: GameClock.stateOf(day),
+    gameWeekday: GameClock.weekdayOf(day),
+    liveClock: liveStart() !== null,
     barn: {
       count: flock.barnCount(),
       capacity: flock.capacity(),
@@ -214,10 +224,14 @@ export function farmPageData(db: DB, farmId: string): FarmPageData {
     fighting,
     retired,
     eggs,
-    results: results.slice().reverse(),
+    results: farmFightTotals(db, farmId),
     cardLabels: Object.fromEntries(
       cardOfDay(day).map((k) => [keyId(k), labelOf({ ...k, price: k.price ?? null })])
     ),
-    autoReserve: AUTO_RESERVE,
+    autoDay: {
+      reserve: AUTO_RESERVE,
+      expandHeadroom: BARN.EXPAND_HEADROOM,
+      landGpPer100: LAND.GP_PER_100_TOKENS,
+    },
   };
 }

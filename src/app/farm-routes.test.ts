@@ -3,13 +3,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { and, eq } from "drizzle-orm";
-import { birds, farms, lobbyEntries } from "@/db/schema";
+import { battleLog, birds, farms, lobbyEntries } from "@/db/schema";
 import { makeBird, world, type World } from "@/engine/testkit";
 import { tonightFor } from "@/engine/tonight";
 import { POST as autoplayPOST } from "./api/autoplay/route";
 import { POST as namePOST } from "./api/birds/[id]/name/route";
 import { POST as cardPOST } from "./api/card/route";
-import { FARM_COOKIE } from "./session";
+import { GET as fightsGET } from "./api/farm/fights/route";
+import { FARM_COOKIE, keyFromCookieHeader } from "./session";
 
 /**
  * The farm page's three write doors, driven through the real route handlers
@@ -94,11 +95,10 @@ describe("POST /api/card", () => {
     expect(repeat.error).toContain("already on tonight's card");
   });
 
-  test("refuses a caller with no farm", async () => {
-    const res = await cardPOST(
-      req("/api/card", null, { entries: [{ birdId: "x", key: { mode: "real" } }] })
-    );
-    expect(res.status).toBe(400);
+  test("asks who is calling before it reads the body", async () => {
+    const malformed = { entries: [{ birdId: "x", key: { mode: "real" } }] };
+    expect((await cardPOST(req("/api/card", null, malformed))).status).toBe(401);
+    expect((await cardPOST(req("/api/card", devKey, malformed))).status).toBe(400);
     const anon = await cardPOST(
       req("/api/card", null, {
         entries: [{ birdId: "x", key: { mode: "real", classType: "open", format: "b1" } }],
@@ -156,5 +156,63 @@ describe("POST /api/autoplay", () => {
       .where(and(eq(birds.id, rivalChick.id), eq(birds.farmId, w.rivalId)))
       .get();
     expect(chick?.named).toBe(0);
+  });
+});
+
+describe("GET /api/farm/fights", () => {
+  const fight = (farmId: string, birdId: string, opponentFarmId: string, result: "win" | "loss") =>
+    w.db
+      .insert(battleLog)
+      .values({
+        dayIndex: 0,
+        farmId,
+        birdId,
+        mode: "real",
+        format: "b3",
+        lobby: "open",
+        opponentBirdId: "someone",
+        opponentFarmId,
+        opponentName: "Someone",
+        side: 0,
+        result,
+        pitFigure: 50,
+        gpDeltaCents: result === "win" ? 1_000 : -1_000,
+        seed: 1,
+      })
+      .returning({ id: battleLog.id })
+      .get().id;
+  const get = (query: string, key: string | null) =>
+    new Request(`http://test.local/api/farm/fights${query}`, {
+      headers: key ? { cookie: `${FARM_COOKIE}=${key}` } : {},
+    });
+  type Page = { rows: { logId: number; birdId: string }[]; more: boolean };
+
+  test("pages the caller's own fights newest first, and only theirs", async () => {
+    const mine = w.bird("Alab").id;
+    const ids = Array.from({ length: 5 }, (_, i) =>
+      fight(w.devId, mine, w.rivalId, i % 2 ? "win" : "loss")
+    );
+    const theirs = fight(w.rivalId, w.rivalSlot("Alab"), w.devId, "win");
+
+    const first = (await (await fightsGET(get("?limit=3", devKey))).json()) as Page;
+    expect(first.rows.map((r) => r.logId)).toEqual(ids.slice(2).reverse());
+    expect(first.more).toBe(true);
+    const oldest = first.rows[first.rows.length - 1].logId;
+    const rest = (await (await fightsGET(get(`?limit=3&before=${oldest}`, devKey))).json()) as Page;
+    expect(rest.rows.map((r) => r.logId)).toEqual(ids.slice(0, 2).reverse());
+    expect(rest.more).toBe(false);
+    expect([...first.rows, ...rest.rows].map((r) => r.logId)).not.toContain(theirs);
+  });
+
+  test("refuses a caller with no farm, and a page size past the cap", async () => {
+    expect((await fightsGET(get("", null))).status).toBe(401);
+    expect((await fightsGET(get("?limit=100000", devKey))).status).toBe(400);
+  });
+});
+
+describe("the session cookie", () => {
+  test("a mangled cookie reads as signed out instead of throwing", () => {
+    expect(keyFromCookieHeader(`other=1; ${FARM_COOKIE}=%E0%A4%A`)).toBeNull();
+    expect(keyFromCookieHeader(`${FARM_COOKIE}=${encodeURIComponent(devKey)}`)).toBe(devKey);
   });
 });

@@ -5,9 +5,14 @@ import { CALENDAR } from "./config";
 import { setBufferedEventDay } from "./events";
 
 /**
- * The game calendar. Day 0 = the first Friday of the Year 3000, so every
- * dayIndex divisible by 7 is a Hatch Friday. Birds age one bird-year per
- * game-week: age = currentWeek - birthWeek (derived, never stored).
+ * The game calendar. Day 0 = the first Friday of the Year 3000 (Friday,
+ * January 3), so every dayIndex divisible by 7 is a Hatch Friday. Birds age
+ * one bird-year per game-week: age = currentWeek - birthWeek (derived, never
+ * stored).
+ *
+ * A FICTIONAL calendar, never today's date. Its weekday is what the game runs
+ * on (Hatch Friday, the Majors' day), and on a live world it need not match
+ * the real one: alpha-1's day 0 was a real Saturday and a game Friday.
  */
 
 // First Friday of START_YEAR, as a UTC timestamp (Friday = getUTCDay() 5).
@@ -18,7 +23,7 @@ const EPOCH_UTC = jan1 + ((5 - jan1Weekday + 7) % 7) * 86_400_000;
 export interface ClockState {
   dayIndex: number;
   weekIndex: number;
-  date: string; // e.g. "Friday, January 2, 3000"
+  date: string; // e.g. "Friday, January 3, 3000"
   isHatchFriday: boolean;
 }
 
@@ -49,6 +54,14 @@ export class GameClock {
       month: "long",
       day: "numeric",
       year: "numeric",
+      timeZone: "UTC",
+    });
+  }
+
+  /** The game weekday of a day, e.g. "Friday". Not the real-world weekday. */
+  static weekdayOf(dayIndex: number): string {
+    return new Date(EPOCH_UTC + dayIndex * 86_400_000).toLocaleDateString("en-US", {
+      weekday: "long",
       timeZone: "UTC",
     });
   }

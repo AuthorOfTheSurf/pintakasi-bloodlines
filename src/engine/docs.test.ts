@@ -9,6 +9,7 @@ import type { FightFormat, FightMode } from "./config";
 import {
   AGE,
   ALL_ENTRY_FEES,
+  BARN,
   BATTLE,
   CALENDAR,
   CARD,
@@ -122,6 +123,26 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(TOOL_DESCRIPTIONS.play_my_day).toContain(`${AUTO_RESERVE} GP`);
     expect(TOOL_DESCRIPTIONS.play_my_day).toMatch(/binding/i);
     expect(TOOL_DESCRIPTIONS.play_my_day).toMatch(/your farm only/i);
+  });
+
+  // Two steps of the honest day a player would not guess from "plays a careful
+  // day", both found in review after the button shipped: the barn expansion
+  // can unstake land AND spend GP past the reserve, and Hatch Friday's demand
+  // repricing overwrites a stud price the owner set by hand.
+  test("play_my_day and the Handbook disclose the expansion's land and GP, and the Friday reprice", () => {
+    const tool = TOOL_DESCRIPTIONS.play_my_day;
+    expect(tool).toContain(`within ${BARN.EXPAND_HEADROOM} slots of full`);
+    expect(tool).toMatch(/UNSTAKING/);
+    expect(tool).toContain(`${LAND.GP_PER_100_TOKENS} GP per 100 LT`);
+    expect(tool).toMatch(/HATCH FRIDAY reprice/);
+    expect(tool).toMatch(/OVERWRITES any stud price the player set by hand/);
+    const farm = readWikiPage("farm/page.tsx");
+    expect(farm).toContain("{BARN.EXPAND_HEADROOM} slots of full");
+    expect(farm).toContain("{LAND.GP_PER_100_TOKENS} GP per 100 LT");
+    expect(farm).toMatch(/This replaces a price you set by\s+hand/);
+    // The game calendar's year is read, not typed.
+    expect(farm).toContain("{CALENDAR.START_YEAR}");
+    expect(farm).not.toContain(String(CALENDAR.START_YEAR));
   });
 
   // Drift #4: STAKER_FLOWS.FIGHT_RAKE is 0 (round 23 zeroed the daily-card

@@ -1,6 +1,6 @@
 import { and, eq, gt, max } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { events, farms, gameState } from "@/db/schema";
+import { birds, events, farms, gameState } from "@/db/schema";
 import {
   bestShape,
   chaseCrowns,
@@ -20,7 +20,7 @@ import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies } from "./lobbies";
-import { LT_CENTS, STUD_PRICE, barnCapacity, nextExpansionCost } from "./config";
+import { BARN, LT_CENTS, STUD_PRICE, barnCapacity, nextExpansionCost } from "./config";
 import { drawStarterNames } from "./naming";
 import { mulberry32 } from "./rng";
 
@@ -45,10 +45,23 @@ const quietly = (fn: () => unknown): boolean => {
   }
 };
 
+/**
+ * The land the day moved, in whole tokens, for playMyDay's report. Counted at
+ * the call rather than diffed afterwards because unstake and stake move the
+ * same two columns in opposite directions and neither event carries an
+ * amount, so the net change cannot say how much went each way. Optional, and
+ * nothing reads it inside the day, so the sim's path is unchanged.
+ */
+export interface LandTally {
+  ltUnstaked: number;
+  ltStaked: number;
+}
+
 export function playHonestDay(
   db: DB,
   farmId: string,
-  discoveryPolicy: DiscoveryPolicy = "current"
+  discoveryPolicy: DiscoveryPolicy = "current",
+  tally?: LandTally
 ): void {
   const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
   if (!state) return;
@@ -88,9 +101,13 @@ export function playHonestDay(
   quietly(() => {
     const row = farmsApi.rowById(farmId);
     const flockApi2 = new Flock(db, farmId);
-    if (flockApi2.barnCount() >= barnCapacity(row.barnExpansions) - 10) {
+    if (flockApi2.barnCount() >= barnCapacity(row.barnExpansions) - BARN.EXPAND_HEADROOM) {
       const short = nextExpansionCost(row.barnExpansions) - row.landTokensCents;
-      if (short > 0) quietly(() => void farmsApi.unstake(farmId, Math.ceil(short / LT_CENTS)));
+      if (short > 0)
+        quietly(() => {
+          const { unstaked } = farmsApi.unstake(farmId, Math.ceil(short / LT_CENTS));
+          if (tally) tally.ltUnstaked += unstaked;
+        });
       // …and buys the rest with GP if the land bank can't cover it — same
       // rich-but-landless fallback as the bots (see bots.ts step 1b2).
       const stillShort =
@@ -106,6 +123,7 @@ export function playHonestDay(
   quietly(() => {
     const whole = Math.floor(farmsApi.rowById(farmId).landTokensCents / LT_CENTS);
     if (whole > 0) farmsApi.stake(farmId, whole);
+    if (whole > 0 && tally) tally.ltStaked += whole;
   });
 
   // One cover a day, first hen whose nest is empty (one egg per hen). Since
@@ -226,28 +244,60 @@ export function playHonestDay(
  * live tick still never does this on its own (alpha-1: "ticks play only the
  * bot farms"); this is the same day, run because its owner pressed for it.
  *
- * What it did is read back by DIFFING the world before and after rather than
- * by threading counters through playHonestDay. That day wraps every step in
- * `quietly()`, so the only honest account of what happened is what the
- * ledger and the barn say afterwards, and the sim keeps its hot path untouched.
+ * What it did is read back by DIFFING the world before and after, and from
+ * the events the day wrote. That day wraps every step in `quietly()`, so the
+ * honest account of what happened is what the ledger and the barn say
+ * afterwards. The one exception is land in and out of the pool (LandTally
+ * says why), which the day counts as it goes.
  */
 export interface HonestDayReport {
+  /** The wallet as the farm page shows it, hundredths included (FarmView.gp). */
   gpBefore: number;
   gpAfter: number;
   checkedIn: boolean; // false if the farm had already checked in today
   pullsSpent: number;
   studsListed: number;
+  /**
+   * Studs whose ask the day changed. On Hatch Friday `priceStuds` reads last
+   * week's demand and moves every standing stud's price, and that write
+   * replaces an ask the owner set by hand. Named one by one, because a player
+   * who priced a stud deliberately needs to see that the house moved it.
+   * A brand-new stud's opening ask is not here: it had no ask to replace.
+   */
+  studsRepriced: { birdId: string; name: string; from: number; to: number }[];
   barnExpanded: boolean;
-  ltStaked: number; // whole tokens moved into the pool
+  /** Whole tokens pulled out of the pool to pay for the expansion. */
+  ltUnstaked: number;
+  /** Land bought with GP when the pool could not cover the expansion. */
+  ltBought: number;
+  landBoughtGp: number;
+  ltStaked: number; // whole tokens moved into the pool; never negative
   covers: number; // hens bred
   named: { birdId: string; name: string }[]; // hatchlings the house christened
   crownsEntered: number; // championship registrations
   birdsEntered: number; // birds put on tonight's card
 }
 
+/** Every retired rooster's ask, as the stud market reads it: pending first, then posted. */
+function studAsks(db: DB, farmId: string) {
+  return new Map(
+    db
+      .select({
+        id: birds.id,
+        name: birds.name,
+        studPrice: birds.studPrice,
+        studPriceNext: birds.studPriceNext,
+      })
+      .from(birds)
+      .where(and(eq(birds.farmId, farmId), eq(birds.sex, "male"), eq(birds.status, "retired")))
+      .all()
+      .map((b) => [b.id, { name: b.name, ask: b.studPriceNext ?? b.studPrice }])
+  );
+}
+
 export function playMyDay(db: DB, farmId: string): HonestDayReport {
   const farmsApi = new Farms(db);
-  const before = farmsApi.rowById(farmId);
+  const before = farmsApi.view(farmsApi.rowById(farmId));
   const lastEvent =
     db
       .select({ id: max(events.id) })
@@ -257,26 +307,37 @@ export function playMyDay(db: DB, farmId: string): HonestDayReport {
     .all()
     .filter((b) => b.status === "active" && !b.named)
     .map((b) => b.id);
-  const checkedInBefore = farmsApi.view(before).checkedInToday;
+  const asksBefore = studAsks(db, farmId);
+  const tally: LandTally = { ltUnstaked: 0, ltStaked: 0 };
 
-  playHonestDay(db, farmId);
+  playHonestDay(db, farmId, "current", tally);
 
-  const after = farmsApi.rowById(farmId);
+  const after = farmsApi.view(farmsApi.rowById(farmId));
   const happened = db
-    .select({ type: events.type })
+    .select({ type: events.type, lt: events.lt, gpCents: events.gpCents })
     .from(events)
     .where(and(eq(events.farmId, farmId), gt(events.id, lastEvent)))
     .all();
   const count = (type: string) => happened.filter((e) => e.type === type).length;
+  const landBuys = happened.filter((e) => e.type === "buy_land");
   const flockAfter = new Map(new Flock(db, farmId).all().map((b) => [b.id, b]));
   return {
     gpBefore: before.gp,
     gpAfter: after.gp,
-    checkedIn: !checkedInBefore && farmsApi.view(after).checkedInToday,
+    checkedIn: !before.checkedInToday && after.checkedInToday,
     pullsSpent: count("gacha"),
     studsListed: count("stud_listed"),
+    studsRepriced: [...studAsks(db, farmId)].flatMap(([birdId, now]) => {
+      const was = asksBefore.get(birdId)?.ask ?? null;
+      return was !== null && now.ask !== null && now.ask !== was
+        ? [{ birdId, name: now.name, from: was, to: now.ask }]
+        : [];
+    }),
     barnExpanded: count("barn_expanded") > 0,
-    ltStaked: Math.round((after.stakedLandCents - before.stakedLandCents) / LT_CENTS),
+    ltUnstaked: tally.ltUnstaked,
+    ltBought: landBuys.reduce((sum, e) => sum + (e.lt ?? 0), 0) / LT_CENTS,
+    landBoughtGp: landBuys.reduce((sum, e) => sum - (e.gpCents ?? 0), 0) / 100,
+    ltStaked: tally.ltStaked,
     covers: count("breed"),
     named: unnamed.flatMap((id) => {
       const bird = flockAfter.get(id);
