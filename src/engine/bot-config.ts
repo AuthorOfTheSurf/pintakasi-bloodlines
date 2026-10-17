@@ -229,7 +229,7 @@ export const WEATHER_APPETITE = {
  *
  * So a barn now has a HOUSE SHAPE — one of BREEDING_SHAPES — and scores every
  * legal (hen, stud) pair on the foal it would expect. Expected foal sheet is
- * just the parents' midpoint (BREEDING.STAT_VARIANCE is symmetric noise on top
+ * expectedFoalStat per stat (BREEDING.STAT_VARIANCE is symmetric noise on top
  * of it), which makes the whole plan readable arithmetic rather than a
  * simulation.
  *
@@ -411,7 +411,7 @@ export const BREEDING_PLAN = {
  * hidden value, because there is none: a retired bird hides nothing.
  *
  * BUYERS (`spend`). A cover is scored on the foal it should make (foalScore,
- * the parents' midpoint), and every GP of premium above the floor costs
+ * on expectedFoalStat), and every GP of premium above the floor costs
  * score. `spend` and the size of the wallet decide how much: a rich barn
  * with a breeder's eye pays up for the best blood, a poor claimer shop takes
  * the floor stud that is nearly as good.

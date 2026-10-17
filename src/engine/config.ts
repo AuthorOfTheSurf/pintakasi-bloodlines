@@ -1022,6 +1022,18 @@ export function landForFight(fee: number): number {
   );
 }
 
+/**
+ * The stat a chick is EXPECTED to inherit before noise and mutation: pulled
+ * BETTER_PARENT_PULL of the way from the weaker parent toward the stronger.
+ * One function so the egg, the bots' foal estimate and the Handbook's worked
+ * example cannot disagree about the rule.
+ */
+export function expectedFoalStat(a: number, b: number): number {
+  const hi = Math.max(a, b);
+  const lo = Math.min(a, b);
+  return lo + (hi - lo) * BREEDING.BETTER_PARENT_PULL;
+}
+
 /** Land Tokens for display, from hundredths: 673 → "6.73". */
 export function fmtLt(cents: number): string {
   return (cents / LT_CENTS).toFixed(2);
@@ -1029,8 +1041,19 @@ export function fmtLt(cents: number): string {
 
 // ── Breeding ────────────────────────────────────────────────────────────────
 export const BREEDING = {
-  // Child stat = average of the parents ± up to this much, either direction.
-  // The randomness that makes two eggs from the same pair differ. (0–2000 scale.)
+  // Child stat starts this share of the way from the WEAKER parent's value to
+  // the STRONGER parent's, stat by stat (0.5 would be the plain midpoint).
+  // Ruled 2026-10-17: at the midpoint, breeding a hen to a stud two grades
+  // above her made a chick better than both parents 2% of the time — breeding
+  // up existed but barely paid, and late stables had no way to catch the
+  // field. A replay of the 7,522 crosses in latecomers-182-s1 under 0.75 gave
+  // 18% (38% one grade up). The cost is drift: chicks land ~25 points above
+  // the midpoint, so the world climbs roughly 2.5–4 grades per 1,000 days
+  // before selection. Zane wanted that — the ladder has room — and expects
+  // the rule to move again.
+  BETTER_PARENT_PULL: 0.75,
+  // Then ± up to this much, either direction — the randomness that makes two
+  // eggs from the same pair differ. (0–2000 scale.)
   STAT_VARIANCE: 120,
   // Per stat: chance of a mutation, and how far it can swing (± up to SWING).
   // This is where surprise stars (and duds) come from.

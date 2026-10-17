@@ -36,6 +36,7 @@ import {
   type Lobby,
   type StatName,
   LT_CENTS,
+  expectedFoalStat,
 } from "./config";
 import { Breeding, type StudView } from "./breeding";
 import { drawStarterNames } from "./naming";
@@ -1100,10 +1101,10 @@ export function priceStuds(db: DB, farmId: string, today: number, greed: number)
 }
 
 /**
- * Expected foal sheet is the parents' midpoint — BREEDING.STAT_VARIANCE is
- * symmetric noise around it and mutations are a 5% tail, so the midpoint is
- * the honest expectation and the whole plan stays arithmetic a player could
- * do on paper. That matters: bots must not out-know their owners. Every input
+ * Expected foal sheet is expectedFoalStat, stat by stat (pulled toward the
+ * stronger parent) — BREEDING.STAT_VARIANCE is symmetric noise around it and
+ * mutations are a 5% tail, so that is the honest expectation and the whole
+ * plan stays arithmetic a player could do on paper. That matters: bots must not out-know their owners. Every input
  * here is public (both parents are retired, so both sheets are revealed, and
  * stars are on the card).
  *
@@ -1127,7 +1128,7 @@ export function foalScore(
   // for the fogged case. A hen that reaches here is retired by the caller's
   // filter; 0 is the safe read if that ever stops being true, and it simply
   // makes her look like a bad mate rather than crashing the day.
-  const mid = (stat: StatName) => ((dam[stat] ?? 0) + sire.sheet[stat]) / 2;
+  const mid = (stat: StatName) => expectedFoalStat(dam[stat] ?? 0, sire.sheet[stat]);
   const mean = (stats: readonly StatName[]) =>
     stats.reduce((sum, s) => sum + mid(s), 0) / stats.length;
 
