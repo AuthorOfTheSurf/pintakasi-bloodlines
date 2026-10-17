@@ -1,4 +1,4 @@
-import { eq, sql, type SQL } from "drizzle-orm";
+import { count, eq, sql, type SQL } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
@@ -43,6 +43,7 @@ import { replayFidelity } from "./replay";
 import { gradeOf, type Grade } from "./grades";
 import { ageOf } from "./lifecycle";
 import { normalizedScoutFigure } from "./scout";
+import { Tournaments } from "./tournaments";
 import {
   computeTopline,
   GP_FAUCETS,
@@ -509,35 +510,121 @@ function checkPursesSettle(db: DB): Invariant {
  * once — as `champion`, `eliminated`, `bumped` or `refunded` — and single
  * elimination guarantees it: everyone but the winner loses exactly one fight.
  * That is an argument, not a check, and this is the check.
+ *
+ * ⚠ "ITS CHAMPIONSHIP" MEANS THE CROWN DAY, NOT THE STATUS (issue #37). This
+ * used to look only at crowns marked completed or cancelled, and that let the
+ * worst case through: a tournament still `open` because nothing ever resolved
+ * it. A Thursday juvenile entry landed in the week's juvenile crown AFTER
+ * Wednesday had run, the row stayed open forever, and 733 pending entries
+ * holding 35,184 GP passed this check on a 112-day world. So a pending entry
+ * is stranded the moment its crown day is behind the clock, whatever the
+ * tournament row says about itself.
  */
 function checkNoStrandedEscrow(db: DB): Invariant {
-  const resolved = new Map(
+  const today = new GameClock(db).currentDay();
+  const byId = new Map(
     db
       .select()
       .from(tournaments)
       .all()
-      .filter((t) => t.status === "completed" || t.status === "cancelled")
       .map((t) => [t.id, t])
   );
+  const resolved = [...byId.values()].filter(
+    (t) => t.status === "completed" || t.status === "cancelled"
+  ).length;
+  const crownDayPassed = (t: typeof tournaments.$inferSelect) =>
+    t.weekIndex * CALENDAR.DAYS_PER_WEEK + Tournaments.crownDayOf(t.division) < today;
   const stranded = db
     .select()
     .from(tournamentEntries)
     .all()
-    .filter((e) => e.status === "pending" && resolved.has(e.tournamentId));
+    .filter((e) => {
+      if (e.status !== "pending") return false;
+      const t = byId.get(e.tournamentId);
+      return t !== undefined && (t.status !== "open" || crownDayPassed(t));
+    });
   const held = stranded.reduce((s, e) => s + e.fee * 100, 0);
+  const onOpen = stranded.filter((e) => byId.get(e.tournamentId)?.status === "open").length;
   return {
     name: "no stranded entries",
     passed: stranded.length === 0,
     detail:
       stranded.length === 0
-        ? `${resolved.size} resolved championship(s), every entry settled`
-        : `${stranded.length} entr(ies) still pending on a resolved crown — ${gp(held)} GP unreachable`,
-    offenders: stranded
-      .slice(0, DOCTOR.OFFENDER_SAMPLE)
-      .map(
-        (e) =>
-          `entry #${e.id} on crown #${e.tournamentId} (${e.status}) holds ${gp(e.fee * 100)} GP`
-      ),
+        ? `${resolved} resolved championship(s), every entry settled`
+        : `${stranded.length} entr(ies) still pending after their crown day — ${gp(held)} GP unreachable` +
+          (onOpen > 0 ? ` (${onOpen} on a crown still open though its crown day has passed)` : ""),
+    offenders: stranded.slice(0, DOCTOR.OFFENDER_SAMPLE).map((e) => {
+      const t = byId.get(e.tournamentId);
+      return `entry #${e.id} on crown #${e.tournamentId} (${t?.status ?? "missing"}, wk${t?.weekIndex ?? "?"}) holds ${gp(e.fee * 100)} GP`;
+    }),
+  };
+}
+
+/**
+ * CROWNS RESOLVE BEFORE THE CALENDAR TURNS — the tenth invariant (issue #38).
+ *
+ * The tick that resolves Thursday's Majors is the tick that turns Thursday
+ * into Friday, and Hatch Friday used to run FIRST, inside the clock advance.
+ * A bird in its last fighting year was retired for age before its bracket
+ * looked for it, and went home "no longer stands" — refunded, never fought.
+ * Five 182-day worlds, zero Major fights at that age. Game.runTick now runs
+ * the Friday step after the crowns, and this is the check that it stays there.
+ *
+ * The shape of the proof: ages only turn on Friday, the first day of a week,
+ * and no bird can register for a week it was already retired in. So an entry
+ * refunded on a crown of week W, for a bird the calendar retired at the very
+ * next Friday (week W + 1), is a bird that stood all week and was never
+ * allowed to fight — the ordering bug's signature. Matching the week matters:
+ * a cancelled crown refunds every entrant while they are still active, and
+ * any of them may age out months later; without the week test that ordinary
+ * refund would fail the doctor on a healthy world (droid review of #39).
+ * Cancelled crowns are left out entirely: a final-year entrant on a crown that
+ * cancels is refunded and then aged out in the same tick, which matches the
+ * week test, and a crown that never ran cannot have skipped anyone.
+ */
+function checkCrownsBeforeCalendar(db: DB): Invariant {
+  const agedOut = new Map(
+    db
+      .select()
+      .from(birds)
+      .where(eq(birds.retiredBy, "age"))
+      .all()
+      .map((b) => [b.id, b])
+  );
+  const weekOf = new Map(
+    db
+      .select({ id: tournaments.id, week: tournaments.weekIndex })
+      .from(tournaments)
+      .where(eq(tournaments.status, "completed"))
+      .all()
+      .map((t) => [t.id, t.week])
+  );
+  const offenders = db
+    .select()
+    .from(tournamentEntries)
+    .all()
+    .filter((e) => {
+      if (e.status !== "refunded") return false;
+      const bird = agedOut.get(e.birdId);
+      const week = weekOf.get(e.tournamentId);
+      return bird !== undefined && week !== undefined && bird.retiredWeek === week + 1;
+    });
+  const refunds = db
+    .select({ n: count() })
+    .from(tournamentEntries)
+    .where(eq(tournamentEntries.status, "refunded"))
+    .get();
+  return {
+    name: "crowns before Hatch Friday",
+    passed: offenders.length === 0,
+    detail:
+      offenders.length === 0
+        ? `${refunds?.n ?? 0} crown refund(s), none for a bird the calendar retired`
+        : `${offenders.length} crown refund(s) for a bird retired by AGE — Friday ran before its bracket`,
+    offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE).map((e) => {
+      const b = agedOut.get(e.birdId);
+      return `entry #${e.id} on crown #${e.tournamentId}: ${b?.name ?? e.birdId} retired for age in wk${b?.retiredWeek ?? "?"}`;
+    }),
   };
 }
 
@@ -807,12 +894,19 @@ export function cardHealth(db: DB): {
   lobbies: number;
   unmatchedRate: number;
 } {
-  const entries = db.select().from(lobbyEntries).all();
+  // Counted in SQLite. This runs on every load of the Stewards' Office, and
+  // building every entry the world ever took to tally three buckets grew with
+  // the world's whole history.
   const byStatus = { pending: 0, fought: 0, unmatched: 0 };
-  for (const e of entries) byStatus[e.status]++;
+  for (const row of db
+    .select({ status: lobbyEntries.status, n: count() })
+    .from(lobbyEntries)
+    .groupBy(lobbyEntries.status)
+    .all())
+    byStatus[row.status] = row.n;
   const settled = byStatus.fought + byStatus.unmatched;
   return {
-    entries: entries.length,
+    entries: byStatus.pending + settled,
     fought: byStatus.fought,
     unmatched: byStatus.unmatched,
     pending: byStatus.pending,
@@ -3133,6 +3227,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkNoInversions(db),
     checkPursesSettle(db),
     checkNoStrandedEscrow(db), // round 41 — escrow only means something now a fee exists
+    checkCrownsBeforeCalendar(db), // issue #38 — Hatch Friday never pre-empts a bracket
     checkCardCap(db),
     checkFightCounts(db),
     checkScoutBook(db), // round 44 — the scout's cache may never drift from the log
