@@ -1517,8 +1517,9 @@ export const VALUE = {
   //   z = ln(finals a week × weeks left / field) + INTERCEPT
   //       + VS_PAR × vsPar + EARNINGS × ln(1 + gross career earnings GP)
   // The supply term is pinned at coefficient 1, not fitted (a free fit gave
-  // 0.88–0.94 and the pin cost no AUC): six finals a week, shared among
-  // everyone old enough, times the weeks you have left. It is why a crown is
+  // 0.88–0.94 and the pin cost no AUC): six finalist seats a week (three
+  // Majors, two birds in each final), shared among everyone old enough, times
+  // the weeks you have left. It is why a crown is
   // worth less as the world grows. Earnings carry 0.61 because the Selection
   // Committee seats Majors by gross career earnings: a rich bird gets the seat.
   CROWN_ADULT: { INTERCEPT: -4.3, VS_PAR: 0.2152, EARNINGS: 0.6061, K: 0.52 },
