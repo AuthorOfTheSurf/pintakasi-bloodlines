@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import path from "node:path";
+import Link from "next/link";
 import { count, desc, eq, gt, inArray, isNotNull, or, sum } from "drizzle-orm";
-import { db, defaultDbPath } from "@/db/client";
+import { db, defaultDbPath, worldName } from "@/db/client";
 import { cardLabel } from "./bird-fights";
 import { TickControls } from "./tick-controls";
 import { Applications, type ApplicationRowUI } from "./applications";
@@ -563,6 +564,23 @@ const TYPE_LABELS: Record<string, string> = {
   champion: "champion",
 };
 
+/** What the public sees at /admin in production: no data, just the way out. */
+function ClosedOffice() {
+  return (
+    <main className="office">
+      <style>{CSS}</style>
+      <h1>
+        <img className="office-mark" src="/icon.svg" alt="" /> Pintakasi — Stewards&apos; Office
+      </h1>
+      <p>This office is for the stewards who run the world. It needs a steward key.</p>
+      <p>
+        Looking for the game? Start at the <Link href="/">front page</Link>, or read{" "}
+        <Link href="/wiki">the Handbook</Link> to learn how it plays.
+      </p>
+    </main>
+  );
+}
+
 export default async function Admin({
   searchParams,
 }: {
@@ -571,19 +589,23 @@ export default async function Admin({
   const d = db();
   const dbPath = defaultDbPath();
   const ticksEnabled = publicTicksEnabled();
-  // The alpha's queue holds applicants' contact details and claim links, so
-  // the public office only ever learns how many are waiting. A steward loads
-  // the page with ?steward=<PINTAKASI_STEWARD_KEY> (no key needed off
-  // production, like the tick gate) and gets the rows and the buttons.
+  // ⚠ THE WHOLE OFFICE IS STEWARDS-ONLY IN PRODUCTION (alpha-1 review). Its
+  // Birds tab shows every live bird's six hidden stats, which breaks the
+  // game's core rule that stats stay hidden until retirement; its Farms tab
+  // shows every rival's purse; its alpha queue holds applicants' contact
+  // details and claim links. A steward loads the page with
+  // ?steward=<PINTAKASI_STEWARD_KEY>. Off production `stewardAllowed` is
+  // always true, so `bun dev` and `bun dev:sim` open it with no key as before.
   const { steward } = await searchParams;
   const stewardKey = typeof steward === "string" ? steward : null;
-  const isSteward = stewardAllowed(stewardKey);
+  if (!stewardAllowed(stewardKey)) return <ClosedOffice />;
   const alphaQueue = new Alpha(d).list();
   const alphaPending = alphaQueue.filter((a) => a.status === "pending").length;
   const origin = originOf(await headers());
   // The two offices render identically — this badge is the only loud
   // difference between inspecting a sim and staring at the live world.
   const isSimWorld = path.basename(dbPath).startsWith("sim-");
+  const badge = isSimWorld ? "SIM WORLD" : (worldName()?.toUpperCase() ?? "LIVE WORLD");
 
   const state = d.select().from(gameState).all()[0];
   if (!state)
@@ -1467,9 +1489,7 @@ export default async function Admin({
       <header>
         <h1>
           <img className="office-mark" src="/icon.svg" alt="" /> Pintakasi — Stewards&apos; Office{" "}
-          <span className={`world-badge ${isSimWorld ? "sim" : "live"}`}>
-            {isSimWorld ? "SIM WORLD" : "LIVE WORLD"}
-          </span>
+          <span className={`world-badge ${isSimWorld ? "sim" : "live"}`}>{badge}</span>
         </h1>
         <p className="clock">
           Day {state.dayIndex} · Week {week} · {clock.date}
@@ -1804,29 +1824,22 @@ export default async function Admin({
         }
         applicationsCount={alphaPending}
         applications={
-          isSteward ? (
-            <Applications
-              stewardKey={stewardKey}
-              rows={alphaQueue.map((a): ApplicationRowUI => ({
-                id: a.id,
-                createdAt: a.createdAt,
-                farmName: a.farmName,
-                handler: a.handler,
-                contact: a.contact,
-                country: a.country,
-                colors: `${a.primaryColor} / ${a.secondaryColor}`,
-                background: a.background,
-                status: a.status,
-                claimUrl: a.claimToken ? `${origin}/join/claim/${a.claimToken}` : null,
-                claimedAt: a.claimedAt,
-              }))}
-            />
-          ) : (
-            <p className="cardsum">
-              {alphaPending} alpha application{alphaPending === 1 ? "" : "s"} waiting. Stewards load
-              this page with their steward key to review them.
-            </p>
-          )
+          <Applications
+            stewardKey={stewardKey}
+            rows={alphaQueue.map((a): ApplicationRowUI => ({
+              id: a.id,
+              createdAt: a.createdAt,
+              farmName: a.farmName,
+              handler: a.handler,
+              contact: a.contact,
+              country: a.country,
+              colors: `${a.primaryColor} / ${a.secondaryColor}`,
+              background: a.background,
+              status: a.status,
+              claimUrl: a.claimToken ? `${origin}/join/claim/${a.claimToken}` : null,
+              claimedAt: a.claimedAt,
+            }))}
+          />
         }
         pintakasiCount={pintakasiBoxes.filter((t) => t.weekIndex === pintakasiWeek).length}
         pintakasi={

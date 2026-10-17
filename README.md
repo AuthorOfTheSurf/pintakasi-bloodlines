@@ -121,9 +121,17 @@ An AI coding agent can run the experiment, find the new database, run the doctor
 
 ## Public deployment safety
 
-The Stewards' Office is an inspection surface, not an unauthenticated game-control panel. Production deployments hide the clock controls and reject tick requests unless `PINTAKASI_ALLOW_PUBLIC_TICKS=1` is explicitly set.
+The Stewards' Office is an inspection surface, not an unauthenticated game-control panel. In production `/admin` shows nothing without `?steward=$PINTAKASI_STEWARD_KEY` (it carries hidden bird stats and every purse), and the clock controls and tick routes refuse unless `PINTAKASI_ALLOW_PUBLIC_TICKS=1` is explicitly set.
 
-The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-development convenience**, not real authentication. Do not reuse it to protect a public or player-facing deployment.
+The fixed `fk_dev` key in the seeded local world and `.mcp.json` is a **local-development convenience**, not real authentication. Do not reuse it to protect a public or player-facing deployment. Seed a public world with `bun run db:seed --live` instead: every farm gets a random key, the owner's is printed once, and no bot key is ever printed.
+
+A live world is one `next start` with these set:
+
+- `PINTAKASI_DB=<path>` is the world's own database file.
+- `PINTAKASI_LIVE_START=YYYY-MM-DD` is the UTC date of day 0. It turns on the live clock: one game-day per real day, ending at midnight UTC (8:00 in the morning Philippine time). The server checks every minute and catches up any days it missed while down. Live ticks play only the house stables, never a player's farm. A steward can nudge it with `POST /api/tick/live`. Unset, there is no clock.
+- `PINTAKASI_WORLD=<name>` (for example `alpha-1`) names the world on the `/admin` badge.
+- `PINTAKASI_STEWARD_KEY=<secret>` gates `/admin`, the application queue and `/api/tick/live`.
+- `PINTAKASI_PUBLIC_ORIGIN=https://<host>` builds claim links and MCP URLs from this origin, never from request headers.
 
 ## Databases — which world is which
 

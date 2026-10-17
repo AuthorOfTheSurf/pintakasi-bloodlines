@@ -10,6 +10,7 @@ import {
   PINTAKASI,
   STATS,
 } from "@/engine/config";
+import { DAY_TURNS_PH_HOUR } from "@/engine/live-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,12 @@ export default function WikiHome() {
         the day it hatches — and hidden until the day it retires — so the game is about{" "}
         <strong>judging</strong> birds from how they fight, <strong>placing</strong> them, and{" "}
         <strong>breeding</strong> better ones. Not grinding them stronger.
+      </p>
+      <p>
+        Not every rival is a person. The world also runs <strong>house stables</strong>: farms that
+        play every day by a fixed script, under the same rules as you. They keep the pit busy while
+        the game is small, and they are always labelled as house stables, so you know who you are up
+        against.
       </p>
 
       <h2>Joining</h2>
@@ -150,9 +157,10 @@ export default function WikiHome() {
         </table>
       </div>
       <p className="dim">
-        A game-day ends at midnight Philippine time. Everything you entered that day goes off at
-        once. An ordinary card is posted <em>every</em> day, including the two championship days —
-        but which fights are on it changes daily. See <Link href="/wiki/card">The card</Link>.
+        A game-day ends at {DAY_TURNS_PH_HOUR}:00 in the morning, Philippine time (midnight GMT).
+        Everything you entered that day goes off at once. An ordinary card is posted <em>every</em>{" "}
+        day, including the two championship days — but which fights are on it changes daily. See{" "}
+        <Link href="/wiki/card">The card</Link>.
       </p>
 
       <h2>Where to go next</h2>

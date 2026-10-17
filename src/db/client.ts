@@ -78,6 +78,15 @@ function splitStatements(ddl: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * The world's public name (PINTAKASI_WORLD, e.g. "alpha-1"), or null on a dev
+ * or sim world. The name belongs to the deployment rather than the database,
+ * because the same seeded file could be served under any name.
+ */
+export function worldName(): string | null {
+  return process.env.PINTAKASI_WORLD?.trim() || null;
+}
+
 export function defaultDbPath(): string {
   const env = process.env.PINTAKASI_DB;
   if (env === "latest-sim") return latestSimDb();

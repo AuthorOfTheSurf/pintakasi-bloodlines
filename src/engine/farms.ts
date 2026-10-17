@@ -29,6 +29,10 @@ export interface FarmView {
   // The FARM's own career record (real + hardcore), stamped at fight time.
   wins: number;
   losses: number;
+  // A scripted house stable (farms.isBot), not a person. The live world
+  // labels them wherever players see farms (alpha-1 ruling: "Yes, label
+  // them"), so nobody mistakes a bot's barn for a rival they could talk to.
+  houseStable: boolean;
 }
 
 /**
@@ -133,6 +137,11 @@ export function farmNameTaken(database: DB, name: string): boolean {
     .some((f) => f.name.toLowerCase() === wanted);
 }
 
+/** A fresh, unguessable farm key: a UUID v4 (122 random bits), the shape every door expects. */
+export function newFarmKey(): string {
+  return `fk_${randomUUID().replace(/-/g, "")}`;
+}
+
 /**
  * Farms — one per player or agent. Registration is deliberately low-friction
  * (beta: invite the tester, they call register_farm, done); auth is the
@@ -154,7 +163,7 @@ export class Farms {
       throw new Error(`A farm named "${name}" already exists`);
 
     const id = randomUUID();
-    const apiKey = `fk_${randomUUID().replace(/-/g, "")}`;
+    const apiKey = newFarmKey();
     this.database
       .insert(farms)
       .values({
@@ -452,6 +461,7 @@ export class Farms {
       checkedInToday: row.lastCheckInDay === this.today(),
       wins: row.wins,
       losses: row.losses,
+      houseStable: row.isBot === 1,
     };
   }
 

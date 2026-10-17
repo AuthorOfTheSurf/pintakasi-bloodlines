@@ -125,7 +125,14 @@ export interface ScoutReport {
  */
 export interface EntryCard {
   entryId: number;
-  farm: { name: string; country: string | null; primaryColor: string; secondaryColor: string };
+  // houseStable: a scripted bot barn, labelled for players (alpha-1).
+  farm: {
+    name: string;
+    country: string | null;
+    primaryColor: string;
+    secondaryColor: string;
+    houseStable: boolean;
+  };
   bird: {
     name: string;
     sexLabel: "rooster" | "hen" | null;
@@ -1606,6 +1613,7 @@ export class Lobbies {
         country: farm.country,
         primaryColor: farm.primaryColor,
         secondaryColor: farm.secondaryColor,
+        houseStable: farm.isBot === 1,
       },
       bird: {
         name: bird.name,

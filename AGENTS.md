@@ -74,6 +74,20 @@ The voice is for someone who has never played: short sentences, roughly a 5th-gr
 - Full fleet (19 llm barns) works: ~103 s/game-day on qwen3:14b, **~51 s/game-day on qwen3:30b-a3b** (MoE — twice the disk, half the wall clock; prefer it for fleet runs). The decider timeout scales with fleet size in simulate.ts — at 19 barns most of a call is Ollama's QUEUE, not the model thinking, and a flat 120s timed out 6 of 19.
 - Two fleet-scale failure modes are fixed in barn.ts and should stay fixed: `maxIncomingMessageSize: 8 MB` on the registry (a 100-bird barn's raw view is ~100 KB against a 64 KB default — retry-proof, the barn just vanishes from every day) and `noSleep: true` on the actor (all 19 barns waking at once each morning on an Ollama-pinned machine misses the engine's 5 s wake deadline and collapses the fleet).
 
+**`bun run alpha-e2e` is the pre-deploy check for the live world.** Before anything ships to alpha-1, build it and run it as production against a throwaway copy, never the live database (the script files applications, approves one and nudges the clock):
+
+```sh
+PINTAKASI_DB=/tmp/staging.db bun run db:seed --live
+PINTAKASI_DIST=.next-live next build
+PINTAKASI_DIST=.next-live PINTAKASI_DB=/tmp/staging.db PINTAKASI_LIVE_START=<UTC date 3 days ago> \
+  PINTAKASI_WORLD=alpha-1 PINTAKASI_STEWARD_KEY=<any> PINTAKASI_PUBLIC_ORIGIN=https://staging.example \
+  next start -p 3452
+bun run alpha-e2e http://localhost:3452 <same steward key> --world=alpha-1
+bun run doctor /tmp/staging.db --quiet
+```
+
+It prints one PASS/FAIL line per door (closed registration, guessable keys refused, `/admin` gated, the approve flow, claim links pinned to the public origin, house-stable labels, the live clock) and exits non-zero on any failure. `src/app/gates.test.ts` covers the same gates inside `bun test`; a gate change that keeps either one green while doing less is a bug. Afterwards `git checkout tsconfig.json`, because `next build` rewrites it.
+
 **`bun run doctor` is the verification loop.** It asserts the ten invariants (GP and LT conservation to the cent, no negative balances, no Pit Figure inversions, purses settling exactly, no stranded escrow on any crown whose day has passed, crowns resolving before Hatch Friday retires their entrants, one card per bird per day, fight counts matching the log, and the scout's running book matching the log) and prints the health block: unmatched rate, the worst lobby keys, population and supply-vs-attrition, staker inflows by source, championship fields, and **mechanic adoption**. It exits non-zero on a broken invariant, so `simulate` fails loudly rather than printing a happy log.
 
 - `bun run doctor` — the newest sim · `--live` — `data/game.db` · `--quiet` — invariants only, for pasting · `--json` — the raw report

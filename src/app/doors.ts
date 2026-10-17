@@ -41,10 +41,18 @@ export function stewardKeyOf(req: Request): string | null {
 }
 
 /**
- * The site's public origin as the player's browser sees it. Behind a reverse
- * proxy the Host header can be the internal one, so the forwarded headers win.
+ * The site's public origin as the player's browser sees it. Claim links and
+ * MCP URLs are built from it, and a claim link carries a farm key's worth of
+ * access, so a deployment pins it with PINTAKASI_PUBLIC_ORIGIN: request
+ * headers are the caller's to forge, and a forged x-forwarded-host would
+ * otherwise hand a steward a claim link pointing at someone else's site.
+ *
+ * Unset, it falls back to the headers. Behind a reverse proxy the Host
+ * header can be the internal one, so the forwarded headers win.
  */
 export function originOf(headers: Headers): string {
+  const pinned = process.env.PINTAKASI_PUBLIC_ORIGIN?.trim().replace(/\/+$/, "");
+  if (pinned) return pinned;
   const host = headers.get("x-forwarded-host") ?? headers.get("host") ?? "localhost:3434";
   const proto =
     headers.get("x-forwarded-proto")?.split(",")[0].trim() ??

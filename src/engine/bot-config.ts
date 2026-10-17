@@ -641,14 +641,17 @@ export const BOT_FARMS: BotProfile[] = [
     gachaHabit: 0.4,
     landAppetite: 1, // maxes the daily land cap, every day, forever
   },
-  // ── Round 23: the cousins' stables ──────────────────────────────────────
-  // Zane's cousins are the first testers. Their barns run as bots until they
-  // take the keys — the handler name is the tag, and Zane renames the farms.
+  // ── Round 23: three more house stables ─────────────────────────────────
+  // These began as placeholder barns for Zane's cousins to take over. The
+  // alpha (2026-10) ruled that out: the cousins apply through /join like
+  // everyone, so a real player never inherits a bot's history. The barns stay,
+  // renamed, because the roster is tuned around them; ids, colours and knobs
+  // are unchanged so a seeded world plays exactly the same day.
   {
     id: "bot-3",
-    name: "Marco Gamefarm",
+    name: "Tondo Tigas Gamefarm",
     country: "🇵🇭",
-    handler: "Marco",
+    handler: "Dodong",
     primaryColor: "red",
     secondaryColor: "black",
     style: "pit",
@@ -665,9 +668,9 @@ export const BOT_FARMS: BotProfile[] = [
   },
   {
     id: "scripted-9",
-    name: "Reno Gamefarm",
+    name: "Laguna Lahi Breeders",
     country: "🇵🇭",
-    handler: "Reno",
+    handler: "Tata Celso",
     primaryColor: "blue",
     secondaryColor: "white",
     style: "breeder",
@@ -684,9 +687,9 @@ export const BOT_FARMS: BotProfile[] = [
   },
   {
     id: "scripted-10",
-    name: "Kevin Gamefarm",
+    name: "Bicol Bantay Stables",
     country: "🇵🇭",
-    handler: "Kevin",
+    handler: "Junjun",
     primaryColor: "purple",
     secondaryColor: "gold",
     style: "claimer",

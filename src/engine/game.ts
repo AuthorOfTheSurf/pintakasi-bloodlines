@@ -34,6 +34,15 @@ export interface GameStateView {
 export interface TickOptions {
   /** farmId → the day an outside decider chose for that barn (round 49). */
   proposals?: ReadonlyMap<string, BotAction[]>;
+  /**
+   * What the tick does for farms that are not bots. "auto-play" is the sim-era
+   * rule (Zane, 2026-08-03): they shop the claimer board like a bot would.
+   * "hands-off" is the live world's (alpha-1, 2026-10): "ticks play only the
+   * bot farms, never a player's farm", so a real player's barn moves only
+   * when its owner moves it. Defaults to "auto-play" so sims and the /admin
+   * buttons are unchanged.
+   */
+  players?: "auto-play" | "hands-off";
 }
 
 export interface TickView {
@@ -144,7 +153,7 @@ export class Game {
     // Now that tonight's tags are posted, the player-side stables shop the
     // claimer board (round 19) — they run their honest day BEFORE the bots,
     // when the claimer fields are still empty.
-    shopAllClaimers(this.database);
+    if ((opts.players ?? "auto-play") === "auto-play") shopAllClaimers(this.database);
     const result = kind === "day" ? this.clock.tickDay() : this.clock.tickWeek();
     // The day has turned — the card goes off (fights first, then claims),
     // then the main event: every departed crown day runs its Pintakasi

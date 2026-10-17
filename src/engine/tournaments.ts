@@ -133,6 +133,7 @@ export interface ChampionshipView {
   field: {
     bird: string;
     farm: string;
+    houseStable: boolean; // a scripted bot barn, labelled for players (alpha-1)
     rank: number; // committee rank TODAY (1 = top seed) — the bump line is the bottom
     mine: boolean;
   }[];
@@ -651,7 +652,13 @@ export class Tournaments {
         field: ranked.map((e, i) => {
           const bird = readBird(this.database, e.birdId);
           const farm = readFarm(this.database, e.farmId);
-          return { bird: bird.name, farm: farm.name, rank: i + 1, mine: e.farmId === this.farmId };
+          return {
+            bird: bird.name,
+            farm: farm.name,
+            houseStable: farm.isBot === 1,
+            rank: i + 1,
+            mine: e.farmId === this.farmId,
+          };
         }),
         projectedPurseGp: field.reduce((s, e) => s + e.fee, 0) + Math.floor(juice / 3 / 100), // rough juice share
       };

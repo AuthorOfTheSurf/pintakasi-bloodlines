@@ -143,7 +143,10 @@ export class Bots {
    * GP conservation, no dangling entries across several days) don't have to
    * pay for the full roster's worth of DB traffic to prove it (19 stables as of round 43).
    */
-  static seed(db: DB, opts: { flock?: "eggs" | "legacy"; only?: string[] } = {}): void {
+  static seed(
+    db: DB,
+    opts: { flock?: "eggs" | "legacy"; only?: string[]; apiKey?: (botId: string) => string } = {}
+  ): void {
     const day = todayIndex(db);
     const only = opts.only;
     const roster = only ? BOT_FARMS.filter((b) => only.includes(b.id)) : BOT_FARMS;
@@ -158,7 +161,10 @@ export class Bots {
           primaryColor: bot.primaryColor,
           secondaryColor: bot.secondaryColor,
           handler: bot.handler ?? null,
-          apiKey: `fk_${bot.id}`,
+          // `fk_<id>` is guessable by design for sims and dev; a live seed
+          // passes a random key, because on a public world anyone holding a
+          // bot's key could play its barn.
+          apiKey: opts.apiKey?.(bot.id) ?? `fk_${bot.id}`,
           gp: ECONOMY.STARTING_GP,
           landTokensCents: 0,
           createdDay: day,

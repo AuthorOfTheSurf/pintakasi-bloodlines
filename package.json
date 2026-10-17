@@ -18,6 +18,7 @@
     "doctor": "bun run scripts/doctor.ts",
     "worldhash": "bun run scripts/worldhash.ts",
     "public-check": "bun run scripts/public-check.ts",
+    "alpha-e2e": "bun run scripts/alpha-e2e.ts",
     "brain-bench": "bun run scripts/brain-bench.ts",
     "tune": "bun run scripts/tune.ts",
     "balance": "bun run scripts/balance.ts",
