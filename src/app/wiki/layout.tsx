@@ -25,6 +25,7 @@ export const metadata = {
 
 const NAV: { href: string; label: string; blurb: string }[] = [
   { href: "/wiki", label: "Start here", blurb: "the game in five minutes" },
+  { href: "/wiki/farm", label: "Your farm page", blurb: "playing from a browser" },
   { href: "/wiki/birds", label: "Birds & stats", blurb: "what makes a fighter" },
   { href: "/wiki/fighting", label: "Fighting", blurb: "the five blades, and figures" },
   { href: "/wiki/card", label: "The card", blurb: "the daily card, classes, the fog" },

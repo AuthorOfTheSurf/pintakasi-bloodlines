@@ -52,6 +52,11 @@ function stateRow(db: DB) {
 
 export interface WorldOptions {
   /**
+   * Write the world to this file instead of memory. For tests that drive the
+   * real route handlers, which open the world through `db()` and PINTAKASI_DB.
+   */
+  file?: string;
+  /**
    * Give the rival barn its own legacy flock. Only the staking fixture opened
    * without one; it never touches rival birds, so this defaults on.
    */
@@ -126,7 +131,7 @@ export const RIVAL_SLOT: Record<string, number> = {
 };
 
 export function world(opts: WorldOptions = {}): World {
-  const db = createDb(":memory:");
+  const db = createDb(opts.file ?? ":memory:");
   const dev = seedGame(db, { flock: "legacy" }); // "Bukidnon Farms"
   const game = new Game(db, dev.farmId);
 

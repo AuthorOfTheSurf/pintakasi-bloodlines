@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, farms, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birds, farms, tournamentEntries, tournaments } from "@/db/schema";
 import { FORMATS } from "@/engine/config";
 import { roundName } from "@/engine/tournaments";
 import type { BirdFightRowUI } from "./grids";
@@ -38,12 +38,44 @@ export function cardLabel(mode: string, classType: string): string {
  * first.
  */
 export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
+  return fightRows(
+    d,
+    d.select().from(battleLog).where(eq(battleLog.birdId, birdId)).orderBy(battleLog.id).all()
+  );
+}
+
+/**
+ * ── ONE FARM'S FIGHTS — the farm page's Results view ──────────────────────
+ *
+ * Every row a farm's birds wrote while they were that farm's, oldest first,
+ * named. `battle_log.farm_id` is stamped at fight time, so a bird claimed
+ * away later still shows here for the fights it fought in these colours, and
+ * a bird claimed IN shows only from the day it arrived. Indexed on farm_id.
+ */
+export function farmFightRows(d: DB, farmId: string): FarmFightRowUI[] {
   const rows = d
     .select()
     .from(battleLog)
-    .where(eq(battleLog.birdId, birdId))
+    .where(eq(battleLog.farmId, farmId))
     .orderBy(battleLog.id)
     .all();
+  const ids = [...new Set(rows.map((r) => r.birdId))];
+  const names = new Map(
+    ids.length
+      ? d
+          .select({ id: birds.id, name: birds.name })
+          .from(birds)
+          .where(inArray(birds.id, ids))
+          .all()
+          .map((b) => [b.id, b.name])
+      : []
+  );
+  return fightRows(d, rows).map((r) => ({ ...r, birdName: names.get(r.birdId) ?? r.birdId }));
+}
+
+export type FarmFightRowUI = BirdFightRowUI & { birdName: string };
+
+function fightRows(d: DB, rows: (typeof battleLog.$inferSelect)[]): BirdFightRowUI[] {
   if (rows.length === 0) return [];
 
   // The opponent's Pit Figure lives on the opponent's own row. Single
@@ -51,15 +83,24 @@ export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
   // (round 34) make (lobby|tournament, bird) unique among the rows that name
   // THIS bird as the opponent, so the reciprocal row is addressable exactly.
   // Narrowed by bird_id first because that is the column with an index.
+  //
+  // For a whole farm the same holds per (bird, opponent) pair, so the key
+  // names both sides; for one bird the extra half is the same on every row.
   const opponentIds = [...new Set(rows.map((r) => r.opponentBirdId))];
+  const ownIds = [...new Set(rows.map((r) => r.birdId))];
   const mirrors = d
     .select()
     .from(battleLog)
-    .where(and(inArray(battleLog.birdId, opponentIds), eq(battleLog.opponentBirdId, birdId)))
+    .where(and(inArray(battleLog.birdId, opponentIds), inArray(battleLog.opponentBirdId, ownIds)))
     .all();
-  const boutKey = (r: { lobbyId: number | null; tournamentId: number | null }, bird: string) =>
-    `${r.lobbyId}|${r.tournamentId}|${bird}`;
-  const opponentFigure = new Map(mirrors.map((r) => [boutKey(r, r.birdId), r.pitFigure]));
+  const boutKey = (
+    r: { lobbyId: number | null; tournamentId: number | null },
+    bird: string,
+    against: string
+  ) => `${r.lobbyId}|${r.tournamentId}|${bird}|${against}`;
+  const opponentFigure = new Map(
+    mirrors.map((r) => [boutKey(r, r.birdId, r.opponentBirdId), r.pitFigure])
+  );
 
   const farmById = new Map(
     d
@@ -114,11 +155,12 @@ export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
       figure: r.pitFigure,
       // Null rather than 0 when the mirror is missing — a Pit Figure of zero
       // is a legal (terrible) fight, and inventing one would read as a rout.
-      opponentFigure: opponentFigure.get(boutKey(r, r.opponentBirdId)) ?? null,
+      opponentFigure: opponentFigure.get(boutKey(r, r.opponentBirdId, r.birdId)) ?? null,
       // The signed net for THIS bird, rake already deducted by the engine.
       // Pintakasi rows carry 0 — the purse settles on the tournament entry,
       // not per fight.
       gp: r.gpDeltaCents / 100,
+      valueBefore: r.valueBefore,
     };
   });
 }

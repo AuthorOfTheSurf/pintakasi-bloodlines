@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gt, max } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { farms, gameState } from "@/db/schema";
+import { events, farms, gameState } from "@/db/schema";
 import {
   bestShape,
   chaseCrowns,
@@ -220,6 +220,74 @@ export function playHonestDay(
 }
 
 /**
+ * ── PLAY MY DAY (the farm page's button, and MCP's play_my_day) ─────────────
+ *
+ * A player asks the house to play their honest day for them, once, now. The
+ * live tick still never does this on its own (alpha-1: "ticks play only the
+ * bot farms"); this is the same day, run because its owner pressed for it.
+ *
+ * What it did is read back by DIFFING the world before and after rather than
+ * by threading counters through playHonestDay. That day wraps every step in
+ * `quietly()`, so the only honest account of what happened is what the
+ * ledger and the barn say afterwards, and the sim keeps its hot path untouched.
+ */
+export interface HonestDayReport {
+  gpBefore: number;
+  gpAfter: number;
+  checkedIn: boolean; // false if the farm had already checked in today
+  pullsSpent: number;
+  studsListed: number;
+  barnExpanded: boolean;
+  ltStaked: number; // whole tokens moved into the pool
+  covers: number; // hens bred
+  named: { birdId: string; name: string }[]; // hatchlings the house christened
+  crownsEntered: number; // championship registrations
+  birdsEntered: number; // birds put on tonight's card
+}
+
+export function playMyDay(db: DB, farmId: string): HonestDayReport {
+  const farmsApi = new Farms(db);
+  const before = farmsApi.rowById(farmId);
+  const lastEvent =
+    db
+      .select({ id: max(events.id) })
+      .from(events)
+      .get()?.id ?? 0;
+  const unnamed = new Flock(db, farmId)
+    .all()
+    .filter((b) => b.status === "active" && !b.named)
+    .map((b) => b.id);
+  const checkedInBefore = farmsApi.view(before).checkedInToday;
+
+  playHonestDay(db, farmId);
+
+  const after = farmsApi.rowById(farmId);
+  const happened = db
+    .select({ type: events.type })
+    .from(events)
+    .where(and(eq(events.farmId, farmId), gt(events.id, lastEvent)))
+    .all();
+  const count = (type: string) => happened.filter((e) => e.type === type).length;
+  const flockAfter = new Map(new Flock(db, farmId).all().map((b) => [b.id, b]));
+  return {
+    gpBefore: before.gp,
+    gpAfter: after.gp,
+    checkedIn: !checkedInBefore && farmsApi.view(after).checkedInToday,
+    pullsSpent: count("gacha"),
+    studsListed: count("stud_listed"),
+    barnExpanded: count("barn_expanded") > 0,
+    ltStaked: Math.round((after.stakedLandCents - before.stakedLandCents) / LT_CENTS),
+    covers: count("breed"),
+    named: unnamed.flatMap((id) => {
+      const bird = flockAfter.get(id);
+      return bird?.named ? [{ birdId: id, name: bird.name }] : [];
+    }),
+    crownsEntered: count("tournament_entry"),
+    birdsEntered: count("entry"),
+  };
+}
+
+/**
  * Shop the claimer board (round 19). Claiming was a bot-only habit — half
  * the tag ladder's point (birds changing barns) never showed on a player-
  * side stable at all. Two a day, on the same public read the bots use: a
@@ -262,7 +330,7 @@ export function shopClaimers(db: DB, farmId: string): void {
 /** Auto-play's claiming appetite — knobs, not doctrine. */
 const AUTO_CLAIMS_PER_DAY = 2;
 const AUTO_CLAIM_APPETITE = 0.35;
-const AUTO_RESERVE = 400; // GP never gambled into a tag
+export const AUTO_RESERVE = 400; // GP never gambled into a tag
 /**
  * The honest stable's carding style, in the shape `pickOffering` wants. It is
  * deliberately plainer than any bot profile. Since the claim-par round the
@@ -278,7 +346,7 @@ const AUTO_RESERVE = 400; // GP never gambled into a tag
 // a zero here would quietly encode "honest players never fight up". Middling is
 // the honest default: sometimes you take the harder company. See
 // BotProfile.ladderCourage for what the knob buys.
-const AUTO_PLAY_STYLE = { sellRate: 0.2, tagCourage: 0.3, ladderCourage: 0.25 };
+export const AUTO_PLAY_STYLE = { sellRate: 0.2, tagCourage: 0.3, ladderCourage: 0.25 };
 /**
  * An honest stable cards everything it legally can — that has been true since
  * round 17 and this is just that rule written down, so weatherCardsToday has a
