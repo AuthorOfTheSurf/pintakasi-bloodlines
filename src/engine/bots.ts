@@ -825,10 +825,10 @@ export function pickOffering(
   // worth: it sits out rather than give the bird away.
   if (choice === null) return null;
 
-  // Spent UNCONDITIONALLY, exactly like the misjudgement above and for the
-  // same reason: if the number of rng() calls depended on what the card
-  // happened to post, a bot's whole day — its breeding picks, its claim rolls —
-  // would shift with the schedule and no sim would be reproducible.
+  // ⚠ NOT unconditional any more: the two returns above skip it when the bird
+  // goes to a claimer or sits out. Seeded runs still reproduce, but a bot's
+  // later draws now depend on where its earlier birds were carded. Accepted in
+  // the claim-par round rather than spend a draw the bird can never use.
   const wantsToClimb = rng() < bot.ladderCourage;
 
   // ── FIGHTING UP (round 42) ────────────────────────────────────────────────

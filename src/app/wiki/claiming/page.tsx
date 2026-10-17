@@ -171,8 +171,9 @@ export default function ClaimingPage() {
         </table>
       </div>
       <p className="dim">
-        A class with fewer than {PAR.MIN_WINS} winners in the window shows an estimate instead: the
-        par of the next dearer rung, less {PAR.RUNG_STEP} points.
+        A class with fewer than {PAR.MIN_WINS} winners in the window shows an estimate instead. A
+        thin claimer shows the par of the next dearer tag, less {PAR.RUNG_STEP} points. A thin
+        maiden or NW3 shows its division&apos;s open par.
       </p>
 
       <h2>The game value: what is my bird worth?</h2>
