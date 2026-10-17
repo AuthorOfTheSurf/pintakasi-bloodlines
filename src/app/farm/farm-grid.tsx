@@ -1,8 +1,21 @@
 "use client";
 
-import { useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { AgGridReact } from "ag-grid-react";
-import type { ColDef, GetRowIdParams, GridApi, RowClickedEvent } from "ag-grid-community";
+import type {
+  ColDef,
+  GetRowIdParams,
+  GridApi,
+  RowClassParams,
+  RowClickedEvent,
+} from "ag-grid-community";
 import { AUTOSIZE, officeTheme } from "../grid-kit";
 import { useSavedLayout } from "./saved-layout";
 import { matchesSearch, type Searchable } from "./search";
@@ -89,6 +102,20 @@ export function FarmGrid<T extends object>({
     [columns, narrow, secondary]
   );
 
+  // Every object and function the grid is handed is stable across renders.
+  // A fresh one re-renders the rows, which updates the model, which sets the
+  // summary's rows, which renders again: a loop React stops at its depth limit.
+  const defaultColDef = useMemo(
+    () => ({ sortable: true, filter: true, resizable: !narrow, suppressMovable: narrow }),
+    [narrow]
+  );
+  const getRowId = useCallback((p: GetRowIdParams<T>) => rowId(p.data), [rowId]);
+  const getRowStyle = useCallback(
+    (p: RowClassParams<T>) =>
+      p.data && selectedId && rowId(p.data) === selectedId ? { background: "#33291a" } : undefined,
+    [rowId, selectedId]
+  );
+
   const api = (): GridApi<T> | undefined => grid.current?.api;
   const collectShown = () => {
     const out: T[] = [];
@@ -163,27 +190,18 @@ export function FarmGrid<T extends object>({
           theme={officeTheme}
           rowData={filtered}
           columnDefs={columnDefs}
-          defaultColDef={{
-            sortable: true,
-            filter: true,
-            resizable: !narrow,
-            suppressMovable: narrow,
-          }}
+          defaultColDef={defaultColDef}
           autoSizeStrategy={narrow ? undefined : AUTOSIZE}
-          getRowId={(p: GetRowIdParams<T>) => rowId(p.data)}
-          rowHeight={40}
+          getRowId={getRowId}
+          rowHeight={narrow ? 48 : 40}
           rowClass={rowClass}
           context={context}
-          getRowStyle={(p) =>
-            p.data && selectedId && rowId(p.data) === selectedId
-              ? { background: "#33291a" }
-              : undefined
-          }
+          getRowStyle={getRowStyle}
           onGridReady={(e) => {
             layout.restore(e.api);
             setColumnsSeen((n) => n + 1);
           }}
-          onModelUpdated={collectShown}
+          onModelUpdated={summary ? collectShown : undefined}
           onColumnVisible={() => setColumnsSeen((n) => n + 1)}
           onRowClicked={(e: RowClickedEvent<T>) => {
             // A click on a control inside the row (the Tonight select, a name

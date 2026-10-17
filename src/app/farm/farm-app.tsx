@@ -453,7 +453,7 @@ export function FarmApp({ data }: { data: FarmPageData }) {
           columns={FIGHTING_COLS}
           secondary={FIGHTING_SECONDARY}
           searchOf={birdSearch}
-          rowId={(r) => r.id}
+          rowId={byId}
           onRowClicked={(r) => setSelected((cur) => (cur === r.id ? null : r.id))}
           selectedId={selected}
           context={tonightContext}
@@ -468,7 +468,7 @@ export function FarmApp({ data }: { data: FarmPageData }) {
           columns={RETIRED_COLS}
           secondary={RETIRED_SECONDARY}
           searchOf={birdSearch}
-          rowId={(r) => r.id}
+          rowId={byId}
           onRowClicked={(r) => setSelected((cur) => (cur === r.id ? null : r.id))}
           selectedId={selected}
           placeholder="Search: a name, hen, rooster, a grade, an element"
@@ -480,9 +480,9 @@ export function FarmApp({ data }: { data: FarmPageData }) {
           label="Eggs"
           rows={data.eggs}
           columns={EGG_COLS}
-          secondary={[]}
-          searchOf={(r) => ({ text: r.name, element: r.element })}
-          rowId={(r) => r.id}
+          secondary={NONE}
+          searchOf={eggSearch}
+          rowId={byId}
           placeholder="Search: a name or an element"
         />
       ) : null}
@@ -493,10 +493,8 @@ export function FarmApp({ data }: { data: FarmPageData }) {
           rows={data.results}
           columns={RESULT_COLS}
           secondary={RESULT_SECONDARY}
-          searchOf={(r) => ({
-            text: `${r.birdName} ${r.opponent} ${r.opponentFarm} ${r.card} ${r.result}`,
-          })}
-          rowId={(r) => String(r.logId)}
+          searchOf={resultSearch}
+          rowId={byLogId}
           rowClass="opens-fight"
           onRowClicked={(r) => watch(r, r.birdName)}
           summary={resultsSummary}
@@ -585,6 +583,16 @@ const birdSearch = (r: {
   grade: r.grade,
   element: r.element,
 });
+
+// Module-level, so the grid sees the same function every render: a new one
+// would refilter, hand the grid new rows, and loop through its summary.
+const eggSearch = (r: EggRowUI) => ({ text: r.name, element: r.element });
+const resultSearch = (r: FarmFightRowUI) => ({
+  text: `${r.birdName} ${r.opponent} ${r.opponentFarm} ${r.card} ${r.result}`,
+});
+const byId = (r: { id: string }) => r.id;
+const NONE: string[] = [];
+const byLogId = (r: { logId: number }) => String(r.logId);
 
 /** Recomputed from the rows the grid is showing, so a filter on one bird sums that bird. */
 function resultsSummary(shown: FarmFightRowUI[]) {

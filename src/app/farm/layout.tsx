@@ -117,5 +117,6 @@ const CSS = `
   @media (max-width: 767px) {
     .gridbox { height: 65vh; }
     .actions form { margin-left: 0; }
+    .btn.small, .tonight-cell select { min-height: 44px; }
   }
 `;
