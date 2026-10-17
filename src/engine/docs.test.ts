@@ -13,6 +13,7 @@ import {
   CARD,
   CLAIMER,
   COVERS,
+  DAY_NAMES,
   ECONOMY,
   ENTRY_FEES,
   FIGHT_MODES,
@@ -206,6 +207,17 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(instructions).toMatch(/juvenile championship/i);
     expect(instructions).toContain(`${JUVENILE_MAJOR.QUALIFYING_WINS} juvenile wins`);
     expect(instructions).toMatch(/not force-retire/i);
+    // Issue #37: the juvenile door shuts after its crown day, and an agent on
+    // Thursday has to know that or it will promise a chick a crown that cannot run.
+    expect(instructions).toContain(
+      `a ${DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK + 1]} entry is refused`
+    );
+    expect(TOOL_DESCRIPTIONS.enter_pintakasi).toContain(
+      `a ${DAY_NAMES[JUVENILE_MAJOR.DAY_OF_WEEK + 1]} juvenile entry is refused`
+    );
+    // Issue #38: the last fighting year is a real Major, in both prose surfaces.
+    expect(TOOL_DESCRIPTIONS.enter_pintakasi).toContain(`age ${AGE.FIGHTING_CAP - 1}`);
+    expect(readWikiPage("pintakasi/page.tsx")).toContain("AGE.FIGHTING_CAP - 1");
   });
 
   /**

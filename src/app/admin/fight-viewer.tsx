@@ -302,14 +302,21 @@ function Plate({
         position: "absolute",
         top: 8,
         left: STANCE[side],
+        // The plates are centred a third of the ring apart, so each has to stay
+        // under a third wide, padding and border included, or on a phone-width
+        // ring they overlap. There the type shrinks and lines clip rather than
+        // wrap, because a plate that grows taller covers the blow below it.
+        boxSizing: "border-box",
         width: "30%",
-        minWidth: 150,
+        minWidth: "min(150px, 30cqw)",
         transform: "translateX(-50%)",
         background: "#171410",
         border: "2px solid #3a342a",
         padding: "4px 6px 5px",
         fontFamily: MONO,
-        fontSize: 11.5,
+        fontSize: "clamp(9.5px, 3cqw, 11.5px)",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
         color: "#e8e0d0",
         zIndex: 2,
         // Opacity only. The plate is centred with a transform, and a keyframe
@@ -780,7 +787,9 @@ export function FightViewer({
         {beat.kind === "summary" ? <Summary beat={beat} timeline={timeline} /> : null}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "6px 0" }}>
+      <div
+        style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, margin: "6px 0" }}
+      >
         <button style={BUTTON} onClick={() => dispatch({ type: "toggle", last })}>
           {playing ? "❚❚ pause" : "▶ play"}
         </button>
@@ -805,7 +814,9 @@ export function FightViewer({
           step={1}
           value={cursor}
           onChange={(e) => dispatch({ type: "seek", cursor: Number(e.target.value) })}
-          style={{ flex: 1, accentColor: "#e8b64c" }}
+          // Wraps under the buttons on a narrow screen rather than pushing the
+          // row wider than the page.
+          style={{ flex: "1 1 160px", accentColor: "#e8b64c" }}
         />
         <span
           style={{

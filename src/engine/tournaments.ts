@@ -269,13 +269,37 @@ export class Tournaments {
   }
 
   /**
-   * The crown day an entry made TODAY fights on. Since round 20 the crowns
-   * run on the week's LAST day, so today's entry always belongs to today's
-   * week — no roll-forward case left (registering on crown day itself is
-   * last call, and the fields resolve at that day's tick).
+   * The week an entry made TODAY belongs to. Always today's week: the Majors
+   * run on the week's LAST day (round 20), so there is no roll-forward case
+   * for them, and the Juvenile Championship has no roll-forward case EITHER —
+   * Friday turns every chick into a two-year-old, so a juvenile entry that
+   * missed Wednesday has no crown next week to roll into. `entriesOpen`
+   * below is the door that says so; this just names the week.
    */
   static targetWeek(dayIndex: number): number {
     return Math.floor(dayIndex / 7);
+  }
+
+  /** Which day of the week a division's crowns run on. */
+  static crownDayOf(division: Division): number {
+    return division === "juvenile" ? JUVENILE_MAJOR.DAY_OF_WEEK : PINTAKASI.DAY_OF_WEEK;
+  }
+
+  /**
+   * Can a division still take entries today? Up to and including its crown
+   * day (last call, the field resolves at that day's tick), not after.
+   *
+   * ISSUE #37 — the Thursday juvenile entry. The Juvenile Championship runs
+   * on Wednesday and the week has one day left after it. Nothing refused a
+   * Thursday entry, so it landed in THIS week's juvenile tournament, whose
+   * crown had resolved the tick before, and sat `pending` in an `open` row
+   * that no code path would ever close again: 733 entries holding 35,184 GP
+   * on a 112-day world, every one of them entered on a Thursday, invisible to
+   * the conservation proof because escrow sits on both sides of it. The
+   * Majors run on the week's last day, so for them this is always true.
+   */
+  static entriesOpen(division: Division, dayIndex: number): boolean {
+    return dayIndex % 7 <= Tournaments.crownDayOf(division);
   }
 
   /** Is this day index a crown day? */
@@ -323,6 +347,11 @@ export class Tournaments {
     }
 
     const today = this.today();
+    if (!Tournaments.entriesOpen(division, today))
+      throw new Error(
+        `This week's ${division === "juvenile" ? "Juvenile Championship" : "Pintakasi"} has already run — ` +
+          `${DAY_NAMES[Tournaments.crownDayOf(division)]} has passed and the door is shut for the week.`
+      );
     const week = Tournaments.targetWeek(today);
     const blades = Tournaments.bladesFor(division, week);
     if (!blades.includes(format))

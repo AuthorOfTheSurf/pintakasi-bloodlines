@@ -433,7 +433,9 @@ export default function BirdsPage() {
         fights in the game (where a loss ends a career on the spot), and{" "}
         <strong>manual retirement</strong> (so a farm can pull a good bird out to stud before
         it&apos;s forced to). At age {AGE.FIGHTING_CAP} a bird force-retires — the natural end of a
-        compressed lifespan, not a punishment.
+        compressed lifespan, not a punishment. Ages turn on Friday, after the week&apos;s last
+        crowns have run, so a bird of {AGE.FIGHTING_CAP - 1} still gets the Thursday Major of its
+        final week.
       </p>
       <div className="callout">
         <b>A retired bird&apos;s age freezes.</b> The week it retires becomes its permanent age on
