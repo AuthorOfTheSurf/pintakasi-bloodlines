@@ -103,7 +103,9 @@ CREATE TABLE IF NOT EXISTS battle_log (
   result TEXT NOT NULL CHECK (result IN ('win','loss')),
   pit_figure INTEGER NOT NULL,
   gp_delta_cents INTEGER NOT NULL,
-  seed INTEGER NOT NULL
+  seed INTEGER NOT NULL,
+  -- The claim-par round: the bird's game value (GP) as it stood that morning.
+  value_before INTEGER
 );
 
 -- The scout's running book (round 44): per-(bird, blade) sums of battle_log,

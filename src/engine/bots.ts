@@ -8,6 +8,7 @@ import {
   CROWN_CHASE,
   STUD_MARKET,
   WEATHER_APPETITE,
+  VALUE_READING,
   type BotProfile,
 } from "./bot-config";
 import { applyProposals, type BotAction } from "./bot-brain";
@@ -17,6 +18,7 @@ import {
   COVERS,
   DISTANCE_STATS,
   ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
   FORMAT_NAMES,
   JUVENILE_MAJOR,
   LAND,
@@ -24,6 +26,7 @@ import {
   PINTAKASI,
   SCOUT,
   STUD_PRICE,
+  VALUE,
   barnCapacity,
   studPriceOf,
   cardOfDay,
@@ -46,7 +49,16 @@ import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
 import { Gacha } from "./gacha";
 import { canHardcore } from "./lifecycle";
-import { Lobbies, entryRefusal, type FightMode, type LobbySpec, type ScoutReport } from "./lobbies";
+import {
+  Lobbies,
+  entryRefusal,
+  type EntryCard,
+  type FightMode,
+  type LobbySpec,
+  type ScoutReport,
+} from "./lobbies";
+import { parBook } from "./pars";
+import { appraise, perFight, valueAtForm } from "./value";
 import { mulberry32, randInt, type Rng } from "./rng";
 import { DIVISION_RULES, Tournaments } from "./tournaments";
 
@@ -642,6 +654,11 @@ export class Bots {
       if (lobby.filled % 2 === 0) continue;
       if (gp() <= lobby.fee + RESERVE) break;
       for (const bird of roster()) {
+        // Liquidity never tags a bird under its game value: filling a claimer
+        // with a bird worth more than the tag hands it to the first shopper.
+        // Read straight off the public value, no judgement draw, so this pass
+        // spends the same rng it always has.
+        if (lobby.classType === "claimer" && (bird.value ?? 0) > (lobby.price ?? 0)) continue;
         const spec = {
           mode: lobby.mode,
           classType: lobby.classType,
@@ -700,7 +717,8 @@ export class Bots {
       }
     }
 
-    // 6. Shop the claimer fields — public info only (record vs. the tag).
+    // 6. Shop the claimer fields for BARGAINS — public info only: the game
+    //    value on each card against its tag (see isBargain).
     if (bot.claimAggression > 0) {
       // Cards ARE needed here — a claim is placed on a specific bird, read off
       // the public claimer field — but only for claimers, which is what the
@@ -712,10 +730,10 @@ export class Bots {
         for (const entry of lobby.entries) {
           if (report.claimsPlaced >= MAX_CLAIMS_PER_DAY) break;
           if (entry.mine) continue;
-          if (rng() >= bot.claimAggression) continue;
-          const { wins, losses } = entry.bird.career;
-          if (wins < losses) continue; // no lost causes
-          if (entry.bird.age > 6) continue; // too little career left
+          // Both draws spent for every entry looked at, whatever they decide.
+          const keen = rng() < bot.claimAggression;
+          const judge = rng();
+          if (!keen || !isBargain(entry.bird, lobby.price ?? 0, judge)) continue;
           if (gp() <= (lobby.price ?? 0) + RESERVE) continue;
           if (quietly(() => void lobbies.claim(entry.entryId))) report.claimsPlaced++;
         }
@@ -789,38 +807,29 @@ export function pickOffering(
   );
   const atBlade = options.filter((k) => k.format === format);
 
-  // Spend the sell draw UNCONDITIONALLY, before knowing whether a claimer is
-  // posted at this blade — otherwise the number of draws depends on the card
-  // and a bot's whole day shifts with the schedule.
-  const wantsToSell = rng() < bot.sellRate;
-  const claimers = atBlade
-    .filter((k) => k.classType === "claimer")
-    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
-  if (wantsToSell && claimers.length > 0) {
-    // Tag by the record, stretched by courage: better birds card dearer. Picks
-    // from the rungs OFFERED today rather than the whole ladder, so a barn is
-    // never priced out of the marketplace by the day's draw.
-    const edge = Math.max(0, bird.wins - bird.losses);
-    return claimers[Math.min(claimers.length - 1, Math.round(edge * bot.tagCourage))];
-  }
-
-  // Spent UNCONDITIONALLY, exactly like the sell draw above and for the same
-  // reason: if the number of rng() calls depended on what the card happened to
-  // post, a bot's whole day — its breeding picks, its claim rolls — would shift
-  // with the schedule and no sim would be reproducible against another.
-  const wantsToClimb = rng() < bot.ladderCourage;
-
   // The self-sorting ladder, most protective rung first. Reads the STAKES
   // record for grown birds (round 19) — the discovery year graduates nobody.
-  let base: CardKey | null = null;
-  for (const classType of PROTECTION_ORDER) {
-    const found = atBlade.find((k) => k.classType === classType);
-    if (found) {
-      base = found;
-      break;
-    }
-  }
-  if (base === null) return atBlade[0] ?? null;
+  // Tonight's blade first; when that blade posts only a claimer, the ladder at
+  // any other blade, because a bird worth more than the tag must not be tagged
+  // just because bestFormat liked a blade that only had a tag on it.
+  const base = protectiveRung(atBlade) ?? protectiveRung(options);
+
+  // ── WHERE IT EARNS MOST (claim-par round) — it replaced the sellRate coin ──
+  // The misjudgement is drawn UNCONDITIONALLY, in the slot the sell coin used,
+  // before knowing whether a claimer or a par exists — otherwise the number of
+  // draws depends on the card and a bot's whole day shifts with the schedule.
+  const misjudge = (rng() - 0.5) * VALUE_READING.OWNER_NOISE;
+  const choice = bestEarner(db, bot, bird, today, options, base, misjudge);
+  if (choice?.classType === "claimer") return choice;
+  // Only claimers affordable, all tagged under what the barn thinks the bird is
+  // worth: it sits out rather than give the bird away.
+  if (choice === null) return null;
+
+  // Spent UNCONDITIONALLY, exactly like the misjudgement above and for the
+  // same reason: if the number of rng() calls depended on what the card
+  // happened to post, a bot's whole day — its breeding picks, its claim rolls —
+  // would shift with the schedule and no sim would be reproducible.
+  const wantsToClimb = rng() < bot.ladderCourage;
 
   // ── FIGHTING UP (round 42) ────────────────────────────────────────────────
   // The protection this bird is entitled to, declined on purpose. Round 42
@@ -838,20 +847,116 @@ export function pickOffering(
   // which is the choice that actually costs something.
   //
   // Claimers are excluded from the climb: entering one is a decision to SELL,
-  // taken above by sellRate, and a bird that just declined to sell should not be
-  // put up for sale as a side effect of being brave.
+  // taken above against the bird's value, and a bird that was kept off the
+  // market should not be put up for sale as a side effect of being brave.
   if (wantsToClimb) {
-    const baseFee = feeOf(base);
-    const dearer = atBlade
-      .filter((k) => k.classType !== "claimer" && feeOf(k) > baseFee)
+    const chosenFee = feeOf(choice);
+    const dearer = options
+      .filter(
+        (k) => k.format === choice.format && k.classType !== "claimer" && feeOf(k) > chosenFee
+      )
       .sort((a, b) => feeOf(a) - feeOf(b));
     if (dearer.length > 0) return dearer[0]; // one rung up, not straight to the top
   }
-  return base;
+  return choice;
+}
+
+/**
+ * IS THIS CLAIMER ENTRY A BARGAIN? (claim-par round) — the one test every
+ * claim shopper, bot or auto-play, applies before it pays a tag.
+ *
+ * A bird is a bargain when the shopper reads it as worth at least BARGAIN_GP
+ * more than its tag. The read starts from the public game value on the card
+ * and wanders by the shopper's own judgement (`judge`, a uniform draw the
+ * caller spends for every entry it looks at). Before this round shoppers
+ * claimed on a coin flip with a winning record as the only filter, so being
+ * claimed was as likely for a dud as for a star, and tagging a good bird cheap
+ * cost nothing. Now it is the birds tagged under their worth that get taken.
+ *
+ * The age guard is the old one: a bird with too little career left cannot win
+ * back its tag whatever its figures say.
+ */
+export function isBargain(bird: EntryCard["bird"], price: number, judge: number): boolean {
+  if (bird.age > 6 || bird.value === null) return false;
+  const reads = bird.value * (1 + (judge - 0.5) * VALUE_READING.SHOPPER_NOISE);
+  return reads - price >= VALUE_READING.BARGAIN_GP;
 }
 
 /** Most protective class first — the order `pickOffering` settles down. */
-const PROTECTION_ORDER: Lobby[] = ["maiden", "nw3", "open", "claimer"];
+const PROTECTION_ORDER: Lobby[] = ["maiden", "nw3", "open"];
+
+function protectiveRung(keys: CardKey[]): CardKey | null {
+  for (const classType of PROTECTION_ORDER) {
+    const found = keys.find((k) => k.classType === classType);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * THE RUNG WHERE THIS BIRD EARNS MOST tonight, by the game value's own
+ * arithmetic (value.ts): its form against each rung's par gives a chance to
+ * win, and the chance and the stake give GP per fight. The candidates are the
+ * ladder at the base rung's blade (maiden, nw3, open, whichever the bird may
+ * enter) and every claimer posted tonight whose TAG IS AT LEAST what the barn
+ * reads the bird as worth — tagging a bird under its value is giving it away.
+ * Strong birds are worth far more than the dearest tag, so they are never
+ * tagged; a bird that can only win cheap company is worth about a cheap tag,
+ * and the cheap claimer is where it earns most.
+ *
+ * The barn's read is the game's own arithmetic on a form bent by its style
+ * (tagCourage reads its birds better, sellRate worse) and by the night's
+ * misjudgement, and it is that misread form it places the bird by. A claimer
+ * also carries the claim risk: if the bird is worth more than the tag, the
+ * owner stands to lose the difference to a claim.
+ *
+ * With no form or no pars yet (a world's first days), there is no evidence to
+ * place a bird by, and it takes the protection ladder as before this round.
+ * Ties go to the more protective rung, then the cheaper tag.
+ */
+function bestEarner(
+  db: DB,
+  bot: { sellRate: number; tagCourage: number },
+  bird: BirdView,
+  today: number,
+  options: CardKey[],
+  base: CardKey | null,
+  misjudge: number
+): CardKey | null {
+  const { value, form } = appraise(db, bird, today);
+  if (form === null) return base;
+  const book = parBook(db, today);
+  // The barn misjudges the bird's FORM, and prices what it thinks it sees.
+  // Misjudging the GP instead would make a bird worth exactly a tag (the cap
+  // in value.ts) read over it on half the nights for no reason at all.
+  const lean = (bot.tagCourage - bot.sellRate) * VALUE_READING.STYLE_LEAN;
+  const seen = form + misjudge + lean;
+  const reads = valueAtForm(seen, bird, book);
+  const ladder =
+    base === null
+      ? []
+      : PROTECTION_ORDER.flatMap((c) =>
+          options.filter((k) => k.format === base.format && k.classType === c)
+        );
+  const tags = options
+    .filter((k) => k.classType === "claimer" && (k.price ?? 0) >= reads)
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+  let best: CardKey | null = null;
+  let bestGp = -Infinity;
+  for (const k of [...ladder, ...tags]) {
+    const gp = perFight(seen, k, book);
+    if (gp === null) continue;
+    const risk =
+      k.classType === "claimer"
+        ? (VALUE.CLAIM_RISK * Math.max(0, value - (k.price ?? 0))) / FIGHTS_PER_GROUP_BIRD
+        : 0;
+    if (gp - risk > bestGp) {
+      best = k;
+      bestGp = gp - risk;
+    }
+  }
+  return best ?? base;
+}
 
 /**
  * The class ladder's rung for a given stakes record — the most protective

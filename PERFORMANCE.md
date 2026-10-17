@@ -203,6 +203,18 @@ and escrow work; breeding still rebuilds a global market once per priced hen.
 
 ## Traps for the next round
 
+- **The claim-par round moved most of the card into claimers, and the claim
+  shoppers pay for it.** Weak and middling birds now run claimers instead of
+  the open (real claimer entries on day 170 of seed 1: 695 before, 1,685
+  after), and every shopper builds a card for every claimer entry it reads.
+  An UNMATCHED comparison — the two 182-day seed-1 runs were hours apart on a
+  shared machine, not a sequential A/B — read tick cost 5.6 → 8.3 ms/fight.
+  Treat that as a lead, not a number: re-measure with a back-to-back A/B, and
+  if it holds, the "6 claims" phase is where to look (a shopper could skip any
+  entry whose public `value` is under its tag before building the card). The
+  game value itself is one indexed read per active bird per day, memoized
+  (engine/value.ts), and the pars one grouped query per day (engine/pars.ts).
+
 - A "pure" speed change that shifts rng consumption rewrites the world —
   shuffles draw per element, so hoisting one out of a loop changes every
   later decision. Same seed + zero-diff event logs is the acceptance test.

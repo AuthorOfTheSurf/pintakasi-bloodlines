@@ -12,6 +12,7 @@ import { overallGradeOf, type Grade } from "./grades";
 import { emit } from "./events";
 import { GameClock } from "./game-clock";
 import { nameTaken } from "./naming";
+import { gameValue } from "./value";
 import { ageOf, canManualRetire, isEggAge, mustRetire } from "./lifecycle";
 
 /**
@@ -46,6 +47,12 @@ export interface BirdView extends Omit<BirdRow, "sex" | StatName>, Record<StatNa
   // The nest timeline (round 13): a cover makes the hen pregnant NOW; the
   // egg is LAID on the nearest Friday and hatches the Friday after.
   eggStage: "gestating" | "laid" | null; // null once hatched
+  // THE GAME VALUE (claim-par round): the game's public estimate of what this
+  // bird is worth in GP, from its recent figures against the class pars — see
+  // value.ts. Null for eggs and retired birds (it values a fighting career).
+  // An ESTIMATE, and advisory: a sharp player who knows a bird was misplaced
+  // can beat it, and nothing but the stables' own judgement reads it.
+  value: number | null;
 }
 
 /**
@@ -72,6 +79,7 @@ export interface FormLine {
   pitFigure: number;
   ascendant: Element; // the day's weather — the same for every fight on that card
   edge: boolean; // the bird's OWN element was ascendant: read this figure down a touch
+  valueBefore: number | null; // the bird's estimated game value (GP) the morning of the fight
 }
 
 /**
@@ -112,14 +120,24 @@ export class Flock {
   ) {}
 
   private currentWeek(): number {
-    return GameClock.weekOf(new GameClock(this.database).currentDay());
+    return GameClock.weekOf(this.today());
   }
 
-  view(row: BirdRow, currentWeek = this.currentWeek()): BirdView {
+  private today(): number {
+    return new GameClock(this.database).currentDay();
+  }
+
+  // `today` feeds the game value; `currentWeek` is passed separately only by
+  // Hatch Friday, which ages birds against the week it is processing.
+  view(row: BirdRow, today = this.today(), currentWeek = GameClock.weekOf(today)): BirdView {
     const isEgg = row.status === "egg";
     // The sheet reveals at retirement — same doctrine as the egg's sex:
     // decided long ago, but the surprise belongs to the moment.
     const revealed = row.status === "retired";
+    const overallGrade = overallGradeOf(
+      row.agility + row.sight + row.stamina + row.gameness + row.station + row.condition
+    );
+    const age = isEgg ? Math.max(0, ageOf(row, currentWeek)) : ageOf(row, currentWeek);
     return {
       ...row,
       agility: revealed ? row.agility : null,
@@ -129,26 +147,32 @@ export class Flock {
       station: revealed ? row.station : null,
       condition: revealed ? row.condition : null,
       // Power, always; shape, never (until retirement). See the doctrine above.
-      overallGrade: overallGradeOf(
-        row.agility + row.sight + row.stamina + row.gameness + row.station + row.condition
-      ),
+      overallGrade,
       // The 50-50 is decided at breeding, but the surprise belongs to hatch day.
       sex: isEgg ? "hidden" : row.sex,
       sexLabel: sexLabelOf(row, isEgg),
-      age: isEgg ? Math.max(0, ageOf(row, currentWeek)) : ageOf(row, currentWeek),
+      age,
       stars: `${row.halfStars / 2}★ ${row.element}`,
       eggStage: eggStageOf(row, isEgg, currentWeek),
+      value:
+        row.status === "active"
+          ? gameValue(
+              this.database,
+              { id: row.id, age, stakesWins: row.stakesWins, overallGrade },
+              today
+            )
+          : null,
     };
   }
 
   all(): BirdView[] {
-    const week = this.currentWeek();
+    const today = this.today();
     return this.database
       .select()
       .from(birds)
       .where(eq(birds.farmId, this.farmId))
       .all()
-      .map((row) => this.view(row, week));
+      .map((row) => this.view(row, today));
   }
 
   byId(id: string): BirdView {
@@ -183,6 +207,7 @@ export class Flock {
           pitFigure: row.pitFigure,
           ascendant,
           edge: ascendant === bird.element,
+          valueBefore: row.valueBefore,
         };
       })
       .sort((a, b) => a.dayIndex - b.dayIndex);
@@ -254,6 +279,7 @@ export class Flock {
    */
   processHatchFriday(weekIndex: number): HatchFridayEvents {
     const events: HatchFridayEvents = { weekIndex, hatched: [], forceRetired: [] };
+    const today = this.today();
     // ⚠ NARROWED TO EGGS AND ACTIVE BIRDS (round 43), and this is provably
     // equivalent rather than a shortcut: the loop below has exactly two branches,
     // one for `status === "egg"` and one for `status === "active"`, and nothing
@@ -280,7 +306,7 @@ export class Flock {
           birdId: row.id,
           message: `${row.name} hatched — a ${row.sex === "male" ? "rooster" : "hen"}, ${row.halfStars / 2}★ ${row.element}`,
         });
-        if (mine) events.hatched.push(this.view({ ...row, status: "active" }, weekIndex));
+        if (mine) events.hatched.push(this.view({ ...row, status: "active" }, today, weekIndex));
       } else if (row.status === "active" && mustRetire(age)) {
         this.database
           .update(birds)
@@ -300,6 +326,7 @@ export class Flock {
           events.forceRetired.push(
             this.view(
               { ...row, status: "retired", retiredBy: "age", retiredWeek: weekIndex },
+              today,
               weekIndex
             )
           );

@@ -1,6 +1,19 @@
 import Link from "next/link";
-import { CLAIMER, ECONOMY, FIGHTS_PER_GROUP_BIRD, STAKER_FLOWS, feeFor } from "@/engine/config";
+import {
+  AGE,
+  CLAIMER,
+  ECONOMY,
+  FIGHTS_PER_GROUP_BIRD,
+  PAR,
+  STAKER_FLOWS,
+  VALUE,
+  feeFor,
+} from "@/engine/config";
 import { fmtGp } from "@/engine/events";
+import { winChance } from "@/engine/value";
+
+// Form against par, in figure points, for the win-chance table below.
+const PAR_GAPS = [-20, -10, 0, 10];
 
 export const dynamic = "force-dynamic";
 
@@ -92,9 +105,9 @@ export default function ClaimingPage() {
         <b>You can only use a rung that&apos;s on tonight&apos;s card.</b> Like every other fight,
         claimers are posted daily rather than conjured on demand (see{" "}
         <Link href="/wiki/card">The card</Link>). Each night&apos;s card carries the cheapest rung —{" "}
-        {CLAIMER.PRICES[0]} GP, where nearly all the trade happens — plus one dearer rung, which
-        rotates. So the bargain end is always open, and the expensive end comes around. If you want
-        to run at a rung that isn&apos;t posted, you wait a day or two.
+        {CLAIMER.PRICES[0]} GP, where the weakest birds run — plus one dearer rung, which rotates.
+        So the bargain end is always open, and the expensive end comes around. If you want to run at
+        a rung that isn&apos;t posted, you wait a day or two.
       </div>
 
       <h3>One-year-olds use the same tags</h3>
@@ -116,6 +129,94 @@ export default function ClaimingPage() {
         The juvenile card posts a claimer every night, with the rung alternating, so every price
         comes around quickly. Everything else about the sequence below works exactly the same
         whether the bird tagged is a one-year-old or a veteran.
+      </p>
+
+      <h2>Par figures: where can my bird win?</h2>
+      <p>
+        Every lobby on the board shows a <strong>par</strong>. A par is the typical winning Pit
+        Figure in that class: the middle figure of all the winners there over the last{" "}
+        {PAR.WINDOW_DAYS} days. Each tag on the ladder has its own par, and so do the open, maiden
+        and nw3. Championship fights don&apos;t count, because a Major&apos;s field is picked, not a
+        class.
+      </p>
+      <p>
+        Hold your bird&apos;s recent figures up against the pars. Under a class&apos;s par, it will
+        lose more than it wins there. Well over it, it is a favourite. A bird&apos;s{" "}
+        <em>average</em> figure counts its losses, and a loss posts far under a win, so an
+        even-money bird averages several points <em>under</em> the par, about {VALUE.EVEN_GAP} in a
+        typical class. As a rough guide:
+      </p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Its recent average figure</th>
+              <th className="num">Its chance to win a fight</th>
+            </tr>
+          </thead>
+          <tbody>
+            {PAR_GAPS.map((gap) => (
+              <tr key={gap}>
+                <td>
+                  {gap === 0
+                    ? "right at par"
+                    : `${Math.abs(gap)} ${gap < 0 ? "under" : "over"} par`}
+                </td>
+                <td className="num">
+                  {(winChance(50 + gap, 50 - VALUE.EVEN_GAP) * 100).toFixed(0)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="dim">
+        A class with fewer than {PAR.MIN_WINS} winners in the window shows an estimate instead: the
+        par of the next dearer rung, less {PAR.RUNG_STEP} points.
+      </p>
+
+      <h2>The game value: what is my bird worth?</h2>
+      <p>
+        Every live bird, yours and everybody else&apos;s, carries a <strong>value</strong> in GP. It
+        is the game&apos;s own simple guess at what the bird is worth. It is the same number for
+        everyone, and it is built only from things anybody can see:
+      </p>
+      <ul>
+        <li>
+          its <strong>form</strong>: its last {VALUE.FORM_FIGHTS} figures, newest counting most,
+          mixed with what birds of its overall grade usually post until it has a record of its own;
+        </li>
+        <li>
+          its chance to win in each class, from that form against what the birds fighting there
+          usually post, and so how many GP it should make there per fight. Fights take no cut, so a
+          bird that wins more than half its fights makes money, and one that wins less loses it;
+        </li>
+        <li>
+          the fights it has left: about {VALUE.FIGHTS_PER_WEEK} a week until the age cap of{" "}
+          {AGE.FIGHTING_CAP}, counted at {(VALUE.DISCOUNT * 100).toFixed(0)}% because the future is
+          never sure.
+        </li>
+      </ul>
+      <p>
+        The value is never under {VALUE.FLOOR} GP, half a breed cover: even a bird that can&apos;t
+        win anywhere is still a body to breed or sell. And a bird that can only win in a claimer is
+        worth about that claimer&apos;s tag, no more, because running it there lets anyone buy it at
+        the tag.
+      </p>
+
+      <div className="callout tip">
+        <b>Fight where you can win, and don&apos;t tag a good bird cheap.</b> Look for the class
+        whose par your bird&apos;s figures reach. For a weak bird that is often a cheap claimer:
+        easy company, and a small entry fee. But a bird worth more than the tag is a bargain to
+        everybody else, and the house stables shop for exactly those. If its value is well over the
+        tag, keep it out of that claimer.
+      </div>
+      <p>
+        The value is an estimate, and you are allowed to know better. A young bird with only a few
+        fights reads close to its grade. A bird that was carded at the wrong blade, or in classes
+        far over its head, has poor figures and so a low value, even if it is better than that. If
+        you know a bird was misplayed, a low value on someone else&apos;s claimer is your chance;
+        and if yours was misplayed, its value is no reason to sell it cheap.
       </p>
 
       <h2>The sequence</h2>

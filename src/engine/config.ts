@@ -1357,6 +1357,114 @@ export const CLAIMER = {
   PRICES: [90, 180, 270], // $1.125 · $2.25 · $3.375
 } as const;
 
+// ── PAR FIGURES (the claim-par round) — what it takes to win a class ────────
+// Zane: "need to get players utilizing claimers and even marketplace to ladder
+// their birds down." Measured before this round: every claimer tag drew the
+// same field as the open (six-stat avg ~400 at all three tags and in the open,
+// the 599 best bird entering 90 GP claimers), because nobody — bot, auto-play
+// or a new player — could see what a class was worth. A horse-racing track
+// solves that with CLASS PARS: the typical winning figure at each class, posted
+// for everyone. A bird whose figures sit under the open par drops to the
+// claimer it can win, and a bird good enough for a dearer class is a bargain
+// at a cheap tag, so it gets claimed. Entering a good bird cheap costs you the
+// bird, which keeps the good birds in the open and the cheap tags for the rest.
+//
+// The par is the MEDIAN WINNING PIT FIGURE per class rung (division × class ×
+// tag, every blade pooled — a figure reads the same at every blade by
+// construction, see FIGURE), over the last WINDOW_DAYS days of daily-card
+// fights. Championships are left out: a Major's field is hand-picked, not a
+// class. It is public, and the lobby board prints it beside each lobby.
+export const PAR = {
+  // Two weeks: long enough that a class's par rests on hundreds of winners,
+  // short enough that a field which has changed (the cheap tags getting
+  // weaker as weak birds drop into them) shows up in its par within days.
+  WINDOW_DAYS: 14,
+  // Fewer winners than this in the window and the par is not measured; it is
+  // ESTIMATED instead (below). A median of five wins is mostly luck.
+  MIN_WINS: 20,
+  // THE ESTIMATE for a thin class, so a brand-new world and a quiet tag still
+  // show a par. A claimer rung with no measured par reads the par of the next
+  // dearer rung (the next tag up, or the open above the dearest tag) minus this
+  // many figure points. A maiden or nw3 with no measured par
+  // reads its division's open par. If even the open has no par yet (the first
+  // day of a world), the class shows no par at all, and stables fall back to
+  // the protection ladder — nobody is tagged before there is a par to tag by.
+  // Half a letter grade a rung (a grade is 10 figure points): a starting guess
+  // that the real winners replace as soon as MIN_WINS of them have posted.
+  RUNG_STEP: 5,
+} as const;
+
+// ── THE GAME VALUE (the claim-par round) — what a bird is worth, in GP ──────
+// Zane: the game's simple, public estimate of a bird's net worth, shown to
+// players and used by the bots, and free to disagree with ("the game thinks
+// this one is undervalued, but I know it's just misplayed"). It is aimed at
+// the lower end of the field, where the claimers live; pedigree and crowns are
+// not in it yet.
+//
+// The recipe, in order (value.ts does the arithmetic):
+//   1. FORM: the bird's recent Pit Figure, recent fights weighted most, pulled
+//      toward the field's median figure while it has few fights.
+//   2. For every class rung the bird could run in, its CHANCE to win there,
+//      from its form against the rung's level (the median figure of everyone
+//      who fought there — see EVEN_GAP below), and so the GP it should make per
+//      fight there. Fights carry no rake, so a fight is worth
+//      (2 × chance − 1) × the stake.
+//   3. What that is worth over the rest of its career, discounted. A claimer
+//      rung counts for at most its TAG: running there, anyone may buy the bird
+//      at the tag, so a bird whose only winning class is a claimer is worth
+//      about that claimer's tag.
+//   4. The best rung wins, and the value never drops under FLOOR.
+export const VALUE = {
+  // A body's worth when it will never earn: half a breed cover. A bird that
+  // cannot win anywhere is still a hen to breed or a cock to sell, but nobody
+  // pays a full cover for blood that makes weak chicks. Below the cheapest tag
+  // on purpose: at a full cover the cheapest tag would sit under EVERY bird's
+  // value, and no stable would ever run in it.
+  FLOOR: ECONOMY.BREED_FEE / 2,
+  // How many recent daily-card fights the form reads, and how fast older ones
+  // fade (each fight back counts this much of the one after it). Juvenile
+  // fights count: a figure reads the same in both seasons (measured before
+  // this round: juvenile winners 44.9, grown winners 44.1), and without them
+  // every chick would carry the same value and its claimers could not sort.
+  FORM_FIGHTS: 10,
+  FORM_DECAY: 0.85,
+  // Pseudo-fights mixed into the form at what birds of the same public overall
+  // grade typically post, so a bird with one loud night reads as "probably
+  // what its grade usually is", not as a champion — and an unraced chick
+  // reads as its grade, not as zero.
+  PRIOR_FIGHTS: 3,
+  // THE WIN CURVE. A bird's chance in a class is a logistic in how far its
+  // form sits over the class's LEVEL — the median figure of everyone who fought
+  // there, which is by definition what an even-money bird brings. Measured on
+  // the pre-round 182-day world (seed 1): each 11–12 points of form moved the
+  // odds by about e (SCALE).
+  //
+  // ⚠ THE LEVEL, NOT THE PAR, and the first cut of this round learned why. A
+  // bird's form is an AVERAGE figure, losses included, so an even-money bird
+  // averages under the winning par — about 10 points under in the mixed world
+  // before this round (birds winning 49% averaged 33.7 against an open par of
+  // ~44). Reading every class through that fixed 10 broke once the classes
+  // sorted: a cheap claimer's field is narrow, its even-money bird sits only a
+  // few points under the par, and the fixed gap rated every weak bird a
+  // winner there, priced it over the cheapest tag, and emptied the 90 GP rung.
+  // EVEN_GAP survives only as the estimate for a thin rung with no level yet.
+  EVEN_GAP: 10,
+  SCALE: 11.5,
+  // The fights left in a career: weeks left to AGE.FIGHTING_CAP times this.
+  // Measured: birds that reached the age cap fought 82.6 grown fights over
+  // their seven grown weeks, about 12 a week.
+  FIGHTS_PER_WEEK: 12,
+  // Future winnings are uncertain (form fades, a Major can end a career), so
+  // they count at half. Also keeps a young bird's value from running away.
+  DISCOUNT: 0.5,
+  // The chance a claimer entry is claimed, for the owner's risk of tagging a
+  // bird under its value. Measured before this round: about 6% of entries.
+  CLAIM_RISK: 0.06,
+  // Shown to the nearest 10 GP. Figures are posted in bands of five, so the
+  // last digit of a value would be noise dressed up as precision.
+  ROUND_TO: 10,
+} as const;
+
 // ── THE FEE LADDER (round 42) — the flat rate dies ──────────────────────────
 //
 // Zane: "The other problem with the costing is the flat cost among fight types.

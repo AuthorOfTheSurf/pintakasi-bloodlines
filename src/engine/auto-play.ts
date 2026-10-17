@@ -7,6 +7,7 @@ import {
   chaseJuvenileCrowns,
   coverNet,
   foalScore,
+  isBargain,
   pickOffering,
   priceStuds,
   type DiscoveryPolicy,
@@ -222,7 +223,8 @@ export function playHonestDay(
  * Shop the claimer board (round 19). Claiming was a bot-only habit — half
  * the tag ladder's point (birds changing barns) never showed on a player-
  * side stable at all. Two a day, on the same public read the bots use: a
- * winning record, career left, never one of our own.
+ * bird whose game value clears its tag by a margin (isBargain), never one of
+ * our own.
  *
  * SEPARATE from the honest day on purpose: auto-play runs before the bots
  * card their birds, so at that moment the claimer fields are still empty.
@@ -244,9 +246,10 @@ export function shopClaimers(db: DB, farmId: string): void {
     for (const entry of lobby.entries) {
       if (placed >= AUTO_CLAIMS_PER_DAY) break;
       if (entry.mine) continue;
-      if (rng() >= AUTO_CLAIM_APPETITE) continue;
-      if (entry.bird.career.wins < entry.bird.career.losses) continue; // no lost causes
-      if (entry.bird.age > 6) continue; // too little career left to pay for the tag
+      // Both draws spent for every entry looked at; the bargain test is the bots'.
+      const keen = rng() < AUTO_CLAIM_APPETITE;
+      const judge = rng();
+      if (!keen || !isBargain(entry.bird, lobby.price ?? 0, judge)) continue;
       if (farmsApi.rowById(farmId).gp <= (lobby.price ?? 0) + AUTO_RESERVE) continue;
       quietly(() => {
         lobbies.claim(entry.entryId);
@@ -260,12 +263,13 @@ export function shopClaimers(db: DB, farmId: string): void {
 const AUTO_CLAIMS_PER_DAY = 2;
 const AUTO_CLAIM_APPETITE = 0.35;
 const AUTO_RESERVE = 400; // GP never gambled into a tag
-/** How often a juvenile is carded with a tag on it (round 23). */
 /**
  * The honest stable's carding style, in the shape `pickOffering` wants. It is
- * deliberately plainer than any bot profile: a player-side barn sells a fifth
- * of the time and tags near the bottom of the ladder, which is the cautious
- * read a human learning the game would make.
+ * deliberately plainer than any bot profile. Since the claim-par round the
+ * game value decides which birds run on a tag and at which one; these two knobs
+ * only lean the barn's read of its own birds (VALUE_READING.STYLE_LEAN). Here
+ * they nearly cancel, so an honest stable reads its birds about as the game
+ * does — the read a human learning the game would take on trust.
  */
 // ⚠ `ladderCourage` ADDED ROUND 42, and it is deliberately middling rather than
 // zero. A player-side stable that never declined its protection would be the

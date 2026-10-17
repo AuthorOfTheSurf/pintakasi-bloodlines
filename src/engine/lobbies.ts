@@ -12,6 +12,8 @@ import {
   tournaments,
   type BirdRow,
 } from "@/db/schema";
+import { parBook } from "./pars";
+import { valueBefore } from "./value";
 import {
   CADENCE,
   CLAIMER,
@@ -141,6 +143,8 @@ export interface EntryCard {
     // ONE lifetime record (ruled round 15) — juvenile fights included.
     career: { wins: number; losses: number };
     formatRecords: Partial<Record<FightFormat, FormatRecord>>;
+    // The game value (see BirdView.value) — what a claim shopper weighs the tag against.
+    value: number | null;
   };
   mine: boolean; // your own entry — you cannot claim it
   // THE DRAW, once the lobby has CLOSED: the bird's GROUP — everyone it
@@ -184,6 +188,11 @@ export interface LobbyView {
   price: number | null; // claimer tag
   fee: number; // entry fee a side
   filled: number; // ALWAYS public — how many are in, never who. No ceiling (round 31).
+  // THE CLASS PAR (claim-par round): the median winning Pit Figure on this
+  // rung (division × class × tag) over the last PAR.WINDOW_DAYS days, or an
+  // estimate when the rung is thin — see pars.ts. Null only before the world
+  // has an open par at all. Compare a bird's figures to it to place it.
+  par: number | null;
   // OPEN: fogged — your own entries, plus the full field in claimer
   // lobbies only. CLOSED: the reveal — every entry, with its draw.
   entries: EntryCard[];
@@ -486,6 +495,7 @@ export class Lobbies {
    */
   board(opts: { detail?: BoardDetail; classType?: Lobby } = {}): LobbyView[] {
     const detail = opts.detail ?? "full";
+    const book = parBook(this.database, this.today());
     // Scoped in SQL (round 43): completed lobbies leave the board, but the table
     // keeps every one a world ever ran — 768 rows by day 91 and climbing — and
     // this read the lot to keep the dozen still live. `ix_lobbies_status_day`
@@ -528,6 +538,7 @@ export class Lobbies {
             price: l.price,
             fee: feeFor(l.mode, l.classType, l.price ?? undefined),
             filled: fillByLobby.get(l.id) ?? 0,
+            par: book.par(l),
             entries: [],
           }))
         : liveRows.map((l) => this.viewLobby(l.id, detail));
@@ -548,6 +559,7 @@ export class Lobbies {
         price: k.price ?? null,
         fee: feeFor(k.mode, k.classType, k.price),
         filled: 0,
+        par: book.par(k),
         entries: [],
       }));
     return [...real, ...phantoms];
@@ -1266,6 +1278,7 @@ export class Lobbies {
         // stake, not the entry fee — one fight is a third of the night.
         gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
         seed: simSeed,
+        valueBefore: valueBefore(database, side.row, lobby.dayOpened),
       });
       // The entry's status and fight count are set once, at settle-up in
       // `complete` — a bird may be in the middle of its group here.
@@ -1529,6 +1542,7 @@ export class Lobbies {
       price: lobby.price,
       fee: feeFor(lobby.mode, lobby.classType, lobby.price ?? undefined),
       filled: entries.length,
+      par: parBook(this.database, this.today()).par(lobby),
       // ⚠ THE LOOKUP IS BUILT ONCE, OUTSIDE THE MAP (round 43). It used to be
       // `visible.map((e) => this.card(e, this.lookupFor(entries), …))`, which
       // constructs the whole per-lobby lookup FOR EVERY ENTRY — silently undoing
@@ -1629,6 +1643,7 @@ export class Lobbies {
         // running book made it one keyed read, but it is still the only field
         // here that costs a query, so the detail levels stay. See BoardDetail.
         formatRecords: records ? this.formatRecords(bird.id) : {},
+        value: bird.value,
       },
       mine: entry.farmId === this.farmId,
     };
