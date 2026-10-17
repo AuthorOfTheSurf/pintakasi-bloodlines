@@ -20,6 +20,7 @@ import {
   type Element,
   type StatName,
   LT_CENTS,
+  expectedFoalStat,
 } from "./config";
 import { emit, fmtGp } from "./events";
 import { creditCents, readFarm, readWorldState } from "./farms";
@@ -601,7 +602,7 @@ export class Breeding {
     return { owner, public: eggs.length - owner };
   }
 
-  /** Child stat = parent average ± variance, with a rare mutation swing. */
+  /** Child stat = expectedFoalStat ± variance, with a rare mutation swing. */
   private inheritStats(
     mother: Pick<BirdRow, (typeof STAT_NAMES)[number]>,
     father: Pick<BirdRow, (typeof STAT_NAMES)[number]>
@@ -611,7 +612,7 @@ export class Breeding {
     const out: Partial<Record<(typeof STAT_NAMES)[number], number>> = {};
     for (const stat of STAT_NAMES) {
       let value =
-        Math.round((mother[stat] + father[stat]) / 2) +
+        Math.round(expectedFoalStat(mother[stat], father[stat])) +
         randInt(this.rng, -BREEDING.STAT_VARIANCE, BREEDING.STAT_VARIANCE);
       if (this.rng() < BREEDING.MUTATION_CHANCE) {
         const swing = randInt(this.rng, 1, BREEDING.MUTATION_SWING);

@@ -12,6 +12,8 @@ import {
   tournaments,
   type BirdRow,
 } from "@/db/schema";
+import { parBook } from "./pars";
+import { valueBefore } from "./value";
 import {
   CADENCE,
   CLAIMER,
@@ -141,6 +143,8 @@ export interface EntryCard {
     // ONE lifetime record (ruled round 15) — juvenile fights included.
     career: { wins: number; losses: number };
     formatRecords: Partial<Record<FightFormat, FormatRecord>>;
+    // The game value (see BirdView.value) — what a claim shopper weighs the tag against.
+    value: number | null;
   };
   mine: boolean; // your own entry — you cannot claim it
   // THE DRAW, once the lobby has CLOSED: the bird's GROUP — everyone it
@@ -184,6 +188,11 @@ export interface LobbyView {
   price: number | null; // claimer tag
   fee: number; // entry fee a side
   filled: number; // ALWAYS public — how many are in, never who. No ceiling (round 31).
+  // THE CLASS PAR (claim-par round): the median winning Pit Figure on this
+  // rung (division × class × tag) over the last PAR.WINDOW_DAYS days, or an
+  // estimate when the rung is thin — see pars.ts. Null only before the world
+  // has an open par at all. Compare a bird's figures to it to place it.
+  par: number | null;
   // OPEN: fogged — your own entries, plus the full field in claimer
   // lobbies only. CLOSED: the reveal — every entry, with its draw.
   entries: EntryCard[];
@@ -232,7 +241,7 @@ export interface EntrySettlement {
 interface LobbyLookup {
   birdName: Map<string, string>;
   farms: Map<string, typeof farms.$inferSelect>;
-  flockFor: (farmId: string) => Flock;
+  birdOf: (entry: typeof lobbyEntries.$inferSelect) => ReturnType<Flock["view"]>;
 }
 
 /**
@@ -486,6 +495,7 @@ export class Lobbies {
    */
   board(opts: { detail?: BoardDetail; classType?: Lobby } = {}): LobbyView[] {
     const detail = opts.detail ?? "full";
+    const book = parBook(this.database, this.today());
     // Scoped in SQL (round 43): completed lobbies leave the board, but the table
     // keeps every one a world ever ran — 768 rows by day 91 and climbing — and
     // this read the lot to keep the dozen still live. `ix_lobbies_status_day`
@@ -528,6 +538,7 @@ export class Lobbies {
             price: l.price,
             fee: feeFor(l.mode, l.classType, l.price ?? undefined),
             filled: fillByLobby.get(l.id) ?? 0,
+            par: book.par(l),
             entries: [],
           }))
         : liveRows.map((l) => this.viewLobby(l.id, detail));
@@ -548,6 +559,7 @@ export class Lobbies {
         price: k.price ?? null,
         fee: feeFor(k.mode, k.classType, k.price),
         filled: 0,
+        par: book.par(k),
         entries: [],
       }));
     return [...real, ...phantoms];
@@ -1266,6 +1278,7 @@ export class Lobbies {
         // stake, not the entry fee — one fight is a third of the night.
         gpDeltaCents: side.won ? stake * 100 - rakeCents : -stake * 100,
         seed: simSeed,
+        valueBefore: valueBefore(database, side.row, lobby.dayOpened),
       });
       // The entry's status and fight count are set once, at settle-up in
       // `complete` — a bird may be in the middle of its group here.
@@ -1529,6 +1542,7 @@ export class Lobbies {
       price: lobby.price,
       fee: feeFor(lobby.mode, lobby.classType, lobby.price ?? undefined),
       filled: entries.length,
+      par: parBook(this.database, this.today()).par(lobby),
       // ⚠ THE LOOKUP IS BUILT ONCE, OUTSIDE THE MAP (round 43). It used to be
       // `visible.map((e) => this.card(e, this.lookupFor(entries), …))`, which
       // constructs the whole per-lobby lookup FOR EVERY ENTRY — silently undoing
@@ -1565,9 +1579,11 @@ export class Lobbies {
    * papercut per row is still the wrong shape. Two queries now, whatever the
    * lobby holds.
    *
-   * The `Flock` cache is per FARM rather than per entry because `byId` returns
-   * a BirdView with derived fields (age, stars, sexLabel) that the raw row
-   * doesn't carry, and a barn entering five birds should build one Flock.
+   * The card's BirdView (age, stars, sexLabel, value: what the raw row
+   * doesn't carry) is `Flock.view` over these same rows. It used to be a
+   * `Flock.byId` per entry, which re-read the bird row and the world's day for
+   * every card, and since the claim-par round the claim shoppers build a card
+   * for every claimer entry on the board.
    */
   private lookupFor(entries: (typeof lobbyEntries.$inferSelect)[]): LobbyLookup {
     const birdIds = [...new Set(entries.map((e) => e.birdId))];
@@ -1580,16 +1596,17 @@ export class Lobbies {
     const farmRows = farmIds.length
       ? this.database.select().from(farms).where(inArray(farms.id, farmIds)).all()
       : [];
-    const flocks = new Map<string, Flock>();
+    const rows = new Map(birdRows.map((b) => [b.id, b]));
+    const flock = new Flock(this.database, this.farmId);
+    const today = this.today();
     return {
       birdName: new Map(birdRows.map((b) => [b.id, b.name])),
       farms: new Map(farmRows.map((f) => [f.id, f])),
-      flockFor: (farmId: string) => {
-        const cached = flocks.get(farmId);
-        if (cached) return cached;
-        const made = new Flock(this.database, farmId);
-        flocks.set(farmId, made);
-        return made;
+      birdOf: (entry) => {
+        const row = rows.get(entry.birdId);
+        if (!row || row.farmId !== entry.farmId)
+          throw new Error(`No bird with id ${entry.birdId} in its entry's barn`);
+        return flock.view(row, today);
       },
     };
   }
@@ -1601,7 +1618,7 @@ export class Lobbies {
     field?: (typeof lobbyEntries.$inferSelect)[],
     records = true
   ): EntryCard {
-    const bird = lookup.flockFor(entry.farmId).byId(entry.birdId);
+    const bird = lookup.birdOf(entry);
     const farm = must(
       lookup.farms.get(entry.farmId),
       `farm ${entry.farmId} not in the board lookup`
@@ -1629,6 +1646,7 @@ export class Lobbies {
         // running book made it one keyed read, but it is still the only field
         // here that costs a query, so the detail levels stay. See BoardDetail.
         formatRecords: records ? this.formatRecords(bird.id) : {},
+        value: bird.value,
       },
       mine: entry.farmId === this.farmId,
     };

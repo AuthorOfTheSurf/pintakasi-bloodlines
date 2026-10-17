@@ -3,6 +3,7 @@ import type { DB } from "@/db/client";
 import { battleLog, birdForm } from "@/db/schema";
 import { GRADES, type Grade } from "./grades";
 import { SCOUT } from "./config";
+import { fightRecorded } from "./value";
 
 /**
  * Turn a public Pit Figure back into a like-for-like scouting observation.
@@ -61,6 +62,7 @@ export function bumpBookVersion(db: object): void {
 
 export function recordFight(db: DB, row: typeof battleLog.$inferInsert): number {
   bumpBookVersion(db);
+  fightRecorded(db, row.dayIndex);
   const inserted = db.insert(battleLog).values(row).returning({ id: battleLog.id }).get();
   // The schema defaults grades to B+ when an insert omits them (old test
   // worlds do); the book must normalize with what the row actually stores.
@@ -118,6 +120,7 @@ export function recordFightPair(
   if (rows[0].side === rows[1].side) throw new Error("A fight pair must contain side 0 and side 1");
   bumpBookVersion(db);
   bumpBookVersion(db);
+  fightRecorded(db, Math.min(rows[0].dayIndex, rows[1].dayIndex));
   const inserted = db
     .insert(battleLog)
     .values([...rows])

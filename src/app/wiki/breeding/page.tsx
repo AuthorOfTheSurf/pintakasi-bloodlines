@@ -10,6 +10,7 @@ import {
   LT_CENTS,
   STARS,
   STUD_PRICE,
+  expectedFoalStat,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { fmtGp } from "@/engine/events";
@@ -37,6 +38,11 @@ export default function BreedingPage() {
   const studOwnerPct = 100 - stakerPct - juicePct;
   const coversPerWeek = COVERS.PER_WEEK + COVERS.OWNER_RESERVED;
   const mutationPct = Math.round(BREEDING.MUTATION_CHANCE * 100);
+  const pullPct = Math.round(BREEDING.BETTER_PARENT_PULL * 100);
+  // Worked example: a B+ hen's stat crossed with an A+ stud's.
+  const exHen = 300;
+  const exStud = 500;
+  const exChick = Math.round(expectedFoalStat(exHen, exStud));
   const femalePct = Math.round(BREEDING.FEMALE_CHANCE * 100);
   const maxStars = STARS.MAX_HALF_STARS / 2;
 
@@ -139,8 +145,8 @@ export default function BreedingPage() {
         revealed stat sheet. If he sells out every week, raise the price. If nobody buys, cut it.
         <br />
         <b>How to shop as a buyer.</b> Weigh the price against the chick you expect. A chick&apos;s
-        stats start at the midpoint of both parents&apos; sheets, so a stud worth paying more for is
-        one whose sheet pulls your hen&apos;s numbers where you want them.
+        stats start most of the way toward the better parent on each stat, so a stud worth paying
+        more for is one whose sheet pulls your hen&apos;s numbers where you want them.
       </div>
       <p>
         Every rooster caps out at <strong>{coversPerWeek} covers a game-week</strong>:{" "}
@@ -237,11 +243,14 @@ export default function BreedingPage() {
       <div className="cards-2">
         <div className="minicard">
           <b>The six stats</b>
-          Each stat starts at the parents&apos; average, then shifts by up to{" "}
-          {BREEDING.STAT_VARIANCE} points either way — that spread is why two eggs from the same
-          pair are never identical. And because both parents are retired, both sheets are{" "}
-          <em>public</em>: a stud card shows the rooster&apos;s full six revealed stats and his
-          overall grade, so you can do this average yourself before you buy the cover. On top of
+          Each stat starts {pullPct}% of the way from the weaker parent to the stronger one. A hen
+          with {exHen} and a stud with {exStud} give a chick that starts at {exChick}, not halfway.
+          That is why breeding a hen to a better stud pays: the chick keeps most of his edge. It
+          also means a careful breeder&apos;s birds get a little better every generation. Then the
+          stat shifts by up to {BREEDING.STAT_VARIANCE} points either way — that spread is why two
+          eggs from the same pair are never identical. And because both parents are retired, both
+          sheets are <em>public</em>: a stud card shows the rooster&apos;s full six revealed stats
+          and his overall grade, so you can do this sum yourself before you buy the cover. On top of
           that, each stat has a {mutationPct}% chance to mutate, swinging it up to{" "}
           {BREEDING.MUTATION_SWING} further points in either direction. That&apos;s where a real
           surprise — a breakout stat, or a dud — comes from.

@@ -2546,6 +2546,72 @@ const KIND_LABEL: Record<CohortFarm["kind"], string> = {
   latecomer: "late",
 };
 
+/**
+ * VALUE CALIBRATION (claim-par round) — is the game value worth believing?
+ *
+ * Every fight records the bird's estimated value that morning (battle_log.
+ * value_before). If the estimate means anything, a dearer bird should win more
+ * often and make more GP per fight, decile on decile; and a claimed bird
+ * should usually have been worth more than the tag paid for it, or claimers
+ * are buying blind. Read the win rates knowing the classes sort: a bird runs
+ * where it figures to be even money, so across the middle deciles the win rate
+ * sits near half by design, and it is the GP a fight and the top decile that
+ * say whether the dear birds really are the good ones. Daily-card fights only: a championship's GP is a purse,
+ * settled outside the fight row.
+ */
+function valueCalibration(db: DB): HealthSection | null {
+  const deciles = db.all<{
+    decile: number;
+    lo: number;
+    hi: number;
+    n: number;
+    wins: number;
+    cents: number;
+  }>(
+    sql`SELECT decile, MIN(value_before) AS lo, MAX(value_before) AS hi, COUNT(*) AS n,
+               SUM(result = 'win') AS wins, SUM(gp_delta_cents) AS cents
+        FROM (SELECT value_before, result, gp_delta_cents,
+                     NTILE(10) OVER (ORDER BY value_before) AS decile
+              FROM battle_log WHERE tournament_id IS NULL AND value_before IS NOT NULL)
+        GROUP BY decile ORDER BY decile`
+  );
+  if (deciles.length === 0) return null;
+  // A claim settles at the tick after its fights, so the event carries the
+  // next day's index; the claimed bird's claimer row is the day before it.
+  const [claimed] = db.all<{ n: number; value: number | null; tag: number | null; over: number }>(
+    sql`SELECT COUNT(*) AS n, AVG(l.value_before) AS value, AVG(l.claim_price) AS tag,
+               SUM(l.value_before > l.claim_price) AS over
+        FROM (SELECT DISTINCT bird_id, day_index FROM events WHERE type = 'claim_won') e
+        JOIN (SELECT DISTINCT bird_id, day_index, value_before, claim_price FROM battle_log
+              WHERE lobby = 'claimer' AND value_before IS NOT NULL) l
+          ON l.bird_id = e.bird_id AND l.day_index = e.day_index - 1`
+  );
+  const lines = [
+    `daily-card fights by the bird's value that morning, in deciles: GP range · win rate · net GP a fight`,
+    ...deciles.map(
+      (d) =>
+        `  d${String(d.decile).padEnd(3)}${`${d.lo}–${d.hi} GP`.padEnd(16)}` +
+        `${((100 * d.wins) / d.n).toFixed(1).padStart(5)}% won · ` +
+        `${(d.cents / 100 / d.n).toFixed(2).padStart(7)} GP a fight · ${d.n} fights`
+    ),
+  ];
+  if (claimed && claimed.n > 0)
+    lines.push(
+      `claimed birds: ${claimed.n} · mean value before ${Math.round(claimed.value ?? 0)} GP against a mean tag of ` +
+        `${Math.round(claimed.tag ?? 0)} GP · ${((100 * claimed.over) / claimed.n).toFixed(0)}% were worth more than the tag`
+    );
+  const first = deciles[0];
+  const last = deciles[deciles.length - 1];
+  const flat = last.wins / last.n <= first.wins / first.n;
+  return {
+    title: "VALUE CALIBRATION",
+    lines,
+    warn: flat
+      ? "the dearest decile wins no more often than the cheapest — the value is not reading strength"
+      : undefined,
+  };
+}
+
 function cohortsSection(c: CohortReport): HealthSection {
   const kGp = (cents: number | null) => (cents === null ? "—" : `${(cents / 100_000).toFixed(1)}k`);
   const ratio = (x: number | null) => (x === null ? "—" : x.toFixed(2));
@@ -3242,6 +3308,8 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // After the money blocks: those say how the economy moves GP in bulk,
     // this one says who ends up with it, by when they joined.
     ...(cohortReport ? [cohortsSection(cohortReport)] : []),
+    // After who got rich: whether the price tag on a bird meant anything.
+    ...[valueCalibration(db)].filter((x): x is HealthSection => x !== null),
     adoption(db, allEvents),
     discovery(discoveryAudit),
   ];

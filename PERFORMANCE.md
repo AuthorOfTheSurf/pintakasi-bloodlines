@@ -203,6 +203,30 @@ and escrow work; breeding still rebuilds a global market once per priced hen.
 
 ## Traps for the next round
 
+- **The claim-par round moved most of the card into claimers, and the claim
+  shoppers pay for it.** Weak and middling birds now run claimers instead of
+  the open (real claimer entries on day 170 of seed 1: 695 before, 1,685
+  after), and every shopper builds a card for every claimer entry it reads.
+  An UNMATCHED comparison — the two 182-day seed-1 runs were hours apart on a
+  shared machine, not a sequential A/B — read tick cost 5.6 → 8.3 ms/fight.
+  Treat that as a lead, not a number: re-measure with a back-to-back A/B, and
+  if it holds, the "6 claims" phase is where to look. The game value is
+  memoized per bird per day (engine/value.ts): one indexed read for the form,
+  and since the crown term (issue #36) one grouped read of the bird's fights
+  by blade plus, from age 3, one read of its purses. Per world per day: the
+  pars (one grouped query, engine/pars.ts) and the crown market (the recent
+  Major purses and a count of the Major-age field).
+- **Skipping an entry before its card is built does not work as written**
+  (crown round). The shopper's test is the card's own `value`, so there is
+  nothing cheaper to skip on. What the card did waste was a fresh
+  `Flock.byId` per entry: a bird-row read and a `game_state` read that
+  `lookupFor` had already done for the whole lobby. Cards now come off those
+  rows through `Flock.view`. Back-to-back 30-day seed-1 A/B, alternating:
+  before 3.91 / 3.85 / 3.83 ms/fight, after 3.76 / 3.79, about −2%, with
+  `worldhash --ignore-ids` identical on all 14 tables. The 30-day world has
+  hardly any claimer traffic, so the late-run share this buys is
+  unmeasured.
+
 - A "pure" speed change that shifts rng consumption rewrites the world —
   shuffles draw per element, so hoisting one out of a loop changes every
   later decision. Same seed + zero-diff event logs is the acceptance test.

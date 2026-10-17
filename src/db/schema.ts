@@ -233,6 +233,15 @@ export const battleLog = sqliteTable("battle_log", {
   // pure function of the day. Do not add a derived column back beside it
   // without asking what actually reads it.
   seed: integer("seed").notNull(),
+  // THE GAME VALUE BEFORE THE FIGHT (claim-par round), in whole GP: what the
+  // bird was worth by the game's estimate that morning — the number the bots
+  // and players saw when they chose this fight (value.ts). Stored, not
+  // re-derived, because the estimate's inputs (the pars, the form window)
+  // move every day; this is the record the doctor calibrates the estimate
+  // against. Nullable so a row written by a test helper that skips it is
+  // still a row. It sits after `seed` because the seed is the fight; this is
+  // a reading taken beside it.
+  valueBefore: integer("value_before"),
 });
 
 // THE SCOUT'S RUNNING BOOK (round 44) — per-(bird, blade) sums of battle_log,

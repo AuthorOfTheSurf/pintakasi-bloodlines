@@ -4,7 +4,7 @@ import { createDb } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { Breeding } from "./breeding";
-import { COVERS, ECONOMY, STATS } from "./config";
+import { COVERS, ECONOMY, STATS, expectedFoalStat } from "./config";
 import { Flock } from "./flock";
 import { Game } from "./game";
 import { mulberry32 } from "./rng";
@@ -56,7 +56,7 @@ describe("breed", () => {
     expect(state.juicePoolCents).toBe(ECONOMY.SEED_JUICE * 100 + 8000); // genesis seed + the cover's cut
   });
 
-  test("child stats stay in bounds and near the parent average", () => {
+  test("child stats stay in bounds and near the expected foal stat", () => {
     const { db, breeding } = freshGame();
     const { egg } = breeding.breed("starter-2", "starter-1");
     // The fog (round 28): the egg's VIEW hides its stats — genetics are
@@ -75,15 +75,35 @@ describe("breed", () => {
     ] as const) {
       expect(eggRow[stat]).toBeGreaterThanOrEqual(STATS.MIN);
       expect(eggRow[stat]).toBeLessThanOrEqual(STATS.MAX);
-      // within variance + max mutation swing of the parent average
-      const avg = (mother[stat] + father[stat]) / 2;
-      expect(Math.abs(eggRow[stat] - avg)).toBeLessThanOrEqual(120 + 300 + 1);
+      // within variance + max mutation swing of the expected stat
+      const expected = expectedFoalStat(mother[stat], father[stat]);
+      expect(Math.abs(eggRow[stat] - expected)).toBeLessThanOrEqual(120 + 300 + 1);
     }
     expect(egg.halfStars).toBeGreaterThanOrEqual(0);
     expect(egg.halfStars).toBeLessThanOrEqual(10);
     expect(egg.element).toBeTruthy(); // 0★ would still resolve to a type
     expect(egg.sex).toBe("hidden"); // the 50-50 surprise belongs to hatch day
     expect(egg.sexLabel).toBeNull();
+  });
+
+  test("breeding up pulls the chick past the midpoint, toward the better parent", () => {
+    // A 300 hen to a 500 stud on every stat. The midpoint would be 400; the
+    // rule (2026-10-17) expects 450. Averaged over many eggs the noise and the
+    // symmetric mutations wash out, so a regression to the plain midpoint
+    // lands ~50 points short of this window.
+    const { breeding } = freshGame(3);
+    const sheet = (v: number) =>
+      ({ agility: v, sight: v, stamina: v, gameness: v, station: v, condition: v }) as const;
+    const inherit = (m: ReturnType<typeof sheet>, f: ReturnType<typeof sheet>) =>
+      breeding["inheritStats"](m, f);
+    let sum = 0;
+    const draws = 2000;
+    for (let i = 0; i < draws; i++) sum += inherit(sheet(300), sheet(500)).agility;
+    expect(sum / draws).toBeGreaterThan(440);
+    expect(sum / draws).toBeLessThan(460);
+    // The pull is toward the better PARENT, not the sire: swap the sexes and
+    // the expectation is unchanged.
+    expect(expectedFoalStat(500, 300)).toBe(expectedFoalStat(300, 500));
   });
 
   test("same seed → identical egg (deterministic)", () => {

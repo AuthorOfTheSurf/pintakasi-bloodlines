@@ -59,9 +59,12 @@ export interface BotProfile {
   housePair: number;
   /** Chance an age-3+ card is a HARDCORE card (pit nerve). */
   hardcoreNerve: number;
-  /** Chance an age-2+ card sells — a claimer at a tag instead of open. */
+  /**
+   * How readily this barn tags its birds — a LEAN on its read of their value,
+   * not a coin flip any more (see VALUE_READING.STYLE_LEAN).
+   */
   sellRate: number;
-  /** How high up the tag ladder its claimers card (0 = always the cheapest rung). */
+  /** How dear it reads its own birds when tagging — the opposite lean (VALUE_READING). */
   tagCourage: number;
   /**
    * THE APPETITE TO FIGHT UP (round 42) — chance per card that this barn skips
@@ -212,6 +215,55 @@ export const WEATHER_APPETITE = {
 } as const;
 
 /**
+ * READING THE GAME VALUE (the claim-par round) — how a stable uses the public
+ * value (config VALUE) to place a bird and to spot a bargain.
+ *
+ * Before this, a bird went into a claimer on a coin flip (sellRate) and its tag
+ * was picked off its win-loss record; a shopper claimed on a coin flip too. So
+ * the best and worst birds in the world ran the same cheap tags at the same
+ * rate, and a claim was as likely to land on a dud as on a steal. Now an owner
+ * runs a bird where its figures say it earns most, and never tags it under
+ * what it thinks the bird is worth; a shopper claims when it thinks a bird is
+ * worth clearly more than its tag. Both start from the same public number, and
+ * the knobs below are how much each barn's own judgement wanders from it. That
+ * disagreement is the market: if everyone priced every bird exactly alike,
+ * nobody would ever see a bargain.
+ */
+export const VALUE_READING = {
+  /**
+   * How far an owner's read of its own bird's FORM wanders, in figure points
+   * (uniform, centred on zero), drawn once per bird per night. Owners
+   * misjudge, and a good bird misjudged into a cheap claimer is what a sharp
+   * shopper lives on. Small next to a class step (PAR.RUNG_STEP), so a bird
+   * mostly runs where it belongs.
+   */
+  OWNER_NOISE: 4,
+  /**
+   * How far a shopper's read of a bird's VALUE wanders, as a share of it:
+   * 0.3 is anywhere from 15% under to 15% over. Drawn once per entry looked at.
+   */
+  SHOPPER_NOISE: 0.3,
+  /**
+   * How much a barn's style bends its read of its OWN birds' form, in figure
+   * points per unit of (tagCourage − sellRate). A seller (high sellRate) reads
+   * its birds worse and tags them sooner; a brave tagger (high tagCourage)
+   * reads them better. The roster puts (tagCourage − sellRate) between −0.6
+   * and +0.4, so this spans about −2.4 to +1.6 points. The style leans the
+   * decision. It no longer makes it.
+   */
+  STYLE_LEAN: 4,
+  /**
+   * A shopper claims only when it reads the bird as worth at least this many
+   * GP more than the tag. The margin is the safety: a value built on a few
+   * fights is noisy, and a claim that only looked good loses money. It sits
+   * above the shopper's own SHOPPER_NOISE at the dearest tag (±15% of 270 is
+   * ±40), so a bird tagged at its worth is not claimed on a misread alone —
+   * at 30 a first cut claimed a quarter of every claimer field at fair prices.
+   */
+  BARGAIN_GP: 45,
+} as const;
+
+/**
  * THE BREEDING PLAN (round 29) — how a barn picks a stud.
  *
  * Until now it did not pick one. `Bots.playFarm` shuffled the hens, shuffled
@@ -229,7 +281,7 @@ export const WEATHER_APPETITE = {
  *
  * So a barn now has a HOUSE SHAPE — one of BREEDING_SHAPES — and scores every
  * legal (hen, stud) pair on the foal it would expect. Expected foal sheet is
- * just the parents' midpoint (BREEDING.STAT_VARIANCE is symmetric noise on top
+ * expectedFoalStat per stat (BREEDING.STAT_VARIANCE is symmetric noise on top
  * of it), which makes the whole plan readable arithmetic rather than a
  * simulation.
  *
@@ -411,7 +463,7 @@ export const BREEDING_PLAN = {
  * hidden value, because there is none: a retired bird hides nothing.
  *
  * BUYERS (`spend`). A cover is scored on the foal it should make (foalScore,
- * the parents' midpoint), and every GP of premium above the floor costs
+ * on expectedFoalStat), and every GP of premium above the floor costs
  * score. `spend` and the size of the wallet decide how much: a rich barn
  * with a breeder's eye pays up for the best blood, a poor claimer shop takes
  * the floor stud that is nearly as good.

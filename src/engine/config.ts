@@ -1022,6 +1022,18 @@ export function landForFight(fee: number): number {
   );
 }
 
+/**
+ * The stat a chick is EXPECTED to inherit before noise and mutation: pulled
+ * BETTER_PARENT_PULL of the way from the weaker parent toward the stronger.
+ * One function so the egg, the bots' foal estimate and the Handbook's worked
+ * example cannot disagree about the rule.
+ */
+export function expectedFoalStat(a: number, b: number): number {
+  const hi = Math.max(a, b);
+  const lo = Math.min(a, b);
+  return lo + (hi - lo) * BREEDING.BETTER_PARENT_PULL;
+}
+
 /** Land Tokens for display, from hundredths: 673 → "6.73". */
 export function fmtLt(cents: number): string {
   return (cents / LT_CENTS).toFixed(2);
@@ -1029,8 +1041,19 @@ export function fmtLt(cents: number): string {
 
 // ── Breeding ────────────────────────────────────────────────────────────────
 export const BREEDING = {
-  // Child stat = average of the parents ± up to this much, either direction.
-  // The randomness that makes two eggs from the same pair differ. (0–2000 scale.)
+  // Child stat starts this share of the way from the WEAKER parent's value to
+  // the STRONGER parent's, stat by stat (0.5 would be the plain midpoint).
+  // Ruled 2026-10-17: at the midpoint, breeding a hen to a stud two grades
+  // above her made a chick better than both parents 2% of the time — breeding
+  // up existed but barely paid, and late stables had no way to catch the
+  // field. A replay of the 7,522 crosses in latecomers-182-s1 under 0.75 gave
+  // 18% (38% one grade up). The cost is drift: chicks land ~25 points above
+  // the midpoint, so the world climbs roughly 2.5–4 grades per 1,000 days
+  // before selection. Zane wanted that — the ladder has room — and expects
+  // the rule to move again.
+  BETTER_PARENT_PULL: 0.75,
+  // Then ± up to this much, either direction — the randomness that makes two
+  // eggs from the same pair differ. (0–2000 scale.)
   STAT_VARIANCE: 120,
   // Per stat: chance of a mutation, and how far it can swing (± up to SWING).
   // This is where surprise stars (and duds) come from.
@@ -1332,6 +1355,189 @@ export const CLAIMER = {
   // 90 under the 160 GP breed floor, 180 and 270 over it — the round-31 shape
   // ("one rung below, two above") re-priced rather than re-thought.
   PRICES: [90, 180, 270], // $1.125 · $2.25 · $3.375
+} as const;
+
+// ── PAR FIGURES (the claim-par round) — what it takes to win a class ────────
+// Zane: "need to get players utilizing claimers and even marketplace to ladder
+// their birds down." Measured before this round: every claimer tag drew the
+// same field as the open (six-stat avg ~400 at all three tags and in the open,
+// the 599 best bird entering 90 GP claimers), because nobody — bot, auto-play
+// or a new player — could see what a class was worth. A horse-racing track
+// solves that with CLASS PARS: the typical winning figure at each class, posted
+// for everyone. A bird whose figures sit under the open par drops to the
+// claimer it can win, and a bird good enough for a dearer class is a bargain
+// at a cheap tag, so it gets claimed. Entering a good bird cheap costs you the
+// bird, which keeps the good birds in the open and the cheap tags for the rest.
+//
+// The par is the MEDIAN WINNING PIT FIGURE per class rung (division × class ×
+// tag, every blade pooled — a figure reads the same at every blade by
+// construction, see FIGURE), over the last WINDOW_DAYS days of daily-card
+// fights. Championships are left out: a Major's field is hand-picked, not a
+// class. It is public, and the lobby board prints it beside each lobby.
+export const PAR = {
+  // Two weeks: long enough that a class's par rests on hundreds of winners,
+  // short enough that a field which has changed (the cheap tags getting
+  // weaker as weak birds drop into them) shows up in its par within days.
+  WINDOW_DAYS: 14,
+  // Fewer winners than this in the window and the par is not measured; it is
+  // ESTIMATED instead (below). A median of five wins is mostly luck.
+  MIN_WINS: 20,
+  // THE ESTIMATE for a thin class, so a brand-new world and a quiet tag still
+  // show a par. A claimer rung with no measured par reads the par of the next
+  // dearer rung (the next tag up, or the open above the dearest tag) minus this
+  // many figure points. A maiden or nw3 with no measured par
+  // reads its division's open par. If even the open has no par yet (the first
+  // day of a world), the class shows no par at all, and stables fall back to
+  // the protection ladder — nobody is tagged before there is a par to tag by.
+  // Half a letter grade a rung (a grade is 10 figure points): a starting guess
+  // that the real winners replace as soon as MIN_WINS of them have posted.
+  RUNG_STEP: 5,
+} as const;
+
+// ── THE GAME VALUE (the claim-par round) — what a bird is worth, in GP ──────
+// Zane: the game's simple, public estimate of a bird's net worth, shown to
+// players and used by the bots, and free to disagree with ("the game thinks
+// this one is undervalued, but I know it's just misplayed"). It is aimed at
+// the lower end of the field, where the claimers live. Pedigree is not in it
+// yet; crowns came in as the CROWN term (issue #36, step 5 below).
+//
+// The recipe, in order (value.ts does the arithmetic):
+//   1. FORM: the bird's recent Pit Figure, recent fights weighted most, pulled
+//      toward the field's median figure while it has few fights.
+//   2. For every class rung the bird could run in, its CHANCE to win there,
+//      from its form against the rung's level (the median figure of everyone
+//      who fought there — see EVEN_GAP below), and so the GP it should make per
+//      fight there. Fights carry no rake, so a fight is worth
+//      (2 × chance − 1) × the stake.
+//   3. What that is worth over the rest of its career, discounted. A claimer
+//      rung counts for at most its TAG: running there, anyone may buy the bird
+//      at the tag, so a bird whose only winning class is a claimer is worth
+//      about that claimer's tag.
+//   4. The best rung wins, and the value never drops under FLOOR.
+//   5. Plus the CROWN term: what the bird's chance at a Major final is worth.
+export const VALUE = {
+  // A body's worth when it will never earn: half a breed cover. A bird that
+  // cannot win anywhere is still a hen to breed or a cock to sell, but nobody
+  // pays a full cover for blood that makes weak chicks. Below the cheapest tag
+  // on purpose: at a full cover the cheapest tag would sit under EVERY bird's
+  // value, and no stable would ever run in it.
+  FLOOR: ECONOMY.BREED_FEE / 2,
+  // How many recent daily-card fights the form reads, and how fast older ones
+  // fade (each fight back counts this much of the one after it). Juvenile
+  // fights count: a figure reads the same in both seasons (measured before
+  // this round: juvenile winners 44.9, grown winners 44.1), and without them
+  // every chick would carry the same value and its claimers could not sort.
+  FORM_FIGHTS: 10,
+  FORM_DECAY: 0.85,
+  // Pseudo-fights mixed into the form at what birds of the same public overall
+  // grade typically post, so a bird with one loud night reads as "probably
+  // what its grade usually is", not as a champion — and an unraced chick
+  // reads as its grade, not as zero.
+  PRIOR_FIGHTS: 3,
+  // THE WIN CURVE. A bird's chance in a class is a logistic in how far its
+  // form sits over the class's LEVEL — the median figure of everyone who fought
+  // there, which is by definition what an even-money bird brings. Measured on
+  // the pre-round 182-day world (seed 1): each 11–12 points of form moved the
+  // odds by about e (SCALE).
+  //
+  // ⚠ THE LEVEL, NOT THE PAR, and the first cut of this round learned why. A
+  // bird's form is an AVERAGE figure, losses included, so an even-money bird
+  // averages under the winning par — about 10 points under in the mixed world
+  // before this round (birds winning 49% averaged 33.7 against an open par of
+  // ~44). Reading every class through that fixed 10 broke once the classes
+  // sorted: a cheap claimer's field is narrow, its even-money bird sits only a
+  // few points under the par, and the fixed gap rated every weak bird a
+  // winner there, priced it over the cheapest tag, and emptied the 90 GP rung.
+  // EVEN_GAP survives only as the estimate for a thin rung with no level yet.
+  EVEN_GAP: 10,
+  SCALE: 11.5,
+  // The fights left in a career: weeks left to AGE.FIGHTING_CAP times this.
+  // Measured: birds that reached the age cap fought 82.6 grown fights over
+  // their seven grown weeks, about 12 a week.
+  FIGHTS_PER_WEEK: 12,
+  // Future winnings are uncertain (form fades, a Major can end a career), so
+  // they count at half. Also keeps a young bird's value from running away.
+  DISCOUNT: 0.5,
+  // The chance a claimer entry is claimed, for the owner's risk of tagging a
+  // bird under its value. Measured before this round: about 6% of entries.
+  CLAIM_RISK: 0.06,
+  // Shown to the nearest 10 GP. Figures are posted in bands of five, so the
+  // last digit of a value would be noise dressed up as precision.
+  ROUND_TO: 10,
+
+  // ── THE CROWN TERM (issue #36) — what a shot at the Majors is worth ────────
+  // The card value above prices a career of daily cards and nothing else, so a
+  // bird with a real chance at a Major final read the same as a grinder of the
+  // same form. The crown term adds the expected Major winnings:
+  //
+  //   crown = min(P, CROWN_P_CAP) × ramp(P) × K × the going Major purse
+  //   (ramp: 0 under CROWN_P_FLOOR, full at twice it — see below)
+  //
+  // P is the bird's chance of reaching at least one Major final over the rest
+  // of its career, a logistic on public numbers only (figures, earnings,
+  // grade, the juvenile-crown record, and how many birds it shares the finals
+  // with). K is the Major net a final is worth counting everyone who fell
+  // short, in purses, so the term follows the juice pool when it moves.
+  //
+  // FITTED 2026-10-17 on five 182-day latecomer worlds (seeds 1–4 trained,
+  // seed 5 held out), code at bd65586. Holdout AUC: adult branch 0.879 pooled
+  // over ages 3–7, juvenile branch 0.813; the hatch-day public info alone
+  // (grade, stars, parents' crowns) scores 0.62. Stars and parents' titles
+  // fitted to about zero and stay out.
+  //
+  // Over-confident at the very top: on the holdout the model's top 1% at age
+  // 3 predicted 8.0k GP of crown net and realized 3.4k. The cap is that
+  // correction — nobody's chance of a final is priced over a quarter.
+  CROWN_P_CAP: 0.25,
+  // Below this chance of a final a bird carries NO crown term, and the term
+  // ramps in linearly to full at twice it: crown × clamp((P − floor) / floor,
+  // 0, 1). A lottery-ticket shot at a final is not something an owner prices
+  // into a 90 GP claim; the floor keeps crown value for the birds with a real
+  // shot, which is where it matters. Ruled after the first crown-term sim
+  // (182-day seed-1 latecomers, 461308d): priced linearly from P = 0, an
+  // ordinary age-3 bird or B juvenile carried ~75–80 GP of crown, which lifted
+  // ordinary birds over the 90 GP tag, bots stopped tagging them, claimer
+  // fights fell 277k → 108k, and late stables' open win% fell 51.8% → 37%.
+  // The ramp (not a step) keeps the value continuous as a bird's P crosses it.
+  CROWN_P_FLOOR: 0.03,
+  // How far back the going Major purse looks: the mean purse of the Majors
+  // completed in the last this-many weeks. With none (a young world), it is
+  // the juice pool split across the week's Major blades, which is what the
+  // next Thursday would pay before entry fees.
+  CROWN_PURSE_WEEKS: 4,
+  // The figure read for P: at each Major blade, the bird's average figure
+  // shrunk toward SCOUT.PRIOR_FIGURE (SCOUT.PRIOR_WEIGHT pseudo-fights), read
+  // only with at least this many fights at the blade. The best blade's read
+  // minus the open par is `vsPar`. With no read at any Major blade, vsPar is
+  // CROWN_NO_READ, about what the median bird shows (the fit's no-read flag
+  // came out at zero once this stood in).
+  CROWN_MIN_BLADE_FIGHTS: 2,
+  CROWN_NO_READ: -5,
+  // ADULT BRANCH, age AGE.FORK through the last Major age:
+  //   z = ln(finals a week × weeks left / field) + INTERCEPT
+  //       + VS_PAR × vsPar + EARNINGS × ln(1 + gross career earnings GP)
+  // The supply term is pinned at coefficient 1, not fitted (a free fit gave
+  // 0.88–0.94 and the pin cost no AUC): six finalist seats a week (three
+  // Majors, two birds in each final), shared among everyone old enough, times
+  // the weeks you have left. It is why a crown is
+  // worth less as the world grows. Earnings carry 0.61 because the Selection
+  // Committee seats Majors by gross career earnings: a rich bird gets the seat.
+  CROWN_ADULT: { INTERCEPT: -4.3, VS_PAR: 0.2152, EARNINGS: 0.6061, K: 0.52 },
+  // JUVENILE BRANCH, ages 1–2 (before the first Major):
+  //   z = INTERCEPT + VS_PAR × vsPar + GRADE × grade index (C = 0 … B = 2, A = 4)
+  //       + CROWN_WINS × fights won in the Juvenile Championship
+  //       + SUPPLY × ln(finals a week × Major weeks in a career / field)
+  // Separate on purpose: the adult formula applied to juveniles priced its
+  // top 1% at 13.9k GP on the holdout, and they earned 2.3k. A juvenile has
+  // no earnings worth the name yet, so grade and the juvenile crown say more.
+  CROWN_JUVENILE: {
+    INTERCEPT: -4.734,
+    VS_PAR: 0.1564,
+    GRADE: 0.6597,
+    CROWN_WINS: 0.3168,
+    SUPPLY: 0.3001,
+    K: 0.486,
+  },
 } as const;
 
 // ── THE FEE LADDER (round 42) — the flat rate dies ──────────────────────────

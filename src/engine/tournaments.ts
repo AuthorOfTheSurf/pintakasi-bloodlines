@@ -29,6 +29,7 @@ import { canHardcore, canJuvenile } from "./lifecycle";
 import { overallGradeOf } from "./grades";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
 import { bookVersion, bumpBookVersion, recordFightPair } from "./scout";
+import { valueBefore } from "./value";
 
 /**
  * Which championship: the Thursday MAJORS (age 3+, hardcore, the crowns) or
@@ -1234,6 +1235,7 @@ export class Tournaments {
         pitFigure: side.figure,
         gpDeltaCents: 0, // purse GP is a tournament settle, not a fight settle
         seed: simSeed,
+        valueBefore: valueBefore(database, side.row, dayIndex),
       });
     }
     recordFightPair(
