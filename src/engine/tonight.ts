@@ -8,6 +8,7 @@ import { readFarm, readWorldState } from "./farms";
 import { Flock } from "./flock";
 import { Lobbies, entryRefusal } from "./lobbies";
 import { mulberry32 } from "./rng";
+import { sameKey } from "./card-key";
 
 /**
  * ── TONIGHT, BIRD BY BIRD — what each fighting bird may do on today's card ──
@@ -34,17 +35,6 @@ export interface TonightChoice {
   /** Why the bird cannot card tonight at all (needs a name, crown day, already fought), or null. */
   blocked: string | null;
 }
-
-/** The same key, compared on all four axes the card is matched on (see `isOnCard`). */
-export const sameKey = (a: CardKey, b: CardKey): boolean =>
-  a.mode === b.mode &&
-  a.classType === b.classType &&
-  a.format === b.format &&
-  (a.price ?? null) === (b.price ?? null);
-
-/** A stable string for one key: select values, React keys, test equality. */
-export const keyId = (k: CardKey): string =>
-  `${k.mode}|${k.classType}|${k.format}|${k.price ?? ""}`;
 
 /**
  * Seeded per (day, bird) rather than drawn from one stream down the barn, so
