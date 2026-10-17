@@ -544,6 +544,9 @@ function checkNoStrandedEscrow(db: DB): Invariant {
  * a cancelled crown refunds every entrant while they are still active, and
  * any of them may age out months later; without the week test that ordinary
  * refund would fail the doctor on a healthy world (droid review of #39).
+ * Cancelled crowns are left out entirely: a final-year entrant on a crown that
+ * cancels is refunded and then aged out in the same tick, which matches the
+ * week test, and a crown that never ran cannot have skipped anyone.
  */
 function checkCrownsBeforeCalendar(db: DB): Invariant {
   const agedOut = new Map(
@@ -558,6 +561,7 @@ function checkCrownsBeforeCalendar(db: DB): Invariant {
     db
       .select({ id: tournaments.id, week: tournaments.weekIndex })
       .from(tournaments)
+      .where(eq(tournaments.status, "completed"))
       .all()
       .map((t) => [t.id, t.week])
   );
