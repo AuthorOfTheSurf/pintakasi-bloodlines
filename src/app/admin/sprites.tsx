@@ -104,16 +104,30 @@ function lighten(hex: string, amt = 0.35): string {
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
 
+/**
+ * One <path> per color, each row's run of same-colored pixels drawn as a single
+ * 1-high box. It used to be one <rect> per pixel, about 60 elements and 4 KB
+ * of markup for a 12px icon, and the Stewards' Office draws thousands of them:
+ * 24 MB of a 44 MB page on a 182-day world. Runs make the same picture in a
+ * few hundred bytes.
+ */
 function pixels(map: string[], palette: Record<string, string>): ReactElement[] {
-  const rects: ReactElement[] = [];
+  const runsByColor = new Map<string, string[]>();
   map.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) {
-      const color = palette[row[x]];
-      if (color)
-        rects.push(<rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={color} />);
+    let x = 0;
+    while (x < row.length) {
+      const start = x;
+      while (x < row.length && row[x] === row[start]) x++;
+      const color = palette[row[start]];
+      if (!color) continue;
+      const runs = runsByColor.get(color) ?? [];
+      runs.push(`M${start} ${y}h${x - start}v1h${start - x}z`);
+      runsByColor.set(color, runs);
     }
   });
-  return rects;
+  return [...runsByColor].map(([color, runs]) => (
+    <path key={color} d={runs.join("")} fill={color} />
+  ));
 }
 
 export function BirdSprite({
