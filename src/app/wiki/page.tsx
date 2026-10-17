@@ -46,8 +46,9 @@ export default function WikiHome() {
         <Link href="/join">join page</Link>. A steward will reach out to you about the buy-in. Once
         you&apos;re approved, you get a private welcome page with your <strong>farm key</strong>.
         That key is your login, so keep it to yourself. Every farm starts even, with{" "}
-        {ECONOMY.STARTING_GP.toLocaleString()} GP and {BARN.STARTER_EGGS} starter eggs. You play by
-        connecting Claude to the game, and the welcome page shows you how.
+        {ECONOMY.STARTING_GP.toLocaleString()} GP and {BARN.STARTER_EGGS} starter eggs. You can play
+        two ways. Open your <Link href="/wiki/farm">farm page</Link> in a browser, or connect Claude
+        to the game and play by talking. The welcome page sets up both.
       </p>
 
       <h2>The five-minute version</h2>

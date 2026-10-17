@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MCP_INSTRUCTIONS, TOOL_DESCRIPTIONS } from "@/app/api/mcp/route";
+import { AUTO_RESERVE } from "./auto-play";
 import { splitBreedFee } from "./breeding";
 import { fmtGp } from "./events";
 import type { FightFormat, FightMode } from "./config";
@@ -111,6 +112,16 @@ describe("MCP docs carry the CURRENT config values", () => {
     expect(TOOL_DESCRIPTIONS.roll_gacha_bundle).toBeDefined();
     expect(TOOL_DESCRIPTIONS.roll_gacha_bundle).toContain(`${ECONOMY.BUNDLE_ROLLS}`);
     expect(TOOL_DESCRIPTIONS.roll_gacha_bundle).toContain(`${ECONOMY.BUNDLE_PRICE} GP`);
+  });
+
+  // The farm page's "Play my day" reached MCP as play_my_day. A Claude playing
+  // the game reads this before pressing it for a player, so the reserve it
+  // quotes must be the one auto-play actually keeps, and the two warnings an
+  // irreversible, one-farm action needs must stay in the prose.
+  test("play_my_day quotes auto-play's own reserve and says it is binding and yours alone", () => {
+    expect(TOOL_DESCRIPTIONS.play_my_day).toContain(`${AUTO_RESERVE} GP`);
+    expect(TOOL_DESCRIPTIONS.play_my_day).toMatch(/binding/i);
+    expect(TOOL_DESCRIPTIONS.play_my_day).toMatch(/your farm only/i);
   });
 
   // Drift #4: STAKER_FLOWS.FIGHT_RAKE is 0 (round 23 zeroed the daily-card
@@ -333,6 +344,17 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     const src = readWikiPage("claiming/page.tsx");
     expect(src).toMatch(/no fight,? no claim/i);
     expect(src.toLowerCase()).not.toContain("doesn't need the fight");
+  });
+
+  // The farm page arrived as a second way to play. The hub's old sentence made
+  // Claude the only one, and the farm page's reserve is auto-play's knob, so a
+  // typed copy of it would stop moving the day somebody retunes that knob.
+  test("the Handbook names the farm page as a way to play, and reads its reserve from auto-play", () => {
+    expect(readWikiPage("page.tsx")).toContain('href="/wiki/farm"');
+    expect(readWikiPage("page.tsx")).not.toMatch(/You play by\s+connecting Claude/);
+    const farm = readWikiPage("farm/page.tsx");
+    expect(farm).toContain("{AUTO_RESERVE} GP");
+    expect(farm).not.toContain(`${AUTO_RESERVE} GP`);
   });
 
   test("gacha page derives its egg tiers from GACHA_BIRDS, doesn't type them out", () => {
