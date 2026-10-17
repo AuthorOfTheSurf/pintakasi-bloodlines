@@ -43,7 +43,7 @@ import {
   type CardKey,
   type FightFormat,
 } from "@/engine/config";
-import { splitBreedFee } from "@/engine/breeding";
+import { splitBreedFee, type FeeSplit } from "@/engine/breeding";
 import { GameClock } from "@/engine/game-clock";
 import { gradeColor, overallGradeOf, type Grade } from "@/engine/grades";
 import { ageOf } from "@/engine/lifecycle";
@@ -1330,8 +1330,14 @@ export default async function Admin({
     };
   });
 
-  const split = splitBreedFee(ECONOMY.BREED_FEE);
+  // What each cover actually cost: the breed row's split, keyed by the egg.
+  // Since stud pricing unlocked (economy round 3) the floor is only a fallback.
+  const floorSplit = splitBreedFee(ECONOMY.BREED_FEE);
+  const paidSplit = new Map(
+    eventsWithData(bookEvents, "breed").map((e) => [e.birdId, JSON.parse(e.data) as FeeSplit])
+  );
   const breedingRows: BreedingRowUI[] = bred.map((b, i) => {
+    const split = paidSplit.get(b.id) ?? floorSplit;
     const father = b.fatherId ? birdById.get(b.fatherId) : undefined;
     const studFarmId = father?.farmId ?? null;
     return {

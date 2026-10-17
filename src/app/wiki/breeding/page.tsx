@@ -7,9 +7,9 @@ import {
   BREED_SPLIT,
   COVERS,
   DISTANCE_STATS,
-  ECONOMY,
   LT_CENTS,
   STARS,
+  STUD_PRICE,
 } from "@/engine/config";
 import { splitBreedFee } from "@/engine/breeding";
 import { fmtGp } from "@/engine/events";
@@ -19,11 +19,19 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Breeding — The Pintakasi Handbook",
   description:
-    "Only retired birds breed — the bloodline rule, covers, the fee split, inheritance, and the nest.",
+    "Only retired birds breed — the bloodline rule, covers and stud prices, the fee split, inheritance, and the nest.",
 };
 
 export default function BreedingPage() {
-  const split = splitBreedFee(ECONOMY.BREED_FEE);
+  const floorSplit = splitBreedFee(STUD_PRICE.FLOOR);
+  // A worked example above the floor: twice the floor, so it moves with the knob.
+  const examplePrice = STUD_PRICE.FLOOR * 2;
+  const exampleSplit = splitBreedFee(examplePrice);
+  // On his own stud the owner's share comes back, so what he really pays is
+  // the stakers' and the juice pool's part.
+  const ownNetCents = exampleSplit.stakerPoolCents + exampleSplit.juicePoolCents;
+  const premiumOwnerPct = Math.round(STUD_PRICE.PREMIUM_SPLIT.STUD_OWNER * 100);
+  const premiumJuicePct = Math.round(STUD_PRICE.PREMIUM_SPLIT.JUICE * 100);
   const stakerPct = Math.round(BREED_SPLIT.STAKER * 100);
   const juicePct = Math.round(BREED_SPLIT.JUICE * 100);
   const studOwnerPct = 100 - stakerPct - juicePct;
@@ -77,10 +85,63 @@ export default function BreedingPage() {
       <h2>Covers</h2>
       <p>
         A <strong>cover</strong> is one breeding — your hen paired against one rooster, retired, of
-        your own or listed by another farm. Buying a cover costs a flat{" "}
-        <strong>{ECONOMY.BREED_FEE} GP</strong>, no matter whose stud it is or how decorated its
-        record. The hen&apos;s owner pays; the hen&apos;s owner keeps the egg.
+        your own or listed by another farm. The hen&apos;s owner pays; the hen&apos;s owner keeps
+        the egg.
       </p>
+
+      <h2>What a cover costs</h2>
+      <p>
+        The rooster&apos;s owner sets the price. It is a whole number of GP, never less than{" "}
+        <strong>{STUD_PRICE.FLOOR} GP</strong> (the <strong>floor</strong>) and never more than{" "}
+        <strong>{STUD_PRICE.CAP.toLocaleString()} GP</strong> (the <strong>cap</strong>,{" "}
+        {STUD_PRICE.CAP_MULTIPLE}× the floor). A rooster nobody has priced costs the floor. The stud
+        card in the barn shows each rooster&apos;s price before you buy.
+      </p>
+      <ul>
+        <li>
+          <strong>Your own hens pay your price too.</strong> The owner&apos;s share of the cover
+          comes straight back to you, so on your own {examplePrice} GP rooster a cover really costs
+          you {fmtGp(ownNetCents)} GP: the stakers&apos; and the juice pool&apos;s part. Why: an
+          owner should face the price he sets for everyone else. What he loses is the same house
+          share any buyer pays, and no more.
+        </li>
+        <li>
+          <strong>The price lives on the bird.</strong> It goes with him if he changes hands, and
+          every cover pays whoever owns him on the day the cover is bought.
+        </li>
+        <li>
+          <strong>A new price goes up at the next day.</strong> When an owner changes the price on a
+          rooster that is already standing, it waits until the day turns, the same way the card
+          does. So everyone sees one price for the whole game-day, and the price you see when you
+          browse is the price you pay. The owner sees his waiting price in the barn until it goes
+          up.
+        </li>
+        <li>
+          <strong>Price him before you list him.</strong> A rooster that is not standing yet takes
+          his price at once, because no buyer can see him. So set the price first (or name it when
+          you list him), and he stands at that price from his very first cover. Why: if a new price
+          always waited a day, every new stud would sell his first day at the floor.
+        </li>
+        <li>
+          <strong>A cover already bought keeps its price.</strong> A buyer can also name the most he
+          will pay. If the day turned and the price went up after he looked, the cover is refused
+          instead of charging him more.
+        </li>
+      </ul>
+      <p>
+        <b>Why owners set it:</b> a great stud and a plain one used to cost exactly the same, so
+        breeding a great rooster paid no more than breeding a plain one. Now the owner of a stud
+        everyone wants can raise his price, and the hens that won&apos;t pay it go to other
+        roosters.
+      </p>
+      <div className="callout tip">
+        <b>How to price a stud.</b> Price from what anyone can see: his record, his crowns, and his
+        revealed stat sheet. If he sells out every week, raise the price. If nobody buys, cut it.
+        <br />
+        <b>How to shop as a buyer.</b> Weigh the price against the chick you expect. A chick&apos;s
+        stats start at the midpoint of both parents&apos; sheets, so a stud worth paying more for is
+        one whose sheet pulls your hen&apos;s numbers where you want them.
+      </div>
       <p>
         Every rooster caps out at <strong>{coversPerWeek} covers a game-week</strong>:{" "}
         {COVERS.PER_WEEK} public slots any farm can buy, plus {COVERS.OWNER_RESERVED} reserved for
@@ -102,25 +163,43 @@ export default function BreedingPage() {
         not staked, not refundable. Pulling him from the barn and re-listing him later is free; the
         land bought the seat, not a subscription. Why this door: a stud is the best asset in the
         game — it earns on every outside cover, and its own owner still breeds through it on the
-        reserved slots at nothing above the ordinary fee. A gate that desirable is worth paying land
-        for, and it&apos;s the first thing in the game that takes Land Tokens <em>out</em> of the
-        world rather than just paying them out (barn expansion is the second) — see{" "}
-        <Link href="/wiki/land">Land Tokens</Link> for why a sink is what turns a yield into a
-        price.
+        reserved slots. A gate that desirable is worth paying land for, and it&apos;s the first
+        thing in the game that takes Land Tokens <em>out</em> of the world rather than just paying
+        them out (barn expansion is the second) — see <Link href="/wiki/land">Land Tokens</Link> for
+        why a sink is what turns a yield into a price.
       </div>
 
       <h2>The fee split</h2>
       <p>
-        A cover&apos;s {ECONOMY.BREED_FEE} GP fee doesn&apos;t all go to one place. It splits three
-        ways, computed in exact centi-GP so nothing is lost to rounding:
+        A cover&apos;s price doesn&apos;t all go to one place. It splits in two parts, computed in
+        exact centi-GP so nothing is lost to rounding.
       </p>
+      <ul>
+        <li>
+          <strong>The floor part</strong> (the first {STUD_PRICE.FLOOR} GP of every cover) splits
+          three ways: {stakerPct}% to Land Token stakers, {juicePct}% to the juice pool,{" "}
+          {studOwnerPct}% to the stud&apos;s owner.
+        </li>
+        <li>
+          <strong>The premium</strong> (everything above the floor) splits two ways:{" "}
+          {premiumOwnerPct}% to the stud&apos;s owner and {premiumJuicePct}% to the juice pool. The
+          stakers get no cut of it.
+        </li>
+      </ul>
+      <p>
+        Why a different split above the floor: if the owner kept only {studOwnerPct}% of every extra
+        GP, raising a price would mostly pay other people, and nobody would bother. The{" "}
+        {premiumJuicePct}% is the house&apos;s share, the same idea as the share of the daily
+        check-in that goes to the purses.
+      </p>
+      <p>Here is a cover at the floor next to one priced at {examplePrice} GP:</p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
               <th>Recipient</th>
-              <th className="num">Share</th>
-              <th className="num">On a {ECONOMY.BREED_FEE} GP cover</th>
+              <th className="num">At the floor ({STUD_PRICE.FLOOR} GP)</th>
+              <th className="num">At {examplePrice} GP</th>
             </tr>
           </thead>
           <tbody>
@@ -128,30 +207,30 @@ export default function BreedingPage() {
               <td>
                 Land Token stakers (<Link href="/wiki/land">Land</Link>)
               </td>
-              <td className="num">{stakerPct}%</td>
-              <td className="num">{fmtGp(split.stakerPoolCents)} GP</td>
+              <td className="num">{fmtGp(floorSplit.stakerPoolCents)} GP</td>
+              <td className="num">{fmtGp(exampleSplit.stakerPoolCents)} GP</td>
             </tr>
             <tr>
               <td>
                 The juice pool (<Link href="/wiki/pintakasi">the Pintakasi Majors</Link>)
               </td>
-              <td className="num">{juicePct}%</td>
-              <td className="num">{fmtGp(split.juicePoolCents)} GP</td>
+              <td className="num">{fmtGp(floorSplit.juicePoolCents)} GP</td>
+              <td className="num">{fmtGp(exampleSplit.juicePoolCents)} GP</td>
             </tr>
             <tr>
               <td>The stud&apos;s owner</td>
-              <td className="num">{studOwnerPct}%</td>
-              <td className="num">{fmtGp(split.studOwnerCents)} GP</td>
+              <td className="num">{fmtGp(floorSplit.studOwnerCents)} GP</td>
+              <td className="num">{fmtGp(exampleSplit.studOwnerCents)} GP</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p className="dim">
         The staker cut pays every farm holding Land Tokens, whether or not they ever breed a bird —
-        it&apos;s a landholder&apos;s cut of the whole game&apos;s breeding activity. The juice pool
-        is the same pot that gacha spend feeds, and it becomes the purse for the Thursday
-        championships. Nothing here is printed or burned — every centi-GP in the fee lands somewhere
-        real.
+        it&apos;s a landholder&apos;s cut of the whole game&apos;s breeding activity, and it is the
+        same on every cover however high the price. The juice pool is the same pot that gacha spend
+        feeds, and it becomes the purse for the Thursday championships. Nothing here is printed or
+        burned — every centi-GP of the price lands somewhere real.
       </p>
 
       <h2>Inheritance</h2>

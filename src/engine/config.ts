@@ -783,9 +783,13 @@ export const ECONOMY = {
   // funded yet, so the faucet keeps testers liquid. The gross minus the
   // purse share, so it stays 800 at the ruled 1,000 × 0.2.
   DAILY_DRIP: DRIP_GROSS - DRIP_TO_PURSES,
-  // The breed price ($2) — for now BOTH the minimum AND the maximum (ruled
-  // 2026-08-03): player-set stud pricing comes later; today every cover
-  // costs exactly this, and it SPLITS (see BREED_SPLIT below).
+  // The breed price ($2) — the FLOOR of every cover since stud pricing
+  // unlocked (economy round 3, 2026-10). It was both the minimum and the
+  // maximum from 2026-08-03; now a stud's owner may ask anything from this up
+  // to STUD_PRICE.CAP. The first BREED_FEE of any cover SPLITS exactly as it
+  // always has (see BREED_SPLIT below); only the premium above it splits the
+  // new way (STUD_PRICE.PREMIUM_SPLIT). Every price comparison in the game
+  // (claimer tags, the ladder, the gacha) is still anchored to this floor.
   BREED_FEE: 160,
   // ⚠ THE TWO ENTRY-FEE CONSTANTS THAT LIVED HERE ARE GONE (round 42).
   //
@@ -1051,8 +1055,8 @@ export const BREEDING = {
 // Stud OWNERS LIST retired roosters; any farm's hen can then buy the cover.
 // There is NO formula tying a stud's price to its record — stud price is
 // player price-setting, speculation, supply vs. demand (Zane's ruling; the
-// old win/loss studValue mechanic is deleted). For now the price is locked
-// to BREED_FEE; player-set pricing comes later.
+// old win/loss studValue mechanic is deleted). Locked to BREED_FEE until the
+// third economy round unlocked it — see STUD_PRICE below BREED_SPLIT.
 //
 // Every cover fee SPLITS three ways: on the 160 fee, 16.00 to the Land Token
 // staking pool / 80.00 to the fight-juice pool (tournament subsidy) / 64.00
@@ -1088,6 +1092,58 @@ export const BREED_SPLIT = {
   //                    splitBreedFee, so the three parts sum to the cent)
 } as const;
 
+// ── The open stud market (economy round 3, ruled 2026-10) ──────────────────
+// The stud's OWNER sets the cover price, anywhere from the floor to the cap.
+// Zane: "no need to get fancy" — the economy stays CLOSED (nothing here
+// destroys GP), and the point of the round is to watch what an open market
+// does to circulation: does money move from rich barns to good breeders?
+//
+// The price is a property of the ROOSTER, not of the farm that listed him.
+// It is stored on the bird row, and every cover pays whichever farm owns him
+// at the moment the cover is bought, so a stud listing travels with the bird
+// when ownership changes (the marketplace is coming).
+//
+// Own-stud covers pay the POSTED price like anyone else's (round 70, second
+// pass, reversing the first cut, which charged the owner's own hens the
+// floor). Zane: an owner should face the price he sets for others. He gets
+// back the owner's share of the floor (BREED_SPLIT) and 80% of the premium,
+// so he pays the stakers' and juice's part of the floor plus 20% of the
+// premium: the same house share every buyer pays, and no more.
+//
+// A price is POSTED, like the card: on a listed stud setStudPrice stores it as
+// pending and the next day tick puts it up, so every buyer sees one price all
+// game-day. On a rooster not yet listed it posts at once (round 70, third
+// pass): no buyer can see him, and waiting stood every new stud at the floor
+// on his listing day.
+const STUD_FLOOR = ECONOMY.BREED_FEE;
+const STUD_CAP_MULTIPLE = 10;
+export const STUD_PRICE = {
+  // Every cover costs at least this; it is the old fixed price.
+  FLOOR: STUD_FLOOR,
+  // The most an owner may ask. A v1 guard while we watch how bots price,
+  // ruled as 10× the floor rather than as a number, so it follows the floor.
+  CAP_MULTIPLE: STUD_CAP_MULTIPLE,
+  CAP: STUD_FLOOR * STUD_CAP_MULTIPLE,
+  // How the PREMIUM (price − FLOOR) splits. The floor part still splits per
+  // BREED_SPLIT. Zane's reason for a different split on the premium: at 40%
+  // to the owner nobody would ever raise a price, because more than half of
+  // every extra GP would leave the barn. 20% to the juice pool is the same
+  // "house share" as the check-in drip (ECONOMY.DRIP_HOUSE_SHARE), kept as its
+  // own knob so retuning one does not silently retune the other.
+  PREMIUM_SPLIT: {
+    STUD_OWNER: 0.8, // → the stud owner's wallet (the remainder, to the cent)
+    JUICE: 0.2, //      → the fight-juice pool (the crown purses)
+  },
+} as const;
+
+/** What a cover on this rooster costs any hen: his posted ask, clamped to the
+ *  current floor and cap, the floor when he has never been priced. Clamped at
+ *  READ time so a later change to either bound can never strand a stud at a
+ *  price the rule no longer allows. */
+export function studPriceOf(stud: { studPrice: number | null }): number {
+  return Math.min(STUD_PRICE.CAP, Math.max(STUD_PRICE.FLOOR, stud.studPrice ?? STUD_PRICE.FLOOR));
+}
+
 export const COVERS = {
   // THE FIRST LAND TOKEN SINK (ruled round 23). Standing a rooster at stud
   // costs LAND, not GP — 100 LT, spent, gone, not staked. Round 22 gave land
@@ -1107,8 +1163,8 @@ export const COVERS = {
   STUD_LISTING_LT: 100 * LT_CENTS,
   PER_WEEK: 15, //     public cover slots per rooster per game-week…
   OWNER_RESERVED: 5, // …plus these, reserved for the rooster's own farm.
-  // The point of the cap: top studs sell out → their price can rise (later,
-  // when pricing unlocks) → demand overflows into other studs.
+  // The point of the cap: top studs sell out → their owner raises the price
+  // (STUD_PRICE, since economy round 3) → demand overflows into other studs.
   //
   // 14+2 → 15+5 (ruled 2026-08-08, round 45): the owner-reserved raise is the
   // stud owner's COMPENSATION for BREED_SPLIT trimming their cash share

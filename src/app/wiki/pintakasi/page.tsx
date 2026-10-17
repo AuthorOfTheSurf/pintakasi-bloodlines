@@ -242,8 +242,9 @@ export default function PintakasiPage() {
         {(fee / feeFor("real", "maiden")).toFixed(1)}× a grown maiden night, and about{" "}
         {((fee / dailyOpenFee) * 100).toFixed(0)}% of a grown open night at {dailyOpenFee} GP — the
         dearest fight the ordinary card runs. Against the other anchor in the game, the{" "}
-        {ECONOMY.BREED_FEE} GP it costs to <Link href="/wiki/breeding">breed a bird</Link>, a crown
-        is {(fee / ECONOMY.BREED_FEE).toFixed(1)}× — so standing in one is priced like making a new
+        {ECONOMY.BREED_FEE} GP floor price of a cover to{" "}
+        <Link href="/wiki/breeding">breed a bird</Link>, a crown is{" "}
+        {(fee / ECONOMY.BREED_FEE).toFixed(1)}× — so standing in one is priced like making a new
         animal, which is a fair way to feel the decision. The fee is <em>not</em> a gate — it does
         not decide who stands, and it buys no advantage in the bracket. It buys one thing:{" "}
         <strong>the purse gets bigger</strong>. Every peso paid at the door is added to the money

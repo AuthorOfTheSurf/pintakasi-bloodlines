@@ -417,9 +417,9 @@ export default function LandPage() {
       <p>
         Why a stud, of everything in the game: it&apos;s the best asset there is. It earns on every
         outside cover, it makes the birds, and its own owner still breeds through it on the reserved
-        slots at nothing above the ordinary fee. A gate that desirable is worth paying land for —
-        and it puts every barn in the same choice: stake land for yield, or spend it to open an
-        income stream. That choice is exactly what a sink is for.
+        slots, and gets his own share of those covers back. A gate that desirable is worth paying
+        land for — and it puts every barn in the same choice: stake land for yield, or spend it to
+        open an income stream. That choice is exactly what a sink is for.
       </p>
 
       <h2>The second sink — expanding the barn</h2>
@@ -482,8 +482,10 @@ export default function LandPage() {
               <td>Every breed cover</td>
               <td className="num">{(BREED_SPLIT.STAKER * 100).toFixed(0)}%</td>
               <td>
-                The {ECONOMY.BREED_FEE} GP cover fee sends {fmtGp(exampleBreedCents)} GP to the pool
-                before the stud owner and the fight-juice pool split the rest.
+                Every cover sends {fmtGp(exampleBreedCents)} GP to the pool. The cut comes only out
+                of the first {ECONOMY.BREED_FEE} GP (the floor price of a cover), so it is the same
+                however high a stud owner sets his price. The stud owner and the fight-juice pool
+                split the rest.
               </td>
             </tr>
             <tr>

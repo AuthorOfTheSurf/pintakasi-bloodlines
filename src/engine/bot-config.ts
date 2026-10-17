@@ -397,6 +397,86 @@ export const BREEDING_PLAN = {
 } as const;
 
 /**
+ * THE STUD MARKET'S APPETITES (economy round 3). Stud pricing unlocked, and a
+ * price nobody sets measures zero: without these knobs every stud would sit
+ * at the floor forever and the round would prove nothing. Both sides of the
+ * market read only public evidence, the same evidence a player reads.
+ *
+ * OWNERS (`greed`). A stud is priced once when he is listed, from his record:
+ * where his revealed sheet and his career earnings rank among the studs
+ * standing today, plus a bonus per crown he won. After that the price follows
+ * DEMAND, once a week, on last week's public covers: sold out or hot → raise,
+ * cold → cut back toward the floor, anything between → hold. `greed` scales
+ * the opening ask and the size of each raise. Nothing here reads a stud's
+ * hidden value, because there is none: a retired bird hides nothing.
+ *
+ * BUYERS (`spend`). A cover is scored on the foal it should make (foalScore,
+ * the parents' midpoint), and every GP of premium above the floor costs
+ * score. `spend` and the size of the wallet decide how much: a rich barn
+ * with a breeder's eye pays up for the best blood, a poor claimer shop takes
+ * the floor stud that is nearly as good.
+ */
+export const STUD_MARKET = {
+  /** Per-style appetites. greed: how hard an owner prices. spend: how much
+   *  premium a buyer will carry for a better foal. 1 is a full appetite. */
+  STYLE: {
+    breeder: { greed: 1.0, spend: 1.0 }, // knows blood, prices it, pays for it
+    pit: { greed: 0.6, spend: 0.7 }, //     fighters first, studs are a sideline
+    claimer: { greed: 0.4, spend: 0.4 }, // a trader: cheap in, quick out
+    whale: { greed: 0.6, spend: 1.5 }, //   pays whatever the best costs
+    landlord: { greed: 0.8, spend: 0.3 }, // rents assets dear, buys cheap
+  } satisfies Record<BotStyle, { greed: number; spend: number }>,
+  /** What an auto-played (player-owned, unattended) stable uses: the middle
+   *  of the roster, so an absent player neither gouges nor overpays. */
+  AUTO_PLAY: { greed: 0.6, spend: 0.8 },
+  /**
+   * THE OPENING ASK. floor × (1 + greed × OPENING_SPREAD × evidence), where
+   * evidence is the mean of two percentiles among the studs standing today
+   * (sheet total, career earnings) plus CROWN_BONUS per crown, up to
+   * CROWN_COUNT_CAP crowns. A median stud from a full-greed breeder opens at
+   * 2× the floor, the best uncrowned one at 3×, a twice-crowned one at 5×.
+   * Ranks, not raw numbers, so the ask does not drift as the flock improves.
+   */
+  OPENING_SPREAD: 2,
+  CROWN_BONUS: 0.5,
+  CROWN_COUNT_CAP: 2,
+  /**
+   * THE WEEKLY DEMAND READ, on public covers sold last week (out of
+   * COVERS.PER_WEEK). Measured on the round-68 world before pricing existed:
+   * of ~1,900 stud-weeks, 70% sold 0–2 covers and under 1% sold out. So a
+   * sold-out rule alone would almost never fire; HOT_SHARE lets a stud that
+   * sells half his book raise too.
+   */
+  HOT_SHARE: 0.5,
+  /** Raise per week, times greed: sold out, then merely hot. */
+  RAISE_SOLD_OUT: 0.3,
+  RAISE_HOT: 0.15,
+  /** At or below this many public covers in a week, the stud is cold. */
+  COLD_COVERS: 1,
+  /** A cold stud gives up this share of his premium each week. Not greed-
+   *  scaled: an unsold cover earns nothing whoever is asking. */
+  CUT_COLD: 0.3,
+  /** Prices move in steps of this many GP, so asks read like prices. */
+  PRICE_STEP: 5,
+  /**
+   * THE BUYER'S PRICE SENSITIVITY: foalScore points one GP of premium costs a
+   * buyer with spend 1 and a reference wallet. foalScore runs ~300–400 and the
+   * best and a median legal stud for a hen sit ~50–100 apart, so at 0.15 a
+   * reference buyer pays ~330 GP of premium for a 50-point better foal.
+   */
+  PREMIUM_PENALTY: 0.15,
+  /**
+   * A wallet this size is "reference". Sensitivity divides by
+   * sqrt(wallet / WALLET_REF), clamped to WALLET_EASE_RANGE: a barn with 16×
+   * the starting stake feels a premium a quarter as much. Square root because
+   * a barn 16× richer still notices price, and the clamp keeps a broke barn
+   * from treating every premium as infinite.
+   */
+  WALLET_REF: 8_000,
+  WALLET_EASE_RANGE: [0.5, 6] as const,
+} as const;
+
+/**
  * THE CROWN CHASE'S APPETITE (round 37).
  *
  * New because round 37 deleted the engine's qualification-points gate and

@@ -47,9 +47,10 @@ export default function ClaimingPage() {
 
       <h2>The tag ladder</h2>
       <p>
-        {CLAIMER.PRICES.length} rungs, straddling the {ECONOMY.BREED_FEE} GP breed fee on purpose —{" "}
-        {CLAIMER.PRICES.filter((p) => p < ECONOMY.BREED_FEE).length} cheaper than a cover,{" "}
-        {CLAIMER.PRICES.filter((p) => p >= ECONOMY.BREED_FEE).length} dearer:
+        {CLAIMER.PRICES.length} rungs, straddling the {ECONOMY.BREED_FEE} GP floor price of a breed
+        cover on purpose — {CLAIMER.PRICES.filter((p) => p < ECONOMY.BREED_FEE).length} cheaper than
+        the cheapest cover, {CLAIMER.PRICES.filter((p) => p >= ECONOMY.BREED_FEE).length} dearer. (A
+        stud&apos;s owner may ask more than the floor; the ladder is pinned to the floor.)
       </p>
       <div className="tablewrap">
         <table>
@@ -57,7 +58,7 @@ export default function ClaimingPage() {
             <tr>
               <th className="num">Tag</th>
               <th className="num">≈ $</th>
-              <th>Vs. the {ECONOMY.BREED_FEE} GP breed fee</th>
+              <th>Vs. the {ECONOMY.BREED_FEE} GP cover floor</th>
               <th className="num">Grown entry</th>
               <th className="num">Juvenile entry</th>
             </tr>
@@ -68,7 +69,9 @@ export default function ClaimingPage() {
                 <td className="num">{price} GP</td>
                 <td className="num">${(price / ECONOMY.GP_PER_DOLLAR).toFixed(2)}</td>
                 <td>
-                  {price < ECONOMY.BREED_FEE ? "cheaper than a cover" : "dearer than a cover"}
+                  {price < ECONOMY.BREED_FEE
+                    ? "cheaper than the cheapest cover"
+                    : "dearer than a floor cover"}
                 </td>
                 <td className="num">{feeFor("real", "claimer", price)} GP</td>
                 <td className="num">{feeFor("juvenile", "claimer", price)} GP</td>
@@ -105,9 +108,9 @@ export default function ClaimingPage() {
         Why the animal isn&apos;t discounted, when the night is: a one-year-old that has campaigned
         has real money on its record, because its own entries cost real money. It is worth a grown
         bird&apos;s price. There used to be a separate, far cheaper juvenile ladder — the rungs sat
-        well under a single breed fee — and once the discovery year stopped being nearly free, those
-        rungs would have turned it into the bargain bin of the whole game: anybody could have bought
-        a proven young bird for pocket change.
+        well under the floor price of a single cover — and once the discovery year stopped being
+        nearly free, those rungs would have turned it into the bargain bin of the whole game:
+        anybody could have bought a proven young bird for pocket change.
       </p>
       <p>
         The juvenile card posts a claimer every night, with the rung alternating, so every price

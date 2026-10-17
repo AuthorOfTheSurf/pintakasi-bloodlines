@@ -264,7 +264,9 @@ describe("the rows themselves", () => {
     const hen = bird({ status: "retired", sexLabel: "hen", halfStars: 8 });
     const view = viewOf({
       flock: [hen, bird({ age: 4 }), bird({ age: 4 }), bird({ age: 4 }), bird({ age: 4 })],
-      studMarket: [{ id: "stud-m", name: "Cruel Beak", stars: 4.5, farm: "bot-4" }],
+      studMarket: [
+        { id: "stud-m", name: "Cruel Beak", stars: 4.5, farm: "bot-4", price: ECONOMY.BREED_FEE },
+      ],
       farm: { freePulls: 2, barn: { count: 99, capacity: 100 } },
       claimerBoard: [
         {
@@ -302,7 +304,7 @@ describe("the rows themselves", () => {
 
   test("no breed row without a hen, without space, or without the fee", () => {
     const hen = bird({ status: "retired", sexLabel: "hen" });
-    const stud = { id: "s", name: "S", stars: 3, farm: "x" };
+    const stud = { id: "s", name: "S", stars: 3, farm: "x", price: ECONOMY.BREED_FEE };
     const noHen = buildOptions(viewOf({ studMarket: [stud] }));
     const noSpace = buildOptions(
       viewOf({ flock: [hen], studMarket: [stud], farm: { barn: { count: 100, capacity: 100 } } })
@@ -319,7 +321,7 @@ describe("the rows themselves", () => {
     // must not render. A LAID egg frees her the same week (the engine rule).
     const expecting = bird({ status: "retired", sexLabel: "hen", halfStars: 8 });
     const free = bird({ status: "retired", sexLabel: "hen", halfStars: 4 });
-    const stud = { id: "s", name: "S", stars: 3, farm: "x" };
+    const stud = { id: "s", name: "S", stars: 3, farm: "x", price: ECONOMY.BREED_FEE };
     const gestating = bird({ status: "egg", eggStage: "gestating", motherId: expecting.id });
     const laid = bird({ status: "egg", eggStage: "laid", motherId: free.id });
     const { barn } = buildOptions(
@@ -369,7 +371,7 @@ describe("determinism", () => {
           juvenileEligibleBirdIds: [chick.id],
         },
         card: { today: [{ classType: "maiden", format: "b2", mode: "juvenile" }], tomorrow: [] },
-        studMarket: [{ id: "s", name: "S", stars: 3, farm: "x" }],
+        studMarket: [{ id: "s", name: "S", stars: 3, farm: "x", price: ECONOMY.BREED_FEE }],
         farm: { freePulls: 1 },
       });
     };

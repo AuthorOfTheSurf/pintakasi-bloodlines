@@ -2,19 +2,24 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { farms, gameState } from "@/db/schema";
 import {
+  bestShape,
   chaseCrowns,
   chaseJuvenileCrowns,
+  coverNet,
+  foalScore,
   pickOffering,
+  priceStuds,
   type DiscoveryPolicy,
   weatherCardsToday,
   weatherOrder,
 } from "./bots";
-import { Breeding } from "./breeding";
+import { STUD_MARKET } from "./bot-config";
+import { Breeding, type StudView } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
 import { Lobbies } from "./lobbies";
-import { LT_CENTS, barnCapacity, nextExpansionCost } from "./config";
+import { LT_CENTS, STUD_PRICE, barnCapacity, nextExpansionCost } from "./config";
 import { drawStarterNames } from "./naming";
 import { mulberry32 } from "./rng";
 
@@ -67,6 +72,11 @@ export function playHonestDay(
 
   // Studs first, THEN staking: a stud seat costs 100 LT since round 23, and
   // a barn that has already staked every token has nothing liquid to pay it.
+  // Price them the way the bots do (economy round 3), at the roster's middle
+  // appetite: an absent player neither gouges nor sells at the floor. Price
+  // BEFORE listing (round 70, third pass), so a new stud's ask posts at once
+  // instead of waiting a day at the floor.
+  quietly(() => priceStuds(db, farmId, day, STUD_MARKET.AUTO_PLAY.greed));
   const breeding = new Breeding(db, farmId, mulberry32(500 + day));
   for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
     quietly(() => breeding.listStud(rooster.id));
@@ -97,15 +107,41 @@ export function playHonestDay(
     if (whole > 0) farmsApi.stake(farmId, whole);
   });
 
-  // One cover a day, first hen whose nest is empty (one egg per hen).
+  // One cover a day, first hen whose nest is empty (one egg per hen). Since
+  // economy round 3 she gets the stud a bot buyer would pick: the best
+  // expected foal on her own grain, net of what his premium costs this wallet.
+  // ONE attempt per hen, as before the round: browseStuds has already dropped
+  // kin and covered-out studs, so a refusal here is about the HEN (carrying,
+  // barn full, broke) and every other stud would be refused too. Falling
+  // through the whole ranked list on a pregnant hen cost ~20 s per 92-day
+  // sim. A dear stud the barn cannot afford is skipped before the attempt.
   for (const hen of flock.filter((b) => b.status === "retired" && b.sex === "female")) {
     let bred = false;
     quietly(() => {
-      const barn = breeding.browseStuds(hen.id);
-      if (barn.studs.length > 0) {
-        breeding.breed(hen.id, barn.studs[0].birdId);
-        bred = true;
-      }
+      const wallet = farmsApi.rowById(farmId).gp;
+      const { shape } = bestShape(hen);
+      const best = breeding
+        .browseStuds(hen.id)
+        // The reserve guards the premium only: a floor cover was always
+        // bought down to the last 160 GP, and that habit is not this round's.
+        .studs.filter((s) => s.price <= STUD_PRICE.FLOOR || wallet >= s.price + AUTO_RESERVE)
+        .map((stud) => ({
+          stud,
+          net: coverNet(
+            foalScore(hen, stud, shape),
+            stud.price,
+            STUD_MARKET.AUTO_PLAY.spend,
+            wallet,
+            stud.mine
+          ),
+        }))
+        .reduce<{ stud: StudView; net: number } | null>(
+          (top, c) => (top === null || c.net > top.net ? c : top),
+          null
+        );
+      if (best === null) return;
+      breeding.breed(hen.id, best.stud.birdId);
+      bred = true;
     });
     if (bred) break;
   }

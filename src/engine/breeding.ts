@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState, type BirdRow } from "@/db/schema";
@@ -8,11 +8,12 @@ import {
   BREED_SPLIT,
   COAT_MUTATION_CHANCE,
   COVERS,
-  ECONOMY,
   ELEMENTS,
   STARS,
   STATS,
   STAT_NAMES,
+  STUD_PRICE,
+  studPriceOf,
   TRIM_BY_ELEMENT,
   CALENDAR,
   type Carriage,
@@ -56,31 +57,68 @@ export interface StudView {
   career: { wins: number; losses: number };
   sheet: Record<StatName, number>; // the revealed stats — what you're buying half of
   overallGrade: Grade; //             one glanceable letter for shoppers
-  price: number; // locked to BREED_FEE for now — player pricing later
+  /** What THIS hen's farm pays for the cover: the stud's POSTED price, the
+   *  same for every hen including the owner's own (see STUD_PRICE). */
+  price: number;
+  /** The owner's own repricing, waiting for the next day tick. Only the owner
+   *  sees it; null for everyone else and when nothing is pending. */
+  pendingPrice: number | null;
   coversLeft: number; // public slots left this week (owner slots tracked apart)
   mine: boolean;
 }
 
-/** How the cover fee decomposes — all integer centi-GP, sums exactly. */
+/**
+ * How the cover fee decomposes — all integer centi-GP, sums exactly.
+ * `juicePoolCents` and `studOwnerCents` are TOTALS; the premium fields say how
+ * much of each came from the part of the price above the floor, so the doctor
+ * can read what the open market added without re-deriving the split.
+ */
 export interface FeeSplit {
   feeGp: number;
   stakerPoolCents: number;
   juicePoolCents: number;
   studOwnerCents: number;
+  premiumJuiceCents: number;
+  premiumOwnerCents: number;
 }
 
+/**
+ * Two splits stacked (economy round 3). The first STUD_PRICE.FLOOR of the fee
+ * splits per BREED_SPLIT exactly as every cover always has; the premium above
+ * it splits per STUD_PRICE.PREMIUM_SPLIT, with no staker cut. A fee below the
+ * floor never reaches here — breed() charges studPriceOf, which clamps.
+ */
 export function splitBreedFee(feeGp: number): FeeSplit {
-  const total = feeGp * 100;
-  const stakerPoolCents = Math.round(total * BREED_SPLIT.STAKER);
-  const juicePoolCents = Math.round(total * BREED_SPLIT.JUICE);
-  // The stud owner takes the remainder, so the three parts sum to the fee
-  // exactly — rounding drift lands on the owner, never printed or burned.
+  const floorCents = Math.min(feeGp, STUD_PRICE.FLOOR) * 100;
+  const premiumCents = feeGp * 100 - floorCents;
+  const stakerPoolCents = Math.round(floorCents * BREED_SPLIT.STAKER);
+  const floorJuiceCents = Math.round(floorCents * BREED_SPLIT.JUICE);
+  const premiumJuiceCents = Math.round(premiumCents * STUD_PRICE.PREMIUM_SPLIT.JUICE);
+  // The stud owner takes each remainder, so the parts sum to the fee exactly —
+  // rounding drift lands on the owner, never printed or burned.
+  const premiumOwnerCents = premiumCents - premiumJuiceCents;
   return {
     feeGp,
     stakerPoolCents,
-    juicePoolCents,
-    studOwnerCents: total - stakerPoolCents - juicePoolCents,
+    juicePoolCents: floorJuiceCents + premiumJuiceCents,
+    studOwnerCents: floorCents - stakerPoolCents - floorJuiceCents + premiumOwnerCents,
+    premiumJuiceCents,
+    premiumOwnerCents,
   };
+}
+
+/**
+ * The day tick posts every pending stud price (round 70, second pass). Run
+ * once per tick, after the clock turns, so a price set during day D is the
+ * posted price from day D+1 on. One UPDATE for the whole world: only
+ * repriced roosters carry a pending price, and posting clears it.
+ */
+export function postStudPrices(database: DB): void {
+  database
+    .update(birds)
+    .set({ studPrice: sql`${birds.studPriceNext}`, studPriceNext: null })
+    .where(isNotNull(birds.studPriceNext))
+    .run();
 }
 
 export class Breeding {
@@ -100,8 +138,17 @@ export class Breeding {
    * The hen's owner pays the fee and keeps the egg ("Egg of <mother>", age
    * 0, hatches next Hatch Friday). The fee SPLITS: staker pool / juice
    * pool / the stud's owner. Covers are capped per rooster per week.
+   *
+   * The fee is the stud's POSTED price (economy round 3), for every hen,
+   * the owner's own included. A reprice waits for the next day tick, so the
+   * price a buyer browsed is the price all game-day; `maxPrice` stays as the
+   * backstop for a browse that straddles the tick.
    */
-  breed(motherId: string, fatherId: string): { egg: BirdView; feePaid: number; split: FeeSplit } {
+  breed(
+    motherId: string,
+    fatherId: string,
+    opts: { maxPrice?: number } = {}
+  ): { egg: BirdView; feePaid: number; split: FeeSplit } {
     const mother = this.flock.byId(motherId); // must be OWN — hens keep the egg
     const fatherRow = this.database.select().from(birds).where(eq(birds.id, fatherId)).get();
     if (!fatherRow) throw new Error(`No bird with id ${fatherId}`);
@@ -162,18 +209,28 @@ export class Breeding {
         `${fatherRow.name} is covered out this week (${COVERS.PER_WEEK}/${COVERS.PER_WEEK})`
       );
 
+    // The owner's own hen pays his posted price too (round 70, second pass):
+    // an owner should face the price he sets for others. He gets the owner
+    // share back, so his net is the same house share any buyer pays.
+    const price = studPriceOf(fatherRow);
+    if (opts.maxPrice !== undefined && price > opts.maxPrice)
+      throw new Error(
+        `${fatherRow.name}'s cover is ${price} GP now, above your limit of ${opts.maxPrice} — browse_studs again`
+      );
     const farm = readFarm(this.database, this.farmId);
-    if (farm.gp < ECONOMY.BREED_FEE)
-      throw new Error(`A cover costs ${ECONOMY.BREED_FEE} GP — you have ${farm.gp}`);
+    if (farm.gp < price)
+      throw new Error(`A cover costs ${price} GP on ${fatherRow.name} — you have ${farm.gp}`);
 
-    // The split (ruled 2026-08-03): per 80 GP — 2 to the staker pool, the
-    // rest 50/50 juice pool / stud owner. Exact in centi-GP.
-    const split = splitBreedFee(ECONOMY.BREED_FEE);
+    // The split: the floor per BREED_SPLIT, the premium per
+    // STUD_PRICE.PREMIUM_SPLIT. Exact in centi-GP.
+    const split = splitBreedFee(price);
     this.database
       .update(farms)
-      .set({ gp: farm.gp - ECONOMY.BREED_FEE })
+      .set({ gp: farm.gp - price })
       .where(eq(farms.id, this.farmId))
       .run();
+    // Paid to whoever owns him NOW — fatherRow was read inside this call, so a
+    // stud that changed hands pays his new owner, never the farm that listed him.
     creditCents(this.database, fatherRow.farmId, split.studOwnerCents);
     this.database
       .update(gameState)
@@ -231,9 +288,11 @@ export class Breeding {
       type: "breed",
       farmId: this.farmId,
       birdId: egg.id,
-      gpCents: -ECONOMY.BREED_FEE * 100,
-      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? " (own stud)" : ` (${studFarm.name}'s stud)`} → ${egg.name} (lays Friday, hatches the Friday after)`,
-      data: split,
+      gpCents: -price * 100,
+      message: `bought a cover: ${mother.name} × ${fatherRow.name}${ownStud ? ` (own stud, ${price} GP)` : ` (${studFarm.name}'s stud, ${price} GP)`} → ${egg.name} (lays Friday, hatches the Friday after)`,
+      // `ownStud` lets the doctor's stud market separate sales from a barn
+      // breeding its own hens, without parsing the message.
+      data: { ...split, ownStud },
     });
     emit(this.database, {
       type: "stud_income",
@@ -254,13 +313,20 @@ export class Breeding {
       },
     });
 
-    return { egg: this.flock.byId(egg.id), feePaid: ECONOMY.BREED_FEE, split };
+    return { egg: this.flock.byId(egg.id), feePaid: price, split };
   }
 
   // ── The breeding barn ──────────────────────────────────────────────────────
 
-  /** List a retired rooster for covers from any farm. Idempotent. */
-  listStud(birdId: string): { stud: string; listed: true; price: number; landSpent: number } {
+  /** List a retired rooster for covers from any farm. Idempotent. A listing
+   *  keeps whatever price he already carries; `setStudPrice` changes it. */
+  listStud(birdId: string): {
+    stud: string;
+    listed: true;
+    price: number;
+    pendingPrice: number | null;
+    landSpent: number;
+  } {
     const bird = this.flock.byId(birdId); // own birds only
     if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — the barn lists roosters`);
     if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
@@ -290,12 +356,60 @@ export class Breeding {
         birdId,
         lt: -COVERS.STUD_LISTING_LT,
         message:
-          `${bird.name} stands at stud — ${ECONOMY.BREED_FEE} GP a cover ` +
+          `${bird.name} stands at stud — ${this.pricesOf(birdId).price} GP a cover ` +
           `(${COVERS.STUD_LISTING_LT / LT_CENTS} LT paid for the seat)`,
       });
     }
     this.database.update(birds).set({ listedStud: 1 }).where(eq(birds.id, birdId)).run();
-    return { stud: bird.name, listed: true, price: ECONOMY.BREED_FEE, landSpent };
+    return { stud: bird.name, listed: true, ...this.pricesOf(birdId), landSpent };
+  }
+
+  /**
+   * Set the cover price on one of YOUR retired roosters (economy round 3).
+   * Whole GP, from STUD_PRICE.FLOOR to STUD_PRICE.CAP. Listed or not: an owner
+   * may price a rooster before opening his seat. Covers already sold stand at
+   * the price they were bought at.
+   *
+   * On a LISTED stud the new price is PENDING until the next day tick posts
+   * it (round 70, second pass), like the card: every buyer sees one price all
+   * game-day, and an owner cannot reprice between a buyer's browse and his
+   * cover. Setting it again the same day replaces the pending price.
+   *
+   * On a rooster NOT listed it posts at once (round 70, third pass): no buyer
+   * can see him, so there is nothing to protect. Pending, it made a new
+   * stud's opening ask wait a day while he stood at the floor, and the
+   * listing-day covers sold there (51 → 282 floor sales in the 182-day
+   * world). Price first, then list, and he stands at his price from cover one.
+   */
+  setStudPrice(
+    birdId: string,
+    priceGp: number
+  ): { stud: string; price: number; pendingPrice: number | null } {
+    const bird = this.flock.byId(birdId); // own birds only
+    if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — only roosters stand at stud`);
+    if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
+    if (!Number.isInteger(priceGp) || priceGp < STUD_PRICE.FLOOR || priceGp > STUD_PRICE.CAP)
+      throw new Error(
+        `A cover price is a whole number of GP from ${STUD_PRICE.FLOOR} to ${STUD_PRICE.CAP} — got ${priceGp}`
+      );
+    this.database
+      .update(birds)
+      .set(
+        bird.listedStud ? { studPriceNext: priceGp } : { studPrice: priceGp, studPriceNext: null }
+      )
+      .where(eq(birds.id, birdId))
+      .run();
+    return { stud: bird.name, ...this.pricesOf(birdId) };
+  }
+
+  private pricesOf(birdId: string): { price: number; pendingPrice: number | null } {
+    const row = this.database
+      .select({ studPrice: birds.studPrice, studPriceNext: birds.studPriceNext })
+      .from(birds)
+      .where(eq(birds.id, birdId))
+      .get();
+    if (!row) throw new Error(`No bird with id ${birdId}`);
+    return { price: studPriceOf(row), pendingPrice: row.studPriceNext };
   }
 
   /** Pull a rooster from the barn. Covers already sold this week stand. */
@@ -457,7 +571,8 @@ export class Breeding {
             condition: rooster.condition,
           },
           overallGrade: overallGradeOf(total),
-          price: ECONOMY.BREED_FEE,
+          price: studPriceOf(rooster),
+          pendingPrice: mine ? rooster.studPriceNext : null,
           coversLeft,
           mine,
         });

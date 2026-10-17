@@ -1,4 +1,4 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, farms, gameState } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
@@ -6,12 +6,14 @@ import {
   BOT_FARMS,
   BREEDING_PLAN,
   CROWN_CHASE,
+  STUD_MARKET,
   WEATHER_APPETITE,
   type BotProfile,
 } from "./bot-config";
 import { applyProposals, type BotAction } from "./bot-brain";
 import {
   BREEDING_SHAPES,
+  CALENDAR,
   COVERS,
   DISTANCE_STATS,
   ECONOMY,
@@ -21,7 +23,9 @@ import {
   NW_CAP,
   PINTAKASI,
   SCOUT,
+  STUD_PRICE,
   barnCapacity,
+  studPriceOf,
   cardOfDay,
   feeFor,
   nextExpansionCost,
@@ -425,6 +429,14 @@ export class Bots {
       const short = COVERS.STUD_LISTING_LT - row.landTokensCents;
       if (short > 0) quietly(() => void farmsApi.unstake(bot.id, Math.ceil(short / LT_CENTS)));
     }
+    // Price BEFORE listing (round 70, third pass): an unlisted rooster's ask
+    // posts at once, a listed one's waits for the tick. Listing first stood
+    // every new stud at the floor for his first day, and the 182-day world
+    // sold 223 floor covers on listing day that way. priceStuds also runs the
+    // weekly demand read on the studs already standing. Draws no rng, so it
+    // does not shift the day's stream.
+    const appetite = STUD_MARKET.STYLE[bot.style];
+    priceStuds(db, bot.id, today, appetite.greed);
     for (const rooster of unlisted) {
       if (quietly(() => void breeding.listStud(rooster.id))) report.studsListed++;
     }
@@ -499,7 +511,7 @@ export class Bots {
       .all()
       .filter((b) => b.status === "retired" && b.sex === "female" && !carrying.has(b.id));
     const coverTarget = breedTarget(bot, hens.length);
-    if (coverTarget > 0 && gp() > ECONOMY.BREED_FEE + RESERVE) {
+    if (coverTarget > 0 && gp() > STUD_PRICE.FLOOR + RESERVE) {
       // Round 30: the shape is chosen PER HEN, not per barn. Round 29 priced
       // every cover in the barn against one house axis, which meant half the
       // flock was being bred ACROSS its own grain — a deep-water hen dragged
@@ -516,7 +528,10 @@ export class Bots {
       // Lifting the one-cover-a-day rule on its own would have changed nothing
       // past the fourth hen, because there was nothing priced to buy. Count
       // HENS, and let the pair cap go back to being a pure runaway guard.
-      const priced: { henId: string; studId: string; score: number }[] = [];
+      // The wallet the buyer weighs premiums against is read once, before the
+      // day's covers: a barn decides how dear it shops, then shops.
+      const wallet = gp();
+      const priced: { henId: string; studId: string; price: number; score: number }[] = [];
       let hensPriced = 0;
       for (const hen of shuffle(hens, rng)) {
         if (hensPriced >= coverTarget + BREEDING_PLAN.HENS_PRICED_SLACK) break;
@@ -545,7 +560,20 @@ export class Bots {
           // game had a chosen father and a random mother.
           if (forThisHen >= BREEDING_PLAN.MAX_STUDS_PER_HEN) break;
           forThisHen++;
-          priced.push({ henId: hen.id, studId: stud.birdId, score: foalScore(dam, stud, shape) });
+          // Value net of price (economy round 3): the foal's score, less what
+          // the premium above the floor costs THIS buyer.
+          priced.push({
+            henId: hen.id,
+            studId: stud.birdId,
+            price: stud.price,
+            score: coverNet(
+              foalScore(dam, stud, shape),
+              stud.price,
+              appetite.spend,
+              wallet,
+              stud.mine
+            ),
+          });
         }
       }
       // Best pair first, then walk down. Sorting the PAIRS rather than the hens
@@ -564,7 +592,10 @@ export class Bots {
         // MONEY IS THE REAL STOP, and it is checked per cover rather than once
         // up front: a barn that can afford three covers must buy three and then
         // halt, not commit to its target and overdraw toward the reserve.
-        if (gp() < ECONOMY.BREED_FEE + RESERVE) break;
+        // A dear stud the barn can no longer afford is skipped, not a stop:
+        // the next pick down may be a floor cover it can still buy.
+        if (gp() < STUD_PRICE.FLOOR + RESERVE) break;
+        if (gp() < pick.price + RESERVE) continue;
         let eggName: string | null = null;
         if (quietly(() => (eggName = breeding.breed(pick.henId, pick.studId).egg.name))) {
           covered.add(pick.henId);
@@ -908,6 +939,164 @@ function breedTarget(bot: BotProfile, hens: number): number {
   const share = Math.ceil(hens * bot.breedDrive);
   const floor = bot.landAppetite ? 0 : BREEDING_PLAN.MIN_HENS_COVERED;
   return Math.min(hens, BREEDING_PLAN.MAX_COVERS_PER_DAY, Math.max(share, floor));
+}
+
+/**
+ * A cover's worth to a buyer, net of its price (economy round 3): the foal's
+ * score less the premium above the floor, priced in score points. `spend` is
+ * the buyer's style appetite; a fatter wallet feels the same premium less, by
+ * the square root (see STUD_MARKET.WALLET_REF). A floor cover is worth its
+ * score, so a world of floor studs buys exactly what it bought before.
+ *
+ * On his OWN stud a barn pays the posted price and gets the owner's share of
+ * the premium back, so the premium costs him only the juice slice of it
+ * (round 70, second pass). That is what `ownStud` prices: a barn breeding to
+ * its own dear stud weighs 20% of the premium, an outside hen all of it.
+ */
+export function coverNet(
+  score: number,
+  price: number,
+  spend: number,
+  walletGp: number,
+  ownStud: boolean
+): number {
+  const premium = (price - STUD_PRICE.FLOOR) * (ownStud ? STUD_PRICE.PREMIUM_SPLIT.JUICE : 1);
+  if (premium <= 0) return score;
+  const [lo, hi] = STUD_MARKET.WALLET_EASE_RANGE;
+  const ease = Math.min(
+    hi,
+    Math.max(lo, Math.sqrt(Math.max(0, walletGp) / STUD_MARKET.WALLET_REF))
+  );
+  return score - (premium * STUD_MARKET.PREMIUM_PENALTY) / (Math.max(spend, 0.01) * ease);
+}
+
+/** Snap a price to the PRICE_STEP grid, inside the floor and cap. Raises
+ *  round up and cuts round down, so a small step never stalls on rounding. */
+function snapPrice(raw: number, direction: "up" | "down"): number {
+  const step = STUD_MARKET.PRICE_STEP;
+  const snapped = (direction === "up" ? Math.ceil(raw / step) : Math.floor(raw / step)) * step;
+  return Math.min(STUD_PRICE.CAP, Math.max(STUD_PRICE.FLOOR, snapped));
+}
+
+/**
+ * The opening ask for studs about to list, from public evidence only: where
+ * each one's revealed sheet and career earnings rank among the studs standing
+ * today and the ones being priced with him, plus a bonus per crown. See STUD_MARKET for the formula and why it
+ * ranks rather than reading raw numbers. One grouped read for the market.
+ */
+function openingAsks(db: DB, studIds: string[], greed: number): Map<string, number> {
+  const market = db.all<{ id: string; total: number; earn: number; crowns: number }>(
+    sql`SELECT b.id AS id,
+               b.agility + b.sight + b.stamina + b.gameness + b.station + b.condition AS total,
+               COALESCE((SELECT SUM(f.earn_cents) FROM bird_form f WHERE f.bird_id = b.id), 0)
+                 + COALESCE((SELECT SUM(t.gp_won_cents) FROM tournament_entries t
+                             WHERE t.bird_id = b.id), 0) AS earn,
+               (SELECT COUNT(*) FROM tournament_entries t
+                 WHERE t.bird_id = b.id AND t.status = 'champion') AS crowns
+          FROM birds b
+         WHERE b.sex = 'male' AND b.status = 'retired'
+           AND (b.listed_stud = 1 OR b.id IN (${sql.join(
+             studIds.map((id) => sql`${id}`),
+             sql`, `
+           )}))`
+  );
+  const span = Math.max(1, market.length - 1);
+  const rank = (pick: (r: (typeof market)[number]) => number, v: number) =>
+    market.filter((r) => pick(r) < v).length / span;
+  const asks = new Map<string, number>();
+  for (const id of studIds) {
+    const me = market.find((r) => r.id === id);
+    if (!me) continue;
+    const evidence =
+      (rank((r) => r.total, me.total) + rank((r) => r.earn, me.earn)) / 2 +
+      STUD_MARKET.CROWN_BONUS * Math.min(me.crowns, STUD_MARKET.CROWN_COUNT_CAP);
+    asks.set(
+      id,
+      snapPrice(STUD_PRICE.FLOOR * (1 + greed * STUD_MARKET.OPENING_SPREAD * evidence), "up")
+    );
+  }
+  return asks;
+}
+
+/**
+ * HOW AN OWNER PRICES HIS STUDS (economy round 3), shared by the bots and
+ * auto-play. A retired rooster with no price yet gets an opening ask from his
+ * record, listed or not. Call it BEFORE listing: an unlisted rooster's price
+ * posts at once (round 70, third pass), so he stands at his ask from the
+ * first cover instead of selling a day at the floor.
+ * On the first day of each week every listed stud is repriced on last week's
+ * PUBLIC covers: sold out or hot → raise by greed, cold → give back part of
+ * the premium, anything else → hold. Own-hen covers are not demand: the
+ * owner buys them at his own price, so they say nothing about the market.
+ *
+ * Every price here follows the rule a human owner's set_stud_price follows:
+ * on a listed stud it is pending until the next day tick, on an unlisted
+ * rooster it posts at once.
+ */
+export function priceStuds(db: DB, farmId: string, today: number, greed: number): void {
+  const mine = db
+    .select({
+      id: birds.id,
+      studPrice: birds.studPrice,
+      studPriceNext: birds.studPriceNext,
+      listedStud: birds.listedStud,
+    })
+    .from(birds)
+    .where(and(eq(birds.farmId, farmId), eq(birds.sex, "male"), eq(birds.status, "retired")))
+    .all();
+  if (mine.length === 0) return;
+  // A direct write, not Breeding.setStudPrice: that door validates through
+  // flock.byId, which builds a whole bird view, and a Friday repricing every
+  // stud in the world through it cost ~0.25 s of sim time. The rows above are
+  // this farm's retired roosters, and snapPrice keeps every price inside the
+  // floor and cap, which is all setStudPrice would check. It writes the
+  // column setStudPrice would: pending on a listed stud, posted on the rest.
+  const listed = new Set(mine.filter((b) => b.listedStud).map((b) => b.id));
+  const setPrice = (id: string, price: number) =>
+    db
+      .update(birds)
+      .set(listed.has(id) ? { studPriceNext: price } : { studPrice: price, studPriceNext: null })
+      .where(eq(birds.id, id))
+      .run();
+
+  // An opening ask already pending (set earlier today, posting at the tick)
+  // is not unpriced: a second pass the same day must not ask again.
+  const unpriced = mine
+    .filter((b) => b.studPrice === null && b.studPriceNext === null)
+    .map((b) => b.id);
+  if (unpriced.length > 0)
+    for (const [id, ask] of openingAsks(db, unpriced, greed)) setPrice(id, ask);
+
+  const week = GameClock.weekOf(today);
+  if (today === 0 || GameClock.weekOf(today - 1) === week) return;
+  const weekStart = week * CALENDAR.DAYS_PER_WEEK;
+  const sold = new Map(
+    db
+      .all<{ fatherId: string; n: number }>(
+        sql`SELECT e.father_id AS fatherId, COUNT(*) AS n
+              FROM birds e JOIN birds s ON s.id = e.father_id
+             WHERE s.farm_id = ${farmId} AND s.listed_stud = 1
+               AND e.farm_id <> s.farm_id
+               AND e.birth_day >= ${weekStart - CALENDAR.DAYS_PER_WEEK}
+               AND e.birth_day < ${weekStart}
+             GROUP BY e.father_id`
+      )
+      .map((r) => [r.fatherId, r.n])
+  );
+  for (const stud of mine) {
+    if (!listed.has(stud.id)) continue; // not standing: no market to read
+    if (stud.studPrice === null) continue; // his opening ask has not posted; no demand yet
+    const now = studPriceOf(stud);
+    const covers = sold.get(stud.id) ?? 0;
+    let next = now;
+    if (covers >= COVERS.PER_WEEK)
+      next = snapPrice(now * (1 + STUD_MARKET.RAISE_SOLD_OUT * greed), "up");
+    else if (covers >= COVERS.PER_WEEK * STUD_MARKET.HOT_SHARE)
+      next = snapPrice(now * (1 + STUD_MARKET.RAISE_HOT * greed), "up");
+    else if (covers <= STUD_MARKET.COLD_COVERS)
+      next = snapPrice(now - (now - STUD_PRICE.FLOOR) * STUD_MARKET.CUT_COLD, "down");
+    if (next !== now) setPrice(stud.id, next);
+  }
 }
 
 /**

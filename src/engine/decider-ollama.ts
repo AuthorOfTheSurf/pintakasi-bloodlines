@@ -204,6 +204,7 @@ export function digest(view: BotView): Digest {
     id: handle(s.id),
     name: s.name,
     stars: s.stars,
+    price: s.price,
   }));
 
   const claimable = view.claimerBoard
@@ -289,7 +290,8 @@ RULES
 - A bird enters at most ONE lobby per day.
 - Entering costs a fee. Never spend below 400 GP in reserve.
 - Breeding needs a retired hen (hens list) and a stud — YOURS (studs list)
-  or anyone's from studMarket (a stud fee applies). Eggs need barn space.
+  or anyone's from studMarket at the price it shows (yours cost the floor).
+  Eggs need barn space.
 - crown declares a bird for this week's Major championship (fights Thursday).
   Only birds marked crownEligible, only formats listed in majorsThisWeek.
 - Majors are HARDCORE: the loser's career ends on the spot. Declare only a

@@ -30,6 +30,7 @@ import {
   PINTAKASI,
   purseShareOf,
   STAKER_FLOWS,
+  STUD_PRICE,
   WEATHER,
 } from "./config";
 
@@ -158,6 +159,46 @@ describe("MCP docs carry the CURRENT config values", () => {
     // Whole tokens, not the hundredths the constant now holds (round 36) — a
     // stud seat is ruled at 100 LT and must read as 100 LT.
     expect(TOOL_DESCRIPTIONS.list_stud).toContain(`${COVERS.STUD_LISTING_LT / LT_CENTS} LT`);
+  });
+
+  // Economy round 3 unlocked stud pricing. Until then every doc said a cover
+  // was one flat price, "min AND max for now — player pricing later". An
+  // agent that keeps reading that never prices its studs and never checks a
+  // buyer's price, so the old claim is pinned out and the new door pinned in.
+  test("stud pricing is documented as owner-set, not as a fixed price", () => {
+    const fixedPrice = [/min(imum)? AND max/i, /player pricing later/i, /no matter whose stud/i];
+    for (const stale of fixedPrice) {
+      expect(everything).not.toMatch(stale);
+      expect(readWikiPage("breeding/page.tsx")).not.toMatch(stale);
+    }
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toBeDefined();
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toContain(`${STUD_PRICE.CAP}`);
+    expect(TOOL_DESCRIPTIONS.browse_studs).toMatch(/price/i);
+    // The premium's owner share is the reason anyone raises a price; the
+    // breeding page has to say it, computed from the knob.
+    expect(readWikiPage("breeding/page.tsx")).toContain("STUD_PRICE.PREMIUM_SPLIT");
+  });
+
+  // Round 70's second pass reversed two things the first pass documented: the
+  // owner's own hens paid the floor, and a new price applied at once. Either
+  // sentence left standing teaches a player the wrong bill.
+  test("own hens pay the posted price, and a price posts at the next day", () => {
+    const ownFloor = [/own hens always pay the floor/i, /floor on your own rooster/i];
+    for (const stale of ownFloor) {
+      expect(everything).not.toMatch(stale);
+      expect(readWikiPage("breeding/page.tsx")).not.toMatch(stale);
+    }
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toMatch(/next day tick/i);
+    expect(TOOL_DESCRIPTIONS.browse_studs).toMatch(/pendingPrice/);
+    expect(readWikiPage("breeding/page.tsx")).toMatch(/next day/i);
+  });
+
+  // Round 70's third pass: a rooster not listed takes his price at once, so
+  // the "price before you list" advice is what keeps a new stud off the floor.
+  test("a price set before listing posts at once", () => {
+    expect(TOOL_DESCRIPTIONS.set_stud_price).toMatch(/NOT listed yet it takes effect at once/);
+    expect(TOOL_DESCRIPTIONS.list_stud).toMatch(/BEFORE listing/);
+    expect(readWikiPage("breeding/page.tsx")).toMatch(/before you list him/i);
   });
 
   // Missing entirely #1: the Juvenile Championship (JUVENILE_MAJOR) — the

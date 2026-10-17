@@ -4,7 +4,7 @@ import { gameState } from "@/db/schema";
 import { shopAllClaimers } from "./auto-play";
 import { Bots, type BotDayReport, type DiscoveryPolicy } from "./bots";
 import type { BotAction } from "./bot-brain";
-import { Breeding } from "./breeding";
+import { Breeding, postStudPrices } from "./breeding";
 import { Lobbies, type LobbyResolution } from "./lobbies";
 import { cardOfDay, weatherOfDay, type CardKey, type Element } from "./config";
 import { Farms, type FarmView } from "./farms";
@@ -155,6 +155,9 @@ export class Game {
     // when the claimer fields are still empty.
     if ((opts.players ?? "auto-play") === "auto-play") shopAllClaimers(this.database);
     const result = kind === "day" ? this.clock.tickDay() : this.clock.tickWeek();
+    // The new day's stud prices go up before anyone shops it: whatever an
+    // owner set yesterday is the posted price from now until the next tick.
+    postStudPrices(this.database);
     // The day has turned — the card goes off (fights first, then claims),
     // then the main event: every departed crown day runs its Pintakasi
     // (undercard first, crowns second), then the calendar's own business —

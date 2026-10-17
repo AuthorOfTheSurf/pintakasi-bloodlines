@@ -39,6 +39,7 @@ export function emptyBotView(
       juvenileEligibleBirdIds: [],
     },
     studMarket: [],
+    ownStudPrices: {},
     ledger: { cardNetGp: 0, crownFeesGp: 0, crownWinningsGp: 0 },
   };
 }

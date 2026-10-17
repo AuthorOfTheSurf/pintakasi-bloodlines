@@ -43,6 +43,8 @@ describe("breed", () => {
       stakerPoolCents: 1600,
       juicePoolCents: 8000,
       studOwnerCents: 6400,
+      premiumJuiceCents: 0,
+      premiumOwnerCents: 0,
     });
     expect(split.stakerPoolCents + split.juicePoolCents + split.studOwnerCents).toBe(16000);
     // Own stud: the 64.00 stud share flows straight back — net cost 96 GP.

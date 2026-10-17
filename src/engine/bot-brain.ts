@@ -34,7 +34,7 @@ import { and, eq, gt, gte } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { battleLog, birds, farms, gameState, tournamentEntries } from "@/db/schema";
 import { CROWN_CHASE } from "./bot-config";
-import { ECONOMY, JUVENILE_MAJOR, LT_CENTS } from "./config";
+import { ECONOMY, JUVENILE_MAJOR, LT_CENTS, studPriceOf } from "./config";
 import { canHardcore } from "./lifecycle";
 import type { BotDayReport } from "./bots";
 import { Breeding } from "./breeding";
@@ -174,7 +174,11 @@ export interface BotView {
    * 0 eggs. The engine has always accepted a cross-farm listed stud; only
    * the visibility was missing.
    */
-  studMarket: { id: string; name: string; stars: number; farm: string }[];
+  studMarket: { id: string; name: string; stars: number; farm: string; price: number }[];
+  /** The posted cover price on each of the barn's OWN retired roosters, by
+   *  bird id. Since round 70's second pass his own hens pay it too, so the
+   *  menu has to quote it rather than assume the floor. */
+  ownStudPrices: Record<string, number>;
   /**
    * The last seven days' fight economics (exp5). Exp4 proved the model will
    * follow a volume law straight through zero: fees appear at entry time and
@@ -285,7 +289,18 @@ export function buildView(db: DB, farmId: string): BotView {
         name: b.name,
         stars: b.halfStars / 2,
         farm: b.farmId,
+        // The cover price his owner asks (economy round 3) — a barn deciding
+        // on a stud needs the bill as much as the stars.
+        price: studPriceOf(b),
       })),
+    ownStudPrices: Object.fromEntries(
+      db
+        .select({ id: birds.id, studPrice: birds.studPrice })
+        .from(birds)
+        .where(and(eq(birds.farmId, farmId), eq(birds.sex, "male"), eq(birds.status, "retired")))
+        .all()
+        .map((b) => [b.id, studPriceOf(b)])
+    ),
     ledger: (() => {
       const since = day - 7;
       // battle_log nets each daily-card fight (win = stake minus rake, loss =
