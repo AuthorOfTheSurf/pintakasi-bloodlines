@@ -224,15 +224,21 @@ const LAST_MAJOR_AGE = AGE.FIGHTING_CAP - 1;
 const MAJOR_WEEKS = LAST_MAJOR_AGE - AGE.FORK + 1;
 
 /**
- * GP the bird's Major prospects are worth: min(P, CROWN_P_CAP) × K × the going
+ * GP the bird's Major prospects are worth: crownChance(P) × K × the going
  * purse, where P is its chance of reaching a Major final in the rest of its
  * career. Zero past the last Major age, and for an egg.
  */
 export function crownTerm(bird: CrownRead, market: CrownMarket): number {
   const branch = crownLogit(bird, Math.max(1, market.field));
   if (branch === null) return 0;
-  const p = Math.min(1 / (1 + Math.exp(-branch.z)), VALUE.CROWN_P_CAP);
-  return p * branch.k * market.purseGp;
+  return crownChance(1 / (1 + Math.exp(-branch.z))) * branch.k * market.purseGp;
+}
+
+/** The chance of a final the value prices: capped above, ramped in from CROWN_P_FLOOR. */
+export function crownChance(p: number): number {
+  const floor = VALUE.CROWN_P_FLOOR;
+  const ramp = Math.min(1, Math.max(0, (p - floor) / floor));
+  return Math.min(p, VALUE.CROWN_P_CAP) * ramp;
 }
 
 function crownLogit(bird: CrownRead, field: number): { z: number; k: number } | null {

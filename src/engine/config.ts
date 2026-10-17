@@ -1470,7 +1470,8 @@ export const VALUE = {
   // bird with a real chance at a Major final read the same as a grinder of the
   // same form. The crown term adds the expected Major winnings:
   //
-  //   crown = min(P, CROWN_P_CAP) × K × the going Major purse
+  //   crown = min(P, CROWN_P_CAP) × ramp(P) × K × the going Major purse
+  //   (ramp: 0 under CROWN_P_FLOOR, full at twice it — see below)
   //
   // P is the bird's chance of reaching at least one Major final over the rest
   // of its career, a logistic on public numbers only (figures, earnings,
@@ -1488,6 +1489,17 @@ export const VALUE = {
   // 3 predicted 8.0k GP of crown net and realized 3.4k. The cap is that
   // correction — nobody's chance of a final is priced over a quarter.
   CROWN_P_CAP: 0.25,
+  // Below this chance of a final a bird carries NO crown term, and the term
+  // ramps in linearly to full at twice it: crown × clamp((P − floor) / floor,
+  // 0, 1). A lottery-ticket shot at a final is not something an owner prices
+  // into a 90 GP claim; the floor keeps crown value for the birds with a real
+  // shot, which is where it matters. Ruled after the first crown-term sim
+  // (182-day seed-1 latecomers, 461308d): priced linearly from P = 0, an
+  // ordinary age-3 bird or B juvenile carried ~75–80 GP of crown, which lifted
+  // ordinary birds over the 90 GP tag, bots stopped tagging them, claimer
+  // fights fell 277k → 108k, and late stables' open win% fell 51.8% → 37%.
+  // The ramp (not a step) keeps the value continuous as a bird's P crosses it.
+  CROWN_P_FLOOR: 0.03,
   // How far back the going Major purse looks: the mean purse of the Majors
   // completed in the last this-many weeks. With none (a young world), it is
   // the juice pool split across the week's Major blades, which is what the

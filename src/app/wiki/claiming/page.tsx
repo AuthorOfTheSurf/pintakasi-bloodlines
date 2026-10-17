@@ -202,7 +202,10 @@ export default function ClaimingPage() {
           Major purse. It grows with the bird&apos;s best figures at the Major blades and with its
           career earnings, because the committee seats the Majors by earnings. It shrinks with the
           weeks it has left and with how many birds of Major age share the finals. For a chick, it
-          reads the grade and the juvenile-crown wins instead. No bird is priced over a{" "}
+          reads the grade and the juvenile-crown wins instead. It only counts once the chance is
+          real: under {(VALUE.CROWN_P_FLOOR * 100).toFixed(0)}% it adds nothing, and it grows to
+          full by {(VALUE.CROWN_P_FLOOR * 200).toFixed(0)}%. A long-shot ticket to a final is not
+          something an owner pays for when claiming an ordinary bird. No bird is priced over a{" "}
           {(VALUE.CROWN_P_CAP * 100).toFixed(0)}% chance, and a bird too old for the Majors has
           none.
         </li>

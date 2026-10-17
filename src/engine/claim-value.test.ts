@@ -11,7 +11,7 @@ import { mulberry32 } from "./rng";
 import { recordFight } from "./scout";
 import { diagnose } from "./doctor";
 import { makeBird, onCard, world as testWorld } from "./testkit";
-import { appraise, crownTerm, type CrownRead } from "./value";
+import { appraise, crownChance, crownTerm, type CrownRead } from "./value";
 
 /**
  * THE CLAIM-PAR ROUND. Before it, every claimer tag drew the same field as the
@@ -187,11 +187,23 @@ describe("the crown term: a shot at a Major final is worth something", () => {
     juvenileCrownWins: 0,
   });
 
-  test("strong figures and big earnings at age 3 price far over a typical bird", () => {
+  test("a typical age-3 bird has no crown term; a strong prospect keeps the full one", () => {
+    expect(crownTerm(age3(VALUE.CROWN_NO_READ, 800), market)).toBe(0);
     const strong = crownTerm(age3(10, 8_000), market);
-    const typical = crownTerm(age3(VALUE.CROWN_NO_READ, 800), market);
-    expect(typical).toBeGreaterThan(0);
-    expect(strong).toBeGreaterThan(10 * typical);
+    expect(strong).toBeGreaterThan(0);
+    const fullAtP = strong / (VALUE.CROWN_ADULT.K * market.purseGp);
+    expect(fullAtP).toBeGreaterThanOrEqual(2 * VALUE.CROWN_P_FLOOR);
+  });
+
+  test("the floor ramps in continuously: zero at the floor, the whole chance at twice it", () => {
+    const floor = VALUE.CROWN_P_FLOOR;
+    const eps = 1e-9;
+    expect(crownChance(floor / 2)).toBe(0);
+    expect(crownChance(floor)).toBe(0);
+    expect(crownChance(floor + eps)).toBeCloseTo(0, 6);
+    expect(crownChance(2 * floor - eps)).toBeCloseTo(2 * floor, 6);
+    expect(crownChance(2 * floor)).toBe(2 * floor);
+    expect(crownChance(0.2)).toBe(0.2);
   });
 
   test("no bird is priced over a CROWN_P_CAP chance of a final", () => {
@@ -241,8 +253,8 @@ describe("the crown term: a shot at a Major final is worth something", () => {
     };
     const strong = fought(60, 100_000);
     const weak = fought(15, 0);
-    expect(weak.crown).toBeGreaterThan(0);
-    expect(strong.crown).toBeGreaterThan(weak.crown);
+    expect(weak.crown).toBe(0);
+    expect(strong.crown).toBeGreaterThan(0);
     expect(strong.crown).toBeLessThanOrEqual(VALUE.CROWN_P_CAP * VALUE.CROWN_ADULT.K * 35_000);
     expect(strong.value % VALUE.ROUND_TO).toBe(0);
   });
