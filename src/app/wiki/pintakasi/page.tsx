@@ -251,12 +251,13 @@ export default function PintakasiPage() {
       </p>
       <div className="callout tip">
         <b>Why a price at all, when it was free for a long time?</b> The purse used to come only
-        from the <Link href="/wiki/money">juice pool</Link> — the shared pot that gacha rolls and
-        breeding fees fill up. So the biggest stage in the game was paid for by whoever happened to
-        be buying eggs and covers that week, and a barn could enter a crown every week having put
-        nothing into the pot it was drawing from. That is backwards. Everywhere else in this game,
-        the money in a pot is money the fighters put there — that is exactly how the daily card
-        works. Now the crowns work that way too: part entrants, part juice.
+        from the <Link href="/wiki/money">juice pool</Link> — the shared pot that, back then, only
+        gacha rolls and breeding fees filled. So the biggest stage in the game was paid for by
+        whoever happened to be buying eggs and covers that week, and a barn could enter a crown
+        every week having put nothing into the pot it was drawing from. That is backwards.
+        Everywhere else in this game, the money in a pot is money the fighters put there — that is
+        exactly how the daily card works. Now the crowns work that way too: part entrants, part
+        juice.
       </div>
       <p>
         Your fee is <strong>held in escrow</strong>, not spent, from the moment you register. If the
@@ -387,11 +388,13 @@ export default function PintakasiPage() {
           counted.
         </li>
         <li>
-          <strong>The crown&apos;s share of the juice pool</strong> — the shared pot that gacha
-          spend and breeding fees feed all week (see <Link href="/wiki/money">Golden Pesos</Link>{" "}
-          for where juice comes from). Wednesday&apos;s Juvenile Championship draws its own fixed
-          slice first (see below); the Majors take <strong>everything left in the pool</strong>,
-          split evenly across however many Majors run that week.
+          <strong>The crown&apos;s share of the juice pool</strong> — the shared pot that check-ins,
+          gacha spend and breeding fees feed all week (see{" "}
+          <Link href="/wiki/money">Golden Pesos</Link> for where juice comes from). Every check-in
+          by every barn adds {ECONOMY.DRIP_TO_PURSES} GP to it, so the more farms play each day, the
+          bigger every purse gets. Wednesday&apos;s Juvenile Championship draws its own fixed slice
+          first (see below); the Majors take <strong>everything left in the pool</strong>, split
+          evenly across however many Majors run that week.
         </li>
       </ol>
       <p>

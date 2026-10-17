@@ -213,6 +213,23 @@ export class Farms {
       gpCents: ECONOMY.DAILY_DRIP * 100,
       message: `checked in — +${ECONOMY.DAILY_DRIP} GP drip, +${ECONOMY.FREE_PULLS_PER_CHECK_IN} free pulls`,
     });
+    // The house's half of the same check-in (see ECONOMY.DRIP_GROSS): printed
+    // straight into the juice pool, never taken from the barn's 800. Its own
+    // ledgered source so the conservation proof counts it as created GP and
+    // the doctor can show how much of the purses it funded.
+    const toPurses = ECONOMY.DRIP_TO_PURSES * 100;
+    const state = readWorldState(this.database);
+    this.database
+      .update(gameState)
+      .set({ juicePoolCents: state.juicePoolCents + toPurses })
+      .where(eq(gameState.id, 1))
+      .run();
+    emit(this.database, {
+      type: "pool_accrual",
+      farmId,
+      message: `${farm.name}'s check-in adds ${ECONOMY.DRIP_TO_PURSES} GP to the crown purses`,
+      data: { stakerPoolCents: 0, juicePoolCents: toPurses, source: "drip" },
+    });
     return {
       farm: this.view(this.rowById(farmId)),
       gpDripped: ECONOMY.DAILY_DRIP,

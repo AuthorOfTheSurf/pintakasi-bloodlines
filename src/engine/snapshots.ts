@@ -1,4 +1,4 @@
-import { count, desc, eq, isNotNull, lt, type SQL } from "drizzle-orm";
+import { count, desc, eq, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { DB } from "@/db/client";
 import {
@@ -13,6 +13,7 @@ import {
   snapshots,
   tournamentEntries,
 } from "@/db/schema";
+import type { EventType } from "./events";
 
 /**
  * The office's top-line metrics (round 16), computed in one place so the
@@ -59,6 +60,33 @@ export interface Topline {
   active: number;
   retired: number;
   farms: number;
+  /**
+   * How GP is spread across barns, house stables and player farms apart. In
+   * the snapshot so the doctor can show a wallet median WEEK BY WEEK: the
+   * ledger cannot rebuild a wallet (fight pots settle as world events), so a
+   * past day's spread exists only if it was written down that day. Snapshots
+   * from before this field have none, and readers must allow for that.
+   */
+  wallets: { house: WalletSpread; players: WalletSpread };
+}
+
+/** Wallet GP across a set of farms, in cents (nearest-rank percentiles). */
+export interface WalletSpread {
+  farms: number;
+  medianCents: number;
+  p90Cents: number;
+  maxCents: number;
+}
+
+export function walletSpread(walletCents: number[]): WalletSpread {
+  const sorted = [...walletCents].sort((a, b) => a - b);
+  const rank = (p: number) => sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)] ?? 0;
+  return {
+    farms: sorted.length,
+    medianCents: rank(0.5),
+    p90Cents: rank(0.9),
+    maxCents: sorted[sorted.length - 1] ?? 0,
+  };
 }
 
 /**
@@ -148,14 +176,20 @@ export function computeTopline(db: DB): Topline {
     active: byStatus.active,
     retired: byStatus.retired,
     farms: allFarms.length,
+    // `isBot` marks the house-run stables (bot-config.ts); everyone else is a player.
+    wallets: {
+      house: walletSpread(allFarms.filter((f) => f.isBot).map((f) => f.gp * 100 + f.gpCents)),
+      players: walletSpread(allFarms.filter((f) => !f.isBot).map((f) => f.gp * 100 + f.gpCents)),
+    },
   };
 }
 
 /**
  * ── THE CONSERVATION PROOF, in two halves ──────────────────────────────────
  *
- * The house rule (AGENTS.md) is that GP is never printed and never burned:
- * every centavo the world holds must trace back to a faucet. Stating it as an
+ * The house rule (AGENTS.md) is that GP is printed only by a listed faucet and
+ * destroyed only by a listed sink: every centavo the world holds must trace
+ * back to the ledger. Stating it as an
  * EQUALITY between these two functions is what makes it provable — and what
  * would have caught both burns that have shipped (the gacha's silent spend in
  * round 14, `buyLand` deleting its payment in round 22).
@@ -171,30 +205,107 @@ export function gpInWorldCents(db: DB): number {
 }
 
 /**
- * Every GP the world was ever allowed to create, in cents, read off the
- * ledger. Three faucets and no others: the starting purse each farm booked,
- * the daily drip each check-in paid, and the one-time genesis juice.
- * Everything else in the game only MOVES money.
+ * ONE WAY GP ENTERS OR LEAVES THE WORLD, and where the ledger records it:
+ * either a farm event's signed wallet delta (`gpCents` on that event type), or
+ * a `pool_accrual` whose juice was printed rather than moved. An accrual
+ * carries no `gpCents`, so its amount is the payload's `juicePoolCents`,
+ * picked out by its `source`.
+ */
+export interface GpFlow {
+  /** What the doctor prints beside the amount. */
+  label: string;
+  ledger: { event: EventType } | { poolSource: string };
+}
+
+/**
+ * EVERY FAUCET THE WORLD HAS. The conservation proof and the doctor's ECONOMY
+ * block both read this list, so a new faucet is one line here and every audit
+ * picks it up. Everything not listed only MOVES money.
  *
  * Read from the EVENTS, never from `farms.length × STARTING_GP` — `seedGame`
  * accepts a custom opening purse and farms register on arbitrary days, so the
  * ledger is the only honest record of what was actually minted.
  */
-export function gpFromFaucetsCents(db: DB): number {
-  const ev = db.select().from(events).all();
-  const sumOf = (type: string) =>
-    ev.filter((e) => e.type === type).reduce((s, e) => s + (e.gpCents ?? 0), 0);
-  // The genesis juice is a pool_accrual rather than a wallet credit, so it
-  // carries no gpCents — its amount lives in the event's data payload.
-  const genesis = ev
-    .flatMap((e) =>
-      e.type === "pool_accrual" && e.data
-        ? [JSON.parse(e.data) as { juicePoolCents?: number; source?: string }]
-        : []
-    )
-    .filter((d) => d.source === "genesis")
-    .reduce((s, d) => s + (d.juicePoolCents ?? 0), 0);
-  return sumOf("farm_registered") + sumOf("check_in") + genesis;
+export const GP_FAUCETS: readonly GpFlow[] = [
+  { label: "starting stakes", ledger: { event: "farm_registered" } },
+  { label: "check-in drip to wallets", ledger: { event: "check_in" } },
+  // Printed once, at genesis: seed money for the first crowns.
+  { label: "genesis juice", ledger: { poolSource: "genesis" } },
+  // The house's share of every check-in, straight into the crown purses
+  // (ECONOMY.DRIP_TO_PURSES). Worlds older than the rule have no such rows.
+  { label: "check-in drip to purses", ledger: { poolSource: "drip" } },
+];
+
+/**
+ * EVERY SINK: GP that leaves the world for good. Empty today, because nothing
+ * in the game burns GP yet. A sink is a farm event with a NEGATIVE wallet
+ * delta that nobody else receives. List its event type here and the
+ * conservation proof subtracts it and the doctor prints it by name.
+ */
+export const GP_SINKS: readonly GpFlow[] = [];
+
+/** One flow's GP on one day, in cents. Positive for a faucet AND for a sink. */
+export interface GpFlowDay {
+  label: string;
+  day: number;
+  cents: number;
+}
+
+/**
+ * What each flow moved, per day, in two grouped queries: wallet events by
+ * type, printed juice by source. Grouped by DAY so one call serves the
+ * whole-run totals, the weekly table and the per-snapshot drift series. Pass
+ * `sign = -1` for sinks, whose ledger deltas are negative, to get the amount
+ * destroyed as a positive number.
+ *
+ * SQL rather than a JS pass over `events`: on a 182-day world that table is
+ * ~470k rows, and the old version of this function materialized all of it.
+ */
+export function gpFlowsByDay(db: DB, flows: readonly GpFlow[], sign: 1 | -1 = 1): GpFlowDay[] {
+  const byEvent = new Map<string, string>();
+  const bySource = new Map<string, string>();
+  for (const f of flows)
+    if ("event" in f.ledger) byEvent.set(f.ledger.event, f.label);
+    else bySource.set(f.ledger.poolSource, f.label);
+  const list = (keys: Iterable<string>) =>
+    sql.join(
+      [...keys].map((k) => sql`${k}`),
+      sql`, `
+    );
+  const out: GpFlowDay[] = [];
+  if (byEvent.size > 0)
+    for (const r of db.all<{ key: string; day: number; cents: number }>(
+      sql`SELECT type AS key, day_index AS day, SUM(gp_cents) AS cents FROM events
+          WHERE type IN (${list(byEvent.keys())}) GROUP BY type, day_index`
+    ))
+      out.push({ label: labelOf(byEvent, r.key), day: r.day, cents: sign * r.cents });
+  if (bySource.size > 0)
+    for (const r of db.all<{ key: string; day: number; cents: number }>(
+      sql`SELECT json_extract(data, '$.source') AS key, day_index AS day,
+                 SUM(json_extract(data, '$.juicePoolCents')) AS cents
+          FROM events
+          WHERE type = 'pool_accrual' AND json_extract(data, '$.source') IN (${list(bySource.keys())})
+          GROUP BY key, day_index`
+    ))
+      out.push({ label: labelOf(bySource, r.key), day: r.day, cents: sign * r.cents });
+  return out;
+}
+
+function labelOf(labels: Map<string, string>, key: string): string {
+  const label = labels.get(key);
+  if (label === undefined) throw new Error(`gpFlowsByDay: SQL grouped on unrequested key ${key}`);
+  return label;
+}
+
+/**
+ * Every GP the world should hold, in cents: all faucets minus all sinks, read
+ * off the ledger. `throughDay` stops the count at that day, which is what the
+ * doctor's drift series compares each snapshot against.
+ */
+export function gpOwedCents(db: DB, throughDay = Infinity): number {
+  const net = (rows: GpFlowDay[]) =>
+    rows.filter((r) => r.day <= throughDay).reduce((s, r) => s + r.cents, 0);
+  return net(gpFlowsByDay(db, GP_FAUCETS)) - net(gpFlowsByDay(db, GP_SINKS, -1));
 }
 
 /** What staking has paid, per farm and world-wide — the office's book. */

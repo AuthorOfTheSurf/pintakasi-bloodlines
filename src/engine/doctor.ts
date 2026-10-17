@@ -1,4 +1,4 @@
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
   battleLog,
@@ -16,6 +16,10 @@ import {
 } from "@/db/schema";
 import {
   BREEDING_SHAPES,
+  breakEvenPurse,
+  JUVENILE_MAJOR,
+  PINTAKASI,
+  purseShareOf,
   CADENCE,
   CALENDAR,
   barnCapacity,
@@ -41,10 +45,15 @@ import { normalizedScoutFigure } from "./scout";
 import { Tournaments } from "./tournaments";
 import {
   computeTopline,
-  gpFromFaucetsCents,
+  GP_FAUCETS,
+  GP_SINKS,
+  gpFlowsByDay,
+  gpOwedCents,
   gpInWorldCents,
   stakingBook,
+  type GpFlowDay,
   type Topline,
+  type WalletSpread,
 } from "./snapshots";
 
 /**
@@ -141,6 +150,10 @@ const DOCTOR = {
   FILL_WARN: 5,
   // Half a division's crowns cancelling means the field isn't there.
   CANCELLED_CROWNS_WARN: 0.5,
+  // ── ECONOMY (the economy rounds, 2026-10) ─────────────────────────────────
+  // How many of the latest COMPLETE weeks the weekly money table prints. Six
+  // shows a trend without burying the block; the whole-run totals sit above it.
+  ECONOMY_WEEKS: 6,
   // Below this share of the SETTLED retired hens having ever carried, the
   // breeding loop is leaving capacity on the floor (round 32). Deliberately
   // well under 100%: the plan is SUPPOSED to reject hens, so a band where
@@ -257,6 +270,8 @@ export interface DoctorReport {
   health: HealthSection[];
   /** Omniscient audit of discovery coverage and scout accuracy by fight age. */
   discovery: BladeDiscovery;
+  /** The money: faucets, sinks, supply, wallets, purses (the ECONOMY section). */
+  economy: EconomyReport;
   ok: boolean;
 }
 
@@ -290,7 +305,7 @@ function checkConservation(db: DB): {
   series?: { day: number; drift: number }[];
 } {
   const actual = gpInWorldCents(db);
-  const expected = gpFromFaucetsCents(db);
+  const expected = gpOwedCents(db);
   if (actual === expected)
     return {
       invariant: {
@@ -300,20 +315,12 @@ function checkConservation(db: DB): {
       },
     };
 
-  const ev = db.select().from(events).all();
-  const faucetsThrough = (day: number) => {
-    const upTo = ev.filter((e) => e.dayIndex <= day);
-    const sumOf = (type: string) =>
-      upTo.filter((e) => e.type === type).reduce((s, e) => s + (e.gpCents ?? 0), 0);
-    const genesis = upTo
-      .flatMap((e) => {
-        if (e.type !== "pool_accrual" || !e.data) return [];
-        return [JSON.parse(e.data) as { juicePoolCents?: number; source?: string }];
-      })
-      .filter((d) => d.source === "genesis")
-      .reduce((s, d) => s + (d.juicePoolCents ?? 0), 0);
-    return sumOf("farm_registered") + sumOf("check_in") + genesis;
-  };
+  // Queried once and cut per snapshot, rather than gpOwedCents per day.
+  const created = gpFlowsByDay(db, GP_FAUCETS);
+  const destroyed = gpFlowsByDay(db, GP_SINKS, -1);
+  const through = (rows: typeof created, day: number) =>
+    rows.filter((f) => f.day <= day).reduce((s, f) => s + f.cents, 0);
+  const faucetsThrough = (day: number) => through(created, day) - through(destroyed, day);
 
   // WHERE it went. Deliberately NOT a guess at a single culprit day: a tick
   // emits some events before the clock advances and some after, so the daily
@@ -1567,7 +1574,7 @@ function fightEconomy(db: DB): HealthSection {
  * HEALTH, never an invariant: there is no correct amount of land, only a rate
  * somebody should read after changing the curve.
  */
-function landSupply(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
+function landSupply(db: DB, topline: Topline, ev: EventRow[], created: GpFlowDay[]): HealthSection {
   const circulating = topline.landStaked + topline.landLiquid;
   let burned = 0;
   const minting = new Map<string, number>();
@@ -1604,7 +1611,11 @@ function landSupply(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
         ([type, amount]) =>
           `  ${type.padEnd(14)}${lt(amount).padStart(12)} LT  ${pct(amount, burned).padStart(6)}`
       ),
-      ...faucetRatio(ev, minted, days),
+      ...faucetRatio(
+        created.reduce((s, f) => s + f.cents, 0),
+        minted,
+        days
+      ),
     ],
   };
 }
@@ -1626,23 +1637,18 @@ function landSupply(db: DB, topline: Topline, ev: EventRow[]): HealthSection {
  * automatically wrong (an early world should be generous, and none of it is
  * redeemable) but is certainly something a human should have decided on purpose.
  *
- * ⚠ THE DENOMINATOR IS THE FAUCET, NOT THE SPEND. GP is never printed or burned
- * here, so the only GP entering the world is the starting stake, the daily drip
- * and the one-time genesis juice. Everything else is players moving the same
- * coins between each other, and counting that would inflate the denominator with
- * churn until any issuance looked cheap.
+ * ⚠ THE DENOMINATOR IS THE FAUCET, NOT THE SPEND. The only GP entering the
+ * world is what GP_FAUCETS lists (snapshots.ts): the starting stake, both halves
+ * of the check-in drip and the one-time genesis juice. Everything else is
+ * players moving the same coins between each other, and counting that would
+ * inflate the denominator with churn until any issuance looked cheap.
  *
  * HEALTH, never an invariant — there is no correct ratio, only one worth reading
  * after moving a land knob. The supply-exhaustion line is the same idea on a
  * longer clock: at today's rate, how long until the 100-billion mark, and is
  * that a decade or a fortnight?
  */
-function faucetRatio(ev: EventRow[], mintedCents: number, days: number): string[] {
-  let gpFaucetCents = 0;
-  for (const e of ev)
-    if (e.gpCents && (e.type === "check_in" || e.type === "farm_registered"))
-      gpFaucetCents += e.gpCents;
-  gpFaucetCents += ECONOMY.SEED_JUICE * 100; // printed once, at genesis
+function faucetRatio(gpFaucetCents: number, mintedCents: number, days: number): string[] {
   const landUsd = (mintedCents / LT_CENTS) * LAND.PENCILLED_USD_PER_TOKEN;
   const gpUsd = gpFaucetCents / 100 / ECONOMY.GP_PER_DOLLAR;
   // Years to the target at today's rate. Reported in years because the answer is
@@ -1793,7 +1799,7 @@ function championships(db: DB): HealthSection {
         lines.push(
           `${" ".repeat(10)}entry fees ${gp(feesCents)} GP fund ` +
             `${((feesCents / purseCents) * 100).toFixed(0)}% of the purse · ` +
-            `the rest is juice (gacha + breed fees) · ` +
+            `the rest is juice (check-ins + gacha + breed fees) · ` +
             `net to the field ${gp(purseCents - feesCents)} GP`
         );
       // ── UNDER THE DOOR (round 43) ───────────────────────────────────────
@@ -1817,6 +1823,252 @@ function championships(db: DB): HealthSection {
       warn = `${division}: ${cancelled.length} of ${decided} crowns cancelled — the field isn't there`;
   }
   return { title: "CHAMPIONSHIPS", lines: lines.length ? lines : ["none run yet"], warn };
+}
+
+// ── ECONOMY ─────────────────────────────────────────────────────────────────
+
+/** One faucet or sink: its whole-run total and its last complete week. */
+export interface EconomyFlow {
+  label: string;
+  totalCents: number;
+  lastWeekCents: number;
+}
+
+/** One complete week of money, for the trend table. */
+export interface EconomyWeek {
+  week: number;
+  /** GP the juice pool took in that week, by `pool_accrual` source. */
+  juiceInCents: Record<string, number>;
+  /** Every crown purse settled that week, both divisions. */
+  pursePaidCents: number;
+  /** GP in the world at the week's last day. Null when no snapshot exists. */
+  supplyCents: number | null;
+  /** Null for a snapshot written before wallet spreads were recorded. */
+  walletMedianCents: { house: number; players: number } | null;
+}
+
+/** One crown type (division × blade), audited against its own door. */
+export interface EconomyCrown {
+  division: "major" | "juvenile";
+  format: string;
+  run: number;
+  cancelled: number;
+  avgField: number;
+  avgPurseCents: number;
+  /**
+   * The purse at which ONE win repays the entry fee, averaged over the crowns
+   * run, each at its own bracket size. breakEvenPurse × purseShareOf, the same
+   * math the MCP tool descriptions quote to players.
+   */
+  avgBreakEvenCents: number;
+  /** Crowns whose purse reached that crown's own one-win break-even. */
+  cleared: number;
+  paidWinners: number;
+  /** Paid winners who took less than their entry fee. */
+  underTheDoor: number;
+}
+
+/**
+ * THE MONEY, judged the same way every round (the economy rounds, 2026-10).
+ * Zane's question is "how big should the house be", and three rounds in a
+ * row (the drip share, feed costs, stud pricing) answer it by moving GP. This
+ * is the fixed measuring stick: what was printed and by whom, what was
+ * destroyed, how the supply and the wallets grew, what reached the purses,
+ * and whether a purse is big enough that winning a fight repays the door.
+ *
+ * Structured first and printed second, so `--json` carries the numbers a
+ * before/after comparison wants rather than strings to re-parse.
+ *
+ * COST: every read is a grouped SQL query or a small table (snapshots,
+ * tournaments). Nothing here walks `events` in JS.
+ */
+export interface EconomyReport {
+  created: EconomyFlow[];
+  destroyed: EconomyFlow[];
+  supply: { startDay: number; startCents: number; nowCents: number };
+  wallets: { house: WalletSpread; players: WalletSpread };
+  weeks: EconomyWeek[];
+  crowns: EconomyCrown[];
+}
+
+const PURSE_RULES = { major: PINTAKASI.PURSE, juvenile: JUVENILE_MAJOR.PURSE } as const;
+
+/** A snapshot as stored: one written before wallet spreads existed has none. */
+type StoredTopline = Omit<Topline, "wallets"> & { wallets?: Topline["wallets"] };
+
+export function economy(db: DB, topline: Topline, created: GpFlowDay[]): EconomyReport {
+  const perWeek = CALENDAR.DAYS_PER_WEEK;
+  // A week is complete once its last day has been played. Day N is the
+  // CURRENT day, so the world has finished day N − 1 at least; a snapshot
+  // exists for day N itself because the tick writes one at its end.
+  const lastFullWeek = Math.floor((topline.day + 1) / perWeek) - 1;
+  const weekOf = (day: number) => Math.floor(day / perWeek);
+
+  const rollUp = (rows: GpFlowDay[], flows: readonly { label: string }[]): EconomyFlow[] =>
+    flows.map(({ label }) => {
+      const mine = rows.filter((r) => r.label === label);
+      return {
+        label,
+        totalCents: mine.reduce((s, r) => s + r.cents, 0),
+        lastWeekCents: mine
+          .filter((r) => weekOf(r.day) === lastFullWeek)
+          .reduce((s, r) => s + r.cents, 0),
+      };
+    });
+
+  const shown = Math.min(DOCTOR.ECONOMY_WEEKS, lastFullWeek + 1);
+  const weeks = Array.from({ length: shown }, (_, i) => lastFullWeek - shown + 1 + i);
+
+  const juiceIn = db.all<{ source: string | null; week: number; cents: number }>(
+    sql`SELECT json_extract(data, '$.source') AS source, day_index / ${perWeek} AS week,
+               SUM(json_extract(data, '$.juicePoolCents')) AS cents
+        FROM events WHERE type = 'pool_accrual' AND day_index / ${perWeek} >= ${weeks[0] ?? 0}
+        GROUP BY source, week`
+  );
+  const pursePaid = db.all<{ week: number; cents: number }>(
+    sql`SELECT day_resolved / ${perWeek} AS week, SUM(purse_cents) AS cents
+        FROM tournaments WHERE status = 'completed' GROUP BY week`
+  );
+  // Only the rows the report reads: the first snapshot, and each week's last day.
+  const snapRows = db
+    .all<{ day: number; data: string }>(
+      sql`SELECT day_index AS day, data FROM snapshots
+          WHERE day_index = (SELECT MIN(day_index) FROM snapshots)
+             OR day_index % ${perWeek} = ${perWeek - 1}
+          ORDER BY day_index`
+    )
+    .map((r) => ({ day: r.day, top: JSON.parse(r.data) as StoredTopline }));
+  const snapOf = new Map(snapRows.map((r) => [r.day, r.top]));
+  const first = snapRows[0];
+
+  const crownRows = db.all<{
+    division: "major" | "juvenile";
+    format: string;
+    status: string;
+    fee: number;
+    bracket: number | null;
+    purse: number | null;
+    stood: number;
+    paid: number;
+    under: number;
+  }>(
+    sql`SELECT t.division, t.format, t.status, t.entry_fee AS fee, t.bracket_size AS bracket,
+               t.purse_cents AS purse,
+               SUM(CASE WHEN e.status NOT IN ('bumped', 'refunded') THEN 1 ELSE 0 END) AS stood,
+               SUM(CASE WHEN e.gp_won_cents > 0 THEN 1 ELSE 0 END) AS paid,
+               SUM(CASE WHEN e.gp_won_cents > 0 AND e.gp_won_cents < e.fee * 100
+                        THEN 1 ELSE 0 END) AS under
+        FROM tournaments t LEFT JOIN tournament_entries e ON e.tournament_id = t.id
+        WHERE t.status IN ('completed', 'cancelled')
+        GROUP BY t.id`
+  );
+  const crownKeys = [...new Set(crownRows.map((r) => `${r.division}/${r.format}`))].sort();
+  const crowns = crownKeys.map((key): EconomyCrown => {
+    const mine = crownRows.filter((r) => `${r.division}/${r.format}` === key);
+    const run = mine.filter((r) => r.status === "completed");
+    const { division, format } = mine[0];
+    const breakEvens = run.map(
+      (r) =>
+        breakEvenPurse(r.fee, purseShareOf(r.bracket ?? 2, PURSE_RULES[division], 1, "none")) * 100
+    );
+    const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+    return {
+      division,
+      format,
+      run: run.length,
+      cancelled: mine.length - run.length,
+      avgField: mean(run.map((r) => r.stood)),
+      avgPurseCents: Math.round(mean(run.map((r) => r.purse ?? 0))),
+      avgBreakEvenCents: Math.round(mean(breakEvens)),
+      cleared: run.filter((r, i) => (r.purse ?? 0) >= breakEvens[i]).length,
+      paidWinners: run.reduce((s, r) => s + r.paid, 0),
+      underTheDoor: run.reduce((s, r) => s + r.under, 0),
+    };
+  });
+
+  return {
+    created: rollUp(created, GP_FAUCETS),
+    destroyed: rollUp(gpFlowsByDay(db, GP_SINKS, -1), GP_SINKS),
+    supply: {
+      startDay: first?.day ?? 0,
+      startCents: first?.top.gpCents ?? 0,
+      nowCents: topline.gpCents,
+    },
+    wallets: topline.wallets,
+    weeks: weeks.map((week) => {
+      const snap = snapOf.get(week * perWeek + perWeek - 1);
+      const juiceInCents: Record<string, number> = {};
+      for (const r of juiceIn)
+        if (r.week === week && r.cents > 0)
+          // Pre-round-24 worlds left the breed cut unnamed (see stakerInflows).
+          juiceInCents[r.source ?? "breed"] = (juiceInCents[r.source ?? "breed"] ?? 0) + r.cents;
+      return {
+        week,
+        juiceInCents,
+        pursePaidCents: pursePaid.find((p) => p.week === week)?.cents ?? 0,
+        supplyCents: snap?.gpCents ?? null,
+        walletMedianCents: snap?.wallets
+          ? { house: snap.wallets.house.medianCents, players: snap.wallets.players.medianCents }
+          : null,
+      };
+    }),
+    crowns,
+  };
+}
+
+function economySection(e: EconomyReport): HealthSection {
+  const flowLines = (flows: EconomyFlow[]) =>
+    flows.map(
+      (f) =>
+        `  ${f.label.padEnd(26)} ${gp(f.totalCents).padStart(15)}   ` +
+        `${gp(f.lastWeekCents).padStart(12)} last week`
+    );
+  const total = (flows: EconomyFlow[]) => flows.reduce((s, f) => s + f.totalCents, 0);
+  const spread = (name: string, w: WalletSpread) =>
+    w.farms === 0
+      ? `${name.padEnd(13)} none`
+      : `${`${name} (${w.farms})`.padEnd(13)} median ${gp(w.medianCents)} · ` +
+        `p90 ${gp(w.p90Cents)} · max ${gp(w.maxCents)}`;
+  const sources = [...new Set(e.weeks.flatMap((w) => Object.keys(w.juiceInCents)))].sort();
+  const growth = e.supply.startCents > 0 ? e.supply.nowCents / e.supply.startCents : 0;
+  const lines = [
+    `created     ${gp(total(e.created))} GP over the run`,
+    ...flowLines(e.created),
+    e.destroyed.length
+      ? `destroyed   ${gp(total(e.destroyed))} GP over the run`
+      : "destroyed   0.00 GP · no sink in the ledger yet",
+    ...flowLines(e.destroyed),
+    `supply      ${gp(e.supply.startCents)} GP on day ${e.supply.startDay} → ` +
+      `${gp(e.supply.nowCents)} now (${growth.toFixed(1)}×)`,
+    `wallets     ${spread("house", e.wallets.house)}`,
+    `            ${spread("players", e.wallets.players)}`,
+    ...(e.weeks.length
+      ? [
+          `week  juice in (${sources.join(" · ") || "none"})  →  ` +
+            "purses paid · supply · wallet median house/players",
+        ]
+      : ["no complete week yet"]),
+    ...e.weeks.map(
+      (w) =>
+        `wk ${String(w.week).padStart(2)}  ` +
+        `${sources.map((s) => gp(w.juiceInCents[s] ?? 0)).join(" · ")}  →  ` +
+        `${gp(w.pursePaidCents)} · ${w.supplyCents === null ? "—" : gp(w.supplyCents)} · ` +
+        (w.walletMedianCents
+          ? `${gp(w.walletMedianCents.house)}/${gp(w.walletMedianCents.players)}`
+          : "— (snapshot predates wallet spreads)")
+    ),
+    e.crowns.length
+      ? "crown            run  cxl  field   avg purse   1-win break-even  cleared  under the door"
+      : "no crown decided yet",
+    ...e.crowns.map(
+      (c) =>
+        `${`${c.division}/${c.format}`.padEnd(15)} ${String(c.run).padStart(4)} ` +
+        `${String(c.cancelled).padStart(4)} ${c.avgField.toFixed(1).padStart(6)} ` +
+        `${gp(c.avgPurseCents).padStart(11)} ${gp(c.avgBreakEvenCents).padStart(18)} ` +
+        `${`${c.cleared}/${c.run}`.padStart(8)}  ${pct(c.underTheDoor, c.paidWinners)} of ${c.paidWinners}`
+    ),
+  ];
+  return { title: "ECONOMY", lines };
 }
 
 /**
@@ -2391,6 +2643,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
 
   const weather = weatherLine(db);
   const discoveryAudit = bladeDiscovery(db);
+  // Read once: the land valuation and the ECONOMY block both price the faucet.
+  const created = gpFlowsByDay(db, GP_FAUCETS);
+  const money = economy(db, topline, created);
   // Two things can be wrong with the card at once — too few opponents and
   // nobody playing the going — and a section carries one warn, so they share
   // it. Reading "A · B" beats losing one of them to the other.
@@ -2430,10 +2685,14 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     fightEconomy(db),
     // Land before the pool it feeds: STAKER POOL reports what a stake EARNS,
     // which is unreadable without knowing how much land the world made.
-    landSupply(db, topline, allEvents),
+    landSupply(db, topline, allEvents, created),
     replayHealth(db),
     stakerInflows(db, allEvents),
     championships(db),
+    // After the crowns it audits: CHAMPIONSHIPS says who stood and who got
+    // paid, ECONOMY says where that money was printed and whether it cleared
+    // the door.
+    economySection(money),
     adoption(db, allEvents),
     discovery(discoveryAudit),
   ];
@@ -2447,6 +2706,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     invariants,
     health,
     discovery: discoveryAudit,
+    economy: money,
     ok: invariants.every((i) => i.passed),
   };
 }

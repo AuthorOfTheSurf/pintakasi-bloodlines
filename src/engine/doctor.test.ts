@@ -8,6 +8,7 @@ import {
   gameState,
   lobbies,
   lobbyEntries,
+  snapshots,
   tournamentEntries,
   tournaments,
 } from "@/db/schema";
@@ -16,7 +17,19 @@ import { Bots } from "./bots";
 import { recordFight } from "./scout";
 import { Farms } from "./farms";
 import { seedWorld } from "./rng";
-import { ELEMENTS, FORMAT_NAMES, LT_CENTS, weatherOfDay, type FightFormat } from "./config";
+import {
+  breakEvenPurse,
+  ECONOMY,
+  ELEMENTS,
+  FORMAT_NAMES,
+  JUVENILE_MAJOR,
+  LT_CENTS,
+  PINTAKASI,
+  purseShareOf,
+  weatherOfDay,
+  type FightFormat,
+} from "./config";
+import { GP_FAUCETS, gpFlowsByDay } from "./snapshots";
 import {
   bladeDiscovery,
   diagnose,
@@ -950,5 +963,118 @@ describe("the discovery section", () => {
     // was aimed at. Parents' midpoint less variance, so it lands lower than
     // the sire — but decisively on the right side of an unaimed bird.
     expect(sel.foals).toBeGreaterThan(sel.sireBaseline);
+  });
+});
+
+/**
+ * THE ECONOMY BLOCK (the economy rounds, 2026-10). It is the measuring stick
+ * three rounds in a row are judged by, so each figure is checked against the
+ * table it summarizes, computed a second way here.
+ */
+describe("the economy block", () => {
+  // Two full weeks: both crown days have run, and the weekly table has
+  // complete weeks to print.
+  const w = world(14);
+  const report = diagnose(w.db, ":memory:");
+  const money = report.economy;
+  const allEvents = w.db.select().from(events).all();
+
+  test("GP created is listed per faucet and adds up to the whole world", () => {
+    expect(money.created.map((f) => f.label)).toEqual(GP_FAUCETS.map((f) => f.label));
+    // No sinks yet, so everything ever printed is still here.
+    expect(money.created.reduce((s, f) => s + f.totalCents, 0)).toBe(report.topline.gpCents);
+    const checkIns = allEvents.filter((e) => e.type === "check_in").length;
+    expect(checkIns).toBeGreaterThan(0);
+    const byLabel = new Map(money.created.map((f) => [f.label, f.totalCents]));
+    expect(byLabel.get("check-in drip to purses")).toBe(checkIns * ECONOMY.DRIP_TO_PURSES * 100);
+    expect(byLabel.get("check-in drip to wallets")).toBe(checkIns * ECONOMY.DAILY_DRIP * 100);
+    expect(byLabel.get("genesis juice")).toBe(ECONOMY.SEED_JUICE * 100);
+  });
+
+  test("no sink exists yet, and the report says so rather than printing an empty list", () => {
+    expect(money.destroyed).toEqual([]);
+    const lines = report.health.find((h) => h.title === "ECONOMY")!.lines.join("\n");
+    expect(lines).toContain("no sink in the ledger yet");
+  });
+
+  test("a sink reads off the ledger as the positive GP it destroyed", () => {
+    // The shape round 2's feed cost will take: a wallet debit nobody receives.
+    // `breed` stands in for it here only because it is a debit this world has.
+    const sink = { label: "feed", ledger: { event: "breed" as const } };
+    const debits = allEvents
+      .filter((e) => e.type === "breed")
+      .reduce((s, e) => s + (e.gpCents ?? 0), 0);
+    expect(debits).toBeLessThan(0);
+    const destroyed = gpFlowsByDay(w.db, [sink], -1).reduce((s, r) => s + r.cents, 0);
+    expect(destroyed).toBe(-debits);
+  });
+
+  test("wallets split the house stables from the player farms", () => {
+    const rows = w.db.select().from(farms).all();
+    const house = rows.filter((f) => f.isBot);
+    expect(money.wallets.house.farms).toBe(house.length);
+    expect(money.wallets.players.farms).toBe(rows.length - house.length);
+    expect(money.wallets.house.maxCents).toBe(
+      Math.max(...house.map((f) => f.gp * 100 + f.gpCents))
+    );
+  });
+
+  test("each complete week shows the juice it took in by source and the purses it paid", () => {
+    expect(money.weeks.map((wk) => wk.week)).toEqual([0, 1]);
+    const crowns = w.db.select().from(tournaments).all();
+    for (const wk of money.weeks) {
+      const checkIns = allEvents.filter(
+        (e) => e.type === "check_in" && Math.floor(e.dayIndex / 7) === wk.week
+      ).length;
+      expect(wk.juiceInCents.drip).toBe(checkIns * ECONOMY.DRIP_TO_PURSES * 100);
+      const paid = crowns
+        .filter(
+          (t) => t.status === "completed" && Math.floor((t.dayResolved ?? -1) / 7) === wk.week
+        )
+        .reduce((s, t) => s + (t.purseCents ?? 0), 0);
+      expect(wk.pursePaidCents).toBe(paid);
+      expect(wk.walletMedianCents).not.toBeNull();
+    }
+  });
+
+  test("a crown's break-even is the MCP's formula at that crown's own bracket", () => {
+    const run = w.db
+      .select()
+      .from(tournaments)
+      .all()
+      .filter((t) => t.status === "completed");
+    expect(run.length).toBeGreaterThan(0);
+    expect(money.crowns.length).toBeGreaterThan(0);
+    for (const crown of money.crowns) {
+      const mine = run.filter((t) => t.division === crown.division && t.format === crown.format);
+      const rules = crown.division === "major" ? PINTAKASI.PURSE : JUVENILE_MAJOR.PURSE;
+      const evens = mine.map(
+        (t) => breakEvenPurse(t.entryFee, purseShareOf(t.bracketSize ?? 2, rules, 1)) * 100
+      );
+      expect(crown.run).toBe(mine.length);
+      // A crown type can be all-cancelled in a world this small; it averages to 0, not NaN.
+      expect(crown.avgBreakEvenCents).toBe(
+        evens.length ? Math.round(evens.reduce((s, x) => s + x, 0) / evens.length) : 0
+      );
+      expect(crown.cleared).toBe(mine.filter((t, i) => (t.purseCents ?? 0) >= evens[i]).length);
+    }
+  });
+
+  test("a snapshot from before wallet spreads were recorded prints a dash, not a zero", () => {
+    const old = world(7);
+    for (const s of old.db.select().from(snapshots).all()) {
+      const stored = JSON.parse(s.data) as Record<string, unknown>;
+      delete stored.wallets;
+      old.db
+        .update(snapshots)
+        .set({ data: JSON.stringify(stored) })
+        .where(eq(snapshots.dayIndex, s.dayIndex))
+        .run();
+    }
+    const r = diagnose(old.db, ":memory:");
+    expect(r.economy.weeks[0].walletMedianCents).toBeNull();
+    expect(r.health.find((h) => h.title === "ECONOMY")!.lines.join("\n")).toContain(
+      "snapshot predates wallet spreads"
+    );
   });
 });

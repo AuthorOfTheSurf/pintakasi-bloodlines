@@ -6,6 +6,7 @@ import { seedGame, seedStarterFlock } from "@/db/seed-data";
 import { BARN, ECONOMY, LAND, LT_CENTS, barnCapacity } from "./config";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
+import { gpInWorldCents, gpOwedCents } from "./snapshots";
 
 function fresh() {
   const db = createDb(":memory:");
@@ -76,7 +77,40 @@ describe("check-in (the daily ritual)", () => {
     db.update(gameState).set({ dayIndex: 1 }).where(eq(gameState.id, 1)).run();
     expect(() => farmsApi.checkIn(dev.farmId)).not.toThrow();
   });
+
+  test("the house adds 200 GP to the crown purses at the same moment, without touching the 800", () => {
+    // The ruling, pinned as written: 800 to the wallet, 200 to the pot, 1,000 printed.
+    expect(ECONOMY.DAILY_DRIP).toBe(800);
+    expect(ECONOMY.DRIP_TO_PURSES).toBe(200);
+    expect(ECONOMY.DAILY_DRIP + ECONOMY.DRIP_TO_PURSES).toBe(ECONOMY.DRIP_GROSS);
+
+    const { db, dev, farmsApi } = fresh();
+    const juiceBefore = readState(db).juicePoolCents;
+    const worldBefore = gpInWorldCents(db);
+    const r = farmsApi.checkIn(dev.farmId);
+    expect(r.farm.gp).toBe(ECONOMY.STARTING_GP + 800);
+    expect(readState(db).juicePoolCents - juiceBefore).toBe(200 * 100);
+    // Printed, not moved: the world grew by the whole gross, and the ledger owes exactly that.
+    expect(gpInWorldCents(db) - worldBefore).toBe(1_000 * 100);
+    expect(gpOwedCents(db)).toBe(gpInWorldCents(db));
+    const accrual = db
+      .select()
+      .from(events)
+      .all()
+      .find((e) => e.type === "pool_accrual" && e.farmId === dev.farmId);
+    expect(JSON.parse(accrual?.data ?? "{}")).toEqual({
+      stakerPoolCents: 0,
+      juicePoolCents: 20_000,
+      source: "drip",
+    });
+  });
 });
+
+function readState(db: ReturnType<typeof createDb>) {
+  const state = db.select().from(gameState).where(eq(gameState.id, 1)).get();
+  if (!state) throw new Error("seedGame writes game_state row 1");
+  return state;
+}
 
 describe("land purchases (one-way, capped)", () => {
   // ⚠ THE WHOLE-TOKEN BOUNDARY (round 36). Land is MINTED in hundredths now,

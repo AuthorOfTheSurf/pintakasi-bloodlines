@@ -17,7 +17,7 @@ import { Flock, type BirdView } from "./flock";
 import { Game } from "./game";
 import { GameClock } from "./game-clock";
 import { Lobbies, type LobbySpec } from "./lobbies";
-import { gpFromFaucetsCents, gpInWorldCents } from "./snapshots";
+import { gpOwedCents, gpInWorldCents } from "./snapshots";
 import { Tournaments } from "./tournaments";
 
 /** Fixture lookups that a broken setup — not a failing rule — would miss. */
@@ -290,7 +290,7 @@ export function expectConserved(db: DB): void {
   const state = stateRow(db);
   expect(state.stakerPoolCents).toBeGreaterThanOrEqual(0);
   expect(state.juicePoolCents).toBeGreaterThanOrEqual(0);
-  expect(gpInWorldCents(db)).toBe(gpFromFaucetsCents(db));
+  expect(gpInWorldCents(db)).toBe(gpOwedCents(db));
 }
 
 /**
