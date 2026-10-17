@@ -289,6 +289,44 @@ describe("…and on a broken one", () => {
     for (const other of others(w.db, "crowns before Hatch Friday")) expect(other.passed).toBe(true);
   });
 
+  // A cancelled crown refunds every entrant while they still stand; one of them
+  // aging out weeks later is ordinary life, not the ordering bug.
+  test("a cancelled-crown refund for a bird that aged out later passes", () => {
+    const w = world(8);
+    const elder = makeBird(w.db, {
+      age: 9,
+      farmId: w.devId,
+      status: "retired",
+      retiredBy: "age",
+      retiredWeek: 6,
+    });
+    const crown = w.db
+      .insert(tournaments)
+      .values({
+        weekIndex: 0,
+        format: "b1",
+        division: "major",
+        seed: 1,
+        entryFee: 0,
+        status: "cancelled",
+        dayResolved: 6,
+      })
+      .returning()
+      .get()!;
+    w.db
+      .insert(tournamentEntries)
+      .values({
+        tournamentId: crown.id,
+        birdId: elder.id,
+        farmId: w.devId,
+        fee: 0,
+        dayEntered: 3,
+        status: "refunded",
+      })
+      .run();
+    expect(check(w.db, "crowns before Hatch Friday").passed).toBe(true);
+  });
+
   test("a bird double-carded on one day is caught", () => {
     const w = world(2);
     const entry = w.db.select().from(lobbyEntries).all()[0];

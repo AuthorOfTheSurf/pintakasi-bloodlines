@@ -538,9 +538,12 @@ function checkNoStrandedEscrow(db: DB): Invariant {
  *
  * The shape of the proof: ages only turn on Friday, the first day of a week,
  * and no bird can register for a week it was already retired in. So an entry
- * refunded for a bird whose retirement says `age` is a bird that stood all
- * week and was never allowed to fight — the ordering bug, and nothing else,
- * produces that row.
+ * refunded on a crown of week W, for a bird the calendar retired at the very
+ * next Friday (week W + 1), is a bird that stood all week and was never
+ * allowed to fight — the ordering bug's signature. Matching the week matters:
+ * a cancelled crown refunds every entrant while they are still active, and
+ * any of them may age out months later; without the week test that ordinary
+ * refund would fail the doctor on a healthy world (droid review of #39).
  */
 function checkCrownsBeforeCalendar(db: DB): Invariant {
   const agedOut = new Map(
@@ -551,11 +554,23 @@ function checkCrownsBeforeCalendar(db: DB): Invariant {
       .all()
       .map((b) => [b.id, b])
   );
+  const weekOf = new Map(
+    db
+      .select({ id: tournaments.id, week: tournaments.weekIndex })
+      .from(tournaments)
+      .all()
+      .map((t) => [t.id, t.week])
+  );
   const offenders = db
     .select()
     .from(tournamentEntries)
     .all()
-    .filter((e) => e.status === "refunded" && agedOut.has(e.birdId));
+    .filter((e) => {
+      if (e.status !== "refunded") return false;
+      const bird = agedOut.get(e.birdId);
+      const week = weekOf.get(e.tournamentId);
+      return bird !== undefined && week !== undefined && bird.retiredWeek === week + 1;
+    });
   const refunds = db
     .select({ n: count() })
     .from(tournamentEntries)
