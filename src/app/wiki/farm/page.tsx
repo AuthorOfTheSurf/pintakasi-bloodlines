@@ -65,9 +65,8 @@ export default function FarmPage() {
         The top also shows the <strong>game day</strong>, such as &ldquo;Game Friday&rdquo;. The
         game keeps its own calendar, set in the year {CALENDAR.START_YEAR}, so it never looks like
         today&apos;s date. Its weekday is the one that matters: eggs hatch on game Friday, and the
-        Majors run on game
-        {GameClock.weekdayOf(PINTAKASI.DAY_OF_WEEK)}. The game&apos;s Friday is often not your
-        Friday.
+        Majors run on game {GameClock.weekdayOf(PINTAKASI.DAY_OF_WEEK)}. The game&apos;s Friday is
+        often not your Friday.
       </p>
       <p>The four tables:</p>
       <div className="tablewrap">
