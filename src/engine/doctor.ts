@@ -178,6 +178,21 @@ const DOCTOR = {
   // career behind it before its earnings mean anything; a cover bought last
   // month would read every dear stud as a loss. The owner set 82.
   STUD_OUTCOME_CAREER_DAYS: 82,
+  // ── PLAYER FORTUNES (issue #28) ───────────────────────────────────────────
+  // The recent window the player block reads the card over, and the age a
+  // farm must reach before either of its warnings can fire. Four weeks holds
+  // a few thousand of a busy barn's fights, and a farm younger than that has
+  // not had time to go anywhere: a day-1 farm that spent its stake on gacha
+  // is shopping, not collapsing.
+  PLAYER_WINDOW_DAYS: 28,
+  // Past this share of its own peak gone, a player farm is going broke. The
+  // collapse that opened #28 read 98% (116,883 GP at week 16 to 1,908 at
+  // week 26); the same seed on the code that fixed it reads 0%, every player
+  // farm ending the season at its peak.
+  PLAYER_DRAWDOWN_WARN: 0.5,
+  // Below this many card fights in the window, a farm's GP per fight is a
+  // handful of coin flips: it neither gets judged nor sets the house range.
+  PLAYER_CARD_MIN_FIGHTS: 50,
   // ── COHORTS (simulate --latecomers) ───────────────────────────────────────
   // The farm ages, in whole weeks since joining, the same-age table compares
   // at. Doubling early, where the gap opens fastest, then every four weeks.
@@ -297,6 +312,8 @@ export interface DoctorReport {
   studs: StudMarketReport;
   /** Null unless a player farm joined after day 0. */
   cohorts: CohortReport | null;
+  /** Each player farm's drawdown and recent card, beside the house (PLAYER FORTUNES). */
+  players: PlayerFortunesReport;
   ok: boolean;
 }
 
@@ -2205,6 +2222,211 @@ function economySection(e: EconomyReport): HealthSection {
 }
 
 /**
+ * PLAYER FORTUNES (issue #28): is any player farm going broke, and is the
+ * card the reason? Auto-play once carded a flock that won 30% of its open
+ * fights until a 116,883 GP wallet was down to 1,908. The fix came sideways,
+ * from stud pricing and game value moving weak birds into claimers, so a
+ * change to either could bring the collapse back. This block is what makes
+ * that loud.
+ *
+ * Two readings per player farm, each with its own warning:
+ *   - DRAWDOWN: the wallet now against its highest end-of-day balance. The
+ *     history is rebuilt from the ledger exactly as COHORTS rebuilds it (see
+ *     there for why a card win is twice its gp_delta), but by day and only
+ *     for player farms. A farm whose rebuild misses farms.gp is named, not
+ *     judged: its history is wrong, so its peak is too.
+ *   - THE CARD: GP per daily-card fight over the last PLAYER_WINDOW_DAYS,
+ *     beside the house stables' range over the same days. It warns only when
+ *     BOTH the farm sits under every house stable AND it lost more on the card
+ *     than its check-ins paid it in the window. Under the range alone fires on
+ *     farms that are measured solvent: the 182-day seed-1 world on the fixed
+ *     code has the dev farm at -2.2 GP a fight against a house floor of -1.9,
+ *     losing 12,146 GP to the card against 21,600 of check-ins, and its weak
+ *     latecomers sit at -4 to -5. The collapse read -29.7 against -14.6 and
+ *     lost 90,748 against the same 21,600. Out-losing the drip alone
+ *     would fire on every busy barn the day a fight rake makes the whole card
+ *     negative. Together they say: this farm, not the world, is burning money
+ *     faster than it is paid to play.
+ *
+ * COST: one grouped query over the player farms' events and card wins, one
+ * for their window's check-ins (both indexed by farm), and one grouped pass
+ * over battle_log for the window's card. Measured at about 0.25 s on a
+ * 182-day world, inside the whole report's run-to-run noise.
+ */
+export interface PlayerFortune {
+  name: string;
+  joinedDay: number;
+  walletCents: number;
+  /** Highest end-of-day wallet since joining, from the ledger rebuild. */
+  peakCents: number;
+  peakDay: number;
+  /** False when the rebuilt wallet misses farms.gp: peak is untrustworthy. */
+  reconciled: boolean;
+  card: { fights: number; netCents: number; checkInCents: number };
+}
+
+export interface PlayerFortunesReport {
+  fromDay: number;
+  toDay: number;
+  /** GP per card fight in the window, in cents, across stables with a real sample. */
+  house: { stables: number; lowCents: number; highCents: number } | null;
+  farms: PlayerFortune[];
+}
+
+export function playerFortunes(db: DB): PlayerFortunesReport {
+  const toDay = stateRow(db).dayIndex;
+  const fromDay = Math.max(0, toDay - DOCTOR.PLAYER_WINDOW_DAYS + 1);
+  const allFarms = db.select().from(farms).all();
+  const players = allFarms.filter((f) => !f.isBot);
+  const ids = sql.join(
+    players.map((p) => sql`${p.id}`),
+    sql`, `
+  );
+  const moves = players.length
+    ? db.all<{ farm: string; day: number; cents: number }>(
+        sql`SELECT farm_id AS farm, day_index AS day, SUM(gp_cents) AS cents
+            FROM events WHERE farm_id IN (${ids}) AND gp_cents IS NOT NULL GROUP BY farm, day
+            UNION ALL
+            SELECT farm_id, day_index, SUM(2 * gp_delta_cents)
+            FROM battle_log WHERE farm_id IN (${ids}) AND result = 'win' AND lobby_id IS NOT NULL
+            GROUP BY farm_id, day_index`
+      )
+    : [];
+  const checkIns = players.length
+    ? db.all<{ farm: string; cents: number }>(
+        sql`SELECT farm_id AS farm, SUM(gp_cents) AS cents FROM events
+            WHERE farm_id IN (${ids}) AND type = 'check_in' AND day_index >= ${fromDay}
+            GROUP BY farm`
+      )
+    : [];
+  const cards = db.all<{ farm: string; fights: number; cents: number }>(
+    sql`SELECT farm_id AS farm, COUNT(*) AS fights, SUM(gp_delta_cents) AS cents
+        FROM battle_log WHERE lobby_id IS NOT NULL AND day_index >= ${fromDay} GROUP BY farm_id`
+  );
+  const cardOf = new Map(cards.map((c) => [c.farm, c]));
+  const checkInOf = new Map(checkIns.map((c) => [c.farm, c.cents]));
+  const daysOf = new Map<string, Map<number, number>>();
+  for (const m of moves) {
+    const days = daysOf.get(m.farm) ?? new Map<number, number>();
+    daysOf.set(m.farm, days);
+    days.set(m.day, (days.get(m.day) ?? 0) + m.cents);
+  }
+
+  const house = new Set(allFarms.filter((f) => f.isBot).map((f) => f.id));
+  const housePerFight = cards
+    .filter((c) => house.has(c.farm) && c.fights >= DOCTOR.PLAYER_CARD_MIN_FIGHTS)
+    .map((c) => c.cents / c.fights);
+
+  return {
+    fromDay,
+    toDay,
+    house: housePerFight.length
+      ? {
+          stables: housePerFight.length,
+          lowCents: Math.min(...housePerFight),
+          highCents: Math.max(...housePerFight),
+        }
+      : null,
+    farms: players.map((p) => {
+      const days = daysOf.get(p.id) ?? new Map<number, number>();
+      let run = 0;
+      let peakCents = 0;
+      let peakDay = p.createdDay;
+      for (const day of [...days.keys()].sort((a, b) => a - b)) {
+        run += days.get(day) ?? 0;
+        if (run > peakCents) [peakCents, peakDay] = [run, day];
+      }
+      const walletCents = p.gp * 100 + p.gpCents;
+      const card = cardOf.get(p.id);
+      return {
+        name: p.name,
+        joinedDay: p.createdDay,
+        walletCents,
+        peakCents,
+        peakDay,
+        reconciled: run === walletCents,
+        card: {
+          fights: card?.fights ?? 0,
+          netCents: card?.cents ?? 0,
+          checkInCents: checkInOf.get(p.id) ?? 0,
+        },
+      };
+    }),
+  };
+}
+
+const drawdownOf = (f: PlayerFortune) =>
+  f.peakCents > 0 ? Math.max(0, (f.peakCents - f.walletCents) / f.peakCents) : 0;
+
+/** The warnings one player farm earns, empty when it is fine or too young to judge. */
+function fortuneWarnings(f: PlayerFortune, r: PlayerFortunesReport): string[] {
+  if (r.toDay - f.joinedDay < DOCTOR.PLAYER_WINDOW_DAYS || !f.reconciled) return [];
+  const warns: string[] = [];
+  if (drawdownOf(f) > DOCTOR.PLAYER_DRAWDOWN_WARN)
+    warns.push(`${f.name} is ${pct(f.peakCents - f.walletCents, f.peakCents)} off its peak`);
+  const perFight = f.card.fights ? f.card.netCents / f.card.fights : 0;
+  if (
+    r.house &&
+    f.card.fights >= DOCTOR.PLAYER_CARD_MIN_FIGHTS &&
+    perFight < r.house.lowCents &&
+    -f.card.netCents > f.card.checkInCents
+  )
+    warns.push(
+      `${f.name} lost ${gp(-f.card.netCents)} GP on the card in ${DOCTOR.PLAYER_WINDOW_DAYS} days, ` +
+        `more than its check-ins paid, worse per fight than every house stable`
+    );
+  return warns;
+}
+
+export function playerFortunesSection(r: PlayerFortunesReport): HealthSection {
+  const perFight = (cents: number) => signed(cents / 100);
+  const house = r.house
+    ? `house card ${perFight(r.house.lowCents)} to ${perFight(r.house.highCents)} GP/fight ` +
+      `across ${r.house.stables} stables`
+    : `no house stable has ${DOCTOR.PLAYER_CARD_MIN_FIGHTS} card fights in the window yet`;
+  const line = (f: PlayerFortune) => {
+    const age = r.toDay - f.joinedDay;
+    const card = f.card.fights
+      ? `card ${perFight(f.card.netCents / f.card.fights)} GP/fight over ${f.card.fights.toLocaleString("en-US")} ` +
+        `(${signedGp(f.card.netCents)} vs ${signedGp(f.card.checkInCents)} check-ins)`
+      : "no card fights in the window";
+    const history = f.reconciled
+      ? `peak ${gp(f.peakCents)} (day ${f.peakDay}) · drawdown ${(drawdownOf(f) * 100).toFixed(1)}%`
+      : "ledger rebuild misses the wallet, no peak";
+    const young =
+      age < DOCTOR.PLAYER_WINDOW_DAYS
+        ? ` · day ${age} of ${DOCTOR.PLAYER_WINDOW_DAYS}, too young to judge`
+        : "";
+    return `${f.name.padEnd(28)} wallet ${gp(f.walletCents)} · ${history} · ${card}${young}`;
+  };
+  // Warned farms first, then by drawdown, then by the worst card, so a sim
+  // with dozens of latecomers still leads with its trouble.
+  const warned = new Map(r.farms.map((f) => [f, fortuneWarnings(f, r)]));
+  const cardOf = (f: PlayerFortune) => (f.card.fights ? f.card.netCents / f.card.fights : 0);
+  const ordered = [...r.farms].sort(
+    (a, b) =>
+      (warned.get(b)?.length ?? 0) - (warned.get(a)?.length ?? 0) ||
+      drawdownOf(b) - drawdownOf(a) ||
+      cardOf(a) - cardOf(b)
+  );
+  const shown = ordered.slice(0, DOCTOR.OFFENDER_SAMPLE);
+  const warns = [...warned.values()].flat();
+  return {
+    title: "PLAYER FORTUNES",
+    lines: r.farms.length
+      ? [
+          `days ${r.fromDay}-${r.toDay} · ${house}`,
+          ...shown.map(line),
+          ...(ordered.length > shown.length
+            ? [`… ${ordered.length - shown.length} more player farms`]
+            : []),
+        ]
+      : ["no player farm yet"],
+    warn: warns.length ? warns.join(" · ") : undefined,
+  };
+}
+
+/**
  * THE OPEN STUD MARKET (economy round 3). Owners set cover prices from the
  * floor to the cap, and the owner's question is circulation: does the market
  * move GP from rich barns to good breeders? So this reads three things: did
@@ -3376,6 +3598,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
   const money = economy(db, topline, created);
   const studs = studMarket(db);
   const cohortReport = cohorts(db);
+  const fortunes = playerFortunes(db);
   // Two things can be wrong with the card at once — too few opponents and
   // nobody playing the going — and a section carries one warn, so they share
   // it. Reading "A · B" beats losing one of them to the other.
@@ -3423,6 +3646,9 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // paid, ECONOMY says where that money was printed and whether it cleared
     // the door.
     economySection(money),
+    // Under ECONOMY's players row: that row is the wallets today, this one is
+    // whether any of them is on its way down and whether the card is why.
+    playerFortunesSection(fortunes),
     // Right after ECONOMY: that block says where GP was made and where it
     // went in bulk, this one says whether breeders are earning from the rich.
     studMarketSection(studs),
@@ -3448,6 +3674,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     economy: money,
     studs,
     cohorts: cohortReport,
+    players: fortunes,
     ok: invariants.every((i) => i.passed),
   };
 }
