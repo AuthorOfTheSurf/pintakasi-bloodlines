@@ -55,6 +55,12 @@ const LABEL_MEANINGS: Record<LogLabel, ReactNode> = {
       A move by a house stable that an AI model runs. You only see this on that stable&apos;s log.
     </>
   ),
+  unrecorded: (
+    <>
+      A move made before this world started keeping the log. Nobody wrote down who made it, so the
+      log does not guess.
+    </>
+  ),
 };
 
 export default function FarmPage() {
