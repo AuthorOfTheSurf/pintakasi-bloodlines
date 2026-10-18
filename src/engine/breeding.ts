@@ -23,6 +23,7 @@ import {
   expectedFoalStat,
 } from "./config";
 import { emit, fmtGp } from "./events";
+import { noteStudPrice } from "./farm-notes";
 import { creditCents, readFarm, readWorldState } from "./farms";
 import { overallGradeOf, type Grade } from "./grades";
 import { uniqueName } from "./naming";
@@ -393,6 +394,7 @@ export class Breeding {
       throw new Error(
         `A cover price is a whole number of GP from ${STUD_PRICE.FLOOR} to ${STUD_PRICE.CAP} — got ${priceGp}`
       );
+    const before = this.pricesOf(birdId);
     this.database
       .update(birds)
       .set(
@@ -400,6 +402,17 @@ export class Breeding {
       )
       .where(eq(birds.id, birdId))
       .run();
+    noteStudPrice(
+      this.database,
+      {
+        farmId: this.farmId,
+        birdId,
+        name: bird.name,
+        from: before.pendingPrice ?? before.price,
+        to: priceGp,
+      },
+      Boolean(bird.listedStud)
+    );
     return { stud: bird.name, ...this.pricesOf(birdId) };
   }
 

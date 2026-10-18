@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, max } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { events, gameState } from "@/db/schema";
+import { abortBuffered, beginBuffered, endBuffered, sawEvent } from "./actor";
 
 /**
  * The unified ledger (round 11): every meaningful thing that happens —
@@ -100,14 +101,34 @@ export function withBufferedEvents<T>(database: DB, dayIndex: number, fn: () => 
   if (buffers.has(database)) throw new Error("Event buffering cannot be nested for the same world");
   const buffer: EventBuffer = { dayIndex, rows: [] };
   buffers.set(database, buffer);
+  beginBuffered(database);
   try {
     const result = fn();
-    for (let i = 0; i < buffer.rows.length; i += EVENT_INSERT_CHUNK)
-      database
+    // The farm log needs the id each buffered row received, so the chunks
+    // come back with RETURNING. Same rows, same order, same ids as a plain
+    // insert. Sorted because rowids rise in VALUES order, and sorting makes
+    // that an observation instead of an assumption.
+    const ids: number[] = [];
+    for (let i = 0; i < buffer.rows.length; i += EVENT_INSERT_CHUNK) {
+      const got = database
         .insert(events)
         .values(buffer.rows.slice(i, i + EVENT_INSERT_CHUNK))
-        .run();
+        .returning({ id: events.id })
+        .all();
+      for (const id of got.map((r) => r.id).sort((a, b) => a - b)) ids.push(id);
+    }
+    const before =
+      ids.length > 0
+        ? ids[0] - 1
+        : (database
+            .select({ id: max(events.id) })
+            .from(events)
+            .get()?.id ?? 0);
+    endBuffered(database, ids, before);
     return result;
+  } catch (err) {
+    abortBuffered(database);
+    throw err;
   } finally {
     // On a throw no rows have been flushed, and Game.tick's outer transaction
     // rolls back the rest of the day. Never leave a dead buffer attached.
@@ -140,8 +161,13 @@ export function emit(database: DB, input: EmitInput): void {
     message: input.message,
     data: input.data === undefined ? null : JSON.stringify(input.data),
   };
-  if (buffer) buffer.rows.push(row);
-  else database.insert(events).values(row).run();
+  if (buffer) {
+    buffer.rows.push(row);
+    sawEvent(database, buffer.rows.length - 1);
+  } else {
+    const { lastInsertRowid } = database.insert(events).values(row).run();
+    sawEvent(database, Number(lastInsertRowid));
+  }
 }
 
 /** Format centi-GP for messages: whole GP stay whole, fractions show cents. */

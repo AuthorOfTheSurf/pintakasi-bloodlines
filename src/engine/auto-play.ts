@@ -1,6 +1,9 @@
 import { and, eq, gt, max } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { birds, events, farms, gameState } from "@/db/schema";
+import { withActor, type Actor } from "./actor";
+import { honestDaySentence } from "./day-summary";
+import { FarmNotes } from "./farm-notes";
 import {
   bestShape,
   chaseCrowns,
@@ -295,7 +298,26 @@ function studAsks(db: DB, farmId: string) {
   );
 }
 
-export function playMyDay(db: DB, farmId: string): HonestDayReport {
+/**
+ * `via` says which door asked: the farm page's button or Claude's
+ * play_my_day tool. The run leaves one summary line on the farm log, and
+ * every move the day makes links back to it.
+ */
+export function playMyDay(
+  db: DB,
+  farmId: string,
+  via: "button" | "mcp" = "button"
+): HonestDayReport {
+  return FarmNotes.run(
+    db,
+    "play_my_day",
+    { kind: "autoplay", via, farmId },
+    () => playAndReport(db, farmId),
+    (report) => ({ message: honestDaySentence(report), data: report })
+  );
+}
+
+function playAndReport(db: DB, farmId: string): HonestDayReport {
   const farmsApi = new Farms(db);
   const before = farmsApi.view(farmsApi.rowById(farmId));
   const lastEvent =
@@ -418,13 +440,20 @@ const HONEST_ENTRY_RATE = 1;
 
 /** Every player-owned (non-bot) stable plays its honest day. */
 export function playAllHonestDays(db: DB, discoveryPolicy: DiscoveryPolicy = "current"): void {
-  for (const farm of ownedFarms(db)) playHonestDay(db, farm.id, discoveryPolicy);
+  for (const farm of ownedFarms(db))
+    withActor(db, simAutoplay(farm.id), () => playHonestDay(db, farm.id, discoveryPolicy));
 }
 
 /** …and shops the claimer board once the night's tags are up (see above). */
 export function shopAllClaimers(db: DB): void {
-  for (const farm of ownedFarms(db)) shopClaimers(db, farm.id);
+  for (const farm of ownedFarms(db))
+    withActor(db, simAutoplay(farm.id), () => shopClaimers(db, farm.id));
 }
+
+// The sim's stand-in for a player who never logged in. It plays the same day
+// Play my day does, so the owner sees the same label; `via: "sim"` keeps the
+// two apart for anyone analysing the log.
+const simAutoplay = (farmId: string): Actor => ({ kind: "autoplay", via: "sim", farmId });
 
 const ownedFarms = (db: DB) =>
   db

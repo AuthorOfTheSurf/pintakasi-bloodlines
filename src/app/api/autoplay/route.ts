@@ -18,5 +18,5 @@ export async function POST(req: Request) {
       { status: 401 }
     );
   }
-  return NextResponse.json(playMyDay(db(), farmId));
+  return NextResponse.json(playMyDay(db(), farmId, "button"));
 }

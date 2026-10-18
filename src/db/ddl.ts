@@ -252,6 +252,49 @@ CREATE TABLE IF NOT EXISTS alpha_applications (
   claimed_at TEXT
 );
 
+-- THE FARM LOG (2026-10). Two additive tables, created at boot like
+-- alpha_applications, so the live world gains them with no reseed. Neither is
+-- world state: nothing in the engine reads them back, and worldhash sees them
+-- only as new tables.
+--
+-- actor_spans says WHO was acting while a run of consecutive events was
+-- written. One row per run, not per event: the actor changes about fifty times
+-- a sim day while events number in the hundreds, and a per-event tag would
+-- store the same fact over and over. first_event_id is the rowid, so "which
+-- span holds event N" is one seek. Ranges never overlap. Events from before
+-- the log began have no span; the reader calls those the game's.
+CREATE TABLE IF NOT EXISTS actor_spans (
+  first_event_id INTEGER PRIMARY KEY,
+  last_event_id INTEGER NOT NULL,
+  actor_kind TEXT NOT NULL CHECK (actor_kind IN ('player','autoplay','bot','game','steward')),
+  via TEXT,
+  actor_farm_id TEXT,
+  run_id INTEGER
+);
+
+-- farm_notes holds a farm's log lines that are not ledger rows: a bird
+-- named, a stud price set, and the one-line summary a button press leaves
+-- (Play my day, Enter card). after_event_id places each note in the same
+-- order as the events around it. The actor is copied onto the note because a
+-- note has no event id for a span to cover. visibility is stored so a public
+-- reader later is a new query, not a migration.
+CREATE TABLE IF NOT EXISTS farm_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  farm_id TEXT NOT NULL,
+  day_index INTEGER NOT NULL,
+  after_event_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  bird_id TEXT,
+  message TEXT NOT NULL,
+  data TEXT,
+  visibility TEXT NOT NULL CHECK (visibility IN ('owner','public')),
+  actor_kind TEXT,
+  via TEXT,
+  actor_farm_id TEXT,
+  run_id INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_farm_notes_farm ON farm_notes(farm_id, after_event_id);
+
 -- ── INDEXES (round 35) ─────────────────────────────────────────────────────
 -- There were NONE until now, on any table, and it had quietly become the
 -- single biggest cost in the project. Every lookup on a non-key column was a

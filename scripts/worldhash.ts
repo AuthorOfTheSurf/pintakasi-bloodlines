@@ -35,6 +35,10 @@
  * column from the hash so the rest of the row still has to match exactly.
  * Prefer excluding one column over skipping a whole table: the point of the
  * exercise is that everything you did NOT mean to change is proven unchanged.
+ *
+ * A round that adds a whole TABLE has no column to keep: `--exclude=farm_notes.*`
+ * drops the table from both sides. Only ever for a table the baseline does not
+ * have; an existing table excluded whole proves nothing about it.
  */
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -182,7 +186,7 @@ function hashWorld(path: string): Map<string, TableHash> {
     .all() as { name: string }[];
 
   for (const { name } of tables) {
-    if (SKIP_TABLES.has(name)) continue;
+    if (SKIP_TABLES.has(name) || excluded.get(name)?.has("*")) continue;
     const cols = (db.prepare(`PRAGMA table_info(${name})`).all() as { name: string }[])
       .map((c) => c.name)
       .filter((c) => !excluded.get(name)?.has(c));

@@ -1,5 +1,5 @@
-import { game, handle } from "../../shared";
+import { act } from "../../shared";
 
 export async function POST(req: Request) {
-  return handle(() => game(req).gacha.roll());
+  return act(req, (g) => g.gacha.roll());
 }

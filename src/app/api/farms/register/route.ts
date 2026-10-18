@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CLOSED_REGISTRATION_MESSAGE, openRegistrationEnabled } from "@/app/doors";
 import { db } from "@/db/client";
+import { withActor } from "@/engine/actor";
 import { seedStarterFlock } from "@/db/seed-data";
 import { Farms } from "@/engine/farms";
 import { freshSeed } from "@/engine/rng";
@@ -14,8 +15,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const database = db();
-    const { farm, apiKey } = new Farms(database).register(body);
-    seedStarterFlock(database, farm.id, { seed: freshSeed() });
+    // No farm is calling yet, so nobody to credit but the game itself.
+    const { farm, apiKey } = withActor(database, { kind: "game" }, () => {
+      const made = new Farms(database).register(body);
+      seedStarterFlock(database, made.farm.id, { seed: freshSeed() });
+      return made;
+    });
     return NextResponse.json({ farm, apiKey, note: "Save the apiKey — it is your login." });
   } catch (err) {
     return NextResponse.json(

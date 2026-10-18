@@ -1,3 +1,4 @@
+import { withActor } from "./actor";
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
@@ -447,10 +448,14 @@ describe("…and on a broken one", () => {
     // longer depends on a bot's appetite for land it hasn't spent yet.
     const w = world(3);
     const farmsApi = new Farms(w.db);
-    farmsApi.buyLand(w.devId, 1); // a LEDGERED mint — the invariant's other half
+    // As the player, the way a route would make these moves: the full report
+    // below also checks that every move after the first tick has an actor.
+    const asPlayer = (fn: () => void) =>
+      withActor(w.db, { kind: "player", via: "web", farmId: w.devId }, fn);
+    asPlayer(() => farmsApi.buyLand(w.devId, 1)); // a LEDGERED mint — the invariant's other half
     const before = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
     expect(before.landTokensCents).toBeGreaterThanOrEqual(LT_CENTS);
-    farmsApi.stake(w.devId, 1);
+    asPlayer(() => farmsApi.stake(w.devId, 1));
     const after = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
     expect(after.landTokensCents).toBe(before.landTokensCents - LT_CENTS);
     expect(after.stakedLandCents).toBe(before.stakedLandCents + LT_CENTS);
