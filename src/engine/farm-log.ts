@@ -28,6 +28,10 @@ export const LOG_LABELS = {
   another_farm: "another farm",
   house: "house stable",
   llm_barn: "LLM barn",
+  // A move made before this world kept the log (alpha-1's first weeks). Its
+  // maker was never written down, and guessing would put words in the log's
+  // mouth: a player's own early check-ins are not the game's.
+  unrecorded: "before the log",
 } as const;
 export type LogLabel = keyof typeof LOG_LABELS;
 export const LOG_LABEL_KEYS = Object.keys(LOG_LABELS) as LogLabel[];
@@ -37,13 +41,13 @@ export const LOG_LABEL_KEYS = Object.keys(LOG_LABELS) as LogLabel[];
  * actor filter runs in the database and the admin ledger can use the same
  * rule over every farm at once. `viewer` is the farm whose log this is.
  *
- * Nothing on the span, or a game or steward actor, reads as the game. That
- * covers events from before the log existed, so the live world's history
- * reads as the game's rather than as nobody's.
+ * A game or steward actor reads as the game. No actor at all means the move
+ * predates the log, and it says so rather than guess.
  */
 export function labelSql(viewer: SQL): SQL {
   return sql`CASE
-    WHEN actor_kind IS NULL OR actor_kind IN ('game', 'steward') THEN 'game'
+    WHEN actor_kind IS NULL THEN 'unrecorded'
+    WHEN actor_kind IN ('game', 'steward') THEN 'game'
     WHEN actor_farm_id IS NOT ${viewer} THEN 'another_farm'
     WHEN actor_kind = 'player' THEN 'you'
     WHEN actor_kind = 'autoplay' THEN 'play_my_day'
