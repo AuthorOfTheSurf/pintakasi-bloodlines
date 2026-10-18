@@ -12,7 +12,8 @@ import { Bots } from "./bots";
 import { STUD_PRICE } from "./config";
 import { diagnose } from "./doctor";
 import { emit, withBufferedEvents } from "./events";
-import { eventActors, farmLogPage, type FarmLogEntry } from "./farm-log";
+import { eventActors, farmLogPage } from "./farm-log";
+import type { FarmLogEntry } from "./log-labels";
 import { FarmNotes } from "./farm-notes";
 import { Gacha } from "./gacha";
 import { mulberry32 } from "./rng";
@@ -241,7 +242,7 @@ describe("actor frames", () => {
   // AUTOINCREMENT counter rolls back with the transaction), and the next span
   // starting on that id collides with the ghost on actor_spans' primary key:
   // the next move throws "UNIQUE constraint failed: actor_spans.first_event_id".
-  test.todo("a transaction that rolls back inside a frame leaves no span behind", () => {
+  test("a transaction that rolls back inside a frame leaves no span behind", () => {
     const w = world();
     expect(() =>
       withActor(w.db, asPlayer(w.devId), () =>
@@ -371,11 +372,12 @@ describe("the lines the ledger does not carry", () => {
       via: "api",
       message: `Changed Nakatayo's stud price from ${STUD_PRICE.FLOOR} GP to ${up} GP a cover. The new price starts at the next day tick.`,
     });
-    // A never-priced rooster reads at the floor through the player's door.
+    // A never-priced rooster's first price is a first price, not a change from
+    // the floor, and an unlisted rooster's price posts at once.
     expect(onUnlisted).toMatchObject({
       kind: "stud_price",
       who: "you",
-      message: `Changed Bago's stud price from ${STUD_PRICE.FLOOR} GP to ${up} GP a cover.`,
+      message: `Set Bago's first stud price: ${up} GP a cover.`,
     });
   });
 
@@ -385,24 +387,21 @@ describe("the lines the ledger does not carry", () => {
   // priceStuds passes the raw column. A never-priced rooster therefore reads
   // "Set X's first stud price" when a bot or Play my day prices it and
   // "Changed X's stud price from <floor> GP" when its owner does.
-  test.todo(
-    "a never-priced rooster's first price reads the same from the owner as from the house",
-    () => {
-      const w = world();
-      const bird = makeBird(w.db, {
-        status: "retired",
-        sex: "male",
-        name: "Bago",
-        studPrice: null,
-      });
-      withActor(w.db, asPlayer(w.devId), () =>
-        w.dev.breeding.setStudPrice(bird.id, STUD_PRICE.FLOOR * 2)
-      );
-      expect(logOf(w.db, w.devId)[0].message).toBe(
-        `Set Bago's first stud price: ${STUD_PRICE.FLOOR * 2} GP a cover.`
-      );
-    }
-  );
+  test("a never-priced rooster's first price reads the same from the owner as from the house", () => {
+    const w = world();
+    const bird = makeBird(w.db, {
+      status: "retired",
+      sex: "male",
+      name: "Bago",
+      studPrice: null,
+    });
+    withActor(w.db, asPlayer(w.devId), () =>
+      w.dev.breeding.setStudPrice(bird.id, STUD_PRICE.FLOOR * 2)
+    );
+    expect(logOf(w.db, w.devId)[0].message).toBe(
+      `Set Bago's first stud price: ${STUD_PRICE.FLOOR * 2} GP a cover.`
+    );
+  });
 
   test("a house barn pricing its own stud writes the same sentence, credited to the house", () => {
     const w = world();

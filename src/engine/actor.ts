@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { actorSpans, farmNotes, type ActorKind } from "@/db/schema";
 
@@ -92,13 +93,15 @@ function trailOf(db: DB): Trail {
   return trail;
 }
 
-/** Write (or, mid-tick, queue) the span collecting events right now. */
-function closeSpan(db: DB, trail: Trail): void {
+/**
+ * Stop collecting into the open span. Mid-tick it is queued for the flush.
+ * Outside a tick it is already in the table: `sawEvent` writes it row by row.
+ */
+function closeSpan(trail: Trail): void {
   const span = trail.open;
   if (!span) return;
   trail.open = null;
   if (trail.buffered) trail.buffered.spans.push(span);
-  else writeSpans(db, [span]);
 }
 
 function writeSpans(db: DB, spans: OpenSpan[]): void {
@@ -128,7 +131,7 @@ function writeSpans(db: DB, spans: OpenSpan[]): void {
  */
 export function withActor<T>(db: DB, actor: Actor, fn: () => T): T {
   const trail = trailOf(db);
-  closeSpan(db, trail);
+  closeSpan(trail);
   trail.frames.push(toStored(actor));
   try {
     const result = fn();
@@ -136,7 +139,7 @@ export function withActor<T>(db: DB, actor: Actor, fn: () => T): T {
       throw new Error("withActor wraps synchronous engine work; an await inside it mixes actors");
     return result;
   } finally {
-    closeSpan(db, trail);
+    closeSpan(trail);
     trail.frames.pop();
   }
 }
@@ -151,6 +154,12 @@ export function currentActor(db: DB): StoredActor | null {
  * a tick, its id outside one. A span grows only while the actor is the same
  * and the positions are consecutive, so an event another handle slipped in
  * between starts a fresh span instead of being claimed by this one.
+ *
+ * ⚠ OUTSIDE A TICK THE SPAN IS WRITTEN WITH ITS EVENT, not when the frame
+ * closes. A frame can wrap a transaction that rolls back. Written at close,
+ * the span outlived its rolled-back event, and SQLite hands that event's id
+ * to the next one, so the next span hit the stale row's primary key. Written
+ * alongside the event, it rolls back with it.
  */
 export function sawEvent(db: DB, position: number): void {
   const trail = trails.get(db);
@@ -161,16 +170,22 @@ export function sawEvent(db: DB, position: number): void {
   const open = trail.open;
   if (open && open.actor === actor && position === open.last + 1) {
     open.last = position;
+    if (!trail.buffered)
+      db.update(actorSpans)
+        .set({ lastEventId: position })
+        .where(eq(actorSpans.firstEventId, open.first))
+        .run();
     return;
   }
-  closeSpan(db, trail);
+  closeSpan(trail);
   trail.open = { actor, first: position, last: position };
+  if (!trail.buffered) writeSpans(db, [trail.open]);
 }
 
 /** events.withBufferedEvents calls this on the way in. */
 export function beginBuffered(db: DB): void {
   const trail = trailOf(db);
-  closeSpan(db, trail);
+  closeSpan(trail);
   trail.buffered = { spans: [], notes: [], lastPosition: -1 };
 }
 
@@ -181,7 +196,7 @@ export function beginBuffered(db: DB): void {
  */
 export function endBuffered(db: DB, ids: readonly number[], before: number): void {
   const trail = trailOf(db);
-  closeSpan(db, trail);
+  closeSpan(trail);
   const buffered = trail.buffered;
   trail.buffered = null;
   if (!buffered) return;

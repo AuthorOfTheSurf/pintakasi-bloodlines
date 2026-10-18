@@ -394,7 +394,13 @@ export class Breeding {
       throw new Error(
         `A cover price is a whole number of GP from ${STUD_PRICE.FLOOR} to ${STUD_PRICE.CAP} — got ${priceGp}`
       );
-    const before = this.pricesOf(birdId);
+    // The raw columns, not pricesOf: that reads a never-priced rooster as
+    // standing at the floor, and his first price would then read as a change.
+    const before = this.database
+      .select({ studPrice: birds.studPrice, studPriceNext: birds.studPriceNext })
+      .from(birds)
+      .where(eq(birds.id, birdId))
+      .get();
     this.database
       .update(birds)
       .set(
@@ -408,7 +414,7 @@ export class Breeding {
         farmId: this.farmId,
         birdId,
         name: bird.name,
-        from: before.pendingPrice ?? before.price,
+        from: before?.studPriceNext ?? before?.studPrice ?? null,
         to: priceGp,
       },
       Boolean(bird.listedStud)
