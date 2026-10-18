@@ -124,7 +124,10 @@ export default function FarmPage() {
             </tr>
             <tr>
               <td>Retired</td>
-              <td>Your breeding stock, with the full stat sheet showing</td>
+              <td>
+                Your breeding stock, with the full stat sheet showing. Click a retired rooster to
+                stand him at stud and set his price (see <a href="#studs">Your studs</a>).
+              </td>
             </tr>
             <tr>
               <td>Eggs</td>
@@ -200,6 +203,50 @@ export default function FarmPage() {
         day is spent. You can&apos;t take it back. The fights go off when the day ends.
       </div>
 
+      <h2 id="studs">Your studs</h2>
+      <p>
+        A retired rooster can <strong>stand at stud</strong>. That means other farms can pay to
+        breed their hens to him. Each time one does, you get a share of what they paid. Open the{" "}
+        <strong>Retired</strong> view and click a rooster. A panel called <strong>At stud</strong>{" "}
+        opens above his form book. From there you can:
+      </p>
+      <ul>
+        <li>
+          <strong>List him at stud.</strong> The first time costs {studSeatLt} LT, once. It is
+          spent, not staked. If you pull him and list him again later, it is free. The land bought
+          his seat, not a rent. The button is greyed out if you don&apos;t have {studSeatLt} LT
+          loose.
+        </li>
+        <li>
+          <strong>Set his cover price.</strong> A <strong>cover</strong> is one breeding. The price
+          is a whole number of GP from {STUD_PRICE.FLOOR} to {STUD_PRICE.CAP.toLocaleString()}. A
+          rooster you never priced costs {STUD_PRICE.FLOOR} GP, the floor.
+        </li>
+        <li>
+          <strong>Pull him from stud.</strong> No new farm can buy a cover. Covers already bought
+          still happen.
+        </li>
+      </ul>
+      <div className="callout warn">
+        <b>Play my day lists every retired rooster. </b>That includes one you pulled. If you want a
+        rooster to stay off the stud list, don&apos;t press Play my day, or pull him again after it
+        has played.
+      </div>
+      <p>
+        <strong>When a new price starts.</strong> If he is not standing yet, a new price starts at
+        once, because no buyer can see him. So set the price first, then list him, and he never
+        sells a cover at the floor by mistake. If he is already standing, a new price waits for the
+        next tick (when the game day ends). Until then the panel, and his row in the table, show the
+        waiting price beside the one buyers pay today. Why wait: every buyer should see one price
+        all day, and the price a buyer reads should be the price he pays.
+      </p>
+      <p>
+        Claude can do the same things with its stud tools. Both ways change the same rooster, and
+        each change shows up in your farm log as <strong>{LOG_LABELS.you}</strong>. See{" "}
+        <Link href="/wiki/breeding">Breeding</Link> for how a cover&apos;s price is split and how to
+        pick a good one.
+      </p>
+
       <h2>Play my day for me</h2>
       <p>
         This button plays one whole day for your farm, right now. It does what a careful player
@@ -215,9 +262,9 @@ export default function FarmPage() {
           roll, because breeding is the better way to fill a barn.
         </li>
         <li>
-          <strong>Stands your retired roosters at stud.</strong> It prices each one the way an
-          average stable would, then lists him. The first listing of a rooster costs {studSeatLt}{" "}
-          LT.
+          <strong>Stands your retired roosters at stud</strong>, even one you pulled. It prices each
+          new one the way an average stable would, then lists him. The first listing of a rooster
+          costs {studSeatLt} LT; listing him again is free.
         </li>
         <li>
           <strong>On Hatch Friday, reprices your studs.</strong> It looks at how many covers each
