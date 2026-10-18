@@ -44,6 +44,8 @@ import {
   type FightFormat,
 } from "@/engine/config";
 import { splitBreedFee, type FeeSplit } from "@/engine/breeding";
+import type { Actor, StoredActor } from "@/engine/actor";
+import { eventActors } from "@/engine/farm-log";
 import { GameClock } from "@/engine/game-clock";
 import { gradeColor, overallGradeOf, type Grade } from "@/engine/grades";
 import { ageOf } from "@/engine/lifecycle";
@@ -81,6 +83,21 @@ export const dynamic = "force-dynamic";
  */
 
 const LEDGER_LIMIT = 3000;
+
+// The ledger's "who" column, by the door an actor came through. `satisfies`
+// makes a new door on `Actor` fail to compile until it has words here; the
+// wider annotation is because the stored `via` is a plain string.
+type DoorOf<K extends Actor["kind"]> = Extract<Actor, { kind: K; via: string }>["via"];
+const PLAYER_DOOR: Record<string, string> = {
+  web: "web",
+  api: "API",
+  mcp: "Claude",
+} satisfies Record<DoorOf<"player">, string>;
+const AUTOPLAY_DOOR: Record<string, string> = {
+  button: "Play my day",
+  mcp: "Play my day · Claude",
+  sim: "auto-play (sim)",
+} satisfies Record<DoorOf<"autoplay">, string>;
 const FIGHT_LIMIT = 1000;
 function gpFmt(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -734,6 +751,10 @@ export default async function Admin({
     .limit(LEDGER_LIMIT)
     .all()
     .reverse();
+  const ledgerActors = eventActors(
+    d,
+    ledgerEvents.map((e) => e.id)
+  );
   // Wall-clock ms per simulated day — written by scripts/simulate.ts only, so
   // this is empty (and its chart absent) on a live world.
   const timingRows = d.select().from(simTimings).all();
@@ -1480,6 +1501,25 @@ export default async function Admin({
   // kind of small confusion that costs somebody ten minutes.
   const ledgerType = (type: string, lt: number | null) =>
     type === "purse_payout" && lt ? "land pot" : (TYPE_LABELS[type] ?? type);
+  // Who made each ledger move, in a steward's words. The acting farm is named
+  // when a player's own move landed on another farm's row (a cover bought on
+  // somebody's stud), and always for a bot, since "house" alone names nobody.
+  const actorText = (a: StoredActor | undefined, rowFarm: string | null): string => {
+    if (!a) return "—";
+    const elsewhere = a.farmId && a.farmId !== rowFarm ? ` · ${fname(a.farmId)}` : "";
+    switch (a.kind) {
+      case "player":
+        return `player · ${PLAYER_DOOR[a.via ?? ""] ?? a.via}${elsewhere}`;
+      case "autoplay":
+        return `${AUTOPLAY_DOOR[a.via ?? ""] ?? `auto-play · ${a.via}`}${elsewhere}`;
+      case "bot":
+        return `${a.via === "llm" ? "LLM barn" : "house"} · ${fname(a.farmId)}`;
+      case "steward":
+        return "steward";
+      case "game":
+        return "game";
+    }
+  };
   const ledgerRows: LedgerRowUI[] = ledgerEvents.map((e) => ({
     id: e.id,
     day: e.dayIndex,
@@ -1487,6 +1527,7 @@ export default async function Admin({
     farm: fname(e.farmId),
     farmP: fcolors(e.farmId).P,
     farmS: fcolors(e.farmId).S,
+    actor: actorText(ledgerActors.get(e.id), e.farmId),
     message: e.message,
     gp: e.gpCents === null ? null : e.gpCents / 100,
     lt: e.lt,

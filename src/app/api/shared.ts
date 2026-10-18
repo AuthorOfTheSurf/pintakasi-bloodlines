@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { Farms } from "@/engine/farms";
+import { withActor } from "@/engine/actor";
 import { Game } from "@/engine/game";
 import { keyFromCookieHeader } from "../session";
 
@@ -33,6 +34,27 @@ export function game(req?: Request): Game {
   const sole = devSoleFarm(farmsApi);
   if (sole) return new Game(database, sole.id);
   throw new Error("No farm on this request — pass your farm key (?key=fk_… or x-farm-key header)");
+}
+
+/**
+ * Which door a player came through: a key on the request is a script or a
+ * tool holding the farm key, and the cookie alone is the farm page.
+ */
+export function playerVia(req: Request): "web" | "api" {
+  return req.headers.get("x-farm-key") || new URL(req.url).searchParams.get("key") ? "api" : "web";
+}
+
+/**
+ * THE WRITE DOOR for every REST move a player makes. It resolves the farm,
+ * credits everything the move writes to that player on the farm log, and
+ * reports a broken rule as a 400, just as `handle` does. Read-only routes keep
+ * `handle`: a read writes nothing, so there is nothing to credit.
+ */
+export function act<T>(req: Request, fn: (g: Game) => T): NextResponse {
+  return handle(() => {
+    const g = game(req);
+    return withActor(db(), { kind: "player", via: playerVia(req), farmId: g.farmId }, () => fn(g));
+  });
 }
 
 /** Engine errors are rule violations — surface them as 400s with the rule. */

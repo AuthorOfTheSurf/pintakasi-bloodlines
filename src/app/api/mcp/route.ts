@@ -62,6 +62,9 @@ import { fmtGp } from "@/engine/events";
 // would have gone on offering a class the engine no longer has.
 const ENTRY_CLASSES = LOBBIES.filter((c) => c !== "claimer") as unknown as [string, ...string[]];
 import { Farms } from "@/engine/farms";
+import { withActor } from "@/engine/actor";
+import { FARM_LOG_PAGE, farmLogPage } from "@/engine/farm-log";
+import { LOG_LABEL_KEYS, LOG_LABELS, type LogLabel } from "@/engine/log-labels";
 import { Game } from "@/engine/game";
 import { DAY_TURNS_PH_HOUR } from "@/engine/live-clock";
 import { freshSeed } from "@/engine/rng";
@@ -75,7 +78,7 @@ function json(value: unknown) {
 }
 
 /** Engine errors are rule violations — return them as readable text, not protocol errors. */
-function ruled<T>(fn: () => T) {
+function ruledText<T>(fn: () => T) {
   try {
     return json(fn());
   } catch (err) {
@@ -365,6 +368,7 @@ export const TOOL_DESCRIPTIONS = {
   check_in: `The daily ritual, once per game-day: pays the GP drip (${ECONOMY.DAILY_DRIP} GP = $${usd(ECONOMY.DAILY_DRIP)}) and grants ${ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull. Every check-in also adds ${ECONOMY.DRIP_TO_PURSES} GP to the crown purses (the juice pool behind Wednesday's Juvenile crowns and Thursday's Majors) — new GP from the house, on top of the ${ECONOMY.DAILY_DRIP}, never taken from it. Do this first thing each day.`,
 
   play_my_day: `The farm page's "Play my day for me" button, as a tool: the house plays ONE honest day for YOUR farm only, once, now — never any other farm, and the live tick never does this on its own. In order: check in (if not yet today), spend FREE gacha pulls only (never a paid roll), price and list retired roosters at stud (a rooster's first listing costs ${studSeatLand} LT) — and ON HATCH FRIDAY reprice every standing stud by last week's demand (sold out: up ~${Math.round(STUD_MARKET.RAISE_SOLD_OUT * STUD_MARKET.AUTO_PLAY.greed * 100)}%; ${STUD_MARKET.COLD_COVERS} or fewer covers sold: give up ${Math.round(STUD_MARKET.CUT_COLD * 100)}% of the premium over the floor), which OVERWRITES any stud price the player set by hand, so on a Friday tell them to set their prices after pressing, not before — then, when the barn is within ${BARN.EXPAND_HEADROOM} slots of full, buy the next barn expansion, paying by UNSTAKING land and, if the pool cannot cover it, BUYING the rest with GP at ${LAND.GP_PER_100_TOKENS} GP per 100 LT with NO reserve kept, then stake every whole loose LT, buy at most ONE cover for a retired hen with an empty nest, give unnamed active birds random starter names, register crown birds (age-${AGE.FORK}+ birds with ${CROWN_CHASE.CROWN_MIN_REAL_WINS}+ real wins into the HARDCORE Majors at ${majorFee} GP, qualified chicks into the Juvenile Championship), then card every active bird it can afford while keeping ${AUTO_RESERVE} GP in reserve. EVERYTHING IT DOES IS BINDING and cannot be undone — entries escrow, covers and names stick, and a Major loser is force-retired — so confirm with the player first, and warn them when they have an age-${AGE.FORK} bird they would not risk. Birds already carded today keep their fight. Returns what it did: GP before and after (to the hundredth), pulls spent, studs listed, studsRepriced (each stud's old and new ask), barn expanded, ltUnstaked, ltBought and landBoughtGp for the expansion, LT staked, covers, birds named (with the names), crowns entered, birds carded.`,
+  farm_log: `YOUR farm's log, newest first: one line per move made on your farm, each marked with who made it — ${LOG_LABEL_KEYS.map((k) => `"${k}" (${LOG_LABELS[k]})`).join(", ")}. "you" is your own moves, from the farm page or through this connection (via "mcp" means it came from Claude); "play_my_day" is Play my day (and its one summary line, whose runId every move of that run carries); "game" is the tick: the card settling, crowns, Hatch Friday, payouts; "another_farm" is a move a different barn made that touched yours, such as a cover bought on your stud or a claim that took your bird; "unrecorded" is a move from before this world kept the log, whose maker was never written down. Includes the lines the ledger does not carry: birds named, stud prices set, and the summary of each Enter card or Play my day press. Use it to answer "why did my GP drop?" — read the newest page, find the money lines, and say who made each. Pages of up to ${FARM_LOG_PAGE.MAX} (default ${FARM_LOG_PAGE.DEFAULT}); pass the last entry's cursor as \`before\` for older lines, and \`who\` to see one label only. Shows only your farm; a bird's hidden stats never appear.`,
   get_state: `The world calendar (in-game date, whether today is Hatch Friday) plus YOUR farm: GP wallet ($1 = ${ECONOMY.GP_PER_DOLLAR} GP), Land Tokens, free pulls, check-in status, barn occupancy. Also reports today's ascendant Element (the daily "weather" — birds of that element get a small edge on the card today) and tomorrow's, so you can plan which birds to run. AND \`card\`: the posted schedule for TODAY and TOMORROW — the ~${cardKeysPerDay} fights on offer each day as {mode, classType, format, price?} keys. A key that is not on today's card cannot be entered, so check this before choosing a bird's fight; tomorrow's is published for the same reason, so holding a bird back one day is a plannable move. Start here.`,
 
   list_flock:
@@ -435,6 +439,17 @@ function createServer(farmId: string | null): McpServer {
     return new Game(database, farmId);
   };
 
+  /**
+   * Every tool body runs through this, so every move a tool makes is
+   * credited on the farm log to the player, via Claude. A connection with no
+   * farm has nobody to credit and runs bare (only register_farm can act there,
+   * and it frames itself).
+   */
+  const ruled = <T>(fn: () => T) =>
+    ruledText(() =>
+      farmId ? withActor(database, { kind: "player", via: "mcp", farmId }, fn) : fn()
+    );
+
   const server = new McpServer(
     { name: "pintakasi-bloodlines", version: "0.3.0" },
     { instructions: MCP_INSTRUCTIONS.join("\n") }
@@ -455,8 +470,11 @@ function createServer(farmId: string | null): McpServer {
     async (input) =>
       ruled(() => {
         if (!openRegistrationEnabled()) throw new Error(CLOSED_REGISTRATION_MESSAGE);
-        const { farm, apiKey } = farmsApi.register(input);
-        seedStarterFlock(database, farm.id, { seed: freshSeed() });
+        const { farm, apiKey } = withActor(database, { kind: "game" }, () => {
+          const made = farmsApi.register(input);
+          seedStarterFlock(database, made.farm.id, { seed: freshSeed() });
+          return made;
+        });
         return {
           farm,
           apiKey,
@@ -490,7 +508,25 @@ function createServer(farmId: string | null): McpServer {
       title: "Play My Day For Me",
       description: TOOL_DESCRIPTIONS.play_my_day,
     },
-    async () => ruled(() => playMyDay(database, game().farmId))
+    async () => ruled(() => playMyDay(database, game().farmId, "mcp"))
+  );
+
+  server.registerTool(
+    "farm_log",
+    {
+      title: "Your Farm's Log",
+      description: TOOL_DESCRIPTIONS.farm_log,
+      inputSchema: z.object({
+        limit: z.number().int().positive().max(FARM_LOG_PAGE.MAX).optional(),
+        before: z.string().optional().describe("The cursor of the oldest entry you already have"),
+        who: z
+          .enum(LOG_LABEL_KEYS as [LogLabel, ...LogLabel[]])
+          .optional()
+          .describe("Show one label only"),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (opts) => ruled(() => farmLogPage(database, game().farmId, opts))
   );
 
   server.registerTool(

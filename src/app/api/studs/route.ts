@@ -1,4 +1,4 @@
-import { game, handle } from "../shared";
+import { act, game, handle } from "../shared";
 
 /** GET ?hen=<birdId> — the barn from that hen's point of view. */
 export async function GET(req: Request) {
@@ -12,9 +12,7 @@ export async function GET(req: Request) {
 /** POST { birdId, action: "list" | "unlist" } — stand or pull a stud. */
 export async function POST(req: Request) {
   const body = await req.json();
-  return handle(() =>
-    body.action === "unlist"
-      ? game(req).breeding.unlistStud(body.birdId)
-      : game(req).breeding.listStud(body.birdId)
+  return act(req, (g) =>
+    body.action === "unlist" ? g.breeding.unlistStud(body.birdId) : g.breeding.listStud(body.birdId)
   );
 }

@@ -5,6 +5,7 @@ import { alphaApplications, farms, type AlphaApplicationRow, type FarmRow } from
 import { seedStarterFlock } from "@/db/seed-data";
 import { APPLICATION_LIMITS, type FarmColor } from "./config";
 import { Farms, assertFarmColors, farmNameTaken, type FarmView } from "./farms";
+import { withActor } from "./actor";
 import { freshSeed } from "./rng";
 
 /**
@@ -97,14 +98,18 @@ export class Alpha {
   approve(id: number): Approval {
     return this.database.transaction((): Approval => {
       const app = this.move(id, "approved");
-      const { farm, apiKey } = new Farms(this.database).register({
-        name: app.farmName,
-        country: app.country ?? undefined,
-        primaryColor: app.primaryColor as FarmColor,
-        secondaryColor: app.secondaryColor as FarmColor,
-        handler: app.handler,
+      // The farm's first line on its log is the steward letting it in.
+      const { farm, apiKey } = withActor(this.database, { kind: "steward" }, () => {
+        const made = new Farms(this.database).register({
+          name: app.farmName,
+          country: app.country ?? undefined,
+          primaryColor: app.primaryColor as FarmColor,
+          secondaryColor: app.secondaryColor as FarmColor,
+          handler: app.handler,
+        });
+        seedStarterFlock(this.database, made.farm.id, { seed: freshSeed() });
+        return made;
       });
-      seedStarterFlock(this.database, farm.id, { seed: freshSeed() });
       // 256 bits: the token is a bearer credential for the farm key, so it
       // gets the key's strength or better, never a guessable counter.
       const claimToken = randomBytes(32).toString("base64url");

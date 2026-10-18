@@ -11,6 +11,7 @@ import { Farms, type FarmView } from "./farms";
 import { Flock, type HatchFridayEvents } from "./flock";
 import { GameClock, type ClockState } from "./game-clock";
 import { Gacha } from "./gacha";
+import { withActor } from "./actor";
 import { withBufferedEvents } from "./events";
 import { baselineBefore, recordSnapshot } from "./snapshots";
 import { Tournaments, type TournamentResolution } from "./tournaments";
@@ -136,8 +137,13 @@ export class Game {
    * times had to reason our way past. Now a day either happens or it doesn't.
    */
   private tick(kind: "day" | "week", opts: TickOptions): TickView {
+    // The whole tick is the GAME's unless a phase inside says otherwise: each
+    // bot's turn and each auto-played player farm opens its own frame, and the
+    // card, the crowns, Hatch Friday and the payouts fall back to this one.
     return this.database.transaction((): TickView =>
-      withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind, opts))
+      withActor(this.database, { kind: "game" }, () =>
+        withBufferedEvents(this.database, this.clock.currentDay(), () => this.runTick(kind, opts))
+      )
     ) as TickView;
   }
 

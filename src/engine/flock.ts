@@ -10,6 +10,7 @@ import {
 } from "./config";
 import { overallGradeOf, type Grade } from "./grades";
 import { emit } from "./events";
+import { FarmNotes } from "./farm-notes";
 import { GameClock } from "./game-clock";
 import { nameTaken } from "./naming";
 import { gameValue } from "./value";
@@ -237,12 +238,20 @@ export class Flock {
     // up in this barn, so a key for one farm could rename any bird in the world
     // and merely get an error back afterwards. The farm page made that door a
     // button, which is when it was noticed.
-    this.byId(id);
+    const was = this.byId(id).name;
     const trimmed = name.trim();
     if (!trimmed) throw new Error("Name cannot be empty");
     if (nameTaken(this.database, trimmed, id))
       throw new Error(`The name "${trimmed}" is taken — bird names are unique across the world`);
     this.database.update(birds).set({ name: trimmed, named: 1 }).where(eq(birds.id, id)).run();
+    FarmNotes.write(this.database, {
+      farmId: this.farmId,
+      kind: "named",
+      birdId: id,
+      message: `Named a bird ${trimmed}. It was called ${was}.`,
+      data: { from: was, to: trimmed },
+      visibility: "public",
+    });
     return this.byId(id);
   }
 

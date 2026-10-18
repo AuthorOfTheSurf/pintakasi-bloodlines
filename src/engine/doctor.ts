@@ -1,6 +1,8 @@
 import { count, eq, sql, type SQL } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import {
+  actorSpans,
+  farmNotes,
   battleLog,
   birdForm,
   birds,
@@ -39,6 +41,7 @@ import {
 } from "./config";
 import { BOT_FARMS } from "./bot-config";
 import { GameClock } from "./game-clock";
+import { RUN_SUMMARY_KINDS } from "./log-labels";
 import { replayFidelity } from "./replay";
 import { gradeOf, type Grade } from "./grades";
 import { ageOf } from "./lifecycle";
@@ -646,6 +649,109 @@ function checkCrownsBeforeCalendar(db: DB): Invariant {
  * the ONLY thing standing between a bird entered twice and a silent second
  * night's worth of stake.
  */
+/**
+ * The button presses on the farm log. A press is its OPENER while it runs and
+ * its summary once it ends (FarmNotes.run swaps one for the other), so the
+ * press ids a move may point at are the finished summaries' runIds plus any
+ * opener still standing.
+ */
+function buttonPresses(notes: (typeof farmNotes.$inferSelect)[]) {
+  const presses = notes.filter((n) => RUN_SUMMARY_KINDS.some((k) => k === n.kind));
+  const unfinished = presses.filter((n) => n.message === "");
+  const runs = new Set(presses.map((n) => (n.message === "" ? n.id : n.runId)));
+  return { runs, unfinished };
+}
+
+/** Button presses that never wrote their summary: see checkFarmLog for why a warning. */
+function farmLogHealth(db: DB): HealthSection {
+  const notes = db.select().from(farmNotes).all();
+  const { runs, unfinished } = buttonPresses(notes);
+  return {
+    title: "FARM LOG",
+    lines: [
+      `${notes.length} notes · ${runs.size} button presses · ${unfinished.length} never finished`,
+    ],
+    warn: unfinished.length
+      ? `${unfinished.length} button press(es) never wrote a summary (a process died mid-press, or one is running now): ` +
+        unfinished
+          .slice(0, DOCTOR.OFFENDER_SAMPLE)
+          .map((n) => `#${n.id} (${n.kind}, ${n.farmId}, day ${n.dayIndex})`)
+          .join(", ")
+      : undefined,
+  };
+}
+
+/**
+ * THE FARM LOG CREDITS EVERY MOVE TO SOMEBODY (2026-10).
+ *
+ * The log's promise to a player is "here is who did this". It keeps that
+ * promise only if every boundary that moves money opens an actor frame, and
+ * the failure is silent: a new route or tick phase without one just leaves
+ * its events off every span, and the log calls them the game's. This check
+ * is what notices.
+ *
+ *   - spans never overlap, so no event has two actors;
+ *   - every event after the first span is covered (older ones predate the log);
+ *   - every note has an actor;
+ *   - every move that claims a button press points at one.
+ *
+ * A press that never wrote its summary is NOT a failure here; it is a health
+ * warning in FARM LOG below. Only a process dying mid-press can leave one
+ * (FarmNotes.run finishes on success and on a throw), and a live doctor can
+ * also catch a press that is still running. Either way the ledger is whole
+ * and every move is credited; the log only lacks one sentence. As an
+ * invariant it failed the doctor forever over one crash.
+ */
+function checkFarmLog(db: DB): Invariant {
+  const offenders: string[] = [];
+  const spans = db.select().from(actorSpans).orderBy(actorSpans.firstEventId).all();
+  let lastEnd = 0;
+  for (const s of spans) {
+    if (s.lastEventId < s.firstEventId)
+      offenders.push(`span ${s.firstEventId}–${s.lastEventId} runs backwards`);
+    if (s.firstEventId <= lastEnd)
+      offenders.push(
+        `span ${s.firstEventId}–${s.lastEventId} overlaps the one before (ends ${lastEnd})`
+      );
+    lastEnd = Math.max(lastEnd, s.lastEventId);
+  }
+  const start = spans[0]?.firstEventId ?? null;
+  const uncovered =
+    start === null
+      ? []
+      : db.all<{ id: number; type: string }>(sql`
+          SELECT e.id AS id, e.type AS type FROM events e
+           WHERE e.id >= ${start} AND NOT EXISTS (
+             SELECT 1 FROM actor_spans s
+              WHERE s.first_event_id = (SELECT MAX(first_event_id) FROM actor_spans WHERE first_event_id <= e.id)
+                AND s.last_event_id >= e.id)
+           ORDER BY e.id`);
+  for (const e of uncovered) offenders.push(`event ${e.id} (${e.type}) has no actor`);
+  const notes = db.select().from(farmNotes).all();
+  const { runs } = buttonPresses(notes);
+  for (const n of notes) {
+    if (n.actorKind === null) offenders.push(`note ${n.id} (${n.kind}) has no actor`);
+    if (n.runId !== null && !runs.has(n.runId))
+      offenders.push(`note ${n.id} points at press ${n.runId}, which is not a press`);
+  }
+  for (const s of spans)
+    if (s.runId !== null && !runs.has(s.runId))
+      offenders.push(`span ${s.firstEventId} points at press ${s.runId}, which is not a press`);
+  const byKind = new Map<string, number>();
+  for (const s of spans)
+    byKind.set(s.actorKind, (byKind.get(s.actorKind) ?? 0) + s.lastEventId - s.firstEventId + 1);
+  const mix = [...byKind.entries()].map(([k, n]) => `${k} ${n}`).join(", ");
+  return {
+    name: "every move on the farm log has an actor",
+    passed: offenders.length === 0,
+    detail:
+      start === null
+        ? "no actor spans yet (a world from before the farm log)"
+        : `${spans.length} spans cover events from #${start} (${mix}) · ${notes.length} notes, ${runs.size} button presses · ${offenders.length} problems`,
+    offenders: offenders.slice(0, DOCTOR.OFFENDER_SAMPLE),
+  };
+}
+
 function checkCardCap(db: DB): Invariant {
   // Every entry, whatever became of it — a bird that went home unmatched
   // still spent its slot that day, so counting only the pending ones would
@@ -2730,6 +2836,18 @@ function adoption(db: DB, ev: EventRow[]): HealthSection {
         .map((e) => e.farmId)
     );
 
+  // The farm log's two lines that are not ledger rows. A door at zero here
+  // means a naming or pricing path stopped writing its note.
+  const noteFarms = (kind: string) =>
+    new Set(
+      db
+        .select({ farmId: farmNotes.farmId })
+        .from(farmNotes)
+        .where(eq(farmNotes.kind, kind))
+        .all()
+        .map((n) => n.farmId)
+    );
+
   const doors: [string, Set<string>][] = [
     [
       "claims placed",
@@ -2748,6 +2866,8 @@ function adoption(db: DB, ev: EventRow[]): HealthSection {
     ["barn expanded", expandFarms],
     ["Major entries", crownFarms("major")],
     ["juvenile championship", crownFarms("juvenile")],
+    ["birds named (farm log)", noteFarms("named")],
+    ["stud prices set (farm log)", noteFarms("stud_price")],
   ];
 
   const total = allFarms.length;
@@ -3231,6 +3351,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     checkCardCap(db),
     checkFightCounts(db),
     checkScoutBook(db), // round 44 — the scout's cache may never drift from the log
+    checkFarmLog(db), // the farm log — nobody's move goes uncredited
   ];
 
   // Per-day fight volume, diffed from the cumulative `fights` each daily
@@ -3311,6 +3432,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // After who got rich: whether the price tag on a bird meant anything.
     ...[valueCalibration(db)].filter((x): x is HealthSection => x !== null),
     adoption(db, allEvents),
+    farmLogHealth(db),
     discovery(discoveryAudit),
   ];
 

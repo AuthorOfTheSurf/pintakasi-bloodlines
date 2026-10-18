@@ -507,6 +507,40 @@ export const alphaApplications = sqliteTable("alpha_applications", {
   claimedAt: text("claimed_at"), // first view of /join/claim/<token>
 });
 
+// THE FARM LOG (2026-10). Hand-synced with ddl.ts, which carries the long
+// form of why each table exists. Both are additive (CREATE TABLE IF NOT
+// EXISTS), so the live world picks them up at boot. Written by engine/actor.ts
+// and engine/farm-notes.ts only; read by engine/farm-log.ts and the doctor.
+export const ACTOR_KINDS = ["player", "autoplay", "bot", "game", "steward"] as const;
+export type ActorKind = (typeof ACTOR_KINDS)[number];
+
+export const actorSpans = sqliteTable("actor_spans", {
+  firstEventId: integer("first_event_id").primaryKey(),
+  lastEventId: integer("last_event_id").notNull(),
+  actorKind: text("actor_kind", { enum: ACTOR_KINDS }).notNull(),
+  via: text("via"),
+  actorFarmId: text("actor_farm_id"),
+  runId: integer("run_id"), // the button press this span belongs to (its summary note carries the same run_id)
+});
+
+export const farmNotes = sqliteTable("farm_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  farmId: text("farm_id").notNull(),
+  dayIndex: integer("day_index").notNull(),
+  afterEventId: integer("after_event_id").notNull(),
+  kind: text("kind").notNull(),
+  birdId: text("bird_id"),
+  message: text("message").notNull(),
+  data: text("data"),
+  visibility: text("visibility", { enum: ["owner", "public"] }).notNull(),
+  // Null only when nothing framed the write (a bare test or a seed script);
+  // the doctor counts those, because a live move should always have an actor.
+  actorKind: text("actor_kind", { enum: ACTOR_KINDS }),
+  via: text("via"),
+  actorFarmId: text("actor_farm_id"),
+  runId: integer("run_id"),
+});
+
 export type AlphaApplicationRow = typeof alphaApplications.$inferSelect;
 
 export type BirdRow = typeof birds.$inferSelect;

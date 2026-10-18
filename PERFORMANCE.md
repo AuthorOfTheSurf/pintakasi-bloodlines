@@ -157,6 +157,18 @@ are volume-proportional rather than late-run-weighted.
   the time went** — don't dig in `fight-sim.ts` for speed. The round was done
   for the viewer, and proven neutral: 92-day worlds identical under
   `worldhash --ignore-ids`, 26,880 transcripts byte-identical.
+- **The farm log (2026-10), a cost, not a saving, and measured flat.** Every
+  move now carries an actor. Storing it per event would have meant 74k rows
+  for a fact that changes about 40 times a day, so it is stored as run-length
+  spans over event ids (`actor_spans`, 3,648 rows in 92 days), and the new
+  lines (names, stud prices, button summaries) go to `farm_notes` (3,091 rows).
+  In-tick events now flush with `RETURNING id`, and outside a tick each event
+  also writes or extends its span. Matched seed-1 92-day A/B, back to back on
+  one machine: main 1:35 / 4.88 ms per fight, farm log 1:35 / 4.90 ms per
+  fight, over the same 19,479 fights (one run each side; inside noise).
+  Database 28.92 → 29.85 MB (+3.2%): `farm_notes` 0.69 MB plus 0.07 MB of
+  index, `actor_spans` 0.13 MB, `events` unchanged. The 14 pre-existing tables
+  hash identical under `worldhash --ignore-ids --exclude=actor_spans.*,farm_notes.*`.
 
 ## Where the remaining time goes
 

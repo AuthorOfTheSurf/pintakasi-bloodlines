@@ -4,6 +4,7 @@ import { farms } from "@/db/schema";
 import { seedStarterFlock } from "@/db/seed-data";
 import { FARM_COLORS } from "./config";
 import { Farms, readWorldState } from "./farms";
+import { withActor } from "./actor";
 import { GameClock } from "./game-clock";
 import { freshSeed } from "./rng";
 
@@ -85,17 +86,21 @@ export function admitLatecomer(db: DB): string | null {
   const secondary = FARM_COLORS[(week + FARM_COLORS.length / 2) % FARM_COLORS.length];
   // One transaction, as in the alpha's approve: a farm without its eggs
   // would be a stable with nothing to play.
-  db.transaction(() => {
-    new Farms(db).register(
-      {
-        name: latecomerName(week),
-        country: "🇵🇭",
-        primaryColor: primary,
-        secondaryColor: secondary,
-      },
-      { id }
-    );
-    seedStarterFlock(db, id, { seed: freshSeed() });
-  });
+  // A steward's act in a live world (approving an application); the sim
+  // admits latecomers on the stewards' behalf.
+  db.transaction(() =>
+    withActor(db, { kind: "steward" }, () => {
+      new Farms(db).register(
+        {
+          name: latecomerName(week),
+          country: "🇵🇭",
+          primaryColor: primary,
+          secondaryColor: secondary,
+        },
+        { id }
+      );
+      seedStarterFlock(db, id, { seed: freshSeed() });
+    })
+  );
   return id;
 }

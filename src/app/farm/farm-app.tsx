@@ -6,12 +6,15 @@ import type { ColDef } from "ag-grid-community";
 import type { FarmColor } from "@/engine/config";
 import { keyId } from "@/engine/card-key";
 import type { HonestDayReport } from "@/engine/auto-play";
+import { honestDayLines } from "@/engine/day-summary";
+import { LOG_LABELS, LOG_LABEL_KEYS, type FarmLogEntry, type LogLabel } from "@/engine/log-labels";
 import type { FarmFightRowUI } from "../admin/bird-fights";
 import type { BirdFightRowUI } from "../admin/grids";
 import { ElementCell, FightReplayModal, GradeCell, useFightReplay } from "../grid-kit";
 import { SWATCH } from "../join/swatches";
 import type { CardResult } from "../api/card/route";
 import type { FarmFightPage } from "../api/farm/fights/route";
+import type { FarmLogResponse } from "../api/farm/log/route";
 import { BirdDetail } from "./bird-detail";
 import {
   EggNameCell,
@@ -25,7 +28,7 @@ import {
 import type { EggRowUI, FarmPageData, RetiredRowUI } from "./data";
 import { FarmGrid } from "./farm-grid";
 
-const VIEWS = ["Fighting", "Retired", "Eggs", "Results"] as const;
+const VIEWS = ["Fighting", "Retired", "Eggs", "Results", "Log"] as const;
 type View = (typeof VIEWS)[number];
 
 const swatch = (c: string) => (c in SWATCH ? SWATCH[c as FarmColor] : c);
@@ -294,6 +297,55 @@ function useFarmFights(open: boolean, total: number) {
   return { rows, more, loading, error, older };
 }
 
+/**
+ * The Log view's lines, newest first (GET /api/farm/log), loaded the way the
+ * Results view loads its fights: when the view opens, from the top again
+ * whenever the server's line count moves or the filter changes, and a page
+ * at a time after that from the oldest loaded line's cursor.
+ */
+function useFarmLog(open: boolean, total: number, who: LogLabel | null) {
+  const [entries, setEntries] = useState<FarmLogEntry[]>([]);
+  const [counts, setCounts] = useState<FarmLogResponse["counts"] | null>(null);
+  const [more, setMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  const load = useCallback(
+    async (before?: string) => {
+      setLoading(true);
+      setError(null);
+      const q = new URLSearchParams();
+      if (before !== undefined) q.set("before", before);
+      if (who) q.set("who", who);
+      try {
+        const page = await readJson<FarmLogResponse>(await fetch(`/api/farm/log?${q}`));
+        setEntries((cur) => (before === undefined ? page.entries : [...cur, ...page.entries]));
+        setCounts(page.counts);
+        setMore(page.more);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [who]
+  );
+
+  const key = `${total}:${who ?? ""}`;
+  useEffect(() => {
+    if (!open || loadedFor === key) return;
+    setLoadedFor(key);
+    void load();
+  }, [open, key, loadedFor, load]);
+
+  const oldest = entries.at(-1)?.cursor;
+  const older = useCallback(() => {
+    if (oldest !== undefined) void load(oldest);
+  }, [load, oldest]);
+  return { entries, counts, more, loading, error, older };
+}
+
 export function FarmApp({ data }: { data: FarmPageData }) {
   const router = useRouter();
   const [view, setView] = useState<View>("Fighting");
@@ -311,6 +363,8 @@ export function FarmApp({ data }: { data: FarmPageData }) {
   const replay = useFightReplay(openFight?.logId ?? null);
   const cardCloses = useCardCloses(data.liveClock);
   const fights = useFarmFights(view === "Results", data.results.fights);
+  const [logWho, setLogWho] = useState<LogLabel | null>(null);
+  const log = useFarmLog(view === "Log", data.logLines, logWho);
   const { farm } = data;
 
   const refresh = useCallback(() => router.refresh(), [router]);
@@ -399,6 +453,11 @@ export function FarmApp({ data }: { data: FarmPageData }) {
     Retired: data.retired.length,
     Eggs: data.eggs.length,
     Results: data.results.fights,
+    Log: data.logLines,
+  };
+  const openLog = () => {
+    setView("Log");
+    setSelected(null);
   };
 
   return (
@@ -474,7 +533,11 @@ export function FarmApp({ data }: { data: FarmPageData }) {
         ) : null}
         {busy === "autoplay" ? <p className="world">The house is playing your day…</p> : null}
         {autoReport ? (
-          <AutoSummary report={autoReport} onClose={() => setAutoReport(null)} />
+          <AutoSummary
+            report={autoReport}
+            onClose={() => setAutoReport(null)}
+            onOpenLog={openLog}
+          />
         ) : null}
         {notice ? (
           <p className="panel" role="status">
@@ -578,6 +641,10 @@ export function FarmApp({ data }: { data: FarmPageData }) {
         </>
       ) : null}
 
+      {view === "Log" ? (
+        <FarmLog log={log} who={logWho} setWho={setLogWho} isEmpty={data.logLines === 0} />
+      ) : null}
+
       {selectedBird && (view === "Fighting" || view === "Retired") ? (
         <BirdDetail
           key={selectedBird.id}
@@ -605,7 +672,11 @@ export function FarmApp({ data }: { data: FarmPageData }) {
                 {fees > farm.gp ? <span className="down"> · more than you have</span> : null}
               </p>
               {cardReport ? (
-                <CardReport report={cardReport} onClose={() => setCardReport(null)} />
+                <CardReport
+                  report={cardReport}
+                  onClose={() => setCardReport(null)}
+                  onOpenLog={openLog}
+                />
               ) : null}
             </div>
             <button
@@ -747,32 +818,19 @@ function AutoPanel({
   );
 }
 
-function AutoSummary({ report, onClose }: { report: HonestDayReport; onClose: () => void }) {
+function AutoSummary({
+  report,
+  onClose,
+  onOpenLog,
+}: {
+  report: HonestDayReport;
+  onClose: () => void;
+  onOpenLog: () => void;
+}) {
   const diff = report.gpAfter - report.gpBefore;
-  const lines = [
-    report.checkedIn ? "Checked in." : null,
-    report.pullsSpent
-      ? `Spent ${report.pullsSpent} free pull${report.pullsSpent === 1 ? "" : "s"}.`
-      : null,
-    report.studsListed
-      ? `Listed ${report.studsListed} stud${report.studsListed === 1 ? "" : "s"}.`
-      : null,
-    report.studsRepriced.length
-      ? `Repriced ${report.studsRepriced.length} stud${report.studsRepriced.length === 1 ? "" : "s"} by last week's demand (Hatch Friday). Any price you had set by hand was replaced.`
-      : null,
-    report.barnExpanded ? "Expanded the barn." : null,
-    report.ltUnstaked ? `Unstaked ${report.ltUnstaked} LT to pay for the barn.` : null,
-    report.ltBought
-      ? `Bought ${report.ltBought} LT for ${report.landBoughtGp} GP to pay for the barn.`
-      : null,
-    report.ltStaked ? `Staked ${report.ltStaked} LT.` : null,
-    report.covers ? `Bred ${report.covers} hen${report.covers === 1 ? "" : "s"}.` : null,
-    report.named.length ? `Named ${report.named.map((n) => n.name).join(", ")}.` : null,
-    report.crownsEntered
-      ? `Registered ${report.crownsEntered} bird${report.crownsEntered === 1 ? "" : "s"} for a crown.`
-      : null,
-    `Entered ${report.birdsEntered} bird${report.birdsEntered === 1 ? "" : "s"} on tonight's card.`,
-  ].filter((l): l is string => l !== null);
+  // The same builder writes the run's line in the farm log, so this panel
+  // and the log can never describe the day differently.
+  const lines = honestDayLines(report);
   return (
     <div className="panel" role="status">
       <h3>The house played your day.</h3>
@@ -797,6 +855,7 @@ function AutoSummary({ report, onClose }: { report: HonestDayReport; onClose: ()
         GP {gp2(report.gpBefore)} → {gp2(report.gpAfter)}{" "}
         <span className={diff >= 0 ? "up" : "down"}>({signed(diff) || "0.00"})</span>
       </p>
+      <SavedToLog onOpenLog={onOpenLog} />
       <div className="row">
         <button type="button" className="btn ghost small" onClick={onClose}>
           Done
@@ -809,9 +868,11 @@ function AutoSummary({ report, onClose }: { report: HonestDayReport; onClose: ()
 function CardReport({
   report,
   onClose,
+  onOpenLog,
 }: {
   report: { name: string; result: CardResult }[];
   onClose: () => void;
+  onOpenLog: () => void;
 }) {
   const ok = report.filter((r) => r.result.ok).length;
   const refused = report.filter((r) => !r.result.ok);
@@ -832,7 +893,107 @@ function CardReport({
           ))}
         </ul>
       ) : null}
+      <SavedToLog onOpenLog={onOpenLog} />
     </div>
+  );
+}
+
+/**
+ * Said under a button's result, because the panel goes away and a new player
+ * should know the record does not.
+ */
+function SavedToLog({ onOpenLog }: { onOpenLog: () => void }) {
+  return (
+    <p className="saved">
+      This is saved in your farm log.{" "}
+      <button type="button" className="btn ghost small" onClick={onOpenLog}>
+        Open the log
+      </button>
+    </p>
+  );
+}
+
+function Delta({ value, unit }: { value: number | null; unit: string }) {
+  if (value === null || value === 0) return null;
+  return (
+    <span className={value > 0 ? "up" : "down"}>
+      {signed(value)} {unit}
+    </span>
+  );
+}
+
+function rowClass(e: FarmLogEntry): string | undefined {
+  // A button press's own summary line; the moves it made follow below it.
+  if (e.isRunSummary) return "head";
+  return e.runId === null ? undefined : "inrun";
+}
+
+/**
+ * The Log view. A list, not a grid: every line is a sentence of its own
+ * length, and a grid cell would cut it off on a phone where a list item just
+ * wraps. There is nothing to sort by but time, which the server already did.
+ */
+function FarmLog({
+  log,
+  who,
+  setWho,
+  isEmpty,
+}: {
+  log: ReturnType<typeof useFarmLog>;
+  who: LogLabel | null;
+  setWho: (who: LogLabel | null) => void;
+  isEmpty: boolean;
+}) {
+  const { counts } = log;
+  // Only the labels this farm has lines under: a new player's log has no
+  // "LLM barn" moves, and a filter that always comes back empty is noise.
+  const labels = counts ? LOG_LABEL_KEYS.filter((k) => counts[k] > 0) : [];
+  const total = counts ? labels.reduce((sum, k) => sum + counts[k], 0) : 0;
+  return (
+    <>
+      <p className="summary">Every move on your farm, newest first, and who made it.</p>
+      {labels.length > 1 ? (
+        <div className="logfilter" role="group" aria-label="Who made the move">
+          <button type="button" aria-pressed={who === null} onClick={() => setWho(null)}>
+            All <span className="count">{total}</span>
+          </button>
+          {labels.map((k) => (
+            <button key={k} type="button" aria-pressed={who === k} onClick={() => setWho(k)}>
+              {LOG_LABELS[k]} <span className="count">{counts?.[k]}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {isEmpty ? <p className="dim">Nothing has happened on your farm yet.</p> : null}
+      <ol className="farmlog">
+        {log.entries.map((e) => (
+          <li key={e.cursor} className={rowClass(e)}>
+            <span className="meta">
+              <span className="dim">day {e.day}</span>{" "}
+              <span className={`chip who-${e.who}`}>{LOG_LABELS[e.who]}</span>
+              {e.who === "you" && e.via === "mcp" ? <span className="dim"> via Claude</span> : null}
+            </span>
+            <span className="msg">{e.message}</span>
+            <span className="deltas">
+              <Delta value={e.gp} unit="GP" /> <Delta value={e.lt} unit="LT" />
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="row">
+        {log.error ? (
+          <p className="down" role="alert">
+            {log.error}
+          </p>
+        ) : null}
+        {log.loading ? <p className="dim">Loading the log…</p> : null}
+        {!log.loading && log.more ? (
+          <button type="button" className="btn ghost" onClick={log.older}>
+            Older
+          </button>
+        ) : null}
+      </div>
+    </>
   );
 }
 

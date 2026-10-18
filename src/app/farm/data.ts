@@ -14,6 +14,7 @@ import {
   type StatName,
 } from "@/engine/config";
 import { Farms, readWorldState, type FarmView } from "@/engine/farms";
+import { farmLogCounts } from "@/engine/farm-log";
 import { Flock, type BirdView } from "@/engine/flock";
 import { GameClock, type ClockState } from "@/engine/game-clock";
 import { hatchDayOf } from "@/engine/lifecycle";
@@ -92,6 +93,11 @@ export interface FarmPageData {
    * not here: the Results view pages them from GET /api/farm/fights.
    */
   results: { fights: number; wins: number; netGp: number };
+  /**
+   * How many lines the farm log holds. The Log view pages its rows from GET
+   * /api/farm/log; this count is how it learns a button press added some.
+   */
+  logLines: number;
   /** The game weekday, e.g. "Friday". Hatch Friday and the Majors run on it. */
   gameWeekday: string;
   /**
@@ -225,6 +231,7 @@ export function farmPageData(db: DB, farmId: string): FarmPageData {
     retired,
     eggs,
     results: farmFightTotals(db, farmId),
+    logLines: Object.values(farmLogCounts(db, farmId)).reduce((a, b) => a + b, 0),
     cardLabels: Object.fromEntries(
       cardOfDay(day).map((k) => [keyId(k), labelOf({ ...k, price: k.price ?? null })])
     ),

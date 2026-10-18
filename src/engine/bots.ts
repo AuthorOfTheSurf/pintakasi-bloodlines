@@ -43,6 +43,8 @@ import {
   expectedFoalStat,
 } from "./config";
 import { Breeding, type StudView } from "./breeding";
+import { noteStudPrice } from "./farm-notes";
+import { withActor } from "./actor";
 import { drawStarterNames } from "./naming";
 import { emit } from "./events";
 import { Farms } from "./farms";
@@ -162,6 +164,16 @@ export class Bots {
     const day = todayIndex(db);
     const only = opts.only;
     const roster = only ? BOT_FARMS.filter((b) => only.includes(b.id)) : BOT_FARMS;
+    // Seeding the house stables is a steward's act, so their first lines say so.
+    withActor(db, { kind: "steward" }, () => Bots.seedRoster(db, roster, day, opts));
+  }
+
+  private static seedRoster(
+    db: DB,
+    roster: BotProfile[],
+    day: number,
+    opts: { flock?: "eggs" | "legacy"; apiKey?: (botId: string) => string }
+  ): void {
     for (const bot of roster) {
       const exists = db.select().from(farms).where(eq(farms.id, bot.id)).get();
       if (exists) continue;
@@ -216,6 +228,14 @@ export class Bots {
     const reports: BotDayReport[] = [];
     for (const [i, row] of botRows.entries()) {
       const rng = mulberry32((today + 1) * 7919 + (i + 1) * 104729);
+      // The farm log credits this turn to the barn, not to the tick around it.
+      // The frame draws nothing from `rng`, so the seeded day is unchanged.
+      const asBarn = <T>(fn: () => T): T =>
+        withActor(
+          db,
+          { kind: "bot", via: row.brain === "llm" ? "llm" : "scripted", farmId: row.id },
+          fn
+        );
       if (row.brain === "llm") {
         // An llm barn with no proposals sits the day out rather than falling
         // back to the scripted brain. Silently substituting one decider for
@@ -223,12 +243,12 @@ export class Bots {
         // is the single most expensive thing this file could get wrong — the
         // whole point of the pair is that the two are TELLING APART.
         const actions = proposals?.get(row.id);
-        if (actions) reports.push(applyProposals(db, row.id, actions, rng));
+        if (actions) reports.push(asBarn(() => applyProposals(db, row.id, actions, rng)));
         continue;
       }
       const profile = BOT_FARMS.find((b) => b.id === row.id);
       if (!profile) continue; // a bot removed from config sits out
-      reports.push(Bots.playFarm(db, profile, rng, today, discoveryPolicy));
+      reports.push(asBarn(() => Bots.playFarm(db, profile, rng, today, discoveryPolicy)));
     }
     return reports;
   }
@@ -276,7 +296,12 @@ export class Bots {
       // and nothing anywhere said a word.
       const whole = Math.floor(bot.landTokensCents / LT_CENTS);
       if (whole > 0) {
-        farmsApi.stake(bot.id, whole);
+        // The barn's own standing order, so the barn's move on the log.
+        withActor(
+          db,
+          { kind: "bot", via: bot.brain === "llm" ? "llm" : "scripted", farmId: bot.id },
+          () => farmsApi.stake(bot.id, whole)
+        );
         staked += whole;
       }
     }
@@ -1140,6 +1165,7 @@ export function priceStuds(db: DB, farmId: string, today: number, greed: number)
   const mine = db
     .select({
       id: birds.id,
+      name: birds.name,
       studPrice: birds.studPrice,
       studPriceNext: birds.studPriceNext,
       listedStud: birds.listedStud,
@@ -1155,12 +1181,22 @@ export function priceStuds(db: DB, farmId: string, today: number, greed: number)
   // floor and cap, which is all setStudPrice would check. It writes the
   // column setStudPrice would: pending on a listed stud, posted on the rest.
   const listed = new Set(mine.filter((b) => b.listedStud).map((b) => b.id));
-  const setPrice = (id: string, price: number) =>
-    db
-      .update(birds)
+  const byId = new Map(mine.map((b) => [b.id, b]));
+  const setPrice = (id: string, price: number) => {
+    db.update(birds)
       .set(listed.has(id) ? { studPriceNext: price } : { studPrice: price, studPriceNext: null })
       .where(eq(birds.id, id))
       .run();
+    // `mine` was read before this pass, and each rooster is priced at most
+    // once per branch below, so its row still holds the ask he had before.
+    const was = byId.get(id);
+    if (was)
+      noteStudPrice(
+        db,
+        { farmId, birdId: id, name: was.name, from: was.studPriceNext ?? was.studPrice, to: price },
+        listed.has(id)
+      );
+  };
 
   // An opening ask already pending (set earlier today, posting at the tick)
   // is not unpriced: a second pass the same day must not ask again.
