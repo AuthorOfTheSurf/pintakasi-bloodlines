@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db/client";
-import { battleLog, farms, tournamentEntries, tournaments } from "@/db/schema";
+import { battleLog, birds, farms, tournamentEntries, tournaments } from "@/db/schema";
 import { FORMATS } from "@/engine/config";
 import { roundName } from "@/engine/tournaments";
 import type { BirdFightRowUI } from "./grids";
@@ -38,12 +38,108 @@ export function cardLabel(mode: string, classType: string): string {
  * first.
  */
 export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
-  const rows = d
+  return fightRows(
+    d,
+    d.select().from(battleLog).where(eq(battleLog.birdId, birdId)).orderBy(battleLog.id).all()
+  );
+}
+
+/**
+ * ── ONE FARM'S FIGHTS — the farm page's Results view, a page at a time ─────
+ *
+ * The rows a farm's birds wrote while they were that farm's, NEWEST first,
+ * named. `battle_log.farm_id` is stamped at fight time, so a bird claimed
+ * away later still shows here for the fights it fought in these colours, and
+ * a bird claimed IN shows only from the day it arrived.
+ *
+ * Paged by log id, for the reason birdFightRows above reads one career: a
+ * farm's history grows with the world (a 182-day barn writes thousands of
+ * rows), so the page ships none of it and the Results view asks for a page.
+ * `before` is the oldest log id the caller already holds; ids rise with time,
+ * so "older than that" is stable while new fights land on top.
+ */
+export const FARM_FIGHT_PAGE = { DEFAULT: 200, MAX: 500 } as const;
+
+export function farmFightPage(
+  d: DB,
+  farmId: string,
+  opts: { before?: number; limit: number }
+): { rows: FarmFightRowUI[]; more: boolean } {
+  const limit = Math.min(Math.max(1, Math.floor(opts.limit)), FARM_FIGHT_PAGE.MAX);
+  const page = d
     .select()
     .from(battleLog)
-    .where(eq(battleLog.birdId, birdId))
-    .orderBy(battleLog.id)
+    .where(
+      opts.before === undefined
+        ? eq(battleLog.farmId, farmId)
+        : and(eq(battleLog.farmId, farmId), lt(battleLog.id, opts.before))
+    )
+    .orderBy(desc(battleLog.id))
+    .limit(limit + 1)
     .all();
+  return { rows: namedFightRows(d, page.slice(0, limit)), more: page.length > limit };
+}
+
+/**
+ * The whole history in three numbers, for the Results header: counted by the
+ * database, so it is true of every fight and not just the pages loaded.
+ */
+export function farmFightTotals(
+  d: DB,
+  farmId: string
+): { fights: number; wins: number; netGp: number } {
+  const row = d
+    .select({
+      fights: sql<number>`count(*)`,
+      wins: sql<number>`coalesce(sum(${battleLog.result} = 'win'), 0)`,
+      netCents: sql<number>`coalesce(sum(${battleLog.gpDeltaCents}), 0)`,
+    })
+    .from(battleLog)
+    .where(eq(battleLog.farmId, farmId))
+    .get();
+  return { fights: row?.fights ?? 0, wins: row?.wins ?? 0, netGp: (row?.netCents ?? 0) / 100 };
+}
+
+/**
+ * Each bird's newest `n` Pit Figures in this farm's colours, oldest first, for
+ * the Fighting grid's sparkline. A window over the farm's rows rather than the
+ * whole history shipped and trimmed on the client.
+ */
+export function recentFigures(
+  d: DB,
+  farmId: string,
+  n: number
+): Map<string, { figure: number; result: "win" | "loss" }[]> {
+  const rows = d.all<{ birdId: string; figure: number; result: "win" | "loss" }>(
+    sql`SELECT bird_id AS birdId, pit_figure AS figure, result FROM (
+          SELECT bird_id, pit_figure, result, id,
+                 ROW_NUMBER() OVER (PARTITION BY bird_id ORDER BY id DESC) AS rn
+            FROM battle_log WHERE farm_id = ${farmId}
+        ) WHERE rn <= ${n} ORDER BY id`
+  );
+  const out = new Map<string, { figure: number; result: "win" | "loss" }[]>();
+  for (const r of rows) out.set(r.birdId, [...(out.get(r.birdId) ?? []), r]);
+  return out;
+}
+
+function namedFightRows(d: DB, rows: (typeof battleLog.$inferSelect)[]): FarmFightRowUI[] {
+  const ids = [...new Set(rows.map((r) => r.birdId))];
+  const names = new Map(
+    ids.length
+      ? d
+          .select({ id: birds.id, name: birds.name })
+          .from(birds)
+          .where(inArray(birds.id, ids))
+          .all()
+          .map((b) => [b.id, b.name])
+      : []
+  );
+  return fightRows(d, rows).map((r) => ({ ...r, birdName: names.get(r.birdId) ?? r.birdId }));
+}
+
+export type FarmFightRowUI = BirdFightRowUI & { birdName: string };
+
+function fightRows(d: DB, rows: (typeof battleLog.$inferSelect)[]): BirdFightRowUI[] {
   if (rows.length === 0) return [];
 
   // The opponent's Pit Figure lives on the opponent's own row. Single
@@ -51,15 +147,24 @@ export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
   // (round 34) make (lobby|tournament, bird) unique among the rows that name
   // THIS bird as the opponent, so the reciprocal row is addressable exactly.
   // Narrowed by bird_id first because that is the column with an index.
+  //
+  // For a whole farm the same holds per (bird, opponent) pair, so the key
+  // names both sides; for one bird the extra half is the same on every row.
   const opponentIds = [...new Set(rows.map((r) => r.opponentBirdId))];
+  const ownIds = [...new Set(rows.map((r) => r.birdId))];
   const mirrors = d
     .select()
     .from(battleLog)
-    .where(and(inArray(battleLog.birdId, opponentIds), eq(battleLog.opponentBirdId, birdId)))
+    .where(and(inArray(battleLog.birdId, opponentIds), inArray(battleLog.opponentBirdId, ownIds)))
     .all();
-  const boutKey = (r: { lobbyId: number | null; tournamentId: number | null }, bird: string) =>
-    `${r.lobbyId}|${r.tournamentId}|${bird}`;
-  const opponentFigure = new Map(mirrors.map((r) => [boutKey(r, r.birdId), r.pitFigure]));
+  const boutKey = (
+    r: { lobbyId: number | null; tournamentId: number | null },
+    bird: string,
+    against: string
+  ) => `${r.lobbyId}|${r.tournamentId}|${bird}|${against}`;
+  const opponentFigure = new Map(
+    mirrors.map((r) => [boutKey(r, r.birdId, r.opponentBirdId), r.pitFigure])
+  );
 
   const farmById = new Map(
     d
@@ -114,11 +219,12 @@ export function birdFightRows(d: DB, birdId: string): BirdFightRowUI[] {
       figure: r.pitFigure,
       // Null rather than 0 when the mirror is missing — a Pit Figure of zero
       // is a legal (terrible) fight, and inventing one would read as a rout.
-      opponentFigure: opponentFigure.get(boutKey(r, r.opponentBirdId)) ?? null,
+      opponentFigure: opponentFigure.get(boutKey(r, r.opponentBirdId, r.birdId)) ?? null,
       // The signed net for THIS bird, rake already deducted by the engine.
       // Pintakasi rows carry 0 — the purse settles on the tournament entry,
       // not per fight.
       gp: r.gpDeltaCents / 100,
+      valueBefore: r.valueBefore,
     };
   });
 }

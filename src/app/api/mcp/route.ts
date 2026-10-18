@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { CLOSED_REGISTRATION_MESSAGE, openRegistrationEnabled } from "@/app/doors";
+import { devSoleFarm } from "@/app/api/shared";
 import { publicTicksEnabled } from "@/app/ticks";
 import { db } from "@/db/client";
 import { seedStarterFlock } from "@/db/seed-data";
@@ -49,6 +50,8 @@ import {
   stakePerFight,
   BREEDING,
 } from "@/engine/config";
+import { AUTO_RESERVE, playMyDay } from "@/engine/auto-play";
+import { CROWN_CHASE, STUD_MARKET } from "@/engine/bot-config";
 import { splitBreedFee } from "@/engine/breeding";
 import { GRADE_BAND } from "@/engine/grades";
 import { fmtGp } from "@/engine/events";
@@ -300,7 +303,7 @@ const juvenileOpenBlades = `${CARD.juvenile.open} of the ${FORMAT_NAMES.length}`
  */
 export const MCP_INSTRUCTIONS: string[] = [
   "Pintakasi: Bloodlines — a digital sabong game. YOU are the game client: narrate fights and hatch days with color, present choices clearly, and let the player decide.",
-  "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. On the live server a farm comes from an approved alpha application (apply at /join on the website); approval opens a welcome page with the farm key and an MCP URL that already carries ?key=…. register_farm only works on dev worlds. No farm on this connection? Reconnect with ?key=… on the MCP URL. (When only one farm exists, the key is optional.)",
+  "YOUR FARM: every player (human or agent) runs a named farm with a country flag and two colors. On the live server a farm comes from an approved alpha application (apply at /join on the website); approval opens a welcome page with the farm key and an MCP URL that already carries ?key=…. register_farm only works on dev worlds. No farm on this connection? Reconnect with ?key=… on the MCP URL. (On a dev world with only one farm, the key is optional.) The same key also signs the player in to the farm page at /farm in a browser, so they may have carded birds or pressed Play my day (play_my_day) there since you last looked: read get_state and list_flock rather than assuming the barn is as you left it.",
   "NOT EVERY RIVAL IS A PERSON. The world also runs scripted HOUSE STABLES: barns that play every day by a fixed script, under exactly the same rules, fees and fog as you. They keep the lobbies full while the player base is small. They are labelled: `houseStable: true` on list_farms, on every entry card of lobby_board, and on pintakasi_board fields. Every other farm is a player (a person or their agent).",
   `THE DAILY RITUAL: check_in once per game-day — it pays the GP drip ($${usd(ECONOMY.DAILY_DRIP)} = ${ECONOMY.DAILY_DRIP} GP) and ${ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull, and every check-in adds ${ECONOMY.DRIP_TO_PURSES} GP to the crown purses (new GP from the house into the juice pool — it does NOT come out of the ${ECONOMY.DAILY_DRIP}, so never describe it as a tax or a cut). Do it first thing.`,
   "THE LOOP: breed retired birds → the hen is pregnant NOW, the egg is LAID next Friday (freeing her for another cover) and HATCHES the Friday after as an age-1 chick → juvenile through the discovery year → real fights from age 2 → at age 3 the fork opens: the Pintakasi Majors (hardcore, and the only hardcore left in the game) AND safe retirement → retire (or lose in the Majors) → the retiree becomes breeding stock → a better bird.",
@@ -361,6 +364,7 @@ export const TOOL_DESCRIPTIONS = {
 
   check_in: `The daily ritual, once per game-day: pays the GP drip (${ECONOMY.DAILY_DRIP} GP = $${usd(ECONOMY.DAILY_DRIP)}) and grants ${ECONOMY.FREE_PULLS_PER_CHECK_IN} free gacha pull. Every check-in also adds ${ECONOMY.DRIP_TO_PURSES} GP to the crown purses (the juice pool behind Wednesday's Juvenile crowns and Thursday's Majors) — new GP from the house, on top of the ${ECONOMY.DAILY_DRIP}, never taken from it. Do this first thing each day.`,
 
+  play_my_day: `The farm page's "Play my day for me" button, as a tool: the house plays ONE honest day for YOUR farm only, once, now — never any other farm, and the live tick never does this on its own. In order: check in (if not yet today), spend FREE gacha pulls only (never a paid roll), price and list retired roosters at stud (a rooster's first listing costs ${studSeatLand} LT) — and ON HATCH FRIDAY reprice every standing stud by last week's demand (sold out: up ~${Math.round(STUD_MARKET.RAISE_SOLD_OUT * STUD_MARKET.AUTO_PLAY.greed * 100)}%; ${STUD_MARKET.COLD_COVERS} or fewer covers sold: give up ${Math.round(STUD_MARKET.CUT_COLD * 100)}% of the premium over the floor), which OVERWRITES any stud price the player set by hand, so on a Friday tell them to set their prices after pressing, not before — then, when the barn is within ${BARN.EXPAND_HEADROOM} slots of full, buy the next barn expansion, paying by UNSTAKING land and, if the pool cannot cover it, BUYING the rest with GP at ${LAND.GP_PER_100_TOKENS} GP per 100 LT with NO reserve kept, then stake every whole loose LT, buy at most ONE cover for a retired hen with an empty nest, give unnamed active birds random starter names, register crown birds (age-${AGE.FORK}+ birds with ${CROWN_CHASE.CROWN_MIN_REAL_WINS}+ real wins into the HARDCORE Majors at ${majorFee} GP, qualified chicks into the Juvenile Championship), then card every active bird it can afford while keeping ${AUTO_RESERVE} GP in reserve. EVERYTHING IT DOES IS BINDING and cannot be undone — entries escrow, covers and names stick, and a Major loser is force-retired — so confirm with the player first, and warn them when they have an age-${AGE.FORK} bird they would not risk. Birds already carded today keep their fight. Returns what it did: GP before and after (to the hundredth), pulls spent, studs listed, studsRepriced (each stud's old and new ask), barn expanded, ltUnstaked, ltBought and landBoughtGp for the expansion, LT staked, covers, birds named (with the names), crowns entered, birds carded.`,
   get_state: `The world calendar (in-game date, whether today is Hatch Friday) plus YOUR farm: GP wallet ($1 = ${ECONOMY.GP_PER_DOLLAR} GP), Land Tokens, free pulls, check-in status, barn occupancy. Also reports today's ascendant Element (the daily "weather" — birds of that element get a small edge on the card today) and tomorrow's, so you can plan which birds to run. AND \`card\`: the posted schedule for TODAY and TOMORROW — the ~${cardKeysPerDay} fights on offer each day as {mode, classType, format, price?} keys. A key that is not on today's card cannot be entered, so check this before choosing a bird's fight; tomorrow's is published for the same reason, so holding a bird back one day is a plannable move. Start here.`,
 
   list_flock:
@@ -478,6 +482,15 @@ function createServer(farmId: string | null): McpServer {
       description: TOOL_DESCRIPTIONS.check_in,
     },
     async () => ruled(() => game().farms.checkIn(game().farmId))
+  );
+
+  server.registerTool(
+    "play_my_day",
+    {
+      title: "Play My Day For Me",
+      description: TOOL_DESCRIPTIONS.play_my_day,
+    },
+    async () => ruled(() => playMyDay(database, game().farmId))
   );
 
   server.registerTool(
@@ -878,7 +891,7 @@ function createServer(farmId: string | null): McpServer {
 
 async function handleMcp(request: NextRequest): Promise<Response> {
   // Low-security beta auth by design: farm key via ?key= or x-farm-key.
-  // Single-farm fallback keeps local dev zero-friction.
+  // Single-farm fallback keeps local dev zero-friction; never in production.
   const database = db();
   const farmsApi = new Farms(database);
   const key =
@@ -891,7 +904,7 @@ async function handleMcp(request: NextRequest): Promise<Response> {
       farmId = null; // bad key → tools will say so via ruled()
     }
   } else {
-    farmId = farmsApi.soleFarm()?.id ?? null;
+    farmId = devSoleFarm(farmsApi)?.id ?? null;
   }
 
   const server = createServer(farmId);

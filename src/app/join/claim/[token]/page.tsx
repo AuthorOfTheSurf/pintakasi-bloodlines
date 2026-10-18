@@ -87,7 +87,7 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
           <p>
             A game-day ends at {DAY_TURNS_PH_HOUR}:00 in the morning, Philippine time (midnight
             GMT). Until your eggs hatch there is nothing to fight with, so this is a good time to
-            connect Claude and learn the rules.
+            look around your farm and learn the rules.
           </p>
         </>
       )}
@@ -100,8 +100,26 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
         The same goes for this page&apos;s link. Don&apos;t share either one.
       </div>
 
-      <h2>Connect Claude</h2>
-      <p>You play by talking to Claude. Claude connects to the game with this address:</p>
+      <h2>Open your farm</h2>
+      <p>
+        Your farm page shows your whole barn and lets you pick tonight&apos;s fights in a browser.
+        This button signs you in with your key, and the browser remembers you after that.
+      </p>
+      {/* A plain form POST, not a link: the key must not ride in a URL, where it
+          would land in history and logs. /api/session sets the cookie and sends
+          the browser on to /farm. */}
+      <form method="post" action="/api/session">
+        <input type="hidden" name="key" value={farm.apiKey} />
+        <button type="submit" className="submit">
+          Open my farm
+        </button>
+      </form>
+
+      <h2>Or play by talking to Claude</h2>
+      <p>
+        You can also play the same farm by chatting with Claude. Claude connects to the game with
+        this address:
+      </p>
       <code className="secret">{mcpUrl}</code>
 
       <h3>Claude Desktop or claude.ai</h3>
@@ -119,8 +137,9 @@ export default async function Claim({ params }: { params: Promise<{ token: strin
 
       <h2>What next</h2>
       <p>
-        Ask Claude to check in each game-day. Once your eggs hatch, Claude cards your birds with
-        you. To learn the rules yourself, read <Link href="/wiki">the Handbook</Link>.
+        Check in each game-day, on your farm page or by asking Claude. Once your eggs hatch, name
+        your birds and card them. <Link href="/wiki/farm">Your farm page</Link> in the Handbook
+        explains the page, and <Link href="/wiki">the Handbook</Link> teaches the rules.
       </p>
     </>
   );

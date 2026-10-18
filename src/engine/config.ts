@@ -2377,6 +2377,12 @@ export const BARN = {
   // seat (which burns only ~2.9% of issuance — 97% of every token minted
   // never leaves), and the first one bought for capacity rather than access.
   EXPANSION_BASE_LT: 1_000 * LT_CENTS,
+  // Bots and auto-play buy the next expansion once the flock is within this
+  // many slots of the ceiling: roughly one week of covers, so the expansion
+  // lands BEFORE `quietly` starts eating refused breeds rather than after
+  // (round 43). Here rather than in bots.ts since the farm page's Play my day
+  // does the same and the Handbook has to quote it.
+  EXPAND_HEADROOM: 10,
   // Every new farm receives these age-0 eggs, hatching together on its first
   // Hatch Friday. Eight gives a new stable enough discovery-year bodies to
   // card a real week and absorb early attrition without making the gacha the

@@ -389,44 +389,10 @@ export class Lobbies {
           `Check the board (or get_state's card) for what's running today and tomorrow.`
       );
 
-    this.checkCardCap(bird.id, bird.name, today);
-
-    // A championship registrant fights normal cards all week — except on ITS
-    // OWN crown day, when the championship IS its card (round 18; Thursday
-    // since 20).
-    //
-    // ⚠ FIXED ROUND 31, and it had been letting birds fight twice in a day.
-    // This gated on isCrownDay alone — Thursday — but queried pending entries
-    // WITHOUT filtering by division. Two bugs in one:
-    //   · Wednesday's Juvenile Championship registrants were never blocked, so
-    //     a juvenile entered a normal lobby AND its crown on the same day. The
-    //     cap at checkCardCap could not see it: the tournament writes its
-    //     battleLog rows at THURSDAY's day index (tournaments.ts), and the
-    //     lobby card resolves before resolveCrownDay in Game.tick, so both
-    //     fights really happened and nothing counted them together.
-    //   · On Thursday a JUVENILE registrant — whose crown had already run the
-    //     day before — was blocked from the daily card for nothing.
-    // The division lives on `tournaments`, not on the entry, which is why the
-    // original query could not tell the two apart without this join.
-    const crownDivision = crownDivisionOf(today);
-    if (crownDivision !== null) {
-      const registered = this.database
-        .select({ id: tournamentEntries.id })
-        .from(tournamentEntries)
-        .innerJoin(tournaments, eq(tournaments.id, tournamentEntries.tournamentId))
-        .where(
-          and(
-            eq(tournamentEntries.birdId, bird.id),
-            eq(tournamentEntries.status, "pending"),
-            eq(tournaments.division, crownDivision)
-          )
-        )
-        .all();
-      if (registered.length > 0)
-        throw new Error(
-          `${bird.name} is registered for the Pintakasi — tonight's crown is its card`
-        );
-    }
+    // Spent the day already (a card, a bracket, or tonight's crown). Asked
+    // AFTER the card check so an off-card spec still reads as off-card.
+    const spent = this.dayRefusal(bird.id, bird.name, today);
+    if (spent) throw new Error(spent);
 
     const fee = feeFor(spec.mode, spec.classType, spec.price);
     const farm = readFarm(this.database, this.farmId);
@@ -754,17 +720,19 @@ export class Lobbies {
    * anything countable. What the rule was always about is CARDS: a bird may be
    * on one lobby card a day, and it may not also have been in a bracket that
    * day. Those are two different questions, so they are asked separately now.
+   *
+   * The crown-day bar lives here too since the farm page: the page has to say
+   * WHY a bird can't card tonight before anyone presses Enter, so the rule
+   * returns its reason and `enter` is the one caller that throws.
    */
-  checkCardCap(birdId: string, name: string, today: number): void {
+  dayRefusal(birdId: string, name: string, today: number): string | null {
     const carded = this.database
       .select()
       .from(lobbyEntries)
       .where(and(eq(lobbyEntries.birdId, birdId), eq(lobbyEntries.dayEntered, today)))
       .all().length;
     if (carded >= CADENCE.ENTRIES_PER_BIRD_PER_DAY)
-      throw new Error(
-        `${name} is already on tonight's card — entries are binding until the day turns`
-      );
+      return `${name} is already on tonight's card — entries are binding until the day turns`;
     // A bracket fight also spends the day. Tournament rows are the ones with
     // no lobbyId (see Tournaments.runFight); lobby rows are already counted
     // above, by their entry, so counting them here again would double.
@@ -775,7 +743,43 @@ export class Lobbies {
       .all()
       .filter((r) => r.lobbyId === null).length;
     if (bracketed > 0)
-      throw new Error(`${name} already fought today — one card per bird per game-day (tick a day)`);
+      return `${name} already fought today — one card per bird per game-day (tick a day)`;
+
+    // A championship registrant fights normal cards all week — except on ITS
+    // OWN crown day, when the championship IS its card (round 18; Thursday
+    // since 20).
+    //
+    // ⚠ FIXED ROUND 31, and it had been letting birds fight twice in a day.
+    // This gated on isCrownDay alone — Thursday — but queried pending entries
+    // WITHOUT filtering by division. Two bugs in one:
+    //   · Wednesday's Juvenile Championship registrants were never blocked, so
+    //     a juvenile entered a normal lobby AND its crown on the same day. The
+    //     card cap above could not see it: the tournament writes its
+    //     battleLog rows at THURSDAY's day index (tournaments.ts), and the
+    //     lobby card resolves before resolveCrownDay in Game.tick, so both
+    //     fights really happened and nothing counted them together.
+    //   · On Thursday a JUVENILE registrant — whose crown had already run the
+    //     day before — was blocked from the daily card for nothing.
+    // The division lives on `tournaments`, not on the entry, which is why the
+    // original query could not tell the two apart without this join.
+    const crownDivision = crownDivisionOf(today);
+    if (crownDivision !== null) {
+      const registered = this.database
+        .select({ id: tournamentEntries.id })
+        .from(tournamentEntries)
+        .innerJoin(tournaments, eq(tournaments.id, tournamentEntries.tournamentId))
+        .where(
+          and(
+            eq(tournamentEntries.birdId, birdId),
+            eq(tournamentEntries.status, "pending"),
+            eq(tournaments.division, crownDivision)
+          )
+        )
+        .all();
+      if (registered.length > 0)
+        return `${name} is registered for the Pintakasi — tonight's crown is its card`;
+    }
+    return null;
   }
 
   /**
