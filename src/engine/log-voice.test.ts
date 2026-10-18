@@ -4,7 +4,7 @@ import { createDb, type DB } from "@/db/client";
 import { seedGame } from "@/db/seed-data";
 import { Bots } from "./bots";
 import type { EventType } from "./events";
-import { EVENT_VISIBILITY } from "./farm-log";
+import { farmLogLines } from "./farm-log";
 import type { NoteKind } from "./farm-notes";
 import { Game } from "./game";
 import {
@@ -34,6 +34,8 @@ const facts = (f: Case["facts"]): LineFacts => ({
   lt: null,
   bird: null,
   byFarm: null,
+  parents: null,
+  counterparty: null,
   data: null,
   ...f,
 });
@@ -79,6 +81,7 @@ const EVENT_CASES = {
         "bought a cover: Ash Fowl × Silent Cock (Tondo Tigas Gamefarm's stud, 435 GP) → Egg of Ash Fowl II (lays Friday, hatches the Friday after)",
       gp: -435,
       bird: "Egg of Ash Fowl II",
+      parents: { mother: "Ash Fowl", father: "Silent Cock", studFarm: "Tondo Tigas Gamefarm" },
     },
     said: "Bred Ash Fowl to Tondo Tigas Gamefarm's rooster Silent Cock for 435 GP. The new egg is Egg of Ash Fowl II.",
   },
@@ -143,8 +146,9 @@ const EVENT_CASES = {
       message:
         "claimed Frost Blow from Sabungero Syndicate for the 90 GP tag (won the draw over 3)",
       bird: "Frost Blow",
+      counterparty: "Sabungero Syndicate",
     },
-    said: "Frost Blow is yours now. You claimed it from Sabungero Syndicate for its 90 GP tag. More than one farm claimed it, and yours won the draw over 3 others.",
+    said: "Frost Blow became yours. You claimed it from Sabungero Syndicate for its 90 GP tag. More than one farm claimed it, and yours won the draw over 3 others.",
   },
   claim_refund: {
     facts: {
@@ -160,8 +164,9 @@ const EVENT_CASES = {
         "Savage Strike claimed away by Bukidnon Farms — banked 88.20 GP of the 90 GP tag (1.80 to stakers)",
       gp: 88.2,
       bird: "Savage Strike",
+      counterparty: "Bukidnon Farms",
     },
-    said: "Bukidnon Farms claimed Savage Strike for its tag, so Savage Strike is theirs now. You got 88.20 GP.",
+    said: "Bukidnon Farms claimed Savage Strike for its tag, so Savage Strike became theirs. You got 88.20 GP. The other 1.80 GP went to land stakers.",
   },
   staking_payout: {
     facts: { message: "staking yield +75.50 GP on 36737.00 staked LT", gp: 75.5 },
@@ -321,8 +326,34 @@ describe("each kind's sentence", () => {
               "bought a cover: Ash Fowl × Lunar Crow (Bukidnon Farms's stud, 315 GP) → Egg of Ash Fowl (lays Friday, hatches the Friday after)",
             gp: -315,
             bird: "Egg of Ash Fowl",
+            parents: { mother: "Ash Fowl", father: "Lunar Crow", studFarm: "Bukidnon Farms" },
           },
           said: "Bred Ash Fowl to Bukidnon Farms' rooster Lunar Crow for 315 GP. The new egg is Egg of Ash Fowl.",
+        },
+      ],
+      [
+        "breed",
+        {
+          facts: {
+            message:
+              "bought a cover: Ash Fowl × Lunar Crow (own stud, 315 GP) → Egg of Ash Fowl (lays Friday, hatches the Friday after)",
+            gp: -315,
+            bird: "Egg of Ash Fowl",
+            parents: { mother: "Ash Fowl", father: "Lunar Crow", studFarm: null },
+          },
+          said: "Bred Ash Fowl to your own rooster Lunar Crow for 315 GP. The new egg is Egg of Ash Fowl.",
+        },
+      ],
+      [
+        "tag_income",
+        {
+          facts: {
+            message: "Savage Strike claimed away by Bukidnon Farms — banked the 90 GP tag",
+            gp: 90,
+            bird: "Savage Strike",
+            counterparty: "Bukidnon Farms",
+          },
+          said: "Bukidnon Farms claimed Savage Strike for its tag, so Savage Strike became theirs. You got 90 GP.",
         },
       ],
       [
@@ -412,6 +443,256 @@ describe("when a line cannot be read", () => {
     for (const [kind, f] of nearMisses) expect(voiced("event", kind, facts(f))).toBeNull();
   });
 
+  /*
+   * A name is a player's free text, so it can hold any word a template uses.
+   * Each case below names its birds and farms with the delimiters of the
+   * pattern it targets (by, from, for, covered, ×, —, ·, @, an apostrophe, a
+   * W–L in brackets), and requires the sentence a correct reading gives, or
+   * the stored message. A wrong sentence fails it.
+   */
+  test("a name that holds a template's own words never steers the reading", () => {
+    const cases: [EventType, Case["facts"], string | null][] = [
+      [
+        "tournament_bump",
+        {
+          // The reviewer's reproduction, verbatim.
+          message: "Solar King bumped from the B5 Championship by Stand by Me — 160 GP refunded",
+          gp: 160,
+          bird: "Solar King",
+          byFarm: "Pulang Bagwis",
+        },
+        "Pulang Bagwis' Stand by Me took Solar King's seat in the B5 Championship. When a crown is full, a stronger bird can push out the weakest one. The 160 GP came back to you.",
+      ],
+      [
+        "tournament_bump",
+        {
+          message:
+            "King bumped from the B1 Championship by Ghost bumped from the B5 Championship by Stand by Me — 9 GP refunded — 160 GP refunded",
+          gp: 160,
+          bird: "King bumped from the B1 Championship by Ghost",
+        },
+        "Stand by Me — 9 GP refunded took King bumped from the B1 Championship by Ghost's seat in the B5 Championship. When a crown is full, a stronger bird can push out the weakest one. The 160 GP came back to you.",
+      ],
+      // The bumped bird was renamed after the bump: no anchor, so the stored line.
+      [
+        "tournament_bump",
+        {
+          message: "Solar King bumped from the B5 Championship by Stand by Me — 160 GP refunded",
+          gp: 160,
+          bird: "Sun Lord",
+        },
+        null,
+      ],
+      [
+        "claim_won",
+        {
+          message:
+            "claimed Stand from Me from Man from Manila for the 5 GP tag for the 90 GP tag (won the draw over 3)",
+          bird: "Stand from Me",
+          counterparty: "Man from Manila for the 5 GP tag",
+        },
+        "Stand from Me became yours. You claimed it from Man from Manila for the 5 GP tag for its 90 GP tag. More than one farm claimed it, and yours won the draw over 3 others.",
+      ],
+      // No claimed card to name the seller (a row older than its card): the stored line.
+      [
+        "claim_won",
+        {
+          message: "claimed Frost Blow from Sabungero Syndicate for the 90 GP tag",
+          bird: "Frost Blow",
+        },
+        null,
+      ],
+      [
+        "tag_income",
+        {
+          message:
+            "Savage claimed away by Stand by Me — banked the 5 GP tag claimed away by Stand by Me — banked 88.20 GP of the 90 GP tag (1.80 to stakers)",
+          gp: 88.2,
+          bird: "Savage claimed away by Stand by Me — banked the 5 GP tag",
+          counterparty: "Stand by Me",
+        },
+        "Stand by Me claimed Savage claimed away by Stand by Me — banked the 5 GP tag for its tag, so Savage claimed away by Stand by Me — banked the 5 GP tag became theirs. You got 88.20 GP. The other 1.80 GP went to land stakers.",
+      ],
+      [
+        "breed",
+        {
+          // The message would split at the wrong ×; the names come from the egg's row.
+          message:
+            "bought a cover: Ash × Fowl × Silent (Cock's stud, 1 GP) (Tondo's stud, 435 GP) → Egg of Ash × Fowl (lays Friday, hatches the Friday after)",
+          gp: -435,
+          bird: "Egg of Ash × Fowl",
+          parents: {
+            mother: "Ash × Fowl",
+            father: "Silent (Cock's stud, 1 GP)",
+            studFarm: "Tondo",
+          },
+        },
+        "Bred Ash × Fowl to Tondo's rooster Silent (Cock's stud, 1 GP) for 435 GP. The new egg is Egg of Ash × Fowl.",
+      ],
+      [
+        "stud_income",
+        {
+          message:
+            "Man covered by Night covered Hen — stud share +5 GP covered Two — stud share +292 GP",
+          gp: 292,
+          bird: "Man covered by Night",
+          byFarm: "Tondo Tigas Gamefarm",
+        },
+        "Tondo Tigas Gamefarm bred their hen Hen — stud share +5 GP covered Two to your rooster Man covered by Night. You earned 292 GP.",
+      ],
+      // The rooster was renamed after the cover: no anchor, so the stored line.
+      [
+        "stud_income",
+        {
+          message: "Blessed Flash covered Brass Wing — stud share +292 GP",
+          gp: 292,
+          bird: "Holy Flash",
+        },
+        null,
+      ],
+      [
+        "hatch",
+        {
+          message: "Ash — a hen, 5★ Fire hatched — a rooster, 2.5★ Earth",
+          bird: "Ash — a hen, 5★ Fire",
+        },
+        "Ash — a hen, 5★ Fire hatched. It is a rooster, 2.5★ Earth.",
+      ],
+      [
+        "retire",
+        {
+          message:
+            "Stand (9–0) by Me reached the age cap — retired to the barn (7–5). The sheet is public: B overall.",
+          bird: "Stand (9–0) by Me",
+          data: { by: "age" },
+        },
+        "Stand (9–0) by Me got too old to fight, so it retired. Its record was 7–5. Its stats are public now. Overall grade: B.",
+      ],
+      [
+        "retire",
+        {
+          message:
+            "Kid (3–3) retired to the barn at 9 (0–0) retired to the barn at 3 (4–4). The sheet is public: C+ overall.",
+          bird: "Kid (3–3) retired to the barn at 9 (0–0)",
+          data: { by: "manual" },
+        },
+        "Retired Kid (3–3) retired to the barn at 9 (0–0) to the barn. Its record was 4–4. Its stats are public now. Overall grade: C+.",
+      ],
+      [
+        "retire",
+        {
+          message:
+            "Kid fell in the B1 Championship Final — force-retired (0–9) fell in the B4 Championship Quarterfinals — force-retired (6–3)",
+          bird: "Kid fell in the B1 Championship Final — force-retired (0–9)",
+          data: { by: "hardcore" },
+        },
+        "Kid fell in the B1 Championship Final — force-retired (0–9) lost in the B4 Championship Quarterfinals. That crown is hardcore, so its career is over. Its record was 6–3.",
+      ],
+      [
+        "stud_listed",
+        {
+          message:
+            "Wind — 9 GP a cover (1 LT paid for the seat) stands at stud — 1300 GP a cover (100 LT paid for the seat)",
+          lt: -100,
+          bird: "Wind — 9 GP a cover (1 LT paid for the seat)",
+        },
+        "Put Wind — 9 GP a cover (1 LT paid for the seat) up at stud for 1,300 GP a cover. The stud seat cost 100 LT.",
+      ],
+      [
+        "entry",
+        {
+          message:
+            "entered A @ 5 GP tag · B2 — OPEN · B5 (lobby #1, 1 GP escrowed) — JUVENILE·CLAIMER @ 270 GP tag · B1 (lobby #782, 72 GP escrowed)",
+          gp: -72,
+          bird: "A @ 5 GP tag · B2 — OPEN · B5 (lobby #1, 1 GP escrowed)",
+        },
+        "Entered A @ 5 GP tag · B2 — OPEN · B5 (lobby #1, 1 GP escrowed) in tonight's juvenile claimer fights (B1). Another farm can claim it for 270 GP. 72 GP is held until the fights are done.",
+      ],
+      [
+        "refund",
+        {
+          message:
+            "Kid's Pintakasi entry withdrawn — no longer stands drew nobody in CLAIMER @ 180 GP tag · B4 — 96 GP refunded",
+          gp: 96,
+          bird: "Kid's Pintakasi entry withdrawn — no longer stands",
+        },
+        "Kid's Pintakasi entry withdrawn — no longer stands had nobody to fight tonight. The 96 GP came back to you.",
+      ],
+      [
+        "refund",
+        {
+          message:
+            "Kid drew nobody in OPEN · B1 — 5 GP refunded's Pintakasi entry withdrawn — the field was too small (80 GP home)",
+          gp: 80,
+          bird: "Kid drew nobody in OPEN · B1 — 5 GP refunded",
+        },
+        "Kid drew nobody in OPEN · B1 — 5 GP refunded left the Pintakasi because too few birds signed up. The 80 GP came back to you.",
+      ],
+      [
+        "card_settled",
+        {
+          message:
+            "Crow — 3 of 3 fights finished JUVENILE · B3 — 2 of 3 fights, 150 GP risked, +29.10 LT · 50 GP unfought and returned",
+          gp: 50,
+          lt: 29.1,
+          bird: "Crow — 3 of 3 fights",
+        },
+        "Crow — 3 of 3 fights fought 2 of 3 fights tonight. It earned 29.10 LT. 50 GP came back for the fights it did not get.",
+      ],
+      [
+        "claim_refund",
+        {
+          message:
+            "lost the claim draw on X called off — the bird drew no opponent, 5 GP refunded — 90 GP refunded",
+          gp: 90,
+          bird: "X called off — the bird drew no opponent, 5 GP refunded",
+        },
+        "Another farm won the draw for X called off — the bird drew no opponent, 5 GP refunded, so your claim lost. The 90 GP came back to you.",
+      ],
+      [
+        "claim_refund",
+        {
+          message:
+            "claim on lost the claim draw on Y — 5 GP refunded called off — the bird drew no opponent, 90 GP refunded",
+          gp: 90,
+          bird: "lost the claim draw on Y — 5 GP refunded",
+        },
+        "Your claim on lost the claim draw on Y — 5 GP refunded was called off because the bird had nobody to fight. The 90 GP came back to you.",
+      ],
+      [
+        "tournament_entry",
+        {
+          message:
+            "registered Wing for the B1 Championship (week 9, free to enter) — hardcore: lose and the career ends for the B3 Championship (week 13, 160 GP escrowed) — hardcore: lose and the career ends",
+          gp: -160,
+          bird: "Wing for the B1 Championship (week 9, free to enter) — hardcore: lose and the career ends",
+        },
+        "Signed Wing for the B1 Championship (week 9, free to enter) — hardcore: lose and the career ends up for the B3 Championship in week 13. The 160 GP entry fee is held until the crown. This crown is hardcore. If Wing for the B1 Championship (week 9, free to enter) — hardcore: lose and the career ends loses, its career ends.",
+      ],
+      [
+        "purse_payout",
+        {
+          message:
+            "Mad — B1 Championship land pot: +1 LT (9 fights) — B3 Championship land pot: +241.93 LT (1 fight)",
+          lt: 241.93,
+          bird: "Mad — B1 Championship land pot: +1 LT (9 fights)",
+        },
+        "Mad — B1 Championship land pot: +1 LT (9 fights) earned 241.93 LT from the B3 Championship land pot for 1 fight.",
+      ],
+      [
+        "purse_payout",
+        {
+          message:
+            "Mad — B1 Championship purse (champion): +1 GP — B3 Championship purse (semifinal): +1234.50 GP",
+          gp: 1234.5,
+          bird: "Mad — B1 Championship purse (champion): +1 GP",
+        },
+        "Mad — B1 Championship purse (champion): +1 GP went out in the semifinal of the B3 Championship. Its share of the purse was 1,234.50 GP.",
+      ],
+    ];
+    for (const [kind, f, said] of cases) expect(voiced("event", kind, facts(f))).toBe(said);
+  });
+
   test("a gacha egg reads by the name it carries now, not the name it dropped with", () => {
     const line = speak(
       "event",
@@ -444,71 +725,110 @@ describe("when a line cannot be read", () => {
 
 /**
  * THE DRIFT CHECK. The cases above pin today's templates; this pins that the
- * table still reads what the engine writes. It plays a real world for two
- * weeks (both crown days, Hatch Friday, the stud market, claims) and requires
- * every row any farm can see to come out in the new voice. A template change
- * in the engine that the table does not follow fails here, by name.
+ * table still reads what the engine writes, through the real reader and its
+ * joins. It plays a full bot world for five weeks, long enough for the crowns
+ * to fill and bump (the first bump lands on day 32), and requires every line
+ * of every farm's log to come out in the new voice. A template change in the
+ * engine that the table does not follow fails here, by name.
+ *
+ * The kinds it sees are pinned exactly, so a kind that silently falls out of
+ * the world (and so out of this check) fails too. stud_unlisted and
+ * barn_expanded are not in it: no bot unlists, and the first barn expansion
+ * lands on day 40. Their templates are pinned by the cases above.
  */
 describe("the engine's own rows", () => {
+  const DAYS = 33;
+
   function playWorld(): DB {
     seedWorld(7);
     try {
       const db = createDb(":memory:");
       const dev = seedGame(db, { flock: "legacy" });
-      Bots.seed(db, {
-        flock: "legacy",
-        only: ["scripted-1", "scripted-3", "scripted-5", "scripted-7"],
-      });
+      Bots.seed(db, { flock: "legacy" });
       const game = new Game(db, dev.farmId);
-      for (let i = 0; i < 15; i++) game.tickDay();
+      for (let i = 0; i < DAYS; i++) game.tickDay();
       return db;
     } finally {
       seedWorld(null);
     }
   }
 
-  test("every row a farm log shows reads in the new voice", () => {
-    const db = playWorld();
-    const rows = db.all<{
-      src: "event" | "note";
-      kind: string;
-      message: string;
-      data: string | null;
-      bird: string | null;
-      gp: number | null;
-      lt: number | null;
-    }>(sql`
-      SELECT 'event' AS src, e.type AS kind, e.message, e.data, b.name AS bird,
-             e.gp_cents / 100.0 AS gp, e.lt / 100.0 AS lt
-        FROM events e LEFT JOIN birds b ON b.id = e.bird_id
-       WHERE e.farm_id IS NOT NULL
-      UNION ALL
-      SELECT 'note', n.kind, n.message, n.data, b.name, NULL, NULL
-        FROM farm_notes n LEFT JOIN birds b ON b.id = n.bird_id
-       WHERE n.message <> ''`);
-    const shown = rows.filter(
-      (r) => r.src === "note" || EVENT_VISIBILITY[r.kind as EventType] !== "hidden"
-    );
-    const unread = new Map<string, string>();
-    const seen = new Set<string>();
-    for (const r of shown) {
-      const table: Record<string, unknown> = r.src === "event" ? EVENT_SENTENCES : NOTE_SENTENCES;
-      if (table[r.kind] === "stored") continue;
-      seen.add(r.kind);
-      const said = voiced(r.src, r.kind, {
-        message: r.message,
-        gp: r.gp,
-        lt: r.lt,
-        bird: r.bird,
-        byFarm: null,
-        data: r.data === null ? null : JSON.parse(r.data),
-      });
-      if (said === null) unread.set(r.kind, r.message);
-      // No internal ids reach a player: lobby and entry numbers stay stored.
-      else expect(said).not.toMatch(/#\d/);
-    }
-    expect(Object.fromEntries(unread)).toEqual({});
-    // A world busy enough to have written most kinds, not an empty pass.
-    expect(seen.size).toBeGreaterThan(15);
-  });
+  test(
+    "every line of every farm's log reads in the new voice",
+    () => {
+      const db = playWorld();
+      const unread = new Map<string, string>();
+      const seen = new Set<string>();
+      const byAnotherFarm = new Set<string>();
+      for (const { id } of db.all<{ id: string }>(sql`SELECT id FROM farms`)) {
+        let before: string | undefined;
+        for (;;) {
+          const { lines, more } = farmLogLines(db, id, { limit: 200, before });
+          for (const { source, facts: f, entry } of lines) {
+            const table: Record<string, unknown> =
+              source === "event" ? EVENT_SENTENCES : NOTE_SENTENCES;
+            if (table[entry.kind] === "stored") continue;
+            const key = `${source}:${entry.kind}`;
+            seen.add(key);
+            const said = voiced(source, entry.kind, f);
+            if (said === null) {
+              unread.set(key, f.message);
+              continue;
+            }
+            // No internal ids reach a player: lobby and entry numbers stay stored.
+            expect(said).not.toMatch(/#\d/);
+            if (entry.who === "another_farm") {
+              byAnotherFarm.add(entry.kind);
+              expect(entry.farm).not.toBeNull();
+              expect(said).toContain(String(entry.farm));
+            }
+            // The joined names agree with what the engine wrote at the time.
+            if (entry.kind === "claim_won")
+              expect(f.message).toContain(` from ${f.counterparty} for the `);
+            if (entry.kind === "tag_income")
+              expect(f.message).toContain(` claimed away by ${f.counterparty} — banked `);
+            if (entry.kind === "breed") {
+              expect(f.parents).not.toBeNull();
+              const own = (f.data as { ownStud?: boolean }).ownStud === true;
+              if (own) expect(f.parents?.studFarm).toBeNull();
+              else expect(f.message).toContain(`(${f.parents?.studFarm}'s stud, `);
+            }
+          }
+          if (!more) break;
+          before = lines[lines.length - 1].entry.cursor;
+        }
+      }
+      expect(Object.fromEntries(unread)).toEqual({});
+      expect([...seen].sort()).toEqual([
+        "event:breed",
+        "event:buy_land",
+        "event:card_settled",
+        "event:check_in",
+        "event:claim",
+        "event:claim_refund",
+        "event:claim_won",
+        "event:entry",
+        "event:farm_registered",
+        "event:gacha",
+        "event:hatch",
+        "event:purse_payout",
+        "event:refund",
+        "event:retire",
+        "event:stake",
+        "event:staking_payout",
+        "event:stud_income",
+        "event:stud_listed",
+        "event:tag_income",
+        "event:tournament_bump",
+        "event:tournament_entry",
+        "event:unstake",
+        "note:named",
+        "note:stud_price",
+      ]);
+      // Claims settle at the tick, so they read as the game; these two are
+      // the moves another farm makes on yours.
+      expect([...byAnotherFarm].sort()).toEqual(["stud_income", "tournament_bump"]);
+    },
+    { timeout: 120_000 }
+  );
 });
