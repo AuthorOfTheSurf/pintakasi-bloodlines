@@ -193,6 +193,39 @@ describe("who each door credits", () => {
     expect(report.named.map((n) => n.birdId)).toContain(chick.id);
   });
 
+  test("a run whose last move is a rename still heads its run, and a rename after it sorts above it", async () => {
+    // The day is already played and carded, and a hatchling is too young for
+    // any card, so this press only christens it: a note written after the
+    // run's last event, sharing its after_event_id with the summary.
+    const chick = makeBird(w.db, { named: 0, name: "Second Egg of Dev Hen", age: 0 });
+    const res = await autoplayPOST(post("/api/autoplay", { cookie: devKey }));
+    expect(res.status).toBe(200);
+    const report = (await res.json()) as HonestDayReport;
+    expect(report.named.map((n) => n.birdId)).toEqual([chick.id]);
+
+    const log = await fullLog({ cookie: devKey });
+    const summary = log.find((e) => e.kind === "play_my_day");
+    if (!summary) throw new Error("no Play my day summary");
+    const run = log.filter((e) => e.runId === summary.runId);
+    const named = run.find((e) => e.kind === "named");
+    // The precondition: the run's newest line is a note, at the summary's ord.
+    expect(named?.cursor.split(".")[0]).toBe(summary.cursor.split(".")[0]);
+    expect(run[0]).toBe(summary);
+    expect(log[0]).toBe(summary);
+
+    expect(
+      (
+        await namePOST(
+          post(`/api/birds/${chick.id}/name`, { cookie: devKey }, { name: "Bituin" }),
+          { params: Promise.resolve({ id: chick.id }) }
+        )
+      ).status
+    ).toBe(200);
+    const after = await fullLog({ cookie: devKey });
+    expect([after[0].kind, after[0].runId]).toEqual(["named", null]);
+    expect(after[1]).toEqual(summary);
+  });
+
   test("the play_my_day tool is Play my day, via mcp", async () => {
     await mcpCall(rivalKey, "play_my_day");
     const log = await fullLog({ farmKey: rivalKey });

@@ -293,6 +293,12 @@ export default function FarmPage() {
         line says who made it.
       </p>
       <p>
+        A fight itself is not a log line. It belongs to two farms at once, so it lives in{" "}
+        <strong>Results</strong>. What the log shows is your side of it: the line where the fight
+        <strong> settles</strong> and your bird&apos;s winnings or losses land, or the refund when
+        your bird never drew an opponent.
+      </p>
+      <p>
         <strong>Why it exists.</strong> Your GP can drop while you are not looking. A fight settles,
         Play my day spends, another farm claims a bird. Without a record, all you see is a smaller
         number. The log lets you find the line that moved your money, and see who moved it and why.

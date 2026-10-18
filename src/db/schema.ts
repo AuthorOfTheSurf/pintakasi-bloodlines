@@ -520,7 +520,7 @@ export const actorSpans = sqliteTable("actor_spans", {
   actorKind: text("actor_kind", { enum: ACTOR_KINDS }).notNull(),
   via: text("via"),
   actorFarmId: text("actor_farm_id"),
-  runId: integer("run_id"), // farm_notes.id of the button press this span belongs to
+  runId: integer("run_id"), // the button press this span belongs to (its summary note carries the same run_id)
 });
 
 export const farmNotes = sqliteTable("farm_notes", {

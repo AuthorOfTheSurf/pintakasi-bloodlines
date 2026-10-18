@@ -289,9 +289,17 @@ describe("who each boundary credits", () => {
     const mine = logOf(w.db, w.devId);
     const covers = mine.filter((e) => e.kind === "stud_income");
     expect(covers.length).toBeGreaterThan(0);
+    // The span knows the buyer is a scripted house barn; my log does not say
+    // so, because whether another barn is a bot or a person is not mine to
+    // read.
+    const actors = eventActors(
+      w.db,
+      covers.map((c) => Number(c.cursor.split(".")[0]))
+    );
     for (const c of covers) {
       expect(c.message).toContain(stud.name);
-      expect([c.who, c.via]).toEqual(["another_farm", "scripted"]);
+      expect([c.who, c.via]).toEqual(["another_farm", null]);
+      expect(actors.get(Number(c.cursor.split(".")[0]))?.via).toBe("scripted");
     }
     // A fight row names no farm; the bird's settlement line is the farm's.
     const settled = mine.filter((e) => e.kind === "card_settled" || e.kind === "refund");
@@ -325,6 +333,50 @@ describe("who each boundary credits", () => {
     const broken = farmLogInvariant(w.db);
     expect(broken.passed).toBe(false);
     expect(broken.offenders).toContain(`event ${bare} (buy_land) has no actor`);
+  });
+
+  test("a press the process died in is a FARM LOG warning, not an invariant failure", () => {
+    const w = world();
+    withActor(w.db, asPlayer(w.devId), () => w.farms.checkIn(w.devId));
+    // What a death mid-press leaves: FarmNotes.run's opener, and a move of
+    // the run pointing at it, with no summary ever written.
+    const opener = w.db
+      .insert(farmNotes)
+      .values({
+        farmId: w.devId,
+        dayIndex: 0,
+        afterEventId: newestEventId(w.db),
+        kind: "play_my_day",
+        message: "",
+        visibility: "owner",
+        actorKind: "autoplay",
+        via: "button",
+        actorFarmId: w.devId,
+      })
+      .returning({ id: farmNotes.id })
+      .get().id;
+    withActor(w.db, { kind: "autoplay", via: "button", farmId: w.devId, runId: opener }, () =>
+      w.farms.buyLand(w.devId, 1)
+    );
+    const report = diagnose(w.db, ":memory:");
+    const inv = report.invariants.find((i) => i.name === "every move on the farm log has an actor");
+    expect(inv?.passed).toBe(true);
+    const health = report.health.find((h) => h.title === "FARM LOG");
+    expect(health?.warn).toContain(`#${opener} (play_my_day, ${w.devId}, day 0)`);
+    // The log shows no empty line for it.
+    expect(logOf(w.db, w.devId).some((e) => e.kind === "play_my_day")).toBe(false);
+  });
+
+  test("a finished press leaves one summary, no opener, and no FARM LOG warning", () => {
+    const w = world();
+    playMyDay(w.db, w.devId);
+    const presses = w.db.select().from(farmNotes).where(eq(farmNotes.kind, "play_my_day")).all();
+    expect(presses).toHaveLength(1);
+    expect(presses[0].message).toMatch(/^Played the day\./);
+    expect(presses[0].runId).not.toBe(presses[0].id);
+    const report = diagnose(w.db, ":memory:");
+    expect(report.health.find((h) => h.title === "FARM LOG")?.warn).toBeUndefined();
+    expect(farmLogInvariant(w.db).passed).toBe(true);
   });
 });
 

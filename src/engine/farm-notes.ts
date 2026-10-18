@@ -74,10 +74,24 @@ export const FarmNotes = {
    * A BUTTON PRESS that leaves one summary line its moves link back to. The
    * owner asked for exactly this: "store each button summary as a log entry".
    *
-   * The summary row goes in FIRST, so its id exists to stamp on every span and
-   * note the press produces. When `fn` returns, the row gets its sentence and
-   * moves to the top of the run. If `fn` throws, the row says the run stopped
-   * and why, so a half-played day is never silent.
+   * Two rows, on purpose. An OPENER with no sentence goes in first, so its id
+   * exists to stamp on every span and note the press produces as `runId`.
+   * When `fn` returns, the summary is written as a NEW row carrying that
+   * runId, and the opener is deleted in the same transaction. If `fn` throws,
+   * the summary says the run stopped and why, so a half-played day is never
+   * silent.
+   *
+   * Why a new row and not an update of the opener: the log orders notes that
+   * share an `after_event_id` by id. A note the run writes after its last
+   * event (Play my day christening a chick once the player had carded by
+   * hand, or a Hatch Friday reprice) has a larger id than the opener, so an
+   * updated opener sorted BELOW its own move. A new row is the newest note
+   * when the run ends, so it heads its run, and a rename the player makes a
+   * second later still sorts above it. A fixed sort rank for summaries would
+   * fix the first case and break the second.
+   *
+   * An opener with no summary means the process died mid-press. The log never
+   * shows it (it has no sentence), and the doctor warns about it.
    *
    * Runs happen at a request, never inside a tick: a tick has no button.
    */
@@ -88,32 +102,33 @@ export const FarmNotes = {
     fn: () => T,
     summarize: (result: T) => { message: string; data?: unknown }
   ): T {
+    const row = {
+      farmId: actor.farmId,
+      dayIndex: dayNow(db),
+      kind,
+      visibility: "owner" as const,
+      actorKind: actor.kind,
+      via: actor.via,
+      actorFarmId: actor.farmId,
+    };
     const runId = db
       .insert(farmNotes)
-      .values({
-        farmId: actor.farmId,
-        dayIndex: dayNow(db),
-        afterEventId: newestEventId(db),
-        kind,
-        message: "",
-        visibility: "owner",
-        actorKind: actor.kind,
-        via: actor.via,
-        actorFarmId: actor.farmId,
-      })
+      .values({ ...row, afterEventId: newestEventId(db), message: "" })
       .returning({ id: farmNotes.id })
       .get().id;
     const finish = (message: string, data?: unknown) =>
-      db
-        .update(farmNotes)
-        .set({
-          message,
-          data: data === undefined ? null : JSON.stringify(data),
-          afterEventId: newestEventId(db),
-          runId,
-        })
-        .where(eq(farmNotes.id, runId))
-        .run();
+      db.transaction(() => {
+        db.insert(farmNotes)
+          .values({
+            ...row,
+            afterEventId: newestEventId(db),
+            message,
+            data: data === undefined ? null : JSON.stringify(data),
+            runId,
+          })
+          .run();
+        db.delete(farmNotes).where(eq(farmNotes.id, runId)).run();
+      });
     try {
       const result = withActor(db, { ...actor, runId }, fn);
       const { message, data } = summarize(result);

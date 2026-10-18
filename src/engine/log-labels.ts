@@ -26,7 +26,7 @@ export const LOG_LABEL_KEYS = Object.keys(LOG_LABELS) as LogLabel[];
 
 /**
  * The note kinds that are a button press's own summary line. Every move the
- * press made carries the summary's id as its runId, so a reader can group
+ * press made carries the same runId as the summary, so a reader can group
  * them under it.
  */
 export const RUN_SUMMARY_KINDS = ["play_my_day", "card"] as const;
@@ -46,6 +46,6 @@ export interface FarmLogEntry {
   message: string;
   gp: number | null;
   lt: number | null;
-  /** The button press this move belongs to (its summary line's id). */
+  /** The button press this move belongs to; its summary line carries the same runId. */
   runId: number | null;
 }

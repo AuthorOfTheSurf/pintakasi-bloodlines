@@ -33,7 +33,11 @@ export function honestDayLines(report: HonestDayReport): string[] {
 
 /** The run's one log line: what it did, then what it did to the wallet. */
 export function honestDaySentence(report: HonestDayReport): string {
-  const gp = (n: number) => n.toFixed(2);
+  // The farm page's wallet format (gp2 in farm-app.tsx), with the locale
+  // pinned: this sentence is stored on the log and read by every viewer, so
+  // it cannot take the separators of whichever server wrote it.
+  const gp = (n: number) =>
+    n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const diff = report.gpAfter - report.gpBefore;
   const sign = diff >= 0 ? "+" : "−";
   return (

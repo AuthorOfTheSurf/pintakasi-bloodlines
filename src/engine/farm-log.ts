@@ -57,6 +57,11 @@ export const EVENT_VISIBILITY: Record<EventType, "owner" | "public" | "hidden"> 
   stud_listed: "public",
   stud_unlisted: "public",
   entry: "owner",
+  // A world event: a fight row carries no farm_id (it names two birds of two
+  // barns), and every reader here selects by farm, so it never reaches a farm
+  // log. The farm's side of a fight is its settlement (card_settled, refund);
+  // the fight itself is on the Results view. "public" is the call for a
+  // world reader later, not something this one shows.
   fight: "public",
   refund: "owner",
   card_settled: "owner",
@@ -111,8 +116,9 @@ function parseCursor(raw: string | undefined): Cursor | null {
 /**
  * Both sources as one ordered stream. An event sorts by its id; a note sorts
  * just after the newest event that existed when it was written, so a name or
- * a price lands between the moves around it. A run's summary note is moved to
- * the top of its run when the run ends, so it reads above its own moves.
+ * a price lands between the moves around it. A run's summary note is written
+ * when the run ends (FarmNotes.run), so it is the newest line of its run and
+ * reads above its own moves.
  */
 function stream(farmId: string, before: Cursor | null): SQL {
   const eventsBefore = before ? sql`AND e.id < ${before.ord + (before.src > 0 ? 1 : 0)}` : sql``;
@@ -177,7 +183,10 @@ export function farmLogPage(
       cursor: `${r.ord}.${r.src}.${r.id}`,
       day: r.day,
       who: r.who,
-      via: r.via,
+      // The door is the viewer's own business. On another farm's move it
+      // would say whether that barn is a bot or a person, which the label
+      // deliberately does not.
+      via: r.who === "another_farm" ? null : r.via,
       kind: r.kind,
       isRunSummary: r.src === 1 && RUN_SUMMARY_KINDS.some((k) => k === r.kind),
       message: r.src === 0 ? sentence(r.message) : r.message,

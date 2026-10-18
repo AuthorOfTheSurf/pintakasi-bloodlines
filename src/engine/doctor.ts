@@ -650,6 +650,38 @@ function checkCrownsBeforeCalendar(db: DB): Invariant {
  * night's worth of stake.
  */
 /**
+ * The button presses on the farm log. A press is its OPENER while it runs and
+ * its summary once it ends (FarmNotes.run swaps one for the other), so the
+ * press ids a move may point at are the finished summaries' runIds plus any
+ * opener still standing.
+ */
+function buttonPresses(notes: (typeof farmNotes.$inferSelect)[]) {
+  const presses = notes.filter((n) => RUN_SUMMARY_KINDS.some((k) => k === n.kind));
+  const unfinished = presses.filter((n) => n.message === "");
+  const runs = new Set(presses.map((n) => (n.message === "" ? n.id : n.runId)));
+  return { runs, unfinished };
+}
+
+/** Button presses that never wrote their summary: see checkFarmLog for why a warning. */
+function farmLogHealth(db: DB): HealthSection {
+  const notes = db.select().from(farmNotes).all();
+  const { runs, unfinished } = buttonPresses(notes);
+  return {
+    title: "FARM LOG",
+    lines: [
+      `${notes.length} notes · ${runs.size} button presses · ${unfinished.length} never finished`,
+    ],
+    warn: unfinished.length
+      ? `${unfinished.length} button press(es) never wrote a summary (a process died mid-press, or one is running now): ` +
+        unfinished
+          .slice(0, DOCTOR.OFFENDER_SAMPLE)
+          .map((n) => `#${n.id} (${n.kind}, ${n.farmId}, day ${n.dayIndex})`)
+          .join(", ")
+      : undefined,
+  };
+}
+
+/**
  * THE FARM LOG CREDITS EVERY MOVE TO SOMEBODY (2026-10).
  *
  * The log's promise to a player is "here is who did this". It keeps that
@@ -661,8 +693,14 @@ function checkCrownsBeforeCalendar(db: DB): Invariant {
  *   - spans never overlap, so no event has two actors;
  *   - every event after the first span is covered (older ones predate the log);
  *   - every note has an actor;
- *   - every button press finished with a summary line, and every move that
- *     claims a press points at one.
+ *   - every move that claims a button press points at one.
+ *
+ * A press that never wrote its summary is NOT a failure here; it is a health
+ * warning in FARM LOG below. Only a process dying mid-press can leave one
+ * (FarmNotes.run finishes on success and on a throw), and a live doctor can
+ * also catch a press that is still running. Either way the ledger is whole
+ * and every move is credited; the log only lacks one sentence. As an
+ * invariant it failed the doctor forever over one crash.
  */
 function checkFarmLog(db: DB): Invariant {
   const offenders: string[] = [];
@@ -690,12 +728,9 @@ function checkFarmLog(db: DB): Invariant {
            ORDER BY e.id`);
   for (const e of uncovered) offenders.push(`event ${e.id} (${e.type}) has no actor`);
   const notes = db.select().from(farmNotes).all();
-  const runs = new Set(
-    notes.filter((n) => RUN_SUMMARY_KINDS.some((k) => k === n.kind)).map((n) => n.id)
-  );
+  const { runs } = buttonPresses(notes);
   for (const n of notes) {
     if (n.actorKind === null) offenders.push(`note ${n.id} (${n.kind}) has no actor`);
-    if (runs.has(n.id) && n.message === "") offenders.push(`button press ${n.id} never finished`);
     if (n.runId !== null && !runs.has(n.runId))
       offenders.push(`note ${n.id} points at press ${n.runId}, which is not a press`);
   }
@@ -3397,6 +3432,7 @@ export function diagnose(db: DB, dbPath: string): DoctorReport {
     // After who got rich: whether the price tag on a bird meant anything.
     ...[valueCalibration(db)].filter((x): x is HealthSection => x !== null),
     adoption(db, allEvents),
+    farmLogHealth(db),
     discovery(discoveryAudit),
   ];
 
