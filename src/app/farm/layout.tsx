@@ -88,6 +88,27 @@ const CSS = `
   .tonight-cell .blocked { color: #e07a6a; }
   .spark { vertical-align: middle; }
 
+  .logfilter { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .6rem; }
+  .logfilter button { font: inherit; color: #9a8f78; background: transparent; border: 1px solid #3a342a;
+    border-radius: 6px; padding: .3rem .8rem; min-height: 44px; cursor: pointer; }
+  .logfilter button[aria-pressed="true"] { color: #e8b64c; border-color: #e8b64c; }
+  .logfilter .count { opacity: .7; font-size: .85em; }
+  .farmlog { list-style: none; margin: 0; padding: 0; border-top: 1px solid #2a251e; }
+  .farmlog li { display: flex; flex-wrap: wrap; gap: .1rem .8rem; align-items: baseline;
+    padding: .45rem .2rem; border-bottom: 1px solid #2a251e; }
+  .farmlog .meta { flex: none; white-space: nowrap; }
+  .farmlog .msg { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+  .farmlog .deltas { flex: none; margin-left: auto; white-space: nowrap; }
+  .farmlog li.head { background: #1a1712; }
+  .farmlog li.head .msg { font-weight: 700; color: #f4e9d0; }
+  .farmlog li.inrun { padding-left: 1rem; border-left: 2px solid #3a342a; }
+  .chip { display: inline-block; border: 1px solid #3a342a; border-radius: 999px; padding: 0 .5rem;
+    font-size: .85em; color: #cfc6b2; }
+  .chip.who-you { color: #e8b64c; border-color: #e8b64c; }
+  .chip.who-play_my_day { color: #7fc9c0; border-color: #4c7f79; }
+  .chip.who-unrecorded { color: #9a8f78; border-style: dashed; }
+  .saved { margin: .5rem 0 0; color: #cfc6b2; }
+
   .detail { margin-top: 1rem; border: 1px solid #3a342a; border-radius: 8px; background: #1a1712; padding: .8rem 1rem; }
   .detail h3 { margin: 0 0 .5rem; font-size: 1rem; color: #f4e9d0; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
   .tabs { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0 0 .6rem; }
@@ -118,5 +139,8 @@ const CSS = `
     .gridbox { height: 65vh; }
     .actions form { margin-left: 0; }
     .btn.small, .tonight-cell select { min-height: 44px; }
+    /* Five views have to share one row at 485px; the default padding wraps the last. */
+    .views { gap: .3rem; }
+    .views button { padding: .4rem .5rem; }
   }
 `;

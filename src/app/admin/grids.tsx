@@ -199,6 +199,8 @@ export interface LedgerRowUI {
   farm: string;
   farmP?: string;
   farmS?: string;
+  /** Who made the move ("player · Claude", "Play my day", "game"); "—" before the log. */
+  actor: string;
   message: string;
   gp: number | null;
   lt: number | null; // signed, in hundredths of a token (round 36)
@@ -761,6 +763,7 @@ const LEDGER_COLS: ColDef<LedgerRowUI>[] = [
   { field: "day", type: "rightAligned", width: 80 },
   { field: "type", width: 140 },
   farmCol("farm", "farm", "farm"),
+  { field: "actor", headerName: "who", width: 160, tooltipField: "actor" },
   {
     field: "message",
     headerName: "what happened",
