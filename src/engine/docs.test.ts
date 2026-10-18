@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { MCP_INSTRUCTIONS, TOOL_DESCRIPTIONS } from "@/app/api/mcp/route";
 import { AUTO_RESERVE } from "./auto-play";
 import { splitBreedFee } from "./breeding";
+import { FARM_LOG_PAGE, LOG_LABEL_KEYS, LOG_LABELS } from "./farm-log";
 import { fmtGp } from "./events";
 import type { FightFormat, FightMode } from "./config";
 import {
@@ -376,6 +377,24 @@ describe("The Handbook (src/app/wiki) doesn't assert what config now contradicts
     const farm = readWikiPage("farm/page.tsx");
     expect(farm).toContain("{AUTO_RESERVE} GP");
     expect(farm).not.toContain(`${AUTO_RESERVE} GP`);
+  });
+
+  // The farm log arrived as a fifth view on the farm page. Its labels are the
+  // engine's words, so the Handbook renders them from LOG_LABELS: a typed copy
+  // would keep teaching "you" the day the engine starts saying something else.
+  test("the farm page explains the farm log and renders its labels from LOG_LABELS", () => {
+    const farm = readWikiPage("farm/page.tsx");
+    expect(farm).toContain('id="farm-log"');
+    expect(farm).toContain("{LOG_LABELS[key]}");
+    expect(farm).toContain("{LOG_LABELS.play_my_day}");
+    for (const key of LOG_LABEL_KEYS) expect(farm).not.toContain(`<td>${LOG_LABELS[key]}</td>`);
+    expect(farm).toMatch(/farm_log/);
+    expect(farm).not.toMatch(/four tables/i);
+  });
+
+  test("farm_log's MCP description names every label and the live page cap", () => {
+    for (const key of LOG_LABEL_KEYS) expect(TOOL_DESCRIPTIONS.farm_log).toContain(`"${key}"`);
+    expect(TOOL_DESCRIPTIONS.farm_log).toContain(`${FARM_LOG_PAGE.MAX}`);
   });
 
   test("gacha page derives its egg tiers from GACHA_BIRDS, doesn't type them out", () => {

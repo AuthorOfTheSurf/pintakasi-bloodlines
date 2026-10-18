@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { AUTO_RESERVE } from "@/engine/auto-play";
 import { CROWN_CHASE, STUD_MARKET } from "@/engine/bot-config";
 import {
@@ -13,6 +14,7 @@ import {
   STATS,
   STUD_PRICE,
 } from "@/engine/config";
+import { LOG_LABELS, type LogLabel } from "@/engine/farm-log";
 import { GameClock } from "@/engine/game-clock";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +22,39 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Your farm page — The Pintakasi Handbook",
   description:
-    "Playing from a browser: signing in, tonight's card, the Enter card bar, and what Play my day does.",
+    "Playing from a browser: signing in, tonight's card, the Enter card bar, what Play my day does, and your farm log.",
+};
+
+// One meaning per label, keyed by the engine's own labels, so a new label
+// does not compile until this page says what it means.
+const LABEL_MEANINGS: Record<LogLabel, ReactNode> = {
+  you: (
+    <>
+      A move you made yourself, from this page or through Claude. Claude counts as you, because it
+      only does what you ask.
+    </>
+  ),
+  play_my_day: <>A move the Play my day button made for you.</>,
+  game: (
+    <>
+      A move the game made on its own when the day ended: fights settling, payouts, crowns, Hatch
+      Friday.
+    </>
+  ),
+  another_farm: (
+    <>
+      A move a different farm made that touched yours, such as buying a cover on your stud or
+      claiming one of your birds.
+    </>
+  ),
+  house: (
+    <>A house stable&apos;s own scripted move. You only see this on a house stable&apos;s log.</>
+  ),
+  llm_barn: (
+    <>
+      A move by a house stable that an AI model runs. You only see this on that stable&apos;s log.
+    </>
+  ),
 };
 
 export default function FarmPage() {
@@ -58,8 +92,8 @@ export default function FarmPage() {
       <h2>What the page shows</h2>
       <p>
         At the top is your farm: its name, your GP and Land Tokens, and two buttons,{" "}
-        <strong>Check in</strong> and <strong>Play my day for me</strong>. Under that, your birds
-        sit in four tables.
+        <strong>Check in</strong> and <strong>Play my day for me</strong>. Under that are five
+        views. Four hold your birds. The fifth, <strong>Your farm</strong>, is your farm log.
       </p>
       <p>
         The top also shows the <strong>game day</strong>, such as &ldquo;Game Friday&rdquo;. The
@@ -68,7 +102,7 @@ export default function FarmPage() {
         Majors run on game {GameClock.weekdayOf(PINTAKASI.DAY_OF_WEEK)}. The game&apos;s Friday is
         often not your Friday.
       </p>
-      <p>The four tables:</p>
+      <p>The five views:</p>
       <div className="tablewrap">
         <table>
           <thead>
@@ -96,6 +130,13 @@ export default function FarmPage() {
                 How your birds&apos; fights went, newest first. It loads one page of fights at a
                 time; press <strong>Load older fights</strong> for more. The all-time line above it
                 counts every fight, loaded or not.
+              </td>
+            </tr>
+            <tr>
+              <td>Your farm</td>
+              <td>
+                Your farm log: every move made on your farm, newest first, and who made it. See{" "}
+                <a href="#farm-log">The farm log</a> below.
               </td>
             </tr>
           </tbody>
@@ -145,7 +186,8 @@ export default function FarmPage() {
       <p>
         When the choices look right, press <strong>Enter card</strong>. Every bird with a fight
         picked is entered at once. Each entry is checked on its own. If one is turned down (you ran
-        out of GP, say), the rest still go in, and the page tells you why that one didn&apos;t.
+        out of GP, say), the rest still go in, and the page tells you why that one didn&apos;t. The
+        same report is saved in your farm log.
       </p>
       <div className="callout warn">
         <b>Entries are binding. </b>Once a bird is entered, its fee is held and its one card for the
@@ -219,7 +261,8 @@ export default function FarmPage() {
         Like Enter card, everything it does is binding. It can&apos;t be undone. When it finishes,
         the page tells you what it did: GP before and after, pulls spent, studs listed, studs
         repriced (each with its old and new price), land unstaked or bought for the barn, tokens
-        staked, covers bought, birds named, crowns entered, and birds carded.
+        staked, covers bought, birds named, crowns entered, and birds carded. That report is saved
+        in your farm log, so you can read it again later.
       </p>
       <p>
         <strong>Why use it?</strong> Some days you don&apos;t have time to card twenty birds. A day
@@ -235,6 +278,64 @@ export default function FarmPage() {
         <b>Mix the two. </b>Enter the birds you care about by hand first. Then press Play my day. A
         bird that is already entered keeps its fight, and the house cards the rest.
       </div>
+
+      <h2 id="farm-log">The farm log</h2>
+      <p>
+        The <strong>farm log</strong> is the <strong>Your farm</strong> view. It has one line for
+        each move made on your farm, newest first. A <strong>move</strong> is anything that changed
+        your farm: GP in or out, a bird entered, hatched or retired, land staked, a cover bought.
+        Every line says who made it.
+      </p>
+      <p>
+        <strong>Why it exists.</strong> Your GP can drop while you are not looking. A fight settles,
+        Play my day spends, another farm claims a bird. Without a record, all you see is a smaller
+        number. The log lets you find the line that moved your money, and see who moved it and why.
+      </p>
+      <p>Each line carries one of these labels. You can filter the log to one label at a time.</p>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>What it means</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(Object.keys(LABEL_MEANINGS) as LogLabel[]).map((key) => (
+              <tr key={key}>
+                <td>{LOG_LABELS[key]}</td>
+                <td>{LABEL_MEANINGS[key]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        A press of <strong>Enter card</strong> or <strong>Play my day</strong> leaves one{" "}
+        <strong>summary line</strong>. It is the report the page showed you when the press finished.
+        Every move that press made sits under it, so you can see what one press did as a whole. If a
+        press stops partway, its summary line says so, and why.
+      </p>
+      <p>
+        Some lines are not money. Naming a bird shows up, and so does setting a stud price, whoever
+        set it.
+      </p>
+      <div className="callout warn">
+        <b>Check the log after a Hatch Friday. </b>When Play my day reprices your studs, each new
+        price shows as a <strong>{LOG_LABELS.play_my_day}</strong> line, not a{" "}
+        <strong>{LOG_LABELS.you}</strong> line. That is how you can tell a price you set by hand was
+        replaced.
+      </div>
+      <p>
+        <strong>Who can see it.</strong> Only you, while signed in to your farm. There is no way to
+        open another farm&apos;s log. The stewards who run the world can see every farm&apos;s
+        moves, so they can help when something looks wrong. Hidden stats never appear in the log. It
+        keeps the same fog as the rest of the page.
+      </p>
+      <p>
+        Claude reads the same log with its <code>farm_log</code> tool. Ask it &ldquo;why did my GP
+        drop?&rdquo; and it can find the money lines and tell you who made each one.
+      </p>
 
       <div className="next">
         <Link href="/wiki">← Start here</Link>
