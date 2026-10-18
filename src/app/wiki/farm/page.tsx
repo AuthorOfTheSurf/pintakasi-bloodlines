@@ -227,10 +227,9 @@ export default function FarmPage() {
           still happen.
         </li>
       </ul>
-      <div className="callout warn">
-        <b>Play my day lists every retired rooster. </b>That includes one you pulled. If you want a
-        rooster to stay off the stud list, don&apos;t press Play my day, or pull him again after it
-        has played.
+      <div className="callout tip">
+        <b>A stud you pull stays pulled. </b>Play my day lists new studs, but it never puts back one
+        you took off. Only you can list him again.
       </div>
       <p>
         <strong>When a new price starts.</strong> If he is not standing yet, a new price starts at
@@ -262,9 +261,9 @@ export default function FarmPage() {
           roll, because breeding is the better way to fill a barn.
         </li>
         <li>
-          <strong>Stands your retired roosters at stud</strong>, even one you pulled. It prices each
-          new one the way an average stable would, then lists him. The first listing of a rooster
-          costs {studSeatLt} LT; listing him again is free.
+          <strong>Stands your new retired roosters at stud.</strong> It prices each new one the way
+          an average stable would, then lists him. That costs {studSeatLt} LT for each new rooster.
+          It never puts back a stud you pulled.
         </li>
         <li>
           <strong>On Hatch Friday, reprices your studs.</strong> It looks at how many covers each

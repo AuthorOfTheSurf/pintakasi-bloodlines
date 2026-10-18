@@ -227,6 +227,22 @@ describe("a posted price", () => {
     expect(notes().length).toBe(count + 1);
   });
 
+  test("a never-priced stud asked for the floor he stands at queues nothing and notes nothing", () => {
+    const { db, rival } = market();
+    const row = () => db.select().from(birds).where(eq(birds.id, "rival-stud")).get();
+    expect(row()?.studPrice).toBeNull();
+    expect(rival.setStudPrice("rival-stud", STUD_PRICE.FLOOR)).toMatchObject({
+      price: STUD_PRICE.FLOOR,
+      pendingPrice: null,
+    });
+    expect(row()?.studPriceNext).toBeNull();
+    expect(db.select().from(farmNotes).where(eq(farmNotes.kind, "stud_price")).all()).toEqual([]);
+    // A real change on the same stud still waits for the tick.
+    expect(rival.setStudPrice("rival-stud", STUD_PRICE.FLOOR + 50).pendingPrice).toBe(
+      STUD_PRICE.FLOOR + 50
+    );
+  });
+
   test("the game's day tick posts it", () => {
     const { db, rival, buyer } = market();
     rival.setStudPrice("rival-stud", 700);
