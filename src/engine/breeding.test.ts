@@ -321,6 +321,35 @@ describe("the breeding barn (breeding PvP)", () => {
   });
 });
 
+describe("the stud seat (round 23's land sink)", () => {
+  // The seat is bought once per rooster. The ruling, the MCP text and the
+  // Handbook all said re-listing a pulled stud is free; until the farm page
+  // grew a list button nobody could press "pull" and then "list" again, and
+  // the engine charged the land a second time.
+  test("pulling a stud and listing him again spends no more land", () => {
+    const { db, breeding, farmId } = freshGame();
+    db.update(farms)
+      .set({ landTokensCents: COVERS.STUD_LISTING_LT * 2 })
+      .where(eq(farms.id, farmId))
+      .run();
+    const land = () => db.select().from(farms).where(eq(farms.id, farmId)).get()?.landTokensCents;
+
+    expect(breeding.listStud("starter-1").landSpent).toBe(COVERS.STUD_LISTING_LT);
+    expect(land()).toBe(COVERS.STUD_LISTING_LT);
+    breeding.unlistStud("starter-1");
+    const again = breeding.listStud("starter-1");
+    expect([again.listed, again.landSpent]).toEqual([true, 0]);
+    expect(land()).toBe(COVERS.STUD_LISTING_LT);
+
+    // A farm with no loose land can still put a paid-for stud back.
+    db.update(farms).set({ landTokensCents: 0 }).where(eq(farms.id, farmId)).run();
+    breeding.unlistStud("starter-1");
+    expect(breeding.listStud("starter-1").landSpent).toBe(0);
+    // …and a rooster that never stood still pays for his seat.
+    expect(() => breeding.listStud("starter-3")).toThrow(/costs/);
+  });
+});
+
 describe("bloodline restriction", () => {
   /** Insert a retired bird with given parents. */
   function insertRetired(

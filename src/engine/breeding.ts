@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { DB } from "@/db/client";
-import { birds, farms, gameState, type BirdRow } from "@/db/schema";
+import { birds, events, farms, gameState, type BirdRow } from "@/db/schema";
 import {
   BASE_COATS,
   BREEDING,
@@ -31,6 +31,30 @@ import { Flock, type BirdView } from "./flock";
 import { GameClock } from "./game-clock";
 import { ageOf } from "./lifecycle";
 import { freshSeed, mulberry32, randInt, type Rng } from "./rng";
+
+/**
+ * Which of these roosters already bought their stud seat. The seat is bought
+ * once per rooster, not once per listing (round 23), so a pulled stud goes
+ * back up free. The ledger already records the payment, as a `stud_listed`
+ * row that spent land, so this reads it there instead of keeping a second
+ * copy on the bird. Like his price, the seat goes with the bird when he
+ * changes hands.
+ *
+ * Reads written rows only. A tick buffers its events, so a seat bought inside
+ * a tick still running would not show. Nothing in the engine pulls a stud, so
+ * only a player's pull and re-list reach here, and those run outside a tick.
+ */
+export function studSeatsPaid(database: DB, birdIds: readonly string[]): Set<string> {
+  if (birdIds.length === 0) return new Set();
+  const rows = database
+    .selectDistinct({ birdId: events.birdId })
+    .from(events)
+    .where(
+      and(eq(events.type, "stud_listed"), lt(events.lt, 0), inArray(events.birdId, [...birdIds]))
+    )
+    .all();
+  return new Set(rows.flatMap((r) => (r.birdId ? [r.birdId] : [])));
+}
 
 export interface LineageNode {
   id: string;
@@ -332,10 +356,23 @@ export class Breeding {
     const bird = this.flock.byId(birdId); // own birds only
     if (bird.sex !== "male") throw new Error(`${bird.name} is a hen — the barn lists roosters`);
     if (bird.status !== "retired") throw new Error(`${bird.name} must be retired to stand stud`);
-    // Re-listing a rooster that's already up is free — the land bought the
-    // seat, and pulling a stud out shouldn't tax putting him back.
+    // Listing a rooster that is already up changes nothing, and putting back
+    // one that stood before is free: the land bought the seat, and pulling a
+    // stud out shouldn't tax putting him back. Until the farm page's stud
+    // control (2026-10) only the first half was true: a pulled stud read as
+    // never listed and paid again, while the Handbook and the MCP text
+    // promised the second half.
     let landSpent = 0;
-    if (!bird.listedStud) {
+    if (!bird.listedStud && studSeatsPaid(this.database, [birdId]).has(birdId)) {
+      emit(this.database, {
+        type: "stud_listed",
+        farmId: this.farmId,
+        birdId,
+        message:
+          `${bird.name} stands at stud again — ${this.pricesOf(birdId).price} GP a cover ` +
+          `(his seat was paid for already)`,
+      });
+    } else if (!bird.listedStud) {
       // THE LAND SINK (round 23): a stud seat costs LAND, not GP. Spent —
       // not staked, not refundable. It's the first thing in the game that
       // takes Land Tokens OUT of the world, which is what gives the yield a
@@ -344,7 +381,7 @@ export class Breeding {
       if (farm.landTokensCents < COVERS.STUD_LISTING_LT)
         throw new Error(
           `Standing ${bird.name} at stud costs ${COVERS.STUD_LISTING_LT / LT_CENTS} LT — ${farm.name} holds ` +
-            `${farm.landTokensCents} liquid (unstake some, or earn more in the pit)`
+            `${(farm.landTokensCents / LT_CENTS).toFixed(2)} LT loose (unstake some, or earn more in the pit)`
         );
       this.database
         .update(farms)
@@ -401,20 +438,31 @@ export class Breeding {
       .from(birds)
       .where(eq(birds.id, birdId))
       .get();
-    this.database
-      .update(birds)
-      .set(
-        bird.listedStud ? { studPriceNext: priceGp } : { studPrice: priceGp, studPriceNext: null }
-      )
-      .where(eq(birds.id, birdId))
-      .run();
+    // On a standing stud, setting him back to the price he already posts
+    // cancels any waiting price rather than queueing the same number.
+    const posted = before?.studPrice ?? null;
+    const next = bird.listedStud
+      ? { studPrice: posted, studPriceNext: priceGp === posted ? null : priceGp }
+      : { studPrice: priceGp, studPriceNext: null };
+    // A press that changes neither column changes nothing, and writes no
+    // note: the farm page's List button resends the price in the box, and a
+    // log line reading "from 350 GP to 350 GP" only teaches doubt.
+    if (next.studPrice === before?.studPrice && next.studPriceNext === before?.studPriceNext)
+      return { stud: bird.name, ...this.pricesOf(birdId) };
+    this.database.update(birds).set(next).where(eq(birds.id, birdId)).run();
     noteStudPrice(
       this.database,
       {
         farmId: this.farmId,
         birdId,
         name: bird.name,
-        from: before?.studPriceNext ?? before?.studPrice ?? null,
+        // What the price was going to be: on a standing stud, a price still
+        // waiting for the tick; on one not standing, the price he carries,
+        // because this write posts at once and drops any waiting price (a
+        // stud pulled before the tick posted his new price keeps it waiting).
+        from: bird.listedStud
+          ? (before?.studPriceNext ?? before?.studPrice ?? null)
+          : (before?.studPrice ?? null),
         to: priceGp,
       },
       Boolean(bird.listedStud)
