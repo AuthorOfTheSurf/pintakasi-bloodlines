@@ -27,6 +27,7 @@ import {
 } from "./cells";
 import type { EggRowUI, FarmPageData, RetiredRowUI } from "./data";
 import { FarmGrid } from "./farm-grid";
+import { StudPanel } from "./stud-panel";
 
 const VIEWS = ["Fighting", "Retired", "Eggs", "Results", "Log"] as const;
 type View = (typeof VIEWS)[number];
@@ -139,7 +140,13 @@ const RETIRED_COLS: ColDef<RetiredRowUI>[] = [
     field: "studPrice",
     headerName: "Stud price",
     type: "rightAligned",
-    valueFormatter: (p) => (p.value == null ? "" : `${p.value} GP`),
+    // Room for "300 GP → 350 GP next tick" when a new price is waiting.
+    minWidth: 230,
+    valueFormatter: (p) => {
+      const waiting = p.data?.pendingPrice;
+      const now = p.value == null ? "" : `${p.value} GP`;
+      return waiting == null || waiting === p.value ? now : `${now} → ${waiting} GP next tick`;
+    },
   },
   { colId: "retiredBy", field: "retiredBy", headerName: "Retired by" },
   { colId: "carriage", field: "carriage", headerName: "Carriage" },
@@ -435,6 +442,10 @@ export function FarmApp({ data }: { data: FarmPageData }) {
 
   const allBirds = [...data.fighting, ...data.retired];
   const selectedBird = selected ? (allBirds.find((b) => b.id === selected) ?? null) : null;
+  const selectedStud =
+    view === "Retired"
+      ? data.retired.find((b) => b.id === selected && b.sex === "male")
+      : undefined;
   const watch = (f: BirdFightRowUI | FarmFightRowUI, who: string) =>
     setOpenFight({ logId: f.logId, title: `day ${f.day} · ${f.card} · ${who} vs ${f.opponent}` });
 
@@ -643,6 +654,16 @@ export function FarmApp({ data }: { data: FarmPageData }) {
 
       {view === "Log" ? (
         <FarmLog log={log} who={logWho} setWho={setLogWho} isEmpty={data.logLines === 0} />
+      ) : null}
+
+      {selectedStud ? (
+        // Its own key: BirdDetail beside it is keyed by the bare bird id, and
+        // two siblings sharing a key left a stale copy of this panel on screen.
+        <StudPanel
+          key={`stud-${selectedStud.id}`}
+          bird={selectedStud}
+          landTokensCents={farm.landTokensCents}
+        />
       ) : null}
 
       {selectedBird && (view === "Fighting" || view === "Retired") ? (
