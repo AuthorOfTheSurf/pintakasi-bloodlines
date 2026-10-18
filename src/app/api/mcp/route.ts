@@ -63,13 +63,8 @@ import { fmtGp } from "@/engine/events";
 const ENTRY_CLASSES = LOBBIES.filter((c) => c !== "claimer") as unknown as [string, ...string[]];
 import { Farms } from "@/engine/farms";
 import { withActor } from "@/engine/actor";
-import {
-  FARM_LOG_PAGE,
-  LOG_LABEL_KEYS,
-  LOG_LABELS,
-  farmLogPage,
-  type LogLabel,
-} from "@/engine/farm-log";
+import { FARM_LOG_PAGE, farmLogPage } from "@/engine/farm-log";
+import { LOG_LABEL_KEYS, LOG_LABELS, type LogLabel } from "@/engine/log-labels";
 import { Game } from "@/engine/game";
 import { DAY_TURNS_PH_HOUR } from "@/engine/live-clock";
 import { freshSeed } from "@/engine/rng";

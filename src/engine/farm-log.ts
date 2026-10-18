@@ -3,6 +3,7 @@ import type { DB } from "@/db/client";
 import { LT_CENTS } from "./config";
 import type { StoredActor } from "./actor";
 import type { EventType } from "./events";
+import { LOG_LABEL_KEYS, RUN_SUMMARY_KINDS, type FarmLogEntry, type LogLabel } from "./log-labels";
 
 /**
  * THE FARM LOG'S READER (2026-10): one farm's moves, newest first, each with
@@ -15,26 +16,6 @@ import type { EventType } from "./events";
  * carries the SELLER's bird under the claimant's farm, so a bird-id join
  * would show a seller the sealed claims on his own bird.
  */
-
-/**
- * The words an owner reads, keyed by what the reader works out. "Another
- * farm" is a move on your farm that a different barn made, such as a cover
- * bought on your stud or a claim that took your bird.
- */
-export const LOG_LABELS = {
-  you: "you",
-  play_my_day: "Play my day",
-  game: "the game",
-  another_farm: "another farm",
-  house: "house stable",
-  llm_barn: "LLM barn",
-  // A move made before this world kept the log (alpha-1's first weeks). Its
-  // maker was never written down, and guessing would put words in the log's
-  // mouth: a player's own early check-ins are not the game's.
-  unrecorded: "before the log",
-} as const;
-export type LogLabel = keyof typeof LOG_LABELS;
-export const LOG_LABEL_KEYS = Object.keys(LOG_LABELS) as LogLabel[];
 
 /**
  * THE ONE PLACE A STORED ACTOR BECOMES A LABEL, written as SQL so the
@@ -99,22 +80,6 @@ export const EVENT_VISIBILITY: Record<EventType, "owner" | "public" | "hidden"> 
 const HIDDEN_TYPES = (Object.keys(EVENT_VISIBILITY) as EventType[]).filter(
   (t) => EVENT_VISIBILITY[t] === "hidden"
 );
-
-export interface FarmLogEntry {
-  /** Opaque; pass back as `before` for the next page. */
-  cursor: string;
-  day: number;
-  who: LogLabel;
-  /** How the actor reached the game: "mcp" is Claude, "sim" the sim's auto-play. */
-  via: string | null;
-  /** The event type, or the note kind for a line that is not a ledger row. */
-  kind: string;
-  message: string;
-  gp: number | null;
-  lt: number | null;
-  /** The button press this move belongs to (its summary line's id). */
-  runId: number | null;
-}
 
 export const FARM_LOG_PAGE = { DEFAULT: 50, MAX: 200 } as const;
 
@@ -214,6 +179,7 @@ export function farmLogPage(
       who: r.who,
       via: r.via,
       kind: r.kind,
+      isRunSummary: r.src === 1 && RUN_SUMMARY_KINDS.some((k) => k === r.kind),
       message: r.src === 0 ? sentence(r.message) : r.message,
       gp: r.gpCents === null ? null : r.gpCents / 100,
       lt: r.lt === null ? null : r.lt / LT_CENTS,

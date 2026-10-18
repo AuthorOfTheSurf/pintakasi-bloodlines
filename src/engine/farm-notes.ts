@@ -2,6 +2,7 @@ import { eq, max } from "drizzle-orm";
 import type { DB } from "@/db/client";
 import { events, farmNotes, gameState } from "@/db/schema";
 import { currentActor, queueNoteIfBuffered, withActor, type Actor } from "./actor";
+import type { RunSummaryKind } from "./log-labels";
 
 /**
  * THE FARM'S OWN LINES (the farm log, 2026-10): moves a player can see that
@@ -16,8 +17,7 @@ import { currentActor, queueNoteIfBuffered, withActor, type Actor } from "./acto
 export type NoteKind =
   | "named" // a bird took a name
   | "stud_price" // a rooster's cover price was set (pending or posted at once)
-  | "play_my_day" // the summary a Play my day run leaves
-  | "card"; // the summary an Enter card press leaves
+  | RunSummaryKind; // the summary a Play my day or Enter card press leaves
 
 export interface NoteInput {
   farmId: string;
@@ -83,7 +83,7 @@ export const FarmNotes = {
    */
   run<T>(
     db: DB,
-    kind: Extract<NoteKind, "play_my_day" | "card">,
+    kind: RunSummaryKind,
     actor: Extract<Actor, { kind: "player" | "autoplay" }>,
     fn: () => T,
     summarize: (result: T) => { message: string; data?: unknown }

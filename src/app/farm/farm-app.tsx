@@ -7,7 +7,7 @@ import type { FarmColor } from "@/engine/config";
 import { keyId } from "@/engine/card-key";
 import type { HonestDayReport } from "@/engine/auto-play";
 import { honestDayLines } from "@/engine/day-summary";
-import { LOG_LABELS, LOG_LABEL_KEYS, type FarmLogEntry, type LogLabel } from "@/engine/farm-log";
+import { LOG_LABELS, LOG_LABEL_KEYS, type FarmLogEntry, type LogLabel } from "@/engine/log-labels";
 import type { FarmFightRowUI } from "../admin/bird-fights";
 import type { BirdFightRowUI } from "../admin/grids";
 import { ElementCell, FightReplayModal, GradeCell, useFightReplay } from "../grid-kit";
@@ -913,9 +913,6 @@ function SavedToLog({ onOpenLog }: { onOpenLog: () => void }) {
   );
 }
 
-/** A button press's own summary line. The moves it made follow below it. */
-const RUN_HEADS = new Set(["play_my_day", "card"]);
-
 function Delta({ value, unit }: { value: number | null; unit: string }) {
   if (value === null || value === 0) return null;
   return (
@@ -926,7 +923,8 @@ function Delta({ value, unit }: { value: number | null; unit: string }) {
 }
 
 function rowClass(e: FarmLogEntry): string | undefined {
-  if (RUN_HEADS.has(e.kind)) return "head";
+  // A button press's own summary line; the moves it made follow below it.
+  if (e.isRunSummary) return "head";
   return e.runId === null ? undefined : "inrun";
 }
 

@@ -41,6 +41,7 @@ import {
 } from "./config";
 import { BOT_FARMS } from "./bot-config";
 import { GameClock } from "./game-clock";
+import { RUN_SUMMARY_KINDS } from "./log-labels";
 import { replayFidelity } from "./replay";
 import { gradeOf, type Grade } from "./grades";
 import { ageOf } from "./lifecycle";
@@ -690,7 +691,7 @@ function checkFarmLog(db: DB): Invariant {
   for (const e of uncovered) offenders.push(`event ${e.id} (${e.type}) has no actor`);
   const notes = db.select().from(farmNotes).all();
   const runs = new Set(
-    notes.filter((n) => n.kind === "play_my_day" || n.kind === "card").map((n) => n.id)
+    notes.filter((n) => RUN_SUMMARY_KINDS.some((k) => k === n.kind)).map((n) => n.id)
   );
   for (const n of notes) {
     if (n.actorKind === null) offenders.push(`note ${n.id} (${n.kind}) has no actor`);

@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { MCP_INSTRUCTIONS, TOOL_DESCRIPTIONS } from "@/app/api/mcp/route";
 import { AUTO_RESERVE } from "./auto-play";
 import { splitBreedFee } from "./breeding";
-import { FARM_LOG_PAGE, LOG_LABEL_KEYS, LOG_LABELS } from "./farm-log";
+import { FARM_LOG_PAGE } from "./farm-log";
+import { LOG_LABEL_KEYS, LOG_LABELS } from "./log-labels";
 import { fmtGp } from "./events";
 import type { FightFormat, FightMode } from "./config";
 import {

@@ -14,7 +14,7 @@ import {
   STATS,
   STUD_PRICE,
 } from "@/engine/config";
-import { LOG_LABELS, type LogLabel } from "@/engine/farm-log";
+import { LOG_LABELS, type LogLabel } from "@/engine/log-labels";
 import { GameClock } from "@/engine/game-clock";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +99,7 @@ export default function FarmPage() {
       <p>
         At the top is your farm: its name, your GP and Land Tokens, and two buttons,{" "}
         <strong>Check in</strong> and <strong>Play my day for me</strong>. Under that are five
-        views. Four hold your birds. The fifth, <strong>Your farm</strong>, is your farm log.
+        views. Four hold your birds. The fifth, <strong>Log</strong>, is your farm log.
       </p>
       <p>
         The top also shows the <strong>game day</strong>, such as &ldquo;Game Friday&rdquo;. The
@@ -139,7 +139,7 @@ export default function FarmPage() {
               </td>
             </tr>
             <tr>
-              <td>Your farm</td>
+              <td>Log</td>
               <td>
                 Your farm log: every move made on your farm, newest first, and who made it. See{" "}
                 <a href="#farm-log">The farm log</a> below.
@@ -287,10 +287,10 @@ export default function FarmPage() {
 
       <h2 id="farm-log">The farm log</h2>
       <p>
-        The <strong>farm log</strong> is the <strong>Your farm</strong> view. It has one line for
-        each move made on your farm, newest first. A <strong>move</strong> is anything that changed
-        your farm: GP in or out, a bird entered, hatched or retired, land staked, a cover bought.
-        Every line says who made it.
+        The <strong>farm log</strong> is the <strong>Log</strong> view. It has one line for each
+        move made on your farm, newest first. A <strong>move</strong> is anything that changed your
+        farm: GP in or out, a bird entered, hatched or retired, land staked, a cover bought. Every
+        line says who made it.
       </p>
       <p>
         <strong>Why it exists.</strong> Your GP can drop while you are not looking. A fight settles,
