@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { asc, eq, max } from "drizzle-orm";
 import { createDb, type DB } from "@/db/client";
-import { actorSpans, birds, events, farmNotes, gameState } from "@/db/schema";
+import { actorSpans, birds, events, farmNotes, farms, gameState } from "@/db/schema";
 import { currentActor, withActor, type Actor } from "./actor";
 import { playMyDay } from "./auto-play";
 import { STUD_MARKET } from "./bot-config";
@@ -287,6 +287,7 @@ describe("who each boundary credits", () => {
     w.game.tickDay();
 
     const mine = logOf(w.db, w.devId);
+    const buyer = w.db.select().from(farms).where(eq(farms.id, HOUSE_BOT)).get()?.name ?? null;
     const covers = mine.filter((e) => e.kind === "stud_income");
     expect(covers.length).toBeGreaterThan(0);
     // The span knows the buyer is a scripted house barn; my log does not say
@@ -300,7 +301,14 @@ describe("who each boundary credits", () => {
       expect(c.message).toContain(stud.name);
       expect([c.who, c.via]).toEqual(["another_farm", null]);
       expect(actors.get(Number(c.cursor.split(".")[0]))?.via).toBe("scripted");
+      // The buyer by its public name, in the line and in its own field. Never
+      // its id: a farm id is the half of a key a stranger must not hold.
+      expect(c.farm).toBe(buyer);
+      expect(c.message).toStartWith(`${buyer} bred their hen Inahin `);
+      expect(JSON.stringify(c)).not.toContain(HOUSE_BOT);
     }
+    // Only another farm's move names a farm; my own lines and the game's do not.
+    for (const e of mine.filter((l) => l.who !== "another_farm")) expect(e.farm).toBeNull();
     // A fight row names no farm; the bird's settlement line is the farm's.
     const settled = mine.filter((e) => e.kind === "card_settled" || e.kind === "refund");
     expect(settled.length).toBeGreaterThan(0);
@@ -390,7 +398,7 @@ describe("the lines the ledger does not carry", () => {
       kind: "named",
       who: "you",
       via: "web",
-      message: "Named a bird Bagong Alab. It was called Alab.",
+      message: "Gave Alab a new name, Bagong Alab.",
     });
     const row = w.db.select().from(farmNotes).where(eq(farmNotes.kind, "named")).get();
     expect(JSON.parse(row?.data ?? "null")).toEqual({ from: "Alab", to: "Bagong Alab" });
@@ -422,14 +430,14 @@ describe("the lines the ledger does not carry", () => {
       kind: "stud_price",
       who: "you",
       via: "api",
-      message: `Changed Nakatayo's stud price from ${STUD_PRICE.FLOOR} GP to ${up} GP a cover. The new price starts at the next day tick.`,
+      message: `Changed Nakatayo's stud price from ${STUD_PRICE.FLOOR} GP to ${up} GP a cover. The new price starts tomorrow.`,
     });
     // A never-priced rooster's first price is a first price, not a change from
     // the floor, and an unlisted rooster's price posts at once.
     expect(onUnlisted).toMatchObject({
       kind: "stud_price",
       who: "you",
-      message: `Set Bago's first stud price: ${up} GP a cover.`,
+      message: `Set Bago's first stud price. A cover costs ${up} GP.`,
     });
   });
 
@@ -451,7 +459,7 @@ describe("the lines the ledger does not carry", () => {
       w.dev.breeding.setStudPrice(bird.id, STUD_PRICE.FLOOR * 2)
     );
     expect(logOf(w.db, w.devId)[0].message).toBe(
-      `Set Bago's first stud price: ${STUD_PRICE.FLOOR * 2} GP a cover.`
+      `Set Bago's first stud price. A cover costs ${STUD_PRICE.FLOOR * 2} GP.`
     );
   });
 
@@ -466,7 +474,7 @@ describe("the lines the ledger does not carry", () => {
     expect(priced.length).toBeGreaterThan(0);
     for (const p of priced) {
       expect([p.who, p.via]).toEqual(["house", "scripted"]);
-      expect(p.message).toMatch(/^Set Bagong Tandang's first stud price: \d+ GP a cover\.$/);
+      expect(p.message).toMatch(/^Set Bagong Tandang's first stud price\. A cover costs \d+ GP\.$/);
     }
   });
 
@@ -496,9 +504,21 @@ describe("the lines the ledger does not carry", () => {
       who: "play_my_day",
       via: "button",
       runId: summary?.runId,
-      message: `Changed Hand Priced's stud price from ${handSet} GP to ${to} GP a cover. The new price starts at the next day tick.`,
+      message: `Changed Hand Priced's stud price from ${handSet} GP to ${to} GP a cover. The new price starts tomorrow.`,
     });
     expect(w.db.select().from(birds).where(eq(birds.id, stud.id)).get()?.studPriceNext).toBe(to);
+  });
+});
+
+describe("a bad row", () => {
+  test("data that is not JSON costs that line its sentence, not the page", () => {
+    const w = world();
+    withActor(w.db, asPlayer(w.devId), () =>
+      emit(w.db, { type: "check_in", farmId: w.devId, gpCents: 80000, message: "checked in" })
+    );
+    w.db.update(events).set({ data: "{not json" }).where(eq(events.message, "checked in")).run();
+    const [line] = logOf(w.db, w.devId);
+    expect(line.message).toBe("Checked in for the day. Got 800 GP.");
   });
 });
 
@@ -519,5 +539,10 @@ describe("the fog", () => {
     const mine = logOf(w.db, w.devId);
     expect(mine.filter((e) => e.kind === "claim")).toEqual([]);
     expect(mine.map((e) => e.message)).not.toContain(theirs[0].message);
+    // The new voice reads the same row, so it is filed the same way: the claim
+    // reads as the claimant's sentence, and no line of mine mentions it. (My
+    // entry line does say the bird CAN be claimed: the tag is public.)
+    expect(theirs[0].message).toStartWith(`Put in a sealed claim of `);
+    expect(mine.some((e) => /sealed/i.test(e.message))).toBe(false);
   });
 });

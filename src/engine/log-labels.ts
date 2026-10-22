@@ -7,7 +7,8 @@
 /**
  * The words an owner reads, keyed by what the reader works out. "Another
  * farm" is a move on your farm that a different barn made, such as a cover
- * bought on your stud or a claim that took your bird.
+ * bought on your stud or a bird bumping yours out of a crown. A claim that
+ * takes your bird is not one: it settles at the tick, so it reads as the game.
  */
 export const LOG_LABELS = {
   you: "you",
@@ -37,6 +38,8 @@ export interface FarmLogEntry {
   cursor: string;
   day: number;
   who: LogLabel;
+  /** The farm that made the move, by its public name, on an "another farm" line only. */
+  farm: string | null;
   /** How the actor reached the game: "mcp" is Claude, "sim" the sim's auto-play. */
   via: string | null;
   /** The event type, or the note kind for a line that is not a ledger row. */

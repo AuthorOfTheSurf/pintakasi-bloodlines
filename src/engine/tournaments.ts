@@ -150,7 +150,15 @@ interface CommitteeCard {
   avgFigure: number;
 }
 
-const label = (format: FightFormat) => `${FORMATS[format].label} Championship`;
+/** A crown's name ("B5 Championship"). Exported for the farm log, which reads it back out of stored lines. */
+export const crownLabel = (format: FightFormat) => `${FORMATS[format].label} Championship`;
+const label = crownLabel;
+
+/** The last clause of a registration line, by the division's charter. The farm log matches these exactly. */
+export const CROWN_RISK = {
+  hardcore: "hardcore: lose and the career ends",
+  soft: "not hardcore — a beaten chick is out of the bracket, not out of the game",
+} as const;
 
 /**
  * Classic single-elimination seed placement: [1] → [1,2] → [1,4,2,3] →
@@ -543,9 +551,7 @@ export class Tournaments {
     // confirm risking a bird's life, so a wrong word here is a correctness
     // problem, not a typo. Both lines now branch on the division's charter.
     const charter = DIVISION_RULES[division];
-    const risk = charter.hardcore
-      ? "hardcore: lose and the career ends"
-      : "not hardcore — a beaten chick is out of the bracket, not out of the game";
+    const risk = charter.hardcore ? CROWN_RISK.hardcore : CROWN_RISK.soft;
     emit(this.database, {
       type: "tournament_entry",
       farmId: this.farmId,

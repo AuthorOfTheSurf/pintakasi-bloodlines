@@ -972,6 +972,11 @@ function FarmLog({
               <span className="dim">day {e.day}</span>{" "}
               <span className={`chip who-${e.who}`}>{LOG_LABELS[e.who]}</span>
               {e.who === "you" && e.via === "mcp" ? <span className="dim"> via Claude</span> : null}
+              {/* The chip keeps the filter's word; the farm's name rides in the
+                  sentence, and here only for a line whose sentence lacks it. */}
+              {e.farm && !e.message.includes(e.farm) ? (
+                <span className="dim"> {e.farm}</span>
+              ) : null}
             </span>
             <span className="msg">{e.message}</span>
             <span className="deltas">

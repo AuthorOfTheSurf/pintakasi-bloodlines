@@ -44,7 +44,8 @@ const LABEL_MEANINGS: Record<LogLabel, ReactNode> = {
   another_farm: (
     <>
       A move a different farm made that touched yours, such as buying a cover on your stud or
-      claiming one of your birds.
+      bumping your bird out of a crown. The line names that farm. A claim that takes your bird is
+      not one of these: claims settle when the day ends, so that line says the game.
     </>
   ),
   house: (
@@ -303,7 +304,12 @@ export default function FarmPage() {
         Play my day spends, another farm claims a bird. Without a record, all you see is a smaller
         number. The log lets you find the line that moved your money, and see who moved it and why.
       </p>
-      <p>Each line carries one of these labels. You can filter the log to one label at a time.</p>
+      <p>
+        Each line carries one of these labels. You can filter the log to one label at a time. The
+        sentence says what happened, and the label says who did it. That is why a line reads
+        &ldquo;Entered Kidlat&hellip;&rdquo; and not &ldquo;You entered Kidlat&hellip;&rdquo;. The
+        same move can be yours, Play my day&apos;s, or a house stable&apos;s.
+      </p>
       <div className="tablewrap">
         <table>
           <thead>
