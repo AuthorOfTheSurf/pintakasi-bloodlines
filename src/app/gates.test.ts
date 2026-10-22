@@ -11,6 +11,7 @@ import { POST as approvePOST } from "./api/alpha/applications/[id]/approve/route
 import { POST as autoplayPOST } from "./api/autoplay/route";
 import { POST as declinePOST } from "./api/alpha/applications/[id]/decline/route";
 import { GET as fightsGET } from "./api/farm/fights/route";
+import { POST as studPOST } from "./api/farm/stud/route";
 import { POST as registerPOST } from "./api/farms/register/route";
 import { POST as mcpPOST } from "./api/mcp/route";
 import { POST as liveTickPOST } from "./api/tick/live/route";
@@ -202,6 +203,8 @@ describe("production gates", () => {
     env.PINTAKASI_DB = file;
     try {
       expect((await autoplayPOST(post("/api/autoplay"))).status).toBe(401);
+      const unlist = JSON.stringify({ action: "unlist", birdId: "starter-1" });
+      expect((await studPOST(post("/api/farm/stud", { body: unlist }))).status).toBe(401);
       expect((await fightsGET(new NextRequest(`${BASE}/api/farm/fights`))).status).toBe(401);
       // …and outside production the same call is let through, so the 401s
       // above are the gate and not some other refusal.

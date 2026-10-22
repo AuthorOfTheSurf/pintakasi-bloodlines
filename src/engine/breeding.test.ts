@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { birds, farms, gameState } from "@/db/schema";
+import { birds, events, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
+import { playHonestDay, playMyDay } from "./auto-play";
 import { Breeding } from "./breeding";
 import { COVERS, ECONOMY, STATS, expectedFoalStat } from "./config";
 import { Flock } from "./flock";
@@ -318,6 +319,66 @@ describe("the breeding barn (breeding PvP)", () => {
       true
     );
     expect(studs.some((s) => s.name === "Tandang Pula")).toBe(true);
+  });
+});
+
+describe("the stud seat (round 23's land sink)", () => {
+  // The seat is bought once per rooster. The ruling, the MCP text and the
+  // Handbook all said re-listing a pulled stud is free; until the farm page
+  // grew a list button nobody could press "pull" and then "list" again, and
+  // the engine charged the land a second time.
+  test("pulling a stud and listing him again spends no more land", () => {
+    const { db, breeding, farmId } = freshGame();
+    db.update(farms)
+      .set({ landTokensCents: COVERS.STUD_LISTING_LT * 2 })
+      .where(eq(farms.id, farmId))
+      .run();
+    const land = () => db.select().from(farms).where(eq(farms.id, farmId)).get()?.landTokensCents;
+
+    expect(breeding.listStud("starter-1").landSpent).toBe(COVERS.STUD_LISTING_LT);
+    expect(land()).toBe(COVERS.STUD_LISTING_LT);
+    breeding.unlistStud("starter-1");
+    const again = breeding.listStud("starter-1");
+    expect([again.listed, again.landSpent]).toEqual([true, 0]);
+    expect(land()).toBe(COVERS.STUD_LISTING_LT);
+
+    // A farm with no loose land can still put a paid-for stud back.
+    db.update(farms).set({ landTokensCents: 0 }).where(eq(farms.id, farmId)).run();
+    breeding.unlistStud("starter-1");
+    expect(breeding.listStud("starter-1").landSpent).toBe(0);
+    // …and a rooster that never stood still pays for his seat.
+    expect(() => breeding.listStud("starter-3")).toThrow(/costs/);
+  });
+
+  // Once relisting went free, Play my day put every pulled stud back without
+  // a word. An absent player's day opens new seats and leaves closed ones shut.
+  test.each([
+    ["Play my day", playMyDay],
+    ["the honest day", playHonestDay],
+  ] as const)("%s never puts back a stud his owner pulled", (_, play) => {
+    const { db, breeding, farmId } = freshGame();
+    db.update(farms)
+      .set({ landTokensCents: COVERS.STUD_LISTING_LT * 2 })
+      .where(eq(farms.id, farmId))
+      .run();
+    breeding.listStud("starter-1");
+    breeding.unlistStud("starter-1");
+    const listings = (birdId: string) =>
+      db
+        .select()
+        .from(events)
+        .where(eq(events.birdId, birdId))
+        .all()
+        .filter((e) => e.type === "stud_listed").length;
+    const listed = (birdId: string) =>
+      db.select().from(birds).where(eq(birds.id, birdId)).get()?.listedStud;
+
+    play(db, farmId);
+    expect(listed("starter-1")).toBe(0);
+    expect(listings("starter-1")).toBe(1);
+    // The same day still opens a seat for a rooster who never stood.
+    expect(listed("starter-3")).toBe(1);
+    expect(listings("starter-3")).toBe(1);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createDb } from "@/db/client";
-import { birds, events, farms, gameState } from "@/db/schema";
+import { birds, events, farmNotes, farms, gameState } from "@/db/schema";
 import { seedGame } from "@/db/seed-data";
 import { STUD_MARKET } from "./bot-config";
 import { playHonestDay } from "./auto-play";
@@ -193,6 +193,54 @@ describe("a posted price", () => {
     // Listed first and priced after, his ask waited for the tick and this
     // cover sold at the floor: 223 of them in round 70's 182-day world.
     expect(buyer.breed("starter-2", "rival-ace").feePaid).toBe(ace?.price ?? 0);
+  });
+
+  test("a pulled stud's waiting price posts when he is priced again, and a repeat press notes nothing", () => {
+    const { db, rival } = market();
+    priced(db, rival, "rival-stud", 300);
+    rival.setStudPrice("rival-stud", 350); // waits for the tick
+    rival.unlistStud("rival-stud");
+    const notes = () =>
+      db
+        .select()
+        .from(farmNotes)
+        .where(eq(farmNotes.kind, "stud_price"))
+        .all()
+        .map((n) => JSON.parse(n.data ?? "{}") as { from: number | null; to: number });
+
+    // Not standing, so 350 posts now: the change is from the 300 he carries.
+    expect(rival.setStudPrice("rival-stud", 350)).toEqual({
+      stud: "rival-stud",
+      price: 350,
+      pendingPrice: null,
+    });
+    expect(notes().at(-1)).toMatchObject({ from: 300, to: 350 });
+    const count = notes().length;
+    rival.setStudPrice("rival-stud", 350);
+    rival.listStud("rival-stud");
+    rival.setStudPrice("rival-stud", 400);
+    rival.setStudPrice("rival-stud", 400);
+    expect(notes().length).toBe(count + 1);
+    // Standing at the price he posts, asking for it again queues nothing.
+    postStudPrices(db);
+    expect(rival.setStudPrice("rival-stud", 400)).toMatchObject({ price: 400, pendingPrice: null });
+    expect(notes().length).toBe(count + 1);
+  });
+
+  test("a never-priced stud asked for the floor he stands at queues nothing and notes nothing", () => {
+    const { db, rival } = market();
+    const row = () => db.select().from(birds).where(eq(birds.id, "rival-stud")).get();
+    expect(row()?.studPrice).toBeNull();
+    expect(rival.setStudPrice("rival-stud", STUD_PRICE.FLOOR)).toMatchObject({
+      price: STUD_PRICE.FLOOR,
+      pendingPrice: null,
+    });
+    expect(row()?.studPriceNext).toBeNull();
+    expect(db.select().from(farmNotes).where(eq(farmNotes.kind, "stud_price")).all()).toEqual([]);
+    // A real change on the same stud still waits for the tick.
+    expect(rival.setStudPrice("rival-stud", STUD_PRICE.FLOOR + 50).pendingPrice).toBe(
+      STUD_PRICE.FLOOR + 50
+    );
   });
 
   test("the game's day tick posts it", () => {

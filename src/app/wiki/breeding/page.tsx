@@ -101,7 +101,9 @@ export default function BreedingPage() {
         <strong>{STUD_PRICE.FLOOR} GP</strong> (the <strong>floor</strong>) and never more than{" "}
         <strong>{STUD_PRICE.CAP.toLocaleString()} GP</strong> (the <strong>cap</strong>,{" "}
         {STUD_PRICE.CAP_MULTIPLE}× the floor). A rooster nobody has priced costs the floor. The stud
-        card in the barn shows each rooster&apos;s price before you buy.
+        card in the barn shows each rooster&apos;s price before you buy. An owner sets the price on
+        his <Link href="/wiki/farm#studs">farm page</Link> (click the rooster in the Retired view),
+        or asks Claude to.
       </p>
       <ul>
         <li>

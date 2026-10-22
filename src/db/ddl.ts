@@ -342,6 +342,10 @@ CREATE INDEX IF NOT EXISTS ix_tournament_entries_bird ON tournament_entries(bird
 CREATE INDEX IF NOT EXISTS ix_tournaments_week ON tournaments(week_index, division);
 CREATE INDEX IF NOT EXISTS ix_events_farm ON events(farm_id);
 CREATE INDEX IF NOT EXISTS ix_events_day ON events(day_index);
+-- Which roosters already paid for a stud seat (breeding.ts studSeatsPaid).
+-- Partial, so it holds one row per listing and not one per event: every first
+-- listing asks, and without it each ask scans the whole ledger.
+CREATE INDEX IF NOT EXISTS ix_events_stud_seat ON events(bird_id) WHERE type = 'stud_listed';
 CREATE INDEX IF NOT EXISTS ix_gacha_tokens_farm ON gacha_tokens(farm_id);
 
 `;
