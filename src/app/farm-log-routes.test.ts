@@ -126,7 +126,7 @@ describe("who each door credits", () => {
       kind: "named",
       who: "you",
       via: "mcp",
-      message: "Named a bird Sinag ni Claude. It was called Sinag.",
+      message: "Gave Sinag a new name, Sinag ni Claude.",
     });
   });
 
@@ -246,15 +246,15 @@ describe("GET /api/farm/log", () => {
       { params: Promise.resolve({ id: w.rivalSlot("Kidlat") }) }
     );
     expect(res.status).toBe(200);
-    const rivalRename = "Named a bird Kidlat ng Karibal.";
-    const devRename = "Named a bird Sinag ni Claude.";
+    const rivalRename = "a new name, Kidlat ng Karibal.";
+    const devRename = "a new name, Sinag ni Claude.";
 
     const devLines = (await fullLog({ cookie: devKey })).map((e) => e.message);
     const rivalLines = (await fullLog({ farmKey: rivalKey })).map((e) => e.message);
-    expect(devLines.some((m) => m.startsWith(devRename))).toBe(true);
-    expect(devLines.some((m) => m.startsWith(rivalRename))).toBe(false);
-    expect(rivalLines.some((m) => m.startsWith(rivalRename))).toBe(true);
-    expect(rivalLines.some((m) => m.startsWith(devRename))).toBe(false);
+    expect(devLines.some((m) => m.endsWith(devRename))).toBe(true);
+    expect(devLines.some((m) => m.endsWith(rivalRename))).toBe(false);
+    expect(rivalLines.some((m) => m.endsWith(rivalRename))).toBe(true);
+    expect(rivalLines.some((m) => m.endsWith(devRename))).toBe(false);
     // An explicit key beats the browser's cookie: the key's farm is read.
     const both = await readLog("?limit=200", { farmKey: rivalKey });
     const withCookieToo = await logGET(

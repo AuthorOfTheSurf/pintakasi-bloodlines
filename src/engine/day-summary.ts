@@ -42,6 +42,6 @@ export function honestDaySentence(report: HonestDayReport): string {
   const sign = diff >= 0 ? "+" : "−";
   return (
     `Played the day. ${honestDayLines(report).join(" ")} ` +
-    `GP ${gp(report.gpBefore)} → ${gp(report.gpAfter)} (${sign}${gp(Math.abs(diff))}).`
+    `Your GP went from ${gp(report.gpBefore)} to ${gp(report.gpAfter)} (${sign}${gp(Math.abs(diff))}).`
   );
 }

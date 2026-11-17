@@ -20,8 +20,10 @@ test("the Play my day sentence writes a wallet the way the farm page does, separ
     crownsEntered: 0,
     birdsEntered: 0,
   };
-  expect(honestDaySentence(report)).toEndWith("GP 117,206.03 → 117,242.03 (+36.00).");
+  expect(honestDaySentence(report)).toEndWith(
+    "Your GP went from 117,206.03 to 117,242.03 (+36.00)."
+  );
   expect(honestDaySentence({ ...report, gpAfter: 115206.03 })).toEndWith(
-    "GP 117,206.03 → 115,206.03 (−2,000.00)."
+    "Your GP went from 117,206.03 to 115,206.03 (−2,000.00)."
   );
 });

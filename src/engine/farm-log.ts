@@ -4,6 +4,7 @@ import { LT_CENTS } from "./config";
 import type { StoredActor } from "./actor";
 import type { EventType } from "./events";
 import { LOG_LABEL_KEYS, RUN_SUMMARY_KINDS, type FarmLogEntry, type LogLabel } from "./log-labels";
+import { speak, type LineFacts } from "./log-voice";
 
 /**
  * THE FARM LOG'S READER (2026-10): one farm's moves, newest first, each with
@@ -95,6 +96,14 @@ interface Row {
   day: number;
   kind: string;
   message: string;
+  data: string | null;
+  bird: string | null;
+  actorFarm: string | null;
+  mother: string | null;
+  father: string | null;
+  studFarm: string | null;
+  ownStud: number | null;
+  counterparty: string | null;
   gpCents: number | null;
   lt: number | null;
   via: string | null;
@@ -133,7 +142,8 @@ function stream(farmId: string, before: Cursor | null): SQL {
     : sql``;
   return sql`
     SELECT e.id AS ord, 0 AS src, e.id AS id, e.day_index AS day, e.type AS kind,
-           e.message AS message, e.gp_cents AS gpCents, e.lt AS lt,
+           e.message AS message, e.data AS data, e.bird_id AS bird_id,
+           e.gp_cents AS gpCents, e.lt AS lt,
            s.actor_kind AS actor_kind, s.via AS via, s.actor_farm_id AS actor_farm_id,
            s.run_id AS runId
       FROM events e
@@ -142,17 +152,31 @@ function stream(farmId: string, before: Cursor | null): SQL {
        AND s.last_event_id >= e.id
      WHERE e.farm_id = ${farmId} ${hidden} ${eventsBefore}
     UNION ALL
-    SELECT n.after_event_id, 1, n.id, n.day_index, n.kind, n.message, NULL, NULL,
-           n.actor_kind, n.via, n.actor_farm_id, n.run_id
+    SELECT n.after_event_id, 1, n.id, n.day_index, n.kind, n.message, n.data, n.bird_id,
+           NULL, NULL, n.actor_kind, n.via, n.actor_farm_id, n.run_id
       FROM farm_notes n
      WHERE n.farm_id = ${farmId} AND n.message <> '' ${notesBefore}`;
 }
 
-/** A ledger line reads as a sentence: capital first, full stop last. */
-function sentence(message: string): string {
-  const trimmed = message.trim();
-  const capped = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  return /[.!?)]$/.test(capped) ? capped : `${capped}.`;
+/**
+ * A row's `data` column. The engine writes it with JSON.stringify, but the
+ * column is free text in a database the live world has carried since before
+ * this reader; one bad row should cost its own sentence, not the page.
+ */
+function parseData(raw: string | null): unknown {
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** One line of a page with the facts its sentence is built from, for the drift check. */
+export interface FarmLogLine {
+  source: "event" | "note";
+  facts: LineFacts;
+  entry: FarmLogEntry;
 }
 
 /**
@@ -164,6 +188,19 @@ export function farmLogPage(
   farmId: string,
   opts: { limit?: number; before?: string; who?: LogLabel } = {}
 ): { entries: FarmLogEntry[]; more: boolean } {
+  const { lines, more } = farmLogLines(db, farmId, opts);
+  return { entries: lines.map((l) => l.entry), more };
+}
+
+/**
+ * farmLogPage with each line's facts kept beside it. The facts hold the raw
+ * stored message and `data`, which is why only the entries leave the engine.
+ */
+export function farmLogLines(
+  db: DB,
+  farmId: string,
+  opts: { limit?: number; before?: string; who?: LogLabel } = {}
+): { lines: FarmLogLine[]; more: boolean } {
   const limit = Math.min(
     Math.max(1, Math.floor(opts.limit ?? FARM_LOG_PAGE.DEFAULT)),
     FARM_LOG_PAGE.MAX
@@ -171,29 +208,84 @@ export function farmLogPage(
   const before = parseCursor(opts.before);
   const whoFilter = opts.who ? sql`WHERE who = ${opts.who}` : sql``;
   const rows = db.all<Row>(sql`
-    SELECT * FROM (
-      SELECT ord, src, id, day, kind, message, gpCents, lt, via, runId,
-             ${labelSql(sql`${farmId}`)} AS who
-        FROM (${stream(farmId, before)})
-    ) ${whoFilter}
-    ORDER BY ord DESC, src DESC, id DESC
-    LIMIT ${limit + 1}`);
+    SELECT page.*, b.name AS bird, f.name AS actorFarm,
+           mo.name AS mother, fa.name AS father, faf.name AS studFarm,
+           fa.farm_id = ${farmId} AS ownStud,
+           -- The other farm in a claim, from the claimed card rather than the
+           -- message, whose two names (bird, farm) have no boundary a parser
+           -- can trust. A bird can be claimed more than once, so it takes the
+           -- latest such card entered on or before the line's day.
+           CASE WHEN page.src = 0 AND page.kind = 'claim_won' THEN (
+             SELECT sf.name FROM lobby_entries le JOIN farms sf ON sf.id = le.farm_id
+              WHERE le.bird_id = page.bird_id AND le.claimed_by_farm_id = ${farmId}
+                AND le.day_entered <= page.day
+              ORDER BY le.day_entered DESC, le.id DESC LIMIT 1)
+           WHEN page.src = 0 AND page.kind = 'tag_income' THEN (
+             SELECT bf.name FROM lobby_entries le JOIN farms bf ON bf.id = le.claimed_by_farm_id
+              WHERE le.bird_id = page.bird_id AND le.farm_id = ${farmId}
+                AND le.day_entered <= page.day
+              ORDER BY le.day_entered DESC, le.id DESC LIMIT 1)
+           END AS counterparty
+      FROM (
+      SELECT * FROM (
+        SELECT ord, src, id, day, kind, message, data, bird_id, actor_farm_id, gpCents, lt,
+               via, runId, ${labelSql(sql`${farmId}`)} AS who
+          FROM (${stream(farmId, before)})
+      ) ${whoFilter}
+      ORDER BY ord DESC, src DESC, id DESC
+      LIMIT ${limit + 1}
+    ) page
+    -- Names only, joined after the page is cut. A bird's name and a farm's
+    -- name are public; nothing else of either row is read here. A bred egg's
+    -- parents and the stud's farm were all in the breed line's message.
+    LEFT JOIN birds b ON b.id = page.bird_id
+    LEFT JOIN farms f ON f.id = page.actor_farm_id
+    LEFT JOIN birds mo ON page.src = 0 AND page.kind = 'breed' AND mo.id = b.mother_id
+    LEFT JOIN birds fa ON page.src = 0 AND page.kind = 'breed' AND fa.id = b.father_id
+    LEFT JOIN farms faf ON faf.id = fa.farm_id
+    ORDER BY ord DESC, src DESC, id DESC`);
   return {
-    entries: rows.slice(0, limit).map((r) => ({
-      cursor: `${r.ord}.${r.src}.${r.id}`,
-      day: r.day,
-      who: r.who,
-      // The door is the viewer's own business. On another farm's move it
-      // would say whether that barn is a bot or a person, which the label
-      // deliberately does not.
-      via: r.who === "another_farm" ? null : r.via,
-      kind: r.kind,
-      isRunSummary: r.src === 1 && RUN_SUMMARY_KINDS.some((k) => k === r.kind),
-      message: r.src === 0 ? sentence(r.message) : r.message,
-      gp: r.gpCents === null ? null : r.gpCents / 100,
-      lt: r.lt === null ? null : r.lt / LT_CENTS,
-      runId: r.runId,
-    })),
+    lines: rows.slice(0, limit).map((r) => {
+      const gp = r.gpCents === null ? null : r.gpCents / 100;
+      const lt = r.lt === null ? null : r.lt / LT_CENTS;
+      // Which farm, on another farm's move only. On every other line the
+      // acting farm is this one, or the game, and naming it says nothing.
+      const farm = r.who === "another_farm" ? r.actorFarm : null;
+      const source = r.src === 0 ? "event" : "note";
+      const facts: LineFacts = {
+        message: r.message,
+        gp,
+        lt,
+        bird: r.bird,
+        byFarm: farm,
+        parents:
+          r.mother !== null && r.father !== null && r.studFarm !== null
+            ? { mother: r.mother, father: r.father, studFarm: r.ownStud ? null : r.studFarm }
+            : null,
+        counterparty: r.counterparty,
+        data: parseData(r.data),
+      };
+      return {
+        source,
+        facts,
+        entry: {
+          cursor: `${r.ord}.${r.src}.${r.id}`,
+          day: r.day,
+          who: r.who,
+          farm,
+          // The door is the viewer's own business. On another farm's move it
+          // would say whether that barn is a bot or a person, which the label
+          // deliberately does not.
+          via: r.who === "another_farm" ? null : r.via,
+          kind: r.kind,
+          isRunSummary: r.src === 1 && RUN_SUMMARY_KINDS.some((k) => k === r.kind),
+          message: speak(source, r.kind, facts),
+          gp,
+          lt,
+          runId: r.runId,
+        },
+      };
+    }),
     more: rows.length > limit,
   };
 }
