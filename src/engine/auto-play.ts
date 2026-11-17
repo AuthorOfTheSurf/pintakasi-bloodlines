@@ -18,7 +18,7 @@ import {
   weatherOrder,
 } from "./bots";
 import { STUD_MARKET } from "./bot-config";
-import { Breeding, type StudView } from "./breeding";
+import { Breeding, studSeatsPaid, type StudView } from "./breeding";
 import { Farms } from "./farms";
 import { Flock } from "./flock";
 import { Gacha } from "./gacha";
@@ -94,8 +94,20 @@ export function playHonestDay(
   // BEFORE listing (round 70, third pass), so a new stud's ask posts at once
   // instead of waiting a day at the floor.
   quietly(() => priceStuds(db, farmId, day, STUD_MARKET.AUTO_PLAY.greed));
+  // New seats only. A rooster who paid for his seat and is not standing now
+  // was pulled by his owner, and an absent player's day must not undo that
+  // choice (2026-10 review: once relisting went free, Play my day put every
+  // pulled stud back without a word). Sim stand-ins never pull, so in the
+  // sim this skips no one.
   const breeding = new Breeding(db, farmId, mulberry32(500 + day));
-  for (const rooster of flock.filter((b) => b.status === "retired" && b.sex === "male"))
+  const retiredRoosters = flock.filter(
+    (b) => b.status === "retired" && b.sex === "male" && !b.listedStud
+  );
+  const pulled = studSeatsPaid(
+    db,
+    retiredRoosters.map((b) => b.id)
+  );
+  for (const rooster of retiredRoosters.filter((b) => !pulled.has(b.id)))
     quietly(() => breeding.listStud(rooster.id));
 
   // Expand the barn before it chokes (round 43) — same competence rule as the

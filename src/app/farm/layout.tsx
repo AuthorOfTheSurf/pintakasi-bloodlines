@@ -61,6 +61,11 @@ const CSS = `
   .panel ul { margin: .3rem 0 .6rem; padding-left: 1.2rem; }
   .panel .row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .6rem; }
   .panel.warn { border-left-color: #e07a6a; }
+  .panel .stud-row { align-items: flex-end; }
+  .price-field { display: grid; gap: .2rem; }
+  .price-field input { font: inherit; color: #e8e0d0; background: #12100d; border: 1px solid #3a342a;
+    border-radius: 6px; padding: .5rem .7rem; min-height: 44px; width: 9rem; }
+  .price-field input[aria-invalid="true"] { border-color: #e07a6a; }
 
   .views { display: flex; flex-wrap: wrap; gap: .4rem; margin: 1.2rem 0 .6rem; }
   .views button { font: inherit; color: #9a8f78; background: transparent; border: 1px solid #3a342a;

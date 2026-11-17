@@ -33,9 +33,9 @@
     "ag-grid-react": "^36.0.2",
     "better-sqlite3": "^12.2.0",
     "drizzle-orm": "^0.45.2",
-    "next": "^16.2.6",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "next": "^16.4.2",
+    "react": "~19.2.9",
+    "react-dom": "~19.2.9",
     "rivetkit": "^2.3.10",
     "zod": "^4.3.6"
   },

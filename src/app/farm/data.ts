@@ -13,6 +13,7 @@ import {
   type Element,
   type StatName,
 } from "@/engine/config";
+import { studSeatsPaid } from "@/engine/breeding";
 import { Farms, readWorldState, type FarmView } from "@/engine/farms";
 import { farmLogCounts } from "@/engine/farm-log";
 import { Flock, type BirdView } from "@/engine/flock";
@@ -66,7 +67,12 @@ export interface RetiredRowUI extends BirdBase, StatLine {
   total: number;
   retiredBy: string | null;
   listedStud: boolean;
+  /** The posted cover price as the owner set it; null means never priced, so the floor. */
   studPrice: number | null;
+  /** A new price waiting for the next day tick, on a listed stud only. */
+  pendingPrice: number | null;
+  /** True when this rooster bought his stud seat once already, so listing him again is free. */
+  seatPaid: boolean;
 }
 
 export interface EggRowUI {
@@ -182,6 +188,10 @@ export function farmPageData(db: DB, farmId: string): FarmPageData {
     ];
   });
 
+  const seats = studSeatsPaid(
+    db,
+    all.filter((b) => b.status === "retired" && b.sex === "male").map((b) => b.id)
+  );
   const retired = all.flatMap((b): RetiredRowUI[] => {
     const sheet = b.status === "retired" ? sheetOf(b) : null;
     if (!sheet) return [];
@@ -193,6 +203,8 @@ export function farmPageData(db: DB, farmId: string): FarmPageData {
         retiredBy: b.retiredBy,
         listedStud: b.listedStud === 1,
         studPrice: b.studPrice,
+        pendingPrice: b.studPriceNext,
+        seatPaid: seats.has(b.id),
       },
     ];
   });
