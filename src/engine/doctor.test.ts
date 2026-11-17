@@ -37,6 +37,7 @@ import {
   fightVolume,
   formatReport,
   generationLadder,
+  playerFortunesSection,
   weatherTiming,
 } from "./doctor";
 import { makeBird, world as testWorld } from "./testkit";
@@ -1089,5 +1090,119 @@ describe("the economy block", () => {
     expect(r.health.find((h) => h.title === "ECONOMY")!.lines.join("\n")).toContain(
       "snapshot predates wallet spreads"
     );
+  });
+});
+
+/**
+ * PLAYER FORTUNES (issue #28). The collapse it guards against took a player
+ * wallet from 116,883 GP to 1,908 while every invariant stayed green, and was
+ * fixed only as a side effect of other rounds. These pin both warnings to
+ * firing on that shape and staying quiet on the leaks a solvent world has.
+ */
+describe("player fortunes", () => {
+  const sectionOf = (db: DB) =>
+    diagnose(db, ":memory:").health.find((h) => h.title === "PLAYER FORTUNES")!;
+  const devOf = (db: DB) => diagnose(db, ":memory:").players.farms.find((f) => f.joinedDay === 0)!;
+  const today = (db: DB) => db.select().from(gameState).get()!.dayIndex;
+  const windfall = (farmId: string) => ({
+    dayIndex: 3,
+    type: "test_windfall",
+    farmId,
+    gpCents: 100_000_00,
+    message: "boom",
+  });
+  /** A windfall early and a loss of the same size today: the wallet ends where it was. */
+  const boomAndBust = (db: DB, farmId: string) =>
+    db
+      .insert(events)
+      .values([
+        windfall(farmId),
+        { ...windfall(farmId), dayIndex: today(db), gpCents: -100_000_00, message: "bust" },
+      ])
+      .run();
+
+  test("the ledger rebuild lands on the wallet, and a healthy farm does not warn", () => {
+    const w = world(35);
+    const dev = devOf(w.db);
+    const wallet = w.db.select().from(farms).where(eq(farms.id, w.devId)).get()!;
+    expect(dev.reconciled).toBe(true);
+    expect(dev.walletCents).toBe(wallet.gp * 100 + wallet.gpCents);
+    expect(dev.peakCents).toBeGreaterThanOrEqual(dev.walletCents);
+    expect(sectionOf(w.db).warn).toBeUndefined();
+  });
+
+  test("a wallet more than half off its peak warns, naming the peak day", () => {
+    const w = world(35);
+    boomAndBust(w.db, w.devId);
+    const dev = devOf(w.db);
+    expect(dev.reconciled).toBe(true);
+    expect(dev.peakCents).toBeGreaterThan(100_000_00);
+    const section = sectionOf(w.db);
+    expect(section.warn).toContain(`${dev.name} is`);
+    expect(section.warn).toContain("off its peak");
+    expect(section.lines.join("\n")).toContain(`(day ${dev.peakDay})`);
+  });
+
+  test("the same crash on a farm younger than the window is printed but not judged", () => {
+    const w = world(7);
+    boomAndBust(w.db, w.devId);
+    const section = sectionOf(w.db);
+    expect(section.warn).toBeUndefined();
+    expect(section.lines.join("\n")).toContain("too young to judge");
+  });
+
+  test("a ledger that misses the wallet names the farm instead of trusting its peak", () => {
+    const w = world(35);
+    w.db.insert(events).values(windfall(w.devId)).run();
+    const section = sectionOf(w.db);
+    expect(section.warn).toBeUndefined();
+    expect(section.lines.join("\n")).toContain("ledger rebuild misses the wallet");
+  });
+
+  // The card rule is two conditions, so each quiet case below breaks one of them.
+  // The house range defaults to main's late season on seed 1 (#28's re-measure).
+  const withCard = (
+    card: { fights: number; netCents: number; checkInCents: number },
+    house = { stables: 20, lowCents: -194, highCents: 432 }
+  ) =>
+    playerFortunesSection({
+      fromDay: 155,
+      toDay: 182,
+      house,
+      farms: [
+        {
+          name: "Bukidnon Farms",
+          joinedDay: 0,
+          walletCents: 240_000_00,
+          peakCents: 250_000_00,
+          peakDay: 170,
+          reconciled: true,
+          card,
+        },
+      ],
+    });
+
+  test("#28's card warns: worse than every house stable AND out-losing its check-ins", () => {
+    const warn = withCard({ fights: 3051, netCents: -90_748_00, checkInCents: 21_600_00 }).warn;
+    expect(warn).toContain("lost 90,748.00 GP on the card");
+    expect(warn).not.toContain("off its peak");
+  });
+
+  test("a weak flock the check-in outruns sits under the house range and does not warn", () => {
+    const leak = withCard({ fights: 300, netCents: -1_500_00, checkInCents: 22_400_00 });
+    expect(leak.warn).toBeUndefined();
+  });
+
+  test("a card that out-loses its check-ins inside the house range does not warn", () => {
+    // What a fight rake would do: every busy barn negative, this one no worse than the house.
+    const raked = withCard(
+      { fights: 3000, netCents: -30_000_00, checkInCents: 22_400_00 },
+      { stables: 20, lowCents: -1455, highCents: -200 }
+    );
+    expect(raked.warn).toBeUndefined();
+  });
+
+  test("a thin card sample is not judged", () => {
+    expect(withCard({ fights: 40, netCents: -40_000_00, checkInCents: 0 }).warn).toBeUndefined();
   });
 });
